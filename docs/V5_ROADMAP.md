@@ -39,17 +39,28 @@ V5 是在 V4（GBM-λ + Dixon-Coles + Temperature scaling）基础上的**演进
 
 **回退点**：每周一个 git tag `v5.w<n>`，恶化时 `git reset --hard v5.w<n-1>` 重做。
 
-## 数据源（W3 重点）
+## 数据源（W3 实测结果）
 
-| 源 | 用途 | 抓取 | 关键字段 |
-|----|------|------|---------|
-| understat | xG | `understat` PyPI + asyncio | xg_home/away, npxg, shots, key_passes, deep |
-| fbref | 高级数据 | `requests` + bs4 | progressive_passes, ppda, sca, gca |
-| clubelo | 独立 ELO | HTTP CSV | clubelo_home_pre / away_pre |
-| OddsPortal | 开盘赔率 | `playwright` headless | open_odds_*, open_handicap_line |
-| API-Football | 阵容（可选） | $19/月 REST | lineup, injuries, missing |
+W3 实测：抓取生态比预期严苛，仅 1/4 免费源可用。
 
-**统一 join key**：`(competition_code, home_canonical, away_canonical, date_local)`，新增 `utils/team_canonical.py` 处理命名差异。
+| 源 | 状态 | 说明 |
+|----|------|------|
+| **clubelo** | ✅ **可用** | HTTP CSV API 公开；335 个 V4 队 ~60-75% 命中（顶级联赛 ≥ 90%，下级联赛缺失） |
+| understat | 🚫 阻塞 | 站点已转 JS-rendered；`understat` 包 + httpx scrape 均失效 |
+| fbref | 🚫 阻塞 | 所有 UA 返回 HTTP 403（Cloudflare） |
+| OddsPortal | 🚫 暂缓 | Cloudflare + JS shell；用 football-data.co.uk B365 开盘赔率替代 |
+| API-Football | ❓ W12 决策 | $19/月，含 xG + 阵容；实战 ROI 不足 +2pp 才考虑 |
+
+**W3 实际交付**：
+- `nutmeg.v4.data.sources.clubelo`：完整可用（fetch / cache / date-lookup）
+- `nutmeg.v4.data.sources.{understat,fbref,oddsportal}`：留 stub + 错误信息指向解决方案
+- `nutmeg.utils.team_canonical`：8 个联赛的命名映射 + 模糊匹配（86% 阈值）
+- `nutmeg.v4.cli.ingest_external`：统一 CLI，写 `docs/v5_external_data_coverage.md`
+- 48 个新单元测试（22 team_canonical + 12 clubelo + 14 ingest CLI）
+
+**W4 调整**：xG 走"xG-lite"路线（用 V4 已有的 `home_shots` / `home_shots_on_target` 构造 prematch xG 期望），不再等付费数据。这是 V4_HANDOFF 原 P1 计划，被验证更务实。
+
+**统一 join key**：`(competition_code, home_canonical, away_canonical, date_local)`；`utils/team_canonical.py` 处理命名差异。
 
 ## 模型升级（W4-7）
 

@@ -86,5 +86,5 @@ Nutmeg_诊断报告与科学化路线图.docx
 *.pdf
 !docs/**/*.pdf
 
-# ── Plan files / drafts ───────────────────────────────────────
-.claude/plans/
+# ── Local-only ────────────────────────────────────────────────
+.claude/

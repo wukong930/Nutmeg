@@ -23,6 +23,14 @@ dependencies = [
   "lightgbm>=4.5",
   "duckdb>=1.0",
   "pyarrow>=16.0",
+  # V5 W3+ external data ingest
+  "httpx>=0.27",
+  "tenacity>=8.5",
+  "beautifulsoup4>=4.12",
+  "lxml>=5.2",
+  "understat>=0.1.4",
+  "aiohttp>=3.10",
+  "pyreadr>=0.5.6",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +50,7 @@ nutmeg-train = "nutmeg.v4.cli.train:main"
 nutmeg-recommend = "nutmeg.v4.cli.recommend:main"
 nutmeg-record-outcome = "nutmeg.v4.cli.record_outcome:main"
 nutmeg-roi-report = "nutmeg.v4.cli.roi_report:main"
+nutmeg-ingest-external = "nutmeg.v4.cli.ingest_external:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
