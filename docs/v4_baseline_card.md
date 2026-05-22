@@ -1,6 +1,15 @@
 # V4 Baseline Card
 
-_Generated 2026-05-22 06:47 UTC_
+_Generated 2026-05-22 16:12 UTC_
+
+## Configuration
+
+- Train window:     **540** days before cutoff
+- Validation window: **90** days (tem  wrote docs/v4_baseline_card.md
+
+# V4 Baseline Card
+
+_Generated 2026-05-22 16:12 UTC_
 
 ## Configuration
 
@@ -39,7 +48,7 @@ _Generated 2026-05-22 06:47 UTC_
 | FRA_LIGUE_1              |   306 | 0.9550 | 1.0038 | 1.0041 | 0.9624 | 0.9624 | +0.0074 |
 | ENG_CHAMPIONSHIP         |   552 | 1.0274 | 1.0395 | 1.0393 | 1.0309 | 1.0316 | +0.0042 |
 | ESP_SEGUNDA_DIVISION     |   462 | 1.0126 | 1.0541 | 1.0540 | 1.0221 | 1.0191 | +0.0065 |
-| ITA_SERIE_B              |   380 | 1.0494 | 1.1233 | 1.1216 | 1.0558 | 1.0559 | +0.0065 |
+| ITA_SERIE_B              |   380 | 1.0494 | 1.1232 | 1.1216 | 1.0558 | 1.0559 | +0.0065 |
 | GER_2_BUNDESLIGA         |   306 | 1.0604 | 1.0932 | 1.0914 | 1.0745 | 1.0840 | +0.0236 |
 | FRA_LIGUE_2              |   306 | 1.0147 | 1.0741 | 1.0735 | 1.0234 | 1.0222 | +0.0076 |
 | NED_EREDIVISIE           |   306 | 0.9376 | 1.0148 | 1.0116 | 0.9497 | 0.9527 | +0.0152 |
@@ -52,3 +61,4 @@ _Generated 2026-05-22 06:47 UTC_
 - **GBM-λ + DC** uses market closing odds as features, so it naturally tracks the market. It should NOT be expected to dramatically beat Pinnacle pooled — that would imply Pinnacle is materially inefficient.
 - The **practical alpha** for the user is: same probabilistic quality as Pinnacle, but with internal score-grid that enables 让球 / 大小球 / 比分 / 串关 computation that the market line alone can't.
 - Per-league regressions point to where extra features (xG, lineups, schedule congestion) would add value next.
+

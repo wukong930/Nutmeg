@@ -30,9 +30,11 @@ def _safe_devig(home: pd.Series, draw: pd.Series, away: pd.Series) -> tuple[pd.S
 
 
 def _safe_devig_two_way(over: pd.Series, under: pd.Series) -> pd.Series:
-    """Devig two-way (over/under) odds → P(over)."""
-    inv_o = 1.0 / over
-    inv_u = 1.0 / under
+    """Devig two-way (over/under) odds → P(over). Coerces non-numeric and zeros to NaN."""
+    over_n = pd.to_numeric(over, errors="coerce").replace(0, np.nan)
+    under_n = pd.to_numeric(under, errors="coerce").replace(0, np.nan)
+    inv_o = 1.0 / over_n
+    inv_u = 1.0 / under_n
     return inv_o / (inv_o + inv_u)
 
 
