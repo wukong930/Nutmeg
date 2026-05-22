@@ -24,6 +24,10 @@ from nutmeg.v4.features.clubelo_features import CLUBELO_FEATURE_COLUMNS, build_c
 from nutmeg.v4.features.elo import build_elo_features
 from nutmeg.v4.features.form import build_form_features
 from nutmeg.v4.features.market import build_market_features
+from nutmeg.v4.features.market_dynamics import (
+    MARKET_DYNAMICS_FEATURE_COLUMNS,
+    build_market_dynamics_features,
+)
 from nutmeg.v4.features.xg_lite import XG_LITE_FEATURE_COLUMNS, build_xg_lite_features
 
 
@@ -47,6 +51,12 @@ GBM_FEATURE_COLUMNS = [
     # V5 W4: xG-lite (10 cols) + clubelo (5 cols)
     *XG_LITE_FEATURE_COLUMNS,
     *CLUBELO_FEATURE_COLUMNS,
+    # V5 W5 — DISABLED after ablation: market-dynamics drift features
+    # (prob_drift_*, overround_compression, steam_flag, etc.) failed to
+    # produce stable multi-season log-loss improvement. The build function
+    # is still wired into the pipeline so the columns exist on the frame
+    # for diagnostics, but they're excluded from the GBM input. See
+    # docs/v5_w5_ablation.md for the full numbers and reasoning.
 ]
 
 
@@ -62,6 +72,7 @@ def build_feature_frame(
     directly to skip disk I/O (used in tests).
     """
     out = build_market_features(df)
+    out = build_market_dynamics_features(out)
     out = build_form_features(out)
     out = build_elo_features(out)
     out = build_xg_lite_features(out)

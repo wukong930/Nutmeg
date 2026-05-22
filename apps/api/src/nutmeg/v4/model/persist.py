@@ -39,6 +39,7 @@ from nutmeg.v4.features.clubelo_features import build_clubelo_features
 from nutmeg.v4.features.elo import DEFAULT_HOME_ADV, DEFAULT_INITIAL, DEFAULT_K
 from nutmeg.v4.features.form import WINDOW as FORM_WINDOW
 from nutmeg.v4.features.market import build_market_features
+from nutmeg.v4.features.market_dynamics import build_market_dynamics_features
 from nutmeg.v4.features.xg_lite import build_xg_lite_features
 
 
@@ -281,6 +282,16 @@ def build_features_for_fixtures(
 
     # Market features: pure column transform
     out = build_market_features(out)
+
+    # V5 W5 market dynamics needs opening odds (PSH/PSD/PSA). At inference
+    # the user-provided fixtures CSV typically only has closing prices, so
+    # we synthesize missing opening columns as NaN; build_market_dynamics
+    # will set drift=0 + available=0 for those rows and the GBM will route
+    # to the static market features instead.
+    for col in ("ps_home", "ps_draw", "ps_away"):
+        if col not in out.columns:
+            out[col] = np.nan
+    out = build_market_dynamics_features(out)
 
     # Per-row Elo + form from team_state snapshot
     elo_h = np.full(len(out), artifact.elo_initial)
