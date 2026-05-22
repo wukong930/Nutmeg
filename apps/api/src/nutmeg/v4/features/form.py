@@ -35,18 +35,24 @@ def build_form_features(df: pd.DataFrame, *, window: int = WINDOW) -> pd.DataFra
     """Walk in time order, maintain per-(league, team) rolling deques."""
     out = df.sort_values(["league", "date"]).reset_index(drop=True).copy()
 
-    # Per-team rolling state
+    # Per-team rolling state. `shots` is shots-FOR; `shots_ag` is shots-AGAINST
+    # (i.e., the opponent's shot count when this team played). The against
+    # variants are V5 W4 additions used by xg_lite features as a defensive proxy.
     g_for: dict[tuple[str, str], Deque[float]] = defaultdict(lambda: deque(maxlen=window))
     g_ag: dict[tuple[str, str], Deque[float]] = defaultdict(lambda: deque(maxlen=window))
     shots: dict[tuple[str, str], Deque[float]] = defaultdict(lambda: deque(maxlen=window))
+    shots_ag: dict[tuple[str, str], Deque[float]] = defaultdict(lambda: deque(maxlen=window))
     sot: dict[tuple[str, str], Deque[float]] = defaultdict(lambda: deque(maxlen=window))
+    sot_ag: dict[tuple[str, str], Deque[float]] = defaultdict(lambda: deque(maxlen=window))
     last_date: dict[tuple[str, str], pd.Timestamp] = {}
 
     cols_to_init = [
         "form_home_goals_for_n", "form_home_goals_against_n",
         "form_home_shots_n", "form_home_shots_on_target_n",
+        "form_home_shots_against_n", "form_home_sot_against_n",
         "form_away_goals_for_n", "form_away_goals_against_n",
         "form_away_shots_n", "form_away_shots_on_target_n",
+        "form_away_shots_against_n", "form_away_sot_against_n",
         "form_home_rest_days", "form_away_rest_days",
     ]
     init = {c: np.full(len(out), np.nan) for c in cols_to_init}
@@ -59,10 +65,14 @@ def build_form_features(df: pd.DataFrame, *, window: int = WINDOW) -> pd.DataFra
         init["form_home_goals_against_n"][i] = _avg(g_ag[kh])
         init["form_home_shots_n"][i] = _avg(shots[kh])
         init["form_home_shots_on_target_n"][i] = _avg(sot[kh])
+        init["form_home_shots_against_n"][i] = _avg(shots_ag[kh])
+        init["form_home_sot_against_n"][i] = _avg(sot_ag[kh])
         init["form_away_goals_for_n"][i] = _avg(g_for[ka])
         init["form_away_goals_against_n"][i] = _avg(g_ag[ka])
         init["form_away_shots_n"][i] = _avg(shots[ka])
         init["form_away_shots_on_target_n"][i] = _avg(sot[ka])
+        init["form_away_shots_against_n"][i] = _avg(shots_ag[ka])
+        init["form_away_sot_against_n"][i] = _avg(sot_ag[ka])
         if kh in last_date:
             init["form_home_rest_days"][i] = (row.date - last_date[kh]).total_seconds() / 86400
         if ka in last_date:
@@ -78,13 +88,29 @@ def build_form_features(df: pd.DataFrame, *, window: int = WINDOW) -> pd.DataFra
         ash = getattr(row, "away_shots", np.nan)
         hst = getattr(row, "home_shots_on_target", np.nan)
         ast_ = getattr(row, "away_shots_on_target", np.nan)
-        try:
-            shots[kh].append(float(hs) if hs is not None and not pd.isna(hs) else np.nan)
-            shots[ka].append(float(ash) if ash is not None and not pd.isna(ash) else np.nan)
-            sot[kh].append(float(hst) if hst is not None and not pd.isna(hst) else np.nan)
-            sot[ka].append(float(ast_) if ast_ is not None and not pd.isna(ast_) else np.nan)
-        except (TypeError, ValueError):
-            pass
+
+        def _nan_or_float(v: object) -> float:
+            try:
+                if v is None or pd.isna(v):
+                    return np.nan
+                return float(v)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return np.nan
+
+        hs_f, ash_f, hst_f, ast_f = (
+            _nan_or_float(hs), _nan_or_float(ash), _nan_or_float(hst), _nan_or_float(ast_)
+        )
+        # FOR (this team's shots)
+        shots[kh].append(hs_f)
+        shots[ka].append(ash_f)
+        sot[kh].append(hst_f)
+        sot[ka].append(ast_f)
+        # AGAINST (opponent's shots when this team played)
+        shots_ag[kh].append(ash_f)
+        shots_ag[ka].append(hs_f)
+        sot_ag[kh].append(ast_f)
+        sot_ag[ka].append(hst_f)
+
         last_date[kh] = row.date
         last_date[ka] = row.date
 

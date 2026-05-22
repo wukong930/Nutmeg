@@ -35,20 +35,24 @@ import pandas as pd
 
 from nutmeg.v4.calibration.temperature import TemperatureCalibrator
 from nutmeg.v4.features import GBM_FEATURE_COLUMNS
+from nutmeg.v4.features.clubelo_features import build_clubelo_features
 from nutmeg.v4.features.elo import DEFAULT_HOME_ADV, DEFAULT_INITIAL, DEFAULT_K
 from nutmeg.v4.features.form import WINDOW as FORM_WINDOW
 from nutmeg.v4.features.market import build_market_features
+from nutmeg.v4.features.xg_lite import build_xg_lite_features
 
 
 # --------- helpers --------------------------------------------------------
 
 def _team_form_deques():
     return {
-        "goals_for":          deque(maxlen=FORM_WINDOW),
-        "goals_against":      deque(maxlen=FORM_WINDOW),
-        "shots":              deque(maxlen=FORM_WINDOW),
-        "shots_on_target":    deque(maxlen=FORM_WINDOW),
-        "last_match_iso":     None,
+        "goals_for":              deque(maxlen=FORM_WINDOW),
+        "goals_against":          deque(maxlen=FORM_WINDOW),
+        "shots":                  deque(maxlen=FORM_WINDOW),
+        "shots_on_target":        deque(maxlen=FORM_WINDOW),
+        "shots_against":          deque(maxlen=FORM_WINDOW),
+        "sot_against":            deque(maxlen=FORM_WINDOW),
+        "last_match_iso":         None,
     }
 
 
@@ -63,6 +67,11 @@ class TeamState:
     shots: list[float]
     shots_on_target: list[float]
     last_match_iso: str | None
+    # V5 W4 additions: opponent shot counts (for xG-lite defensive proxy).
+    # Backward-compat: load_artifact uses .get() with default [] for older
+    # team_state.json files without these keys.
+    shots_against: list[float] = field(default_factory=list)
+    sot_against: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -106,6 +115,8 @@ def save_artifact(artifact: V4Artifact, out_dir: str | Path) -> Path:
                 "goals_against": st.goals_against,
                 "shots": st.shots,
                 "shots_on_target": st.shots_on_target,
+                "shots_against": st.shots_against,
+                "sot_against": st.sot_against,
                 "last_match_iso": st.last_match_iso,
             }
     with open(out / "team_state.json", "w") as f:
@@ -133,6 +144,8 @@ def load_artifact(in_dir: str | Path) -> V4Artifact:
                 shots=list(t["shots"]),
                 shots_on_target=list(t["shots_on_target"]),
                 last_match_iso=t.get("last_match_iso"),
+                shots_against=list(t.get("shots_against", [])),
+                sot_against=list(t.get("sot_against", [])),
             )
             for team, t in teams.items()
         }
@@ -164,6 +177,8 @@ def build_team_state(feature_df: pd.DataFrame) -> dict[str, dict[str, TeamState]
     g_ag: dict[tuple[str, str], deque[float]] = defaultdict(lambda: deque(maxlen=FORM_WINDOW))
     shots: dict[tuple[str, str], deque[float]] = defaultdict(lambda: deque(maxlen=FORM_WINDOW))
     sot: dict[tuple[str, str], deque[float]] = defaultdict(lambda: deque(maxlen=FORM_WINDOW))
+    shots_ag: dict[tuple[str, str], deque[float]] = defaultdict(lambda: deque(maxlen=FORM_WINDOW))
+    sot_ag: dict[tuple[str, str], deque[float]] = defaultdict(lambda: deque(maxlen=FORM_WINDOW))
     last: dict[tuple[str, str], pd.Timestamp] = {}
 
     for row in df.itertuples(index=False):
@@ -178,6 +193,7 @@ def build_team_state(feature_df: pd.DataFrame) -> dict[str, dict[str, TeamState]
         ash = getattr(row, "away_shots", np.nan)
         hst = getattr(row, "home_shots_on_target", np.nan)
         ast_ = getattr(row, "away_shots_on_target", np.nan)
+        # FOR side (this team's own shots in this match)
         if not pd.isna(hs):
             shots[kh].append(float(hs))
         if not pd.isna(ash):
@@ -186,6 +202,15 @@ def build_team_state(feature_df: pd.DataFrame) -> dict[str, dict[str, TeamState]
             sot[kh].append(float(hst))
         if not pd.isna(ast_):
             sot[ka].append(float(ast_))
+        # AGAINST side (opponent's shots in this match)
+        if not pd.isna(ash):
+            shots_ag[kh].append(float(ash))
+        if not pd.isna(hs):
+            shots_ag[ka].append(float(hs))
+        if not pd.isna(ast_):
+            sot_ag[kh].append(float(ast_))
+        if not pd.isna(hst):
+            sot_ag[ka].append(float(hst))
         last[kh] = row.date
         last[ka] = row.date
         # Update Elo from post-match elo_home + delta inferable from result, but easier:
@@ -216,6 +241,8 @@ def build_team_state(feature_df: pd.DataFrame) -> dict[str, dict[str, TeamState]
             goals_against=list(g_ag.get((league, team), [])),
             shots=list(shots.get((league, team), [])),
             shots_on_target=list(sot.get((league, team), [])),
+            shots_against=list(shots_ag.get((league, team), [])),
+            sot_against=list(sot_ag.get((league, team), [])),
             last_match_iso=last[(league, team)].isoformat() if (league, team) in last else None,
         )
     return dict(state)
@@ -233,11 +260,18 @@ def _team_form_avg(values: list[float]) -> float:
 def build_features_for_fixtures(
     artifact: V4Artifact,
     fixtures: pd.DataFrame,
+    *,
+    clubelo_cache_dir: Path | str = Path("data/external/clubelo"),
+    clubelo_history: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Given new fixtures (with odds), build the feature columns the GBM needs.
 
     fixtures must include: league, home_team, away_team, date, psc_home, psc_draw, psc_away,
                            and optionally psc_over25/psc_under25/ahch + handicap_home.
+
+    ``clubelo_cache_dir``/``clubelo_history`` are passed through to
+    ``build_clubelo_features``; pass an explicit history DataFrame in tests
+    to skip disk I/O.
     """
     out = fixtures.copy().reset_index(drop=True)
 
@@ -255,10 +289,14 @@ def build_features_for_fixtures(
     form_h_ga = np.full(len(out), np.nan)
     form_h_s = np.full(len(out), np.nan)
     form_h_sot = np.full(len(out), np.nan)
+    form_h_s_ag = np.full(len(out), np.nan)
+    form_h_sot_ag = np.full(len(out), np.nan)
     form_a_gf = np.full(len(out), np.nan)
     form_a_ga = np.full(len(out), np.nan)
     form_a_s = np.full(len(out), np.nan)
     form_a_sot = np.full(len(out), np.nan)
+    form_a_s_ag = np.full(len(out), np.nan)
+    form_a_sot_ag = np.full(len(out), np.nan)
     rest_h = np.full(len(out), np.nan)
     rest_a = np.full(len(out), np.nan)
 
@@ -273,6 +311,8 @@ def build_features_for_fixtures(
             form_h_ga[i] = _team_form_avg(sh.goals_against)
             form_h_s[i] = _team_form_avg(sh.shots)
             form_h_sot[i] = _team_form_avg(sh.shots_on_target)
+            form_h_s_ag[i] = _team_form_avg(sh.shots_against)
+            form_h_sot_ag[i] = _team_form_avg(sh.sot_against)
             if sh.last_match_iso:
                 rest_h[i] = (row.date - pd.Timestamp(sh.last_match_iso)).total_seconds() / 86400
         if sa is not None:
@@ -281,6 +321,8 @@ def build_features_for_fixtures(
             form_a_ga[i] = _team_form_avg(sa.goals_against)
             form_a_s[i] = _team_form_avg(sa.shots)
             form_a_sot[i] = _team_form_avg(sa.shots_on_target)
+            form_a_s_ag[i] = _team_form_avg(sa.shots_against)
+            form_a_sot_ag[i] = _team_form_avg(sa.sot_against)
             if sa.last_match_iso:
                 rest_a[i] = (row.date - pd.Timestamp(sa.last_match_iso)).total_seconds() / 86400
 
@@ -292,14 +334,26 @@ def build_features_for_fixtures(
     out["form_home_goals_against_n"] = form_h_ga
     out["form_home_shots_n"] = form_h_s
     out["form_home_shots_on_target_n"] = form_h_sot
+    out["form_home_shots_against_n"] = form_h_s_ag
+    out["form_home_sot_against_n"] = form_h_sot_ag
     out["form_away_goals_for_n"] = form_a_gf
     out["form_away_goals_against_n"] = form_a_ga
     out["form_away_shots_n"] = form_a_s
     out["form_away_shots_on_target_n"] = form_a_sot
+    out["form_away_shots_against_n"] = form_a_s_ag
+    out["form_away_sot_against_n"] = form_a_sot_ag
     out["form_home_goal_diff_n"] = form_h_gf - form_h_ga
     out["form_away_goal_diff_n"] = form_a_gf - form_a_ga
     out["form_home_rest_days"] = rest_h
     out["form_away_rest_days"] = rest_a
+
+    # V5 W4: derive xG-lite from form_*_shots* columns (pure transform)
+    out = build_xg_lite_features(out)
+    # V5 W4: clubelo features (loads cache from disk unless history passed in)
+    out = build_clubelo_features(
+        out, cache_dir=clubelo_cache_dir, history=clubelo_history
+    )
+
     return out
 
 

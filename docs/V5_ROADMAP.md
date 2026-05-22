@@ -27,7 +27,7 @@ V5 是在 V4（GBM-λ + Dixon-Coles + Temperature scaling）基础上的**演进
 | W1 | Git 化 + 基线锁定 | git init、push GitHub、`tag v4.0-frozen` | 远程仓库可见，baseline 落盘 |
 | W2 | 激进瘦身 | 删除 legacy 280+ 文件 | 文件数 ≤50；V4 测试 100% 绿；log-loss = 0.9987 ± 1e-4 |
 | W3 | 外部数据 ingest 铺底 | understat / clubelo / OddsPortal 入库 | 英超≥95%、J1=0%（接受） |
-| W4 | xG 特征 | `features/xg.py` + pipeline 集成 | log-loss ≤ 0.9957（降 0.003） |
+| W4 ✅ | xG-lite + clubelo 特征 | `features/{xg_lite,clubelo_features}.py` + pipeline 集成 | **达成：24/25 log-loss 0.9987 → 0.9971（−0.0016）**；多季稳定改善 |
 | W5 | 市场动态特征 | `features/market_dynamics.py`（opening→closing drift） | log-loss ≤ 0.9937（累计降 0.005） |
 | W6 | Ensemble v1 | XGBoost + CatBoost + LogReg stacker | ensemble vs 最佳单模型 ≥ +0.001 |
 | W7 | Bayesian 分层 | MAP per-league offset | J1/葡超 改善 ≥ +0.005，否则砍掉 |
