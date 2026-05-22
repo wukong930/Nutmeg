@@ -1,0 +1,191 @@
+{
+  "generated_at_utc": "2026-05-22T06:05:47+00:00",
+  "model": {
+    "trained_at_utc": "2026-05-22T05:56:41+00:00",
+    "training_cutoff": "2025-06-01"
+  },
+  "bankroll": 1000.0,
+  "n_fixtures": 8,
+  "single_match_predictions": [
+    {
+      "home_team": "Arsenal",
+      "away_team": "Liverpool",
+      "league": "EPL",
+      "date": "2025-08-17",
+      "lambda_home": 1.2403284239208374,
+      "lambda_away": 1.4212077862611763
+    },
+    {
+      "home_team": "Real Madrid",
+      "away_team": "Getafe",
+      "league": "ESP_LA_LIGA",
+      "date": "2025-08-17",
+      "lambda_home": 2.275885467620924,
+      "lambda_away": 0.8015501670873156
+    },
+    {
+      "home_team": "Inter",
+      "away_team": "Fiorentina",
+      "league": "ITA_SERIE_A",
+      "date": "2025-08-17",
+      "lambda_home": 1.7043300350072808,
+      "lambda_away": 1.0129481254345674
+    },
+    {
+      "home_team": "Bayern Munich",
+      "away_team": "Koln",
+      "league": "GER_BUNDESLIGA",
+      "date": "2025-08-17",
+      "lambda_home": 2.935676885638082,
+      "lambda_away": 0.8869625866414392
+    },
+    {
+      "home_team": "Paris SG",
+      "away_team": "Nice",
+      "league": "FRA_LIGUE_1",
+      "date": "2025-08-17",
+      "lambda_home": 2.3877377514096376,
+      "lambda_away": 0.9365757849509937
+    },
+    {
+      "home_team": "Ajax",
+      "away_team": "AZ Alkmaar",
+      "league": "NED_EREDIVISIE",
+      "date": "2025-08-17",
+      "lambda_home": 1.780936930041994,
+      "lambda_away": 1.1272411328584433
+    },
+    {
+      "home_team": "Porto",
+      "away_team": "Benfica",
+      "league": "PRT_PRIMEIRA_LIGA",
+      "date": "2025-08-17",
+      "lambda_home": 1.6593095445118309,
+      "lambda_away": 1.2341368119337337
+    },
+    {
+      "home_team": "Leeds",
+      "away_team": "Burnley",
+      "league": "ENG_CHAMPIONSHIP",
+      "date": "2025-08-17",
+      "lambda_home": 1.9577092982388415,
+      "lambda_away": 1.1600225083941462
+    }
+  ],
+  "recommendations": [
+    {
+      "rank": 1,
+      "k_legs": 2,
+      "is_compound": false,
+      "stake_units": 1,
+      "kelly_recommended_stake": 15.720000117921025,
+      "kelly_capped_fraction": 0.015720000117921025,
+      "expected_return": 5.3772964646738295,
+      "hit_probability": 0.2083955283487518,
+      "ev_per_unit": 0.34206720256596146,
+      "log_growth": 0.004557272865261714,
+      "legs": [
+        {
+          "match_id": "PRT_PRIMEIRA_LIGA_Porto_vs_Benfica",
+          "market_type": "1x2",
+          "selections": [
+            {
+              "outcome": "H",
+              "probability": 0.4620106241917408,
+              "odds": 2.3,
+              "edge": 0.06262443564100373
+            }
+          ]
+        },
+        {
+          "match_id": "ENG_CHAMPIONSHIP_Leeds_vs_Burnley",
+          "market_type": "handicap_1x2",
+          "selections": [
+            {
+              "outcome": "A",
+              "probability": 0.45106219951830534,
+              "odds": 2.8,
+              "edge": 0.26297415865125484
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "k_legs": 2,
+      "is_compound": false,
+      "stake_units": 1,
+      "kelly_recommended_stake": 13.268490428998462,
+      "kelly_capped_fraction": 0.01326849042899846,
+      "expected_return": 4.816805654914632,
+      "hit_probability": 0.1738553441501783,
+      "ev_per_unit": 0.3630258981373977,
+      "log_growth": 0.004068004351296544,
+      "legs": [
+        {
+          "match_id": "GER_BUNDESLIGA_Bayern Munich_vs_Koln",
+          "market_type": "handicap_1x2",
+          "selections": [
+            {
+              "outcome": "H",
+              "probability": 0.3854354107611777,
+              "odds": 2.8,
+              "edge": 0.07921915013129754
+            }
+          ]
+        },
+        {
+          "match_id": "ENG_CHAMPIONSHIP_Leeds_vs_Burnley",
+          "market_type": "handicap_1x2",
+          "selections": [
+            {
+              "outcome": "A",
+              "probability": 0.45106219951830534,
+              "odds": 2.8,
+              "edge": 0.26297415865125484
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "k_legs": 2,
+      "is_compound": false,
+      "stake_units": 1,
+      "kelly_recommended_stake": 14.753291887887022,
+      "kelly_capped_fraction": 0.01475329188788702,
+      "expected_return": 4.492494588362544,
+      "hit_probability": 0.2117707702217513,
+      "ev_per_unit": 0.3045079445659882,
+      "log_growth": 0.0038216858422225487,
+      "legs": [
+        {
+          "match_id": "FRA_LIGUE_1_Paris SG_vs_Nice",
+          "market_type": "handicap_1x2",
+          "selections": [
+            {
+              "outcome": "H",
+              "probability": 0.4694934987855418,
+              "odds": 2.2,
+              "edge": 0.03288569732819213
+            }
+          ]
+        },
+        {
+          "match_id": "ENG_CHAMPIONSHIP_Leeds_vs_Burnley",
+          "market_type": "handicap_1x2",
+          "selections": [
+            {
+              "outcome": "A",
+              "probability": 0.45106219951830534,
+              "odds": 2.8,
+              "edge": 0.26297415865125484
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

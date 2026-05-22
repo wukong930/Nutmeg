@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "training_cutoff": "2025-06-01",
+    "validation_days": 90,
+    "n_train": 25279,
+    "n_val": 1394,
+    "gbm_rho": -0.1,
+    "gbm_best_iter_home": 189,
+    "gbm_best_iter_away": 77,
+    "trained_at_utc": "2026-05-22T06:17:04+00:00"
+  },
+  "feature_columns": [
+    "market_p_home",
+    "market_p_draw",
+    "market_p_away",
+    "market_logit_home",
+    "market_logit_away",
+    "market_overround",
+    "market_total_over_2_5",
+    "market_handicap_line",
+    "elo_home",
+    "elo_away",
+    "elo_diff",
+    "elo_p_home",
+    "form_home_goals_for_n",
+    "form_home_goals_against_n",
+    "form_home_shots_n",
+    "form_home_shots_on_target_n",
+    "form_away_goals_for_n",
+    "form_away_goals_against_n",
+    "form_away_shots_n",
+    "form_away_shots_on_target_n",
+    "form_home_goal_diff_n",
+    "form_away_goal_diff_n",
+    "form_home_rest_days",
+    "form_away_rest_days"
+  ],
+  "elo_initial": 1500.0,
+  "elo_k": 20.0,
+  "elo_home_adv": 60.0
+}

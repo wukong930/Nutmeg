@@ -1,0 +1,28 @@
+competition_id: GER_2_BUNDESLIGA
+name: 2. Bundesliga
+country: Germany
+region: Europe
+competition_type: domestic_league
+team_type: club
+season_calendar: autumn_spring
+provider_primary: football_data_org
+provider_secondary: sportmonks
+coverage_tier: C_basic
+model_status: beta
+model:
+  base_model: club_goal_model
+  calibration_scope: league
+  home_advantage_mode: league_specific
+  goal_distribution_mode: league_specific
+  cold_start_strategy: market_prior_plus_elo
+markets:
+  enabled:
+    - 1x2
+    - asian_handicap
+    - european_handicap_1x2
+    - correct_score
+  cn_lottery_available: false
+quality_requirements:
+  min_historical_matches: 500
+  min_odds_coverage: 0.70
+  min_result_coverage: 0.99

@@ -1,0 +1,247 @@
+.match-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px;
+}
+
+.match-filter-toolbar {
+  align-items: end;
+}
+
+.match-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.match-header-main {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.match-data-warning {
+  margin: 0;
+  border: 1px solid var(--warning-alpha-26);
+  border-radius: 8px;
+  background: var(--warning-alpha-08);
+  padding: 9px 10px;
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.data-freshness-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.data-freshness-list {
+  display: grid;
+  gap: 8px;
+}
+
+.data-freshness-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 9px;
+}
+
+.data-freshness-row > span {
+  display: inline-flex;
+  color: var(--success);
+}
+
+.data-freshness-row.missing > span,
+.data-freshness-row.stale > span {
+  color: var(--warning);
+}
+
+.data-freshness-row strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.data-freshness-row p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.data-freshness-row em {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  padding: 2px 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.match-header-meta {
+  display: flex;
+  flex: 0 1 360px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.fixture-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.fixture-main-column,
+.fixture-side-column {
+  display: grid;
+  gap: 22px;
+}
+
+.match-card-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.match-title {
+  margin: 10px 0 8px;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.match-title span {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.match-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.match-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detail-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--edge-positive);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-link:hover {
+  background: var(--surface-muted);
+}
+
+.match-alert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-left: 3px solid var(--risk-medium);
+  background: var(--warning-alpha-08);
+  padding: 9px 10px;
+  color: var(--risk-medium);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.match-card-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.match-mini-panel {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 9px;
+}
+
+.match-mini-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.match-mini-panel strong {
+  color: var(--text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.key-factor-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
+.key-factor-panel .section-title {
+  font-size: 15px;
+}
+
+.handicap-market-gap {
+  margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .match-header {
+    flex-direction: column;
+  }
+
+  .match-header-meta {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .match-card-main {
+    flex-direction: column;
+  }
+
+  .match-card-insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 920px) {
+  .fixture-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

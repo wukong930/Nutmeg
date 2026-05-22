@@ -1,0 +1,19 @@
+rule_set_id: cn_sporttery
+same_fixture_multiple_markets_allowed: false
+sports_mixing_allowed: false
+max_legs_by_market:
+  1x2: 8
+  cn_handicap_1x2: 8
+  asian_handicap: 8
+  total_goals: 6
+  correct_score: 4
+  half_full_time: 4
+mixed_pass_max_rule: min_of_selected_markets
+supported_pass_types:
+  - 2x1
+  - 3x1
+  - 4x1
+  - 5x1
+  - 6x1
+  - 7x1
+  - 8x1

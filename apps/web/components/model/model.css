@@ -1,0 +1,50 @@
+.model-fingerprint {
+  display: grid;
+  gap: 14px;
+}
+
+.model-fingerprint-head,
+.model-fingerprint-quality {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.model-fingerprint-head svg {
+  color: var(--brand-primary);
+}
+
+.model-fingerprint-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.model-fingerprint-list div {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.model-fingerprint-list div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.model-fingerprint-list dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.model-fingerprint-list dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.model-fingerprint-quality {
+  flex-wrap: wrap;
+}

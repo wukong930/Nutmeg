@@ -1,0 +1,473 @@
+{
+  "manifest_version": "v1",
+  "suite_id": "football_data_co_uk_expanded_a_leagues_market_feature_suite_v1",
+  "name": "Football-Data.co.uk expanded A-league market feature suite",
+  "description": "Frozen multi-league historical market-movement feature samples for structured pre-match feature shadow evaluation.",
+  "slices": [
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ger_2_bundesliga_2020_2021_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ger_2_bundesliga",
+        "2020_2021"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2021/D2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_eng_championship_2020_2021_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "eng_championship",
+        "2020_2021"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2021/E1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_fra_ligue_2_2020_2021_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "fra_ligue_2",
+        "2020_2021"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2021/F2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ita_serie_b_2020_2021_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ita_serie_b",
+        "2020_2021"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2021/I2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ned_eredivisie_2020_2021_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ned_eredivisie",
+        "2020_2021"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2021/N1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_prt_primeira_liga_2020_2021_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "prt_primeira_liga",
+        "2020_2021"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2021/P1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_esp_segunda_division_2020_2021_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "esp_segunda_division",
+        "2020_2021"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2021/SP2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ger_2_bundesliga_2021_2022_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ger_2_bundesliga",
+        "2021_2022"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2122/D2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_eng_championship_2021_2022_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "eng_championship",
+        "2021_2022"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2122/E1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_fra_ligue_2_2021_2022_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "fra_ligue_2",
+        "2021_2022"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2122/F2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ita_serie_b_2021_2022_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ita_serie_b",
+        "2021_2022"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2122/I2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ned_eredivisie_2021_2022_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ned_eredivisie",
+        "2021_2022"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2122/N1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_prt_primeira_liga_2021_2022_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "prt_primeira_liga",
+        "2021_2022"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2122/P1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_esp_segunda_division_2021_2022_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "esp_segunda_division",
+        "2021_2022"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2122/SP2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ger_2_bundesliga_2022_2023_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ger_2_bundesliga",
+        "2022_2023"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2223/D2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_eng_championship_2022_2023_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "eng_championship",
+        "2022_2023"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2223/E1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_fra_ligue_2_2022_2023_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "fra_ligue_2",
+        "2022_2023"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2223/F2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ita_serie_b_2022_2023_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ita_serie_b",
+        "2022_2023"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2223/I2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ned_eredivisie_2022_2023_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ned_eredivisie",
+        "2022_2023"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2223/N1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_prt_primeira_liga_2022_2023_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "prt_primeira_liga",
+        "2022_2023"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2223/P1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_esp_segunda_division_2022_2023_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "esp_segunda_division",
+        "2022_2023"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2223/SP2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ger_2_bundesliga_2023_2024_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ger_2_bundesliga",
+        "2023_2024"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2324/D2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_eng_championship_2023_2024_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "eng_championship",
+        "2023_2024"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2324/E1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_fra_ligue_2_2023_2024_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "fra_ligue_2",
+        "2023_2024"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2324/F2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ita_serie_b_2023_2024_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ita_serie_b",
+        "2023_2024"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2324/I2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ned_eredivisie_2023_2024_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ned_eredivisie",
+        "2023_2024"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2324/N1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_prt_primeira_liga_2023_2024_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "prt_primeira_liga",
+        "2023_2024"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2324/P1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_esp_segunda_division_2023_2024_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "esp_segunda_division",
+        "2023_2024"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2324/SP2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ger_2_bundesliga_2024_2025_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ger_2_bundesliga",
+        "2024_2025"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2425/D2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_eng_championship_2024_2025_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "eng_championship",
+        "2024_2025"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2425/E1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_fra_ligue_2_2024_2025_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "fra_ligue_2",
+        "2024_2025"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2425/F2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ita_serie_b_2024_2025_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ita_serie_b",
+        "2024_2025"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2425/I2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_ned_eredivisie_2024_2025_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "ned_eredivisie",
+        "2024_2025"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2425/N1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_prt_primeira_liga_2024_2025_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "prt_primeira_liga",
+        "2024_2025"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2425/P1.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    },
+    {
+      "slice_path": "/Users/ninoo/Nutmeg/configs/recommendations/historical_slices/enriched_features/football_data_co_uk_expanded_a_leagues_market_features/football_data_co_uk_esp_segunda_division_2024_2025_market_features_v1.json",
+      "enabled": true,
+      "tags": [
+        "football-data-co-uk",
+        "market-movement",
+        "esp_segunda_division",
+        "2024_2025"
+      ],
+      "notes": [
+        "Generated from data/historical_sources/football_data_co_uk/europe/2425/SP2.csv by nutmeg-recommendation-football-data-co-uk-feature-batch."
+      ]
+    }
+  ],
+  "tags": [
+    "football-data-co-uk",
+    "market-movement",
+    "prematch-features"
+  ],
+  "notes": [
+    "Each slice uses opening no-vig 1X2 probabilities as the frozen baseline.",
+    "Closing odds are stored as structured odds-movement features only.",
+    "Lineup, injury, and semantic/news features are not present in this source."
+  ]
+}

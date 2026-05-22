@@ -1,0 +1,137 @@
+{
+  "profile_version": "v3_1_competition_profiles_football_data_co_uk_2026_05_15_eng_championship_value_guard_v1",
+  "calculation_basis": "competition_profile_promotion_v3_1",
+  "profiles": [
+    {
+      "competition_id": "EPL",
+      "final_answer_score_adjustments": {
+        "5x1:single": 0.1
+      },
+      "min_historical_final_hit_sample_size": 5,
+      "source_report_key": "historical_recommendation_diagnostic:605f848c1ae02ff9",
+      "notes": [
+        "Five-season full-matrix diagnostic: 5x1 single preserved final hit count versus 3x1 single and improved realized ROI."
+      ]
+    },
+    {
+      "competition_id": "ESP_LA_LIGA",
+      "final_answer_score_adjustments": {
+        "5x1:single": 0.1
+      },
+      "min_historical_final_hit_sample_size": 5,
+      "source_report_key": "historical_recommendation_diagnostic:605f848c1ae02ff9",
+      "notes": [
+        "Five-season full-matrix diagnostic: 5x1 single preserved final hit count versus 3x1 single and reduced realized loss."
+      ]
+    },
+    {
+      "competition_id": "ENG_CHAMPIONSHIP",
+      "final_answer_score_adjustments": {},
+      "final_answer_value_guards": [
+        {
+          "penalty_strength": 0.12,
+          "probability_min": 0.45,
+          "probability_max": 0.58,
+          "min_decimal_odds": 1.75,
+          "max_decimal_odds": 2.2,
+          "max_model_edge": -0.02,
+          "score_min": 0.0,
+          "score_max": 1.0,
+          "source_report_key": "historical_recommendation_suite_quality_gate:a2f100868dc7444e",
+          "notes": [
+            "Core-first value guard: applies internally to medium-price, negative-edge Championship legs.",
+            "Experimental gate preserved final-hit rate while improving realized ROI and Championship ROI."
+          ]
+        }
+      ],
+      "min_historical_final_hit_sample_size": 30,
+      "source_report_key": "historical_recommendation_suite_quality_gate:a2f100868dc7444e",
+      "notes": [
+        "Internal final-answer value guard; not user-facing strategy text.",
+        "Narrow medium-price guard selected because broader Championship negative-edge guards did not improve realized ROI.",
+        "admission_report_key=competition_admission_gate:34fcd1b659385665"
+      ]
+    },
+    {
+      "competition_id": "ESP_SEGUNDA_DIVISION",
+      "final_answer_score_adjustments": {
+        "2x1:multiple": 0.1
+      },
+      "final_answer_value_guards": [
+        {
+          "penalty_strength": 0.04,
+          "probability_min": 0.0,
+          "probability_max": 0.5,
+          "min_decimal_odds": 2.0,
+          "max_decimal_odds": 10.0,
+          "max_model_edge": -0.02,
+          "score_min": 0.0,
+          "score_max": 1.0,
+          "source_report_key": "historical_recommendation_suite_quality_gate:e161c76fdf5df5ed",
+          "notes": [
+            "Core-first value guard: only applies internally to low-probability, high-odds, clearly negative-edge Segunda legs.",
+            "Formal gate preserved final-hit rate versus V3.1-183 while improving realized ROI and profit/loss."
+          ]
+        }
+      ],
+      "min_historical_final_hit_sample_size": 30,
+      "source_report_key": "historical_competition_profile_evidence:c4109a3055614571",
+      "notes": [
+        "Promoted from production-ready competition profile proposal.",
+        "Internal final-answer arbitration adjustment; not user-facing strategy text.",
+        "proposal_report_key=competition_profile_proposal:cdd2826dcb49a81a",
+        "admission_report_key=competition_admission_gate:afc9cc5485cd3bf5"
+      ]
+    },
+    {
+      "competition_id": "FRA_LIGUE_1",
+      "final_answer_score_adjustments": {
+        "4x1:single": 0.09
+      },
+      "min_historical_final_hit_sample_size": 5,
+      "source_report_key": "historical_recommendation_diagnostic:605f848c1ae02ff9",
+      "notes": [
+        "Five-season full-matrix diagnostic: 4x1 single preserved perfect final hit count versus 3x1 single and improved realized ROI."
+      ]
+    },
+    {
+      "competition_id": "GER_BUNDESLIGA",
+      "final_answer_score_adjustments": {
+        "3x1:single": 0.07
+      },
+      "min_historical_final_hit_sample_size": 5,
+      "source_report_key": "historical_recommendation_diagnostic:46df3355a4831321",
+      "notes": [
+        "Five-season diagnostic: 3x1 single preserved hit count versus 2x1 single and reduced realized loss."
+      ]
+    },
+    {
+      "competition_id": "ITA_SERIE_B",
+      "final_answer_score_adjustments": {
+        "2x1:multiple": 0.1
+      },
+      "min_historical_final_hit_sample_size": 30,
+      "source_report_key": "historical_competition_profile_evidence:c4109a3055614571",
+      "notes": [
+        "Promoted from production-ready competition profile proposal.",
+        "Internal final-answer arbitration adjustment; not user-facing strategy text.",
+        "proposal_report_key=competition_profile_proposal:cdd2826dcb49a81a",
+        "admission_report_key=competition_admission_gate:afc9cc5485cd3bf5"
+      ]
+    }
+  ],
+  "notes": [
+    "Profiles are data-driven arbitration adjustments, not user-facing strategy labels.",
+    "ITA_SERIE_A intentionally keeps the 2x1 single default because deeper parlays did not improve final-hit count and ROI together.",
+    "JPN_J1 intentionally has no long-parlay boost: 6x1 single improved ROI in the diagnostic but reduced final-hit count, which violates the accuracy-first constraint.",
+    "Future competitions can be added through this configuration after sufficient frozen historical samples pass quality gates.",
+    "Expanded A-league profile adjustments promoted only after production admission passed.",
+    "proposal_report_key=competition_profile_proposal:cdd2826dcb49a81a",
+    "admission_report_key=competition_admission_gate:afc9cc5485cd3bf5",
+    "ESP_SEGUNDA_DIVISION internal value guard promoted after formal gate preserved final-hit rate and lifted realized ROI.",
+    "value_guard_gate_key=historical_recommendation_suite_quality_gate:e161c76fdf5df5ed",
+    "ENG_CHAMPIONSHIP internal medium-price value guard promoted after production gate preserved final-hit rate and lifted realized ROI.",
+    "eng_championship_value_guard_gate_key=historical_recommendation_suite_quality_gate:a2f100868dc7444e",
+    "eng_championship_admission_report_key=competition_admission_gate:34fcd1b659385665"
+  ]
+}

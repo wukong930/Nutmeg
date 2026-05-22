@@ -1,0 +1,3 @@
+fixture_id,snapshot_time_utc,unavailable_key_player_count,doubtful_key_player_count,key_player_absence_score,defender_absence_score,goalkeeper_absence_score,striker_absence_score,source,source_snapshot_ref,metadata_json
+euro2024_r16_sui_ita,2024-06-29T08:30:00Z,0,1,0.18,0.10,0.00,0.22,reviewed-local-context,availability:euro2024_r16_sui_ita,"{""context_sample"":true}"
+euro2024_r16_ger_den,2024-06-29T08:45:00Z,0,0,0.05,0.04,0.00,0.05,reviewed-local-context,availability:euro2024_r16_ger_den,"{""context_sample"":true}"

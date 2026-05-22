@@ -1,0 +1,156 @@
+.market-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px;
+}
+
+.market-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.market-panel-head svg {
+  color: var(--brand-primary);
+}
+
+.market-gap-list {
+  display: grid;
+  gap: 10px;
+}
+
+.market-gap-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(180px, 1.4fr) 64px;
+  align-items: center;
+  gap: 10px;
+}
+
+.market-gap-label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.market-gap-label strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.market-gap-label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.market-gap-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  min-height: 18px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+
+.market-gap-zero {
+  position: absolute;
+  left: 50%;
+  width: 1px;
+  height: 100%;
+  background: var(--line);
+}
+
+.market-gap-half {
+  display: flex;
+  height: 100%;
+}
+
+.market-gap-negative {
+  justify-content: flex-end;
+}
+
+.market-gap-positive {
+  justify-content: flex-start;
+}
+
+.market-gap-half i {
+  display: block;
+  height: 100%;
+}
+
+.market-gap-negative i {
+  background: var(--warning);
+}
+
+.market-gap-positive i {
+  background: var(--info);
+}
+
+.market-warning {
+  margin: 0;
+  border-left: 3px solid var(--warning);
+  background: var(--warning-alpha-08);
+  color: var(--warning);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.market-timeline {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.market-timeline-point {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 9px;
+}
+
+.market-timeline-point > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.market-timeline-point strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.market-timeline-point p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.market-timeline-point.missing {
+  opacity: 0.72;
+}
+
+.market-timeline-point.current {
+  border-color: var(--brand-primary-alpha-24);
+  background: var(--brand-primary-alpha-06);
+}
+
+@media (max-width: 760px) {
+  .market-gap-row {
+    grid-template-columns: 1fr;
+  }
+
+  .market-timeline-point {
+    grid-template-columns: 1fr;
+  }
+}

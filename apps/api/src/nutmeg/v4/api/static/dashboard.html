@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Nutmeg V4 Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .tab-active { @apply bg-white text-indigo-700 border-b-2 border-indigo-600; }
+  .tab-inactive { @apply text-gray-500 hover:text-gray-700 hover:bg-gray-50; }
+  .badge-ok { @apply px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800; }
+  .badge-warn { @apply px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800; }
+  .badge-err { @apply px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800; }
+  table { @apply w-full text-sm; }
+  th { @apply px-3 py-2 text-left font-semibold text-gray-700 bg-gray-50 border-b; }
+  td { @apply px-3 py-2 border-b border-gray-100; }
+  .num { @apply text-right tabular-nums; }
+  .pos { @apply text-green-600 font-medium; }
+  .neg { @apply text-red-600 font-medium; }
+  textarea { font-family: 'SF Mono', Monaco, Menlo, monospace; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+<div class="max-w-7xl mx-auto px-4 py-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">Nutmeg V4 Dashboard</h1>
+      <p class="text-sm text-gray-500">基于 GBM-λ + Dixon-Coles 的足球预测与组合推荐系统</p>
+    </div>
+    <div id="health-pill" class="text-sm">
+      <span class="badge-warn">checking ...</span>
+    </div>
+  </div>
+
+  <!-- Tab nav -->
+  <div class="border-b border-gray-200 mb-6">
+    <nav class="flex space-x-1">
+      <button data-tab="recommend" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">① 推荐</button>
+      <button data-tab="outcomes" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 录入结果</button>
+      <button data-tab="roi" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ ROI 报告</button>
+      <button data-tab="sessions" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 会话历史</button>
+    </nav>
+  </div>
+
+  <!-- Tab: Recommend -->
+  <div id="tab-recommend" class="tab-panel">
+    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
+      <h2 class="font-bold mb-3">输入今天的比赛与盘口</h2>
+      <p class="text-sm text-gray-500 mb-3">粘贴 JSON 数组（每场一对象，字段见
+        <code class="bg-gray-100 px-1 rounded">FixtureOddsInput</code> schema）。点击下方"使用示例"快速填入演示数据。</p>
+      <div class="flex space-x-2 mb-3">
+        <button id="btn-load-sample" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
+        <button id="btn-clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+      </div>
+      <textarea id="fixtures-json" rows="14"
+        class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
+      <div class="mt-3 flex items-center space-x-4">
+        <label class="text-sm">预算 ¥
+          <input id="bankroll" type="number" value="1000" class="w-24 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm">最大推荐数
+          <input id="top-n" type="number" value="10" min="1" max="50" class="w-16 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm">最小命中率
+          <input id="min-hit" type="number" value="0.05" step="0.01" min="0" max="1" class="w-20 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm">最小凯利 ¥
+          <input id="min-kelly" type="number" value="2" min="0" class="w-20 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm flex items-center">
+          <input id="record-session" type="checkbox" class="mr-1"> 记录到观测库
+        </label>
+      </div>
+      <div class="mt-4">
+        <button id="btn-recommend" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+          生成推荐
+        </button>
+        <span id="recommend-status" class="ml-3 text-sm text-gray-500"></span>
+      </div>
+    </div>
+
+    <div id="recommend-output" class="hidden">
+      <!-- Single-match predictions -->
+      <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
+        <h3 class="font-bold mb-3">单场预测</h3>
+        <div class="overflow-x-auto">
+          <table id="predictions-table">
+            <thead><tr>
+              <th>比赛</th><th class="num">λ_主</th><th class="num">λ_客</th>
+              <th class="num">P(主)</th><th class="num">P(平)</th><th class="num">P(客)</th>
+              <th class="num">让球</th><th class="num">P(让胜)</th><th class="num">P(让平)</th><th class="num">P(让负)</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- Parlay recommendations -->
+      <div class="bg-white shadow-sm rounded-lg p-6">
+        <h3 class="font-bold mb-3">推荐组合 <span id="recs-count" class="text-sm font-normal text-gray-500"></span></h3>
+        <div id="recs-list"></div>
+        <div id="recs-empty" class="hidden text-gray-500 text-sm">
+          <strong>无 +EV 组合：今日所有市场无值得下注的机会。</strong>
+          系统建议 no-bet（这是健康的——市场赔率太接近真实概率时不下注是正确的）。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Outcomes -->
+  <div id="tab-outcomes" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-6">
+      <h2 class="font-bold mb-3">录入比赛结果（自动结算）</h2>
+      <p class="text-sm text-gray-500 mb-3">每行一场，格式：
+        <code class="bg-gray-100 px-1 rounded">date,league,home_team,away_team,home_goals,away_goals</code>
+      </p>
+      <textarea id="outcomes-csv" rows="8" placeholder="2025-08-17,EPL,Arsenal,Liverpool,2,1
+2025-08-17,ESP_LA_LIGA,Real Madrid,Getafe,3,0"
+        class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
+      <div class="mt-3">
+        <button id="btn-submit-outcomes" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium">
+          提交并结算
+        </button>
+        <span id="outcomes-status" class="ml-3 text-sm text-gray-500"></span>
+      </div>
+      <div id="outcomes-result" class="mt-4 hidden p-4 bg-green-50 border border-green-200 rounded text-sm"></div>
+    </div>
+  </div>
+
+  <!-- Tab: ROI -->
+  <div id="tab-roi" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
+      <h2 class="font-bold mb-3">ROI 总览</h2>
+      <div id="roi-headline" class="text-sm text-gray-500">加载中 ...</div>
+    </div>
+    <div class="grid grid-cols-2 gap-6 mb-6">
+      <div class="bg-white shadow-sm rounded-lg p-6">
+        <h3 class="font-bold mb-3">按串关大小</h3>
+        <div id="roi-by-k"></div>
+      </div>
+      <div class="bg-white shadow-sm rounded-lg p-6">
+        <h3 class="font-bold mb-3">按联赛</h3>
+        <div id="roi-by-league"></div>
+      </div>
+    </div>
+    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
+      <h3 class="font-bold mb-3">校准</h3>
+      <div id="roi-calibration"></div>
+    </div>
+    <div class="bg-white shadow-sm rounded-lg p-6">
+      <h3 class="font-bold mb-3">周累计盈亏</h3>
+      <div id="roi-weekly"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Sessions -->
+  <div id="tab-sessions" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-6">
+      <h2 class="font-bold mb-3">最近会话</h2>
+      <div id="sessions-table"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = window.NUTMEG_V4_API || '/api/v4';
+
+// --- Sample data ---
+const SAMPLE = [
+  {date:'2025-08-17',league:'EPL',home_team:'Arsenal',away_team:'Liverpool',psc_home:2.85,psc_draw:3.40,psc_away:2.60},
+  {date:'2025-08-17',league:'ESP_LA_LIGA',home_team:'Real Madrid',away_team:'Getafe',psc_home:1.40,psc_draw:4.80,psc_away:7.00,handicap_home:-1,odds_handicap_H:2.10,odds_handicap_D:3.40,odds_handicap_A:3.20},
+  {date:'2025-08-17',league:'ITA_SERIE_A',home_team:'Inter',away_team:'Fiorentina',psc_home:1.85,psc_draw:3.50,psc_away:4.20},
+  {date:'2025-08-17',league:'GER_BUNDESLIGA',home_team:'Bayern Munich',away_team:'Koln',psc_home:1.20,psc_draw:7.00,psc_away:12.00,handicap_home:-2,odds_handicap_H:2.80,odds_handicap_D:3.20,odds_handicap_A:2.50},
+  {date:'2025-08-17',league:'FRA_LIGUE_1',home_team:'Paris SG',away_team:'Nice',psc_home:1.45,psc_draw:4.80,psc_away:6.50,handicap_home:-1,odds_handicap_H:2.20,odds_handicap_D:3.40,odds_handicap_A:3.00},
+  {date:'2025-08-17',league:'NED_EREDIVISIE',home_team:'Ajax',away_team:'AZ Alkmaar',psc_home:1.85,psc_draw:3.50,psc_away:4.20},
+  {date:'2025-08-17',league:'PRT_PRIMEIRA_LIGA',home_team:'Porto',away_team:'Benfica',psc_home:2.30,psc_draw:3.20,psc_away:3.20},
+  {date:'2025-08-17',league:'ENG_CHAMPIONSHIP',home_team:'Leeds',away_team:'Burnley',psc_home:1.95,psc_draw:3.50,psc_away:3.80,handicap_home:-1,odds_handicap_H:2.40,odds_handicap_D:3.20,odds_handicap_A:2.80}
+];
+
+// --- Utility ---
+const $ = (sel) => document.querySelector(sel);
+const fmtMoney = (x) => '¥' + Number(x).toFixed(2);
+const fmtPct = (x, d=1) => (Number(x)*100).toFixed(d) + '%';
+const sign = (x) => x > 0 ? 'pos' : (x < 0 ? 'neg' : '');
+
+// --- Tab switching ---
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.remove('border-indigo-600','text-indigo-700');
+      b.classList.add('border-transparent','text-gray-500');
+    });
+    btn.classList.remove('border-transparent','text-gray-500');
+    btn.classList.add('border-indigo-600','text-indigo-700');
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    $('#tab-' + btn.dataset.tab).classList.remove('hidden');
+    if (btn.dataset.tab === 'roi') loadROI();
+    if (btn.dataset.tab === 'sessions') loadSessions();
+  });
+});
+
+// --- Health pill ---
+async function loadHealth() {
+  try {
+    const [coreRes, obsRes] = await Promise.all([
+      fetch(API + '/health').then(r => r.json()),
+      fetch(API + '/observation/health').then(r => r.json()),
+    ]);
+    const core = coreRes.status === 'ok' ?
+      '<span class="badge-ok">模型 ✓ ' + coreRes.n_teams + ' 球队</span>' :
+      '<span class="badge-warn">模型未加载</span>';
+    const obs = obsRes.status === 'ok' ?
+      '<span class="badge-ok">观测库 ✓ ' + obsRes.n_settled + '/' + obsRes.n_recommendations + ' 已结算</span>' :
+      '<span class="badge-warn">观测库为空</span>';
+    $('#health-pill').innerHTML = core + ' ' + obs;
+  } catch (e) {
+    $('#health-pill').innerHTML = '<span class="badge-err">连接失败</span>';
+  }
+}
+
+// --- Sample data buttons ---
+$('#btn-load-sample').addEventListener('click', () => {
+  $('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
+});
+$('#btn-clear').addEventListener('click', () => {
+  $('#fixtures-json').value = '';
+  $('#recommend-output').classList.add('hidden');
+});
+
+// --- Recommend ---
+$('#btn-recommend').addEventListener('click', async () => {
+  let fixtures;
+  try {
+    fixtures = JSON.parse($('#fixtures-json').value);
+  } catch (e) {
+    $('#recommend-status').textContent = '❌ JSON 解析失败：' + e.message;
+    return;
+  }
+  if (!Array.isArray(fixtures) || fixtures.length === 0) {
+    $('#recommend-status').textContent = '❌ 需要 fixtures 数组';
+    return;
+  }
+  $('#recommend-status').textContent = '⏳ 计算中 ...';
+  const req = {
+    fixtures,
+    bankroll: Number($('#bankroll').value),
+    top_n: Number($('#top-n').value),
+    min_hit_probability: Number($('#min-hit').value),
+    min_kelly_stake: Number($('#min-kelly').value),
+  };
+  try {
+    const res = await fetch(API + '/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      $('#recommend-status').textContent = '❌ ' + res.status + ': ' + (await res.text()).slice(0, 200);
+      return;
+    }
+    const body = await res.json();
+    renderRecommendations(body);
+    $('#recommend-status').textContent =
+      `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 条推荐  (模型截止 ${body.model.training_cutoff})`;
+  } catch (e) {
+    $('#recommend-status').textContent = '❌ ' + e.message;
+  }
+});
+
+function renderRecommendations(body) {
+  $('#recommend-output').classList.remove('hidden');
+  // Predictions table
+  const ptbody = $('#predictions-table tbody');
+  ptbody.innerHTML = '';
+  for (const p of body.single_match_predictions) {
+    const hc = p.handicap_home !== null && p.handicap_home !== undefined;
+    ptbody.insertAdjacentHTML('beforeend',
+      `<tr>
+        <td>${p.home_team} <span class="text-gray-400">vs</span> ${p.away_team} <span class="text-xs text-gray-400">(${p.league})</span></td>
+        <td class="num">${p.lambda_home.toFixed(2)}</td>
+        <td class="num">${p.lambda_away.toFixed(2)}</td>
+        <td class="num">${fmtPct(p.p_home_1x2)}</td>
+        <td class="num">${fmtPct(p.p_draw_1x2)}</td>
+        <td class="num">${fmtPct(p.p_away_1x2)}</td>
+        <td class="num">${hc ? (p.handicap_home > 0 ? '+' : '') + p.handicap_home : '—'}</td>
+        <td class="num">${hc ? fmtPct(p.p_home_handicap) : '—'}</td>
+        <td class="num">${hc ? fmtPct(p.p_draw_handicap) : '—'}</td>
+        <td class="num">${hc ? fmtPct(p.p_away_handicap) : '—'}</td>
+      </tr>`);
+  }
+  // Recommendations
+  $('#recs-count').textContent = `(${body.n_recommendations})`;
+  const recsList = $('#recs-list');
+  const recsEmpty = $('#recs-empty');
+  recsList.innerHTML = '';
+  if (body.n_recommendations === 0) {
+    recsList.classList.add('hidden');
+    recsEmpty.classList.remove('hidden');
+  } else {
+    recsList.classList.remove('hidden');
+    recsEmpty.classList.add('hidden');
+    for (const r of body.recommendations) {
+      const legsHTML = r.legs.map(leg => {
+        const sels = leg.selections.map(s =>
+          `<span class="inline-block px-2 py-0.5 ml-1 rounded bg-gray-100 text-xs">${s.outcome} @ ${s.odds.toFixed(2)} <span class="text-gray-500">(模型 ${fmtPct(s.probability, 0)})</span></span>`
+        ).join('');
+        const market = leg.market_type === '1x2' ? '胜平负' : '让球胜平负';
+        return `<div class="text-sm py-1"><code class="text-gray-600 text-xs">${leg.match_id}</code> <span class="text-gray-500">[${market}]</span>${sels}</div>`;
+      }).join('');
+      recsList.insertAdjacentHTML('beforeend',
+        `<div class="border rounded p-4 mb-3 bg-gradient-to-r from-indigo-50 to-white">
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-bold text-lg">#${r.rank} — ${r.k_legs} 串 1${r.is_compound ? ' (复式)' : ''}</div>
+            <div class="text-right text-sm">
+              <span class="font-medium">命中率</span> ${fmtPct(r.hit_probability)} ·
+              <span class="font-medium">EV/单位</span> <span class="${sign(r.ev_per_unit)}">+${fmtPct(r.ev_per_unit)}</span>
+            </div>
+          </div>
+          <div class="text-sm text-gray-600 mb-2">
+            <span class="font-medium">Kelly 推荐资金</span> ${fmtMoney(r.kelly_recommended_stake)}
+            (${fmtPct(r.kelly_capped_fraction)} of bankroll)
+            · <span class="font-medium">预期回报</span> <span class="${sign(r.expected_return)}">${fmtMoney(r.expected_return)}</span>
+            · <span class="font-medium">对数增长</span> ${r.log_growth.toFixed(4)}
+          </div>
+          ${legsHTML}
+        </div>`);
+    }
+  }
+}
+
+// --- Outcomes ---
+$('#btn-submit-outcomes').addEventListener('click', async () => {
+  const lines = $('#outcomes-csv').value.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  if (lines.length === 0) {
+    $('#outcomes-status').textContent = '❌ 没有内容';
+    return;
+  }
+  const outcomes = [];
+  for (const line of lines) {
+    const parts = line.split(',').map(p => p.trim());
+    if (parts.length < 6) {
+      $('#outcomes-status').textContent = '❌ 行格式错误：' + line;
+      return;
+    }
+    outcomes.push({
+      match_date: parts[0],
+      league: parts[1],
+      home_team: parts[2],
+      away_team: parts[3],
+      home_goals: Number(parts[4]),
+      away_goals: Number(parts[5]),
+    });
+  }
+  $('#outcomes-status').textContent = '⏳ 提交中 ...';
+  try {
+    const res = await fetch(API + '/observation/outcomes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outcomes }),
+    });
+    if (!res.ok) {
+      $('#outcomes-status').textContent = '❌ ' + res.status + ': ' + (await res.text()).slice(0, 200);
+      return;
+    }
+    const body = await res.json();
+    $('#outcomes-status').textContent = '✓ 提交成功';
+    $('#outcomes-result').classList.remove('hidden');
+    $('#outcomes-result').innerHTML =
+      `✓ 录入 ${body.n_recorded} 场结果，结算 ${body.settle_counts.settled} 条推荐，
+       ${body.settle_counts.still_unknown} 条仍待其他比赛结果。`;
+    loadHealth();  // refresh badge
+  } catch (e) {
+    $('#outcomes-status').textContent = '❌ ' + e.message;
+  }
+});
+
+// --- ROI ---
+async function loadROI() {
+  try {
+    const res = await fetch(API + '/observation/roi');
+    if (!res.ok) {
+      $('#roi-headline').innerHTML = '<span class="text-gray-500">还没有任何已结算推荐。先用"录入结果"或 CLI 录入比赛结果。</span>';
+      return;
+    }
+    const body = await res.json();
+    const h = body.headline;
+    const calGap = h.actual_hit_rate - h.avg_hit_p_predicted;
+    $('#roi-headline').innerHTML = `
+      <div class="grid grid-cols-4 gap-4">
+        <div><div class="text-xs text-gray-500">已结算</div><div class="text-2xl font-bold">${h.n_settled}</div></div>
+        <div><div class="text-xs text-gray-500">命中 / 错失</div><div class="text-2xl font-bold">${h.n_hit} / ${h.n_miss}</div></div>
+        <div><div class="text-xs text-gray-500">净盈亏</div><div class="text-2xl font-bold ${sign(h.profit_loss)}">${fmtMoney(h.profit_loss)}</div></div>
+        <div><div class="text-xs text-gray-500">ROI</div><div class="text-2xl font-bold ${sign(h.roi)}">${fmtPct(h.roi, 2)}</div></div>
+      </div>
+      <div class="mt-4 text-sm text-gray-600">
+        总投入 ${fmtMoney(h.total_stake)} · 总回收 ${fmtMoney(h.total_payout)} ·
+        模型预测平均命中率 ${fmtPct(h.avg_hit_p_predicted)} · 实际 ${fmtPct(h.actual_hit_rate)} ·
+        <span class="${Math.abs(calGap) > 0.05 ? 'text-yellow-600' : 'text-gray-500'}">校准偏差 ${(calGap>=0?'+':'') + calGap.toFixed(3)}</span>
+      </div>
+    `;
+    // by k
+    $('#roi-by-k').innerHTML = body.by_k_legs.length === 0 ? '<span class="text-gray-500">无数据</span>' :
+      '<table><thead><tr><th>k</th><th class="num">n</th><th class="num">命中</th><th class="num">投入</th><th class="num">P/L</th><th class="num">ROI</th></tr></thead><tbody>' +
+      body.by_k_legs.map(r => `<tr><td>${r.k_legs} 串 1</td><td class="num">${r.n}</td><td class="num">${r.n_hit}</td><td class="num">${fmtMoney(r.stake)}</td><td class="num ${sign(r.pl)}">${fmtMoney(r.pl)}</td><td class="num ${sign(r.pl)}">${fmtPct(r.pl/Math.max(r.stake,1e-9))}</td></tr>`).join('') + '</tbody></table>';
+    // by league
+    $('#roi-by-league').innerHTML = body.by_league.length === 0 ? '<span class="text-gray-500">无数据</span>' :
+      '<table><thead><tr><th>联赛</th><th class="num">n</th><th class="num">命中率</th><th class="num">P/L</th><th class="num">ROI</th></tr></thead><tbody>' +
+      body.by_league.map(r => `<tr><td>${r.league}</td><td class="num">${r.n}</td><td class="num">${fmtPct(r.hit_rate)}</td><td class="num ${sign(r.pl)}">${fmtMoney(r.pl)}</td><td class="num ${sign(r.roi)}">${fmtPct(r.roi)}</td></tr>`).join('') + '</tbody></table>';
+    // calibration
+    $('#roi-calibration').innerHTML = body.calibration.length === 0 ? '<span class="text-gray-500">无数据</span>' :
+      '<table><thead><tr><th>预测命中率区间</th><th class="num">n</th><th class="num">平均预测</th><th class="num">实际</th><th class="num">偏差</th></tr></thead><tbody>' +
+      body.calibration.map(b => `<tr><td>${fmtPct(b.bin_lo,0)}–${fmtPct(b.bin_hi,0)}</td><td class="num">${b.n}</td><td class="num">${fmtPct(b.avg_predicted)}</td><td class="num">${fmtPct(b.actual_hit_rate)}</td><td class="num ${b.actual_hit_rate-b.avg_predicted>=0?'pos':'neg'}">${(b.actual_hit_rate-b.avg_predicted>=0?'+':'') + (b.actual_hit_rate-b.avg_predicted).toFixed(3)}</td></tr>`).join('') + '</tbody></table>';
+    // weekly
+    $('#roi-weekly').innerHTML = body.weekly.length === 0 ? '<span class="text-gray-500">无数据</span>' :
+      '<table><thead><tr><th>周次</th><th class="num">n</th><th class="num">投入</th><th class="num">本周 P/L</th><th class="num">累计 P/L</th></tr></thead><tbody>' +
+      body.weekly.map(w => `<tr><td>${w.week}</td><td class="num">${w.n}</td><td class="num">${fmtMoney(w.stake)}</td><td class="num ${sign(w.pl)}">${fmtMoney(w.pl)}</td><td class="num ${sign(w.cumulative_pl)}">${fmtMoney(w.cumulative_pl)}</td></tr>`).join('') + '</tbody></table>';
+  } catch (e) {
+    $('#roi-headline').textContent = '❌ ' + e.message;
+  }
+}
+
+// --- Sessions ---
+async function loadSessions() {
+  try {
+    const body = await fetch(API + '/observation/sessions?limit=20').then(r => r.json());
+    if (body.n === 0) {
+      $('#sessions-table').innerHTML = '<span class="text-gray-500">还没有会话。</span>';
+      return;
+    }
+    $('#sessions-table').innerHTML =
+      '<table><thead><tr><th>ID</th><th>时间 (UTC)</th><th class="num">预算</th><th class="num">比赛数</th><th class="num">推荐数</th><th>模型截止日</th></tr></thead><tbody>' +
+      body.sessions.map(s => `<tr><td>#${s.session_id}</td><td class="text-xs text-gray-500">${s.created_at}</td><td class="num">${fmtMoney(s.bankroll)}</td><td class="num">${s.n_fixtures}</td><td class="num">${s.n_recommendations}</td><td class="text-xs text-gray-500">${s.model_cutoff || '—'}</td></tr>`).join('') + '</tbody></table>';
+  } catch (e) {
+    $('#sessions-table').textContent = '❌ ' + e.message;
+  }
+}
+
+// --- Init ---
+loadHealth();
+$('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
+setInterval(loadHealth, 30_000);
+</script>
+
+</body>
+</html>

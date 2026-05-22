@@ -1,0 +1,29 @@
+competition_id: UEFA_CONFERENCE_LEAGUE
+name: UEFA Conference League
+region: Europe
+competition_type: continental_club
+team_type: club
+season_calendar: autumn_spring
+provider_primary: sportmonks
+provider_secondary: api_football
+coverage_tier: D_beta
+model_status: experimental
+model:
+  base_model: cross_league_goal_model
+  calibration_scope: competition_stage
+  home_advantage_mode: neutral_site_aware
+  goal_distribution_mode: tournament_stage_specific
+  cold_start_strategy: market_prior_plus_cross_competition_strength
+  cross_league_strength_required: true
+  two_leg_context_required: true
+markets:
+  enabled:
+    - 1x2
+    - asian_handicap
+    - european_handicap_1x2
+    - correct_score
+  cn_lottery_available: false
+quality_requirements:
+  min_historical_matches: 180
+  min_odds_coverage: 0.65
+  min_result_coverage: 0.99

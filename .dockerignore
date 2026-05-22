@@ -1,0 +1,14 @@
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+**/__pycache__
+**/*.pyc
+apps/web/.next
+apps/web/node_modules
+apps/web/tsconfig.tsbuildinfo
+node_modules
+Nutmeg_docs_v2
+nutmeg_codex_bootstrap

@@ -1,0 +1,30 @@
+{
+  "manifest_version": "v1",
+  "suite_id": "euro_2024_knockout_suite_v1",
+  "name": "Euro 2024 knockout frozen recommendation suite",
+  "description": "Local frozen historical recommendation slices for repeatable solver-vs-heuristic checks.",
+  "tags": [
+    "euro_2024",
+    "knockout",
+    "frozen_sample",
+    "recommendation_quality_gate"
+  ],
+  "notes": [
+    "This suite is intentionally local and deterministic.",
+    "It does not call provider APIs and is not user-facing recommendation copy."
+  ],
+  "slices": [
+    {
+      "slice_path": "../historical_slices/euro_2024_knockout_sample.json",
+      "enabled": true,
+      "tags": [
+        "euro_2024",
+        "knockout",
+        "sample"
+      ],
+      "notes": [
+        "Manual frozen sample used for suite gate smoke tests."
+      ]
+    }
+  ]
+}

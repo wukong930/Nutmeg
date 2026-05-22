@@ -1,0 +1,3 @@
+fixture_id,signal_name,source,confidence,evidence_text_short,extracted_at_utc,metadata_json
+euro2024_r16_sui_ita,rotation_hint,reviewed-local-context,0.68,Italy expected to adjust the starting XI after group-stage fatigue.,2024-06-29T09:35:00Z,"{""context_sample"":true}"
+euro2024_r16_ger_den,knockout_pressure,reviewed-local-context,0.56,Germany enters the knockout match with stable squad availability.,2024-06-29T09:40:00Z,"{""context_sample"":true}"

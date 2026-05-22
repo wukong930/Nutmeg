@@ -1,0 +1,154 @@
+.probability-bar {
+  display: grid;
+  gap: 10px;
+}
+
+.probability-item {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  padding: 10px;
+}
+
+.probability-item.highlighted {
+  border-color: var(--brand-primary-alpha-34);
+  background: var(--brand-primary-alpha-06);
+}
+
+.probability-head,
+.probability-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.probability-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.probability-value {
+  font-size: 24px;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.probability-track {
+  display: block;
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.probability-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--edge-positive);
+}
+
+.probability-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.edge-positive {
+  color: var(--edge-positive);
+}
+
+.edge-negative {
+  color: var(--edge-negative);
+}
+
+.probability-triptych {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  padding: 14px;
+}
+
+.probability-triptych-compact {
+  padding: 10px;
+}
+
+.probability-triptych-strip {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-surface-muted);
+}
+
+.probability-triptych-segment {
+  min-width: 3%;
+}
+
+.probability-triptych-segment:nth-child(1) {
+  background: var(--brand-primary);
+}
+
+.probability-triptych-segment:nth-child(2) {
+  background: var(--warning);
+}
+
+.probability-triptych-segment:nth-child(3) {
+  background: var(--info);
+}
+
+.probability-triptych-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.probability-triptych-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-surface-muted);
+  padding: 8px;
+}
+
+.probability-triptych-label,
+.probability-triptych-market,
+.probability-triptych-meta,
+.probability-triptych-item span {
+  font-size: 12px;
+}
+
+.probability-triptych-label,
+.probability-triptych-market,
+.probability-triptych-meta {
+  color: var(--muted);
+}
+
+.probability-triptych-item strong {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.probability-triptych-compact .probability-triptych-item strong {
+  font-size: 20px;
+}
+
+.probability-triptych-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+@media (max-width: 720px) {
+  .probability-triptych-grid {
+    grid-template-columns: 1fr;
+  }
+}

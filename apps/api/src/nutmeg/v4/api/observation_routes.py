@@ -1,0 +1,244 @@
+"""V4 observation API endpoints (read + write to the SQLite store).
+
+These are separate from the core /v4/recommend route because the
+observation DB is optional (a deployment may run without it).
+"""
+from __future__ import annotations
+
+import json
+import os
+from datetime import date
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Body, HTTPException, status
+from pydantic import BaseModel, Field
+
+from nutmeg.v4.observation import (
+    open_db,
+    settle_unsettled,
+    upsert_outcome,
+)
+from nutmeg.v4.observation.roi import (
+    calibration_buckets,
+    compute_headline,
+    group_by_k_legs,
+    group_by_league,
+    weekly_pl,
+)
+
+
+router = APIRouter(prefix="/v4/observation", tags=["v4-observation"])
+
+
+DEFAULT_DB_PATH = "data/v4_observation.db"
+
+
+def _db_path() -> str:
+    return os.environ.get("NUTMEG_V4_OBSERVATION_DB", DEFAULT_DB_PATH)
+
+
+def _db_exists() -> bool:
+    return Path(_db_path()).exists()
+
+
+# ----- Schemas -----------------------------------------------------------
+
+class ObservationHealthResponse(BaseModel):
+    status: str
+    db_path: str
+    db_exists: bool
+    n_sessions: int = 0
+    n_recommendations: int = 0
+    n_outcomes: int = 0
+    n_settled: int = 0
+    n_unsettled: int = 0
+
+
+class ROIHeadline(BaseModel):
+    n_settled: int
+    n_hit: int
+    n_partial: int
+    n_miss: int
+    total_stake: float
+    total_payout: float
+    profit_loss: float
+    roi: float
+    avg_hit_p_predicted: float
+    actual_hit_rate: float
+
+
+class ROIByKLegs(BaseModel):
+    k_legs: int
+    n: int
+    n_hit: int
+    stake: float
+    payout: float
+    pl: float
+    avg_hit_p: Optional[float] = None
+
+
+class ROIByLeague(BaseModel):
+    league: str
+    n: int
+    n_hit: int
+    hit_rate: float
+    stake: float
+    payout: float
+    pl: float
+    roi: float
+
+
+class ROICalibrationBucket(BaseModel):
+    bin_lo: float
+    bin_hi: float
+    n: int
+    avg_predicted: float
+    actual_hit_rate: float
+
+
+class ROIWeeklyEntry(BaseModel):
+    week: str
+    n: int
+    stake: float
+    pl: float
+    cumulative_pl: float
+    roi: float
+
+
+class ROIResponse(BaseModel):
+    headline: ROIHeadline
+    by_k_legs: list[ROIByKLegs]
+    by_league: list[ROIByLeague]
+    calibration: list[ROICalibrationBucket]
+    weekly: list[ROIWeeklyEntry]
+
+
+class SessionSummary(BaseModel):
+    session_id: int
+    created_at: str
+    bankroll: float
+    n_fixtures: int
+    n_recommendations: int
+    model_cutoff: Optional[str] = None
+
+
+class SessionsResponse(BaseModel):
+    n: int
+    sessions: list[SessionSummary]
+
+
+class OutcomeInput(BaseModel):
+    match_date: date
+    league: str = Field(..., min_length=1)
+    home_team: str = Field(..., min_length=1)
+    away_team: str = Field(..., min_length=1)
+    home_goals: int = Field(..., ge=0, le=30)
+    away_goals: int = Field(..., ge=0, le=30)
+
+
+class OutcomesBatchRequest(BaseModel):
+    outcomes: list[OutcomeInput] = Field(..., min_length=1, max_length=100)
+
+
+class OutcomesBatchResponse(BaseModel):
+    n_recorded: int
+    settle_counts: dict
+
+
+# ----- Endpoints ---------------------------------------------------------
+
+@router.get("/health", response_model=ObservationHealthResponse)
+def health() -> ObservationHealthResponse:
+    db = _db_path()
+    if not _db_exists():
+        return ObservationHealthResponse(
+            status="empty", db_path=db, db_exists=False,
+        )
+    with open_db(db) as conn:
+        n_sessions = conn.execute("SELECT COUNT(*) FROM recommendation_sessions").fetchone()[0]
+        n_recs = conn.execute("SELECT COUNT(*) FROM parlay_recommendations").fetchone()[0]
+        n_outcomes = conn.execute("SELECT COUNT(*) FROM match_outcomes").fetchone()[0]
+        n_settled = conn.execute("SELECT COUNT(*) FROM settlements").fetchone()[0]
+        n_unsettled = n_recs - n_settled
+    return ObservationHealthResponse(
+        status="ok",
+        db_path=db,
+        db_exists=True,
+        n_sessions=n_sessions,
+        n_recommendations=n_recs,
+        n_outcomes=n_outcomes,
+        n_settled=n_settled,
+        n_unsettled=n_unsettled,
+    )
+
+
+@router.get("/roi", response_model=ROIResponse)
+def roi(n_bins: int = 5) -> ROIResponse:
+    if not _db_exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Observation DB not found at {_db_path()}",
+        )
+    with open_db(_db_path()) as conn:
+        h = compute_headline(conn)
+        by_k = group_by_k_legs(conn)
+        by_lg = group_by_league(conn)
+        cal = calibration_buckets(conn, n_bins=n_bins)
+        weekly = weekly_pl(conn)
+    return ROIResponse(
+        headline=ROIHeadline(
+            n_settled=h.n_settled, n_hit=h.n_hit, n_partial=h.n_partial, n_miss=h.n_miss,
+            total_stake=h.total_stake, total_payout=h.total_payout,
+            profit_loss=h.profit_loss, roi=h.roi,
+            avg_hit_p_predicted=h.avg_hit_p_predicted,
+            actual_hit_rate=h.actual_hit_rate,
+        ),
+        by_k_legs=[ROIByKLegs(**{
+            "k_legs": int(r["k_legs"]), "n": int(r["n"]),
+            "n_hit": int(r["n_hit"] or 0), "stake": float(r["stake"]),
+            "payout": float(r["payout"]), "pl": float(r["pl"]),
+            "avg_hit_p": float(r["avg_hit_p"]) if r["avg_hit_p"] is not None else None,
+        }) for r in by_k],
+        by_league=[ROIByLeague(**r) for r in by_lg],
+        calibration=[ROICalibrationBucket(**r) for r in cal],
+        weekly=[ROIWeeklyEntry(**r) for r in weekly],
+    )
+
+
+@router.get("/sessions", response_model=SessionsResponse)
+def list_sessions(limit: int = 20) -> SessionsResponse:
+    if not _db_exists():
+        return SessionsResponse(n=0, sessions=[])
+    with open_db(_db_path()) as conn:
+        rows = conn.execute(
+            """SELECT session_id, created_at, bankroll, n_fixtures,
+                       n_recommendations, model_cutoff
+                FROM recommendation_sessions
+                ORDER BY session_id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return SessionsResponse(
+        n=len(rows),
+        sessions=[SessionSummary(**dict(r)) for r in rows],
+    )
+
+
+@router.post("/outcomes", response_model=OutcomesBatchResponse)
+def post_outcomes(req: OutcomesBatchRequest = Body(...)) -> OutcomesBatchResponse:
+    db = _db_path()
+    n = 0
+    with open_db(db) as conn:
+        for o in req.outcomes:
+            upsert_outcome(
+                conn,
+                match_date=str(o.match_date),
+                league=o.league,
+                home_team=o.home_team,
+                away_team=o.away_team,
+                home_goals=o.home_goals,
+                away_goals=o.away_goals,
+            )
+            n += 1
+        counts = settle_unsettled(conn)
+    return OutcomesBatchResponse(n_recorded=n, settle_counts=counts)

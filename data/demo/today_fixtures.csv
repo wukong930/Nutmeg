@@ -1,0 +1,9 @@
+date,league,home_team,away_team,psc_home,psc_draw,psc_away,handicap_home,odds_1x2_H,odds_1x2_D,odds_1x2_A,odds_handicap_H,odds_handicap_D,odds_handicap_A,psc_over25,psc_under25,ahch
+2025-08-17,EPL,Arsenal,Liverpool,2.85,3.40,2.60,0,2.85,3.40,2.60,,,,1.85,2.00,0.0
+2025-08-17,ESP_LA_LIGA,Real Madrid,Getafe,1.40,4.80,7.00,-1,1.40,4.80,7.00,2.10,3.40,3.20,1.70,2.20,-1.5
+2025-08-17,ITA_SERIE_A,Inter,Fiorentina,1.85,3.50,4.20,0,1.85,3.50,4.20,,,,1.95,1.90,-0.5
+2025-08-17,GER_BUNDESLIGA,Bayern Munich,Koln,1.20,7.00,12.00,-2,1.20,7.00,12.00,2.80,3.20,2.50,1.40,3.10,-2.0
+2025-08-17,FRA_LIGUE_1,Paris SG,Nice,1.45,4.80,6.50,-1,1.45,4.80,6.50,2.20,3.40,3.00,1.75,2.10,-1.5
+2025-08-17,NED_EREDIVISIE,Ajax,AZ Alkmaar,1.85,3.50,4.20,0,1.85,3.50,4.20,,,,1.65,2.30,-0.5
+2025-08-17,PRT_PRIMEIRA_LIGA,Porto,Benfica,2.30,3.20,3.20,0,2.30,3.20,3.20,,,,1.85,2.00,-0.25
+2025-08-17,ENG_CHAMPIONSHIP,Leeds,Burnley,1.95,3.50,3.80,-1,1.95,3.50,3.80,2.40,3.20,2.80,1.85,2.00,-0.5

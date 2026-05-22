@@ -1,0 +1,90 @@
+# ── OS / Editor ───────────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+# ── Secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials*
+secrets*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# ── Node / Next.js ────────────────────────────────────────────
+node_modules/
+.next/
+.turbo/
+*.tsbuildinfo
+out/
+test-results/
+playwright-report/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# ── Docker / Build artifacts ──────────────────────────────────
+.docker-cache/
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Nutmeg V4/V5 specific ─────────────────────────────────────
+# Legacy experiment cache + output (V2 era, will be removed in W2)
+tmp/
+configs/recommendations/historical_reports/
+configs/recommendations/historical_slices/
+configs/recommendations/upset_capture_profiles*.json
+configs/recommendations/quality_signal_profile*.json
+configs/recommendations/final_answer_*_v1.json
+
+# External data sources (W3-5) — fetched via nutmeg-ingest-external, not committed
+data/external/
+data/observation*.db
+data/*.parquet
+
+# Experiment outputs (W10) — tracked via git tags + summary cards, not raw artifacts
+data/v4_model/experiments/
+
+# Local SQLite databases (observation layer, dev only)
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Personal / Archive ────────────────────────────────────────
+Nutmeg_诊断报告与科学化路线图.docx
+*.docx
+*.xlsx
+*.pdf
+!docs/**/*.pdf
+
+# ── Plan files / drafts ───────────────────────────────────────
+.claude/plans/

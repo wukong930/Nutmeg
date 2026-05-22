@@ -1,0 +1,104 @@
+{
+  "baseline_id": "baseline_v3_1_locked_2026_05_21",
+  "calculation_basis": "nutmeg_v3_2_scientific_execution_baseline_lock",
+  "status": "locked",
+  "rules": [
+    "Do not optimize 2x1 as an isolated target.",
+    "Treat 2x1 as one candidate family inside the unified final-answer pool.",
+    "Do not change default production recommendation behavior without passing this baseline gate.",
+    "Do not expose internal strategy or admission details to ordinary users.",
+    "Do not introduce auto betting, payments, wallets, or guaranteed-profit language."
+  ],
+  "evidence": [
+    {
+      "name": "core_roi_rebalanced_final_answer_gate",
+      "path": "configs/recommendations/historical_reports/football_data_co_uk_expanded_a_leagues_rolling_window_candidate12_window4_core_roi_rebalanced_final_answer_gate_v1.json",
+      "required_top_level": {
+        "status": "passed",
+        "passed": true,
+        "suite_status": "improved"
+      },
+      "summary_minimums": {
+        "slice_count": 210,
+        "comparison_count": 210,
+        "candidate_final_hit_rate": 0.69,
+        "candidate_roi": -0.001
+      },
+      "require_empty_top_level_lists": [
+        "failed_checks"
+      ]
+    },
+    {
+      "name": "derived_market_suite_gate",
+      "path": "configs/recommendations/historical_reports/football_data_co_uk_expanded_a_leagues_rolling_window_derived_market_suite_gate_smoke_v1.json",
+      "required_top_level": {
+        "status": "passed",
+        "passed": true,
+        "suite_status": "improved"
+      },
+      "summary_minimums": {
+        "slice_count": 210,
+        "comparison_count": 210,
+        "candidate_final_hit_rate": 0.81,
+        "candidate_roi": 0.0
+      },
+      "require_empty_top_level_lists": [
+        "failed_checks"
+      ]
+    },
+    {
+      "name": "budget_stability_benchmark_gate",
+      "path": "configs/recommendations/historical_reports/local_core_plus_expanded_a_leagues_budget_stability_multiple_tie_breaker_benchmark_gate_smoke_v1.json",
+      "required_top_level": {
+        "status": "passed",
+        "passed": true
+      },
+      "required_summary": {
+        "budget_stability_audit_present": true,
+        "budget_stability_audit_status": "generated"
+      },
+      "summary_minimums": {
+        "budget_stability_slice_count": 240,
+        "budget_stability_comparable_count": 240
+      },
+      "summary_maximums": {
+        "budget_stability_signature_change_rate": 0.0,
+        "budget_stability_harmful_change_count": 0,
+        "budget_stability_warning_count": 0
+      },
+      "require_empty_summary_lists": [
+        "failed_checks"
+      ]
+    },
+    {
+      "name": "constraint_profile_runtime_smoke",
+      "path": "configs/recommendations/historical_reports/football_data_co_uk_expanded_a_leagues_rolling_window_dynamic_mix_final_answer_lane_constraint_profile_runtime_smoke_5slice_v1.json",
+      "required_top_level": {
+        "status": "passed",
+        "passed": true
+      },
+      "required_summary": {
+        "dynamic_mix_final_answer_lane_effective_pass_types": [
+          "2x1",
+          "3x1"
+        ]
+      },
+      "top_level_minimums": {
+        "slice_count": 5,
+        "comparison_count": 5,
+        "dynamic_mixed_final_answer_count": 5,
+        "candidate_final_hit_rate": 1.0
+      },
+      "summary_minimums": {
+        "candidate_completed_dynamic_mix_final_answer_lane_count": 10,
+        "candidate_final_answer_dynamic_mix_final_answer_lane_count": 5
+      },
+      "summary_list_minimum_lengths": {
+        "dynamic_mix_final_answer_lane_effective_constraint_profiles": 2
+      },
+      "require_empty_top_level_lists": [
+        "failed_checks"
+      ]
+    }
+  ]
+}

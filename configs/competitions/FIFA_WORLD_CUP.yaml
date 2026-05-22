@@ -1,0 +1,28 @@
+competition_id: FIFA_WORLD_CUP
+name: FIFA World Cup
+region: Global
+competition_type: international_cup
+team_type: national_team
+season_calendar: quadrennial_tournament
+provider_primary: sportmonks
+provider_secondary: api_football
+coverage_tier: D_beta
+model_status: experimental
+model:
+  base_model: national_team_goal_model
+  calibration_scope: competition_stage
+  home_advantage_mode: neutral_site_aware
+  goal_distribution_mode: tournament_stage_specific
+  cold_start_strategy: market_prior_plus_cross_competition_strength
+  cross_league_strength_required: true
+markets:
+  enabled:
+    - 1x2
+    - asian_handicap
+    - european_handicap_1x2
+    - correct_score
+  cn_lottery_available: false
+quality_requirements:
+  min_historical_matches: 120
+  min_odds_coverage: 0.70
+  min_result_coverage: 0.99
