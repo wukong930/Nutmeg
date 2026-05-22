@@ -149,23 +149,34 @@ def ingest_teams(
     *,
     cache_dir: Path = DEFAULT_CACHE_DIR,
     refresh: bool = False,
+    refresh_empty: bool = False,
     throttle_seconds: float = THROTTLE_SECONDS,
 ) -> pd.DataFrame:
     """Fetch (and cache) ELO history for every team in `teams`.
 
     Returns a long-format DataFrame with one row per (team, ELO change interval).
-    If a per-team parquet already exists and `refresh=False`, it is loaded from
-    disk; otherwise it's re-fetched.
+    Skip logic:
+    - cached parquet exists AND refresh=False AND it has rows  → use cache
+    - cached parquet exists AND refresh_empty=True AND 0 rows  → re-fetch
+      (used after a rate-limit episode where some requests landed empty parquets)
+    - refresh=True                                              → always re-fetch
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     frames: list[pd.DataFrame] = []
+    refreshed_empty = 0
     with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
         for team in teams:
             p = cache_path(team, cache_dir)
             if p.exists() and not refresh:
-                frames.append(pd.read_parquet(p))
-                continue
+                cached = pd.read_parquet(p)
+                if refresh_empty and cached.empty:
+                    log.info("Refreshing empty cache for %s", team)
+                    refreshed_empty += 1
+                    # fall through to re-fetch
+                else:
+                    frames.append(cached)
+                    continue
             try:
                 df = fetch_team_history(team, client=client)
             except Exception as exc:  # noqa: BLE001 — log and continue with empty
@@ -174,6 +185,8 @@ def ingest_teams(
             df.to_parquet(p, index=False)
             frames.append(df)
             time.sleep(throttle_seconds)
+    if refresh_empty:
+        log.info("Refresh-empty mode: re-fetched %d previously empty caches", refreshed_empty)
     if not frames:
         return _empty_history_frame("", "")
     return pd.concat(frames, ignore_index=True)

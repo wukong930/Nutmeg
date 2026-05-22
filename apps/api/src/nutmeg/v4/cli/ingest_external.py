@@ -60,9 +60,14 @@ def _flatten_teams(teams_by_league: dict[str, list[str]]) -> list[str]:
     return out
 
 
-def _ingest_clubelo(teams: list[str], refresh: bool) -> pd.DataFrame:
-    log.info("Ingesting clubelo history for %d teams (refresh=%s)", len(teams), refresh)
-    hist = clubelo.ingest_teams(teams, refresh=refresh)
+def _ingest_clubelo(teams: list[str], refresh: bool, refresh_empty: bool) -> pd.DataFrame:
+    log.info(
+        "Ingesting clubelo history for %d teams (refresh=%s refresh_empty=%s)",
+        len(teams),
+        refresh,
+        refresh_empty,
+    )
+    hist = clubelo.ingest_teams(teams, refresh=refresh, refresh_empty=refresh_empty)
     log.info("Clubelo ingest done: %d total rows", len(hist))
     return hist
 
@@ -129,7 +134,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--refresh",
         action="store_true",
-        help="Force re-fetch even if cached parquet exists.",
+        help="Force re-fetch every team even if cached parquet exists.",
+    )
+    p.add_argument(
+        "--refresh-empty",
+        action="store_true",
+        help="Re-fetch only teams whose cached parquet is empty (recovers from a "
+        "rate-limit episode that left some teams' parquets empty).",
     )
     p.add_argument(
         "--skip-coverage-card",
@@ -158,7 +169,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.source in {"clubelo", "all"}:
-        hist = _ingest_clubelo(all_teams, refresh=args.refresh)
+        hist = _ingest_clubelo(
+            all_teams, refresh=args.refresh, refresh_empty=args.refresh_empty
+        )
         if not args.skip_coverage_card:
             _write_coverage_card(teams_by_league, hist)
         log.info("Clubelo: %d unique teams covered", hist["team_canonical"].nunique())

@@ -10,6 +10,7 @@ import datetime as dt
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import httpx
 import pandas as pd
 import pytest
 
@@ -149,3 +150,150 @@ class TestCachePath:
     def test_path_under_cache_dir(self, tmp_path: Path) -> None:
         p = clubelo.cache_path("Arsenal", tmp_path)
         assert p.parent == tmp_path
+
+
+class TestIngestTeams:
+    """ingest_teams + cache behavior, especially the new refresh_empty flag.
+
+    The HTTP path is mocked via patching fetch_team_history; this isolates the
+    cache logic from network flakiness.
+    """
+
+    def _write_history(
+        self, cache_dir: Path, team: str, rows: int
+    ) -> pd.DataFrame:
+        df = pd.DataFrame(
+            {
+                "team_canonical": [team] * rows,
+                "clubelo_slug": [clubelo._slug_for(team)] * rows,
+                "country": ["ENG"] * rows,
+                "elo": [1900.0 + i for i in range(rows)],
+                "from_date": [dt.date(2024, 1, 1)] * rows,
+                "to_date": [dt.date(2024, 6, 30)] * rows,
+            }
+        )
+        df.to_parquet(clubelo.cache_path(team, cache_dir), index=False)
+        return df
+
+    def test_uses_cache_when_present_and_not_refresh(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_history(tmp_path, "Arsenal", rows=3)
+        fetch_calls: list[str] = []
+
+        def fake_fetch(team: str, *, client: object) -> pd.DataFrame:
+            fetch_calls.append(team)
+            return clubelo._empty_history_frame(team, "Arsenal")
+
+        monkeypatch.setattr(clubelo, "fetch_team_history", fake_fetch)
+
+        out = clubelo.ingest_teams(["Arsenal"], cache_dir=tmp_path, throttle_seconds=0)
+        assert len(out) == 3  # came from cache, not network
+        assert fetch_calls == []  # network never hit
+
+    def test_refresh_true_always_refetches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_history(tmp_path, "Arsenal", rows=3)
+        fetch_calls: list[str] = []
+
+        def fake_fetch(team: str, *, client: object) -> pd.DataFrame:
+            fetch_calls.append(team)
+            # Return 5 rows so we can detect that this path ran
+            return pd.DataFrame(
+                {
+                    "team_canonical": [team] * 5,
+                    "clubelo_slug": [clubelo._slug_for(team)] * 5,
+                    "country": ["ENG"] * 5,
+                    "elo": [2000.0] * 5,
+                    "from_date": [dt.date(2024, 7, 1)] * 5,
+                    "to_date": [dt.date(2024, 12, 31)] * 5,
+                }
+            )
+
+        monkeypatch.setattr(clubelo, "fetch_team_history", fake_fetch)
+
+        out = clubelo.ingest_teams(
+            ["Arsenal"], cache_dir=tmp_path, refresh=True, throttle_seconds=0
+        )
+        assert fetch_calls == ["Arsenal"]
+        assert len(out) == 5
+        # And the cache was overwritten
+        cached = pd.read_parquet(clubelo.cache_path("Arsenal", tmp_path))
+        assert len(cached) == 5
+
+    def test_refresh_empty_only_refetches_empty_caches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arsenal cache has 3 rows (non-empty) — must be kept
+        self._write_history(tmp_path, "Arsenal", rows=3)
+        # Milan cache is empty (simulates rate-limit casualty) — must be re-fetched
+        empty = clubelo._empty_history_frame("Milan", "Milan")
+        empty.to_parquet(clubelo.cache_path("Milan", tmp_path), index=False)
+
+        fetch_calls: list[str] = []
+
+        def fake_fetch(team: str, *, client: object) -> pd.DataFrame:
+            fetch_calls.append(team)
+            return pd.DataFrame(
+                {
+                    "team_canonical": [team] * 2,
+                    "clubelo_slug": [clubelo._slug_for(team)] * 2,
+                    "country": ["ITA"] * 2,
+                    "elo": [1800.0, 1850.0],
+                    "from_date": [dt.date(2024, 1, 1), dt.date(2024, 6, 1)],
+                    "to_date": [dt.date(2024, 5, 31), dt.date(2024, 12, 31)],
+                }
+            )
+
+        monkeypatch.setattr(clubelo, "fetch_team_history", fake_fetch)
+
+        out = clubelo.ingest_teams(
+            ["Arsenal", "Milan"],
+            cache_dir=tmp_path,
+            refresh_empty=True,
+            throttle_seconds=0,
+        )
+        # Only Milan was re-fetched; Arsenal was served from cache
+        assert fetch_calls == ["Milan"]
+        # Out frame has both: Arsenal (3) + Milan (2 newly fetched) = 5
+        assert len(out) == 5
+        assert sorted(out["team_canonical"].unique()) == ["Arsenal", "Milan"]
+        # Milan's cache was updated on disk
+        milan_cached = pd.read_parquet(clubelo.cache_path("Milan", tmp_path))
+        assert len(milan_cached) == 2
+
+    def test_refresh_empty_skips_non_empty_caches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_history(tmp_path, "Arsenal", rows=3)
+        fetch_calls: list[str] = []
+
+        def fake_fetch(team: str, *, client: object) -> pd.DataFrame:
+            fetch_calls.append(team)
+            raise AssertionError(f"should not have been called for {team}")
+
+        monkeypatch.setattr(clubelo, "fetch_team_history", fake_fetch)
+        out = clubelo.ingest_teams(
+            ["Arsenal"], cache_dir=tmp_path, refresh_empty=True, throttle_seconds=0
+        )
+        assert fetch_calls == []
+        assert len(out) == 3
+
+    def test_failed_fetch_writes_empty_parquet(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_fetch(team: str, *, client: object) -> pd.DataFrame:
+            raise httpx.TimeoutException("simulated rate limit")
+
+        monkeypatch.setattr(clubelo, "fetch_team_history", fake_fetch)
+
+        out = clubelo.ingest_teams(
+            ["Milan"], cache_dir=tmp_path, throttle_seconds=0
+        )
+        # Should not raise, returns empty
+        assert out.empty
+        # And the parquet exists but is empty (so refresh_empty can detect it later)
+        assert clubelo.cache_path("Milan", tmp_path).exists()
+        cached = pd.read_parquet(clubelo.cache_path("Milan", tmp_path))
+        assert cached.empty

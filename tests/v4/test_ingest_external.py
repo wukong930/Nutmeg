@@ -104,6 +104,7 @@ class TestClubeloDispatch:
             assert "Arsenal" in args[0]
             assert "Liverpool" in args[0]
             assert kwargs["refresh"] is False
+            assert kwargs["refresh_empty"] is False
 
     def test_explicit_teams_override_v4_collection(self, tmp_path) -> None:
         with (
@@ -150,6 +151,28 @@ class TestClubeloDispatch:
             assert exit_code == 0
             _, kwargs = mock_ingest.call_args
             assert kwargs["refresh"] is True
+
+    def test_refresh_empty_flag_propagates(self, tmp_path) -> None:
+        with (
+            patch.object(ingest_external, "_collect_v4_teams", return_value={"EPL": ["Arsenal"]}),
+            patch.object(ingest_external.clubelo, "ingest_teams") as mock_ingest,
+            patch.object(ingest_external, "COVERAGE_CARD", tmp_path / "card.md"),
+        ):
+            mock_ingest.return_value = pd.DataFrame(
+                {
+                    "team_canonical": ["Arsenal"],
+                    "clubelo_slug": ["Arsenal"],
+                    "country": ["ENG"],
+                    "elo": [1900.0],
+                    "from_date": [pd.Timestamp("2024-01-01").date()],
+                    "to_date": [pd.Timestamp("2024-06-30").date()],
+                }
+            )
+            exit_code = ingest_external.main(["--source", "clubelo", "--refresh-empty"])
+            assert exit_code == 0
+            _, kwargs = mock_ingest.call_args
+            assert kwargs["refresh"] is False
+            assert kwargs["refresh_empty"] is True
 
 
 class TestCoverageCardGeneration:
