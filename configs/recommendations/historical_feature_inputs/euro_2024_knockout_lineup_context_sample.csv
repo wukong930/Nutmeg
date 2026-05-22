@@ -1,3 +1,0 @@
-fixture_id,snapshot_time_utc,lineup_type,expected_lineup_confidence,starting_xi_strength,bench_dropoff_score,source,source_snapshot_ref,metadata_json
-euro2024_r16_sui_ita,2024-06-29T09:15:00Z,expected,0.76,0.72,0.22,reviewed-local-context,lineup:euro2024_r16_sui_ita,"{""context_sample"":true}"
-euro2024_r16_ger_den,2024-06-29T09:20:00Z,confirmed,0.92,0.89,0.08,reviewed-local-context,lineup:euro2024_r16_ger_den,"{""context_sample"":true}"

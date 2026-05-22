@@ -1,15 +1,6 @@
 # V4 Baseline Card
 
-_Generated 2026-05-22 16:12 UTC_
-
-## Configuration
-
-- Train window:     **540** days before cutoff
-- Validation window: **90** days (tem  wrote docs/v4_baseline_card.md
-
-# V4 Baseline Card
-
-_Generated 2026-05-22 16:12 UTC_
+_Generated 2026-05-22 16:38 UTC_
 
 ## Configuration
 
@@ -61,4 +52,3 @@ _Generated 2026-05-22 16:12 UTC_
 - **GBM-λ + DC** uses market closing odds as features, so it naturally tracks the market. It should NOT be expected to dramatically beat Pinnacle pooled — that would imply Pinnacle is materially inefficient.
 - The **practical alpha** for the user is: same probabilistic quality as Pinnacle, but with internal score-grid that enables 让球 / 大小球 / 比分 / 串关 computation that the market line alone can't.
 - Per-league regressions point to where extra features (xG, lineups, schedule congestion) would add value next.
-
