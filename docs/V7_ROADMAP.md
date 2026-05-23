@@ -84,14 +84,16 @@ These don't gate Tracks A/B/C but ship value if cycles allow.
 
 ## Tag plan
 
-| Tag | When |
-|---|---|
-| `v7.w1` | `nutmeg-ingest-odds` shipped (this week) |
-| `v7.w2` | `nutmeg-auto-settle` shipped |
-| `v7.w3` | Weekly ROI cron live |
-| `v7.w5` | Lineup ROI decision recorded |
-| `v7.w8` | Cup-aware artifact ship |
-| `v7.0-shipped` | V7 W8 close, V7_HANDOFF written |
+| Tag | When | Status |
+|---|---|---|
+| `v7.w1` | `nutmeg-ingest-odds` shipped | ✅ |
+| `v7.w2` | `nutmeg-auto-settle` shipped | ✅ |
+| `v7.w3` | Weekly ROI cron live | ✅ |
+| `v7.w5` | Lineup ROI decision recorded | ⏳ (data-gated → V8) |
+| `v7.w6` | Cup historical fixtures → parquet | ✅ |
+| `v7.w7` | feature_columns_with_cup + pipeline wiring | ✅ |
+| `v7.w8` | Cup historical odds backfill (Track B groundwork) | ✅ |
+| `v7.0-shipped` | V7 closeout, V7_HANDOFF + retrospective | ✅ |
 
 ## Out of scope for V7
 
