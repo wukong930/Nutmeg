@@ -36,7 +36,9 @@ The user copies them into the lottery terminal themselves.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -63,6 +65,10 @@ from nutmeg.v4.model.persist import (
 # the formats in lockstep.
 from nutmeg.v4.cli.recommend import _read_fixtures, _row_to_match_input
 from nutmeg.v4.cli.recommend_pool import _read_pool_fixtures, _row_to_selection
+# V7 W1: auto-fetch live odds into a temp CSV when --auto-fetch is set
+from nutmeg.v4.cli.ingest_odds import _gather_rows as _ingest_gather_rows
+from nutmeg.v4.cli.ingest_odds import _write_csv as _ingest_write_csv
+from nutmeg.v4.data.odds_parser import PINNACLE_BOOKMAKER_ID
 
 
 BANNER = """\
@@ -413,7 +419,64 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="复式: 每张票 N 串 1")
     p.add_argument("--max-total-budget", type=float, default=None,
                    help="复式: 总预算上限 ¥")
+
+    # V7 W1: auto-fetch live odds from API-Football
+    p.add_argument("--auto-fetch", action="store_true",
+                   help="V7 W1: 跳过 fixtures CSV 提问, 自动拉今日盘口 (复式除外)")
+    p.add_argument("--auto-fetch-leagues", default="EPL,ESP_LA_LIGA",
+                   help="auto-fetch 拉哪些联赛 (默认 EPL,ESP_LA_LIGA)")
+    p.add_argument("--auto-fetch-date", default=None,
+                   help="auto-fetch 比赛日期 YYYY-MM-DD (默认今天)")
+    p.add_argument("--auto-fetch-bookmaker-id", type=int,
+                   default=PINNACLE_BOOKMAKER_ID,
+                   help=f"auto-fetch 取哪个 book (默认 {PINNACLE_BOOKMAKER_ID} = Pinnacle)")
+    p.add_argument("--cache-dir", default="data/external/api_football",
+                   help="API-Football 缓存目录")
     return p
+
+
+def _auto_fetch_to_tempfile(args) -> str:
+    """Run ingest_odds in-process, write to a temp CSV, return its path.
+
+    Mutates nothing on `args` — caller assigns the returned path into
+    `args.fixtures` before dispatching to the runner.
+
+    Refuses to run for the pool flow (which requires a per-row `pick`
+    column the auto-fetcher can't infer).
+    """
+    if args.type == "pool":
+        raise ValueError(
+            "--auto-fetch 不支持 复式 (pool) — 复式需要每场预选 pick 列, "
+            "请手动准备 pool CSV"
+        )
+    leagues = [s.strip() for s in args.auto_fetch_leagues.split(",") if s.strip()]
+    if args.auto_fetch_date:
+        on_date = dt.date.fromisoformat(args.auto_fetch_date)
+    else:
+        on_date = dt.date.today()
+    rows, n_calls, n_skipped = _ingest_gather_rows(
+        leagues,
+        on_date,
+        cache_dir=Path(args.cache_dir),
+        bookmaker_id=args.auto_fetch_bookmaker_id,
+        refresh_fixtures=False,
+        refresh_odds=False,
+    )
+    print(
+        f"[auto-fetch] {len(rows)} 场, {n_calls} API 调用, {n_skipped} 场缺盘口跳过",
+        file=sys.stderr,
+    )
+    if not rows:
+        raise ValueError(
+            f"auto-fetch 在 {on_date.isoformat()} 没有拿到任何带盘口的比赛 "
+            f"(联赛: {leagues}). 检查日期/联赛, 或手动喂 --fixtures CSV"
+        )
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".csv", prefix="nutmeg_rec_", delete=False
+    )
+    _ingest_write_csv(rows, tmp)
+    tmp.close()
+    return tmp.name
 
 
 def main(argv: list[str] | None = None,
@@ -434,6 +497,17 @@ def main(argv: list[str] | None = None,
             print("再见 👋", file=sys.stderr)
             return 0
         bet_type = {"1": "single", "2": "parlay", "3": "pool"}[choice]
+        # propagate the menu choice so downstream sees args.type populated
+        args.type = bet_type
+
+    # V7 W1: if --auto-fetch and no explicit fixtures path, pull odds first
+    if args.auto_fetch and not args.fixtures:
+        try:
+            args.fixtures = _auto_fetch_to_tempfile(args)
+            print(f"[auto-fetch] 临时 CSV: {args.fixtures}", file=sys.stderr)
+        except ValueError as e:
+            print(f"ERROR: auto-fetch 失败 — {e}", file=sys.stderr)
+            return 1
 
     try:
         if bet_type == "single":

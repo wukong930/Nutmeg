@@ -1,14 +1,18 @@
-name: Daily Lineup Refresh
+name: Daily Lineup + Odds Refresh
 
-# V6 W8 — daily heartbeat that:
+# V6 W8 + V7 W1 — daily heartbeat that:
 #  1. proves the API-Football token still works (catches 401s before they
 #     break a real recommend call)
 #  2. refreshes the lineup + injury cache for past 3 days so the user's
 #     LOCAL clone, once it pulls (or once the user reruns the same job
 #     locally), has fresh data for tonight's prediction
-#  3. uploads the small daily summary JSON as a GH Actions artifact
-#     (cache files themselves stay gitignored; artifact has 14-day retention
-#     and is private to the repo Actions UI)
+#  3. (V7 W1) pulls TODAY'S /odds for the requested leagues and uploads
+#     the assembled fixtures CSV as a GH Actions artifact — user can
+#     download it to drive `nutmeg-rec --type ...` without typing odds
+#     by hand
+#  4. uploads the small daily summary JSON + odds CSV as GH Actions
+#     artifacts (cache files themselves stay gitignored; artifacts have
+#     14-day retention and are private to the repo Actions UI)
 #
 # The actual recommend command is intentionally NOT run on CI — the user
 # places real bets locally, with their own bankroll, and we don't want a
@@ -99,10 +103,30 @@ jobs:
             echo "::warning::No daily summary file produced (no fixtures in window?)"
           fi
 
-      - name: Upload daily summary artifact
+      - name: Ingest today's odds (V7 W1)
+        run: |
+          LEAGUES="${{ github.event.inputs.leagues || 'EPL,ESP_LA_LIGA' }}"
+          OUT="data/external/api_football/_daily_odds_${{ steps.tag.outputs.date }}.csv"
+          mkdir -p "$(dirname "$OUT")"
+          # Pinnacle (bookmaker id 4) is the sharp default; falls back to
+          # writing an empty CSV (header only) when no fixtures have odds
+          PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.ingest_odds \
+            --leagues "$LEAGUES" \
+            --date "${{ steps.tag.outputs.date }}" \
+            --cache-dir data/external/api_football \
+            --out "$OUT" \
+            --quiet
+          echo "=== Odds CSV header + first 3 rows ==="
+          head -n 4 "$OUT" || true
+          echo "=== Row count ==="
+          wc -l "$OUT" || true
+
+      - name: Upload daily artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: daily-refresh-${{ steps.tag.outputs.date }}
-          path: data/external/api_football/_daily_refresh_*.json
+          name: daily-${{ steps.tag.outputs.date }}
+          path: |
+            data/external/api_football/_daily_refresh_*.json
+            data/external/api_football/_daily_odds_*.csv
           retention-days: 14
           if-no-files-found: warn

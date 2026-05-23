@@ -1,0 +1,388 @@
+"""Tests for V7 W1 odds_parser + ingest_odds CLI.
+
+Two layers:
+  1. data.odds_parser — pure parsing functions on hand-crafted /odds
+     envelopes (no IO, no API)
+  2. cli.ingest_odds — _gather_rows via mocked api_football fetchers,
+     CSV roundtrip via _write_csv
+"""
+from __future__ import annotations
+
+import csv
+import datetime as dt
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
+
+import pandas as pd
+import pytest
+
+from nutmeg.v4.cli import ingest_odds as ingest_odds_mod
+from nutmeg.v4.cli.ingest_odds import (
+    CSV_COLUMNS,
+    _gather_rows,
+    _write_csv,
+    render_rows_as_csv,
+)
+from nutmeg.v4.data.odds_parser import (
+    BET365_BOOKMAKER_ID,
+    BET_MATCH_WINNER,
+    PINNACLE_BOOKMAKER_ID,
+    extract_1x2_odds,
+    extract_over_under_25,
+    fixture_envelope_to_csv_row,
+)
+
+
+# ---------- Fixture builders -----------------------------------------
+
+def _envelope(
+    *,
+    fixture_id: int = 123,
+    home: str = "Arsenal",
+    away: str = "Liverpool",
+    iso_date: str = "2025-08-17T15:00:00+00:00",
+    bookmakers: list[dict] | None = None,
+) -> dict:
+    return {
+        "fixture": {"id": fixture_id, "date": iso_date},
+        "league": {"id": 39, "name": "Premier League"},
+        "teams": {"home": {"name": home}, "away": {"name": away}},
+        "bookmakers": bookmakers or [],
+    }
+
+
+def _bookmaker_with_1x2(
+    *,
+    book_id: int = PINNACLE_BOOKMAKER_ID,
+    h: str = "2.10", d: str = "3.40", a: str = "3.50",
+) -> dict:
+    return {
+        "id": book_id,
+        "name": "Pinnacle",
+        "bets": [
+            {
+                "id": BET_MATCH_WINNER,
+                "name": "Match Winner",
+                "values": [
+                    {"value": "Home", "odd": h},
+                    {"value": "Draw", "odd": d},
+                    {"value": "Away", "odd": a},
+                ],
+            },
+        ],
+    }
+
+
+def _bookmaker_with_1x2_and_ou(
+    *,
+    book_id: int = PINNACLE_BOOKMAKER_ID,
+    over: str = "2.05",
+    under: str = "1.80",
+) -> dict:
+    bm = _bookmaker_with_1x2(book_id=book_id)
+    bm["bets"].append({
+        "id": 5,
+        "name": "Goals Over/Under",
+        "values": [
+            {"value": "Over 2.5", "odd": over},
+            {"value": "Under 2.5", "odd": under},
+            {"value": "Over 1.5", "odd": "1.40"},  # other lines ignored
+            {"value": "Under 1.5", "odd": "2.80"},
+        ],
+    })
+    return bm
+
+
+# ---------- extract_1x2_odds ------------------------------------------
+
+class TestExtract1x2:
+    def test_happy_path_pinnacle(self):
+        env = _envelope(bookmakers=[_bookmaker_with_1x2()])
+        odds = extract_1x2_odds(env, PINNACLE_BOOKMAKER_ID)
+        assert odds == {"H": 2.10, "D": 3.40, "A": 3.50}
+
+    def test_missing_bookmaker_returns_none(self):
+        env = _envelope(bookmakers=[_bookmaker_with_1x2(book_id=BET365_BOOKMAKER_ID)])
+        # Asking for Pinnacle on a Bet365-only envelope → None
+        assert extract_1x2_odds(env, PINNACLE_BOOKMAKER_ID) is None
+
+    def test_picks_correct_bookmaker_when_multiple(self):
+        env = _envelope(bookmakers=[
+            _bookmaker_with_1x2(book_id=BET365_BOOKMAKER_ID, h="2.20", d="3.30", a="3.20"),
+            _bookmaker_with_1x2(book_id=PINNACLE_BOOKMAKER_ID, h="2.10", d="3.40", a="3.50"),
+        ])
+        odds_p = extract_1x2_odds(env, PINNACLE_BOOKMAKER_ID)
+        odds_b = extract_1x2_odds(env, BET365_BOOKMAKER_ID)
+        assert odds_p == {"H": 2.10, "D": 3.40, "A": 3.50}
+        assert odds_b == {"H": 2.20, "D": 3.30, "A": 3.20}
+
+    def test_book_missing_match_winner_returns_none(self):
+        bm = {"id": PINNACLE_BOOKMAKER_ID, "name": "Pinnacle",
+              "bets": [{"id": 99, "name": "Some other bet", "values": []}]}
+        env = _envelope(bookmakers=[bm])
+        assert extract_1x2_odds(env, PINNACLE_BOOKMAKER_ID) is None
+
+    def test_partial_outcomes_returns_none(self):
+        bm = {
+            "id": PINNACLE_BOOKMAKER_ID, "name": "Pinnacle",
+            "bets": [{
+                "id": BET_MATCH_WINNER, "name": "Match Winner",
+                "values": [
+                    {"value": "Home", "odd": "2.10"},
+                    {"value": "Draw", "odd": "3.40"},
+                    # Away missing
+                ],
+            }],
+        }
+        assert extract_1x2_odds(_envelope(bookmakers=[bm])) is None
+
+    def test_unparseable_odd_skipped_then_returns_none(self):
+        bm = _bookmaker_with_1x2(h="notanumber")
+        assert extract_1x2_odds(_envelope(bookmakers=[bm])) is None
+
+    def test_odd_le_one_treated_as_missing(self):
+        bm = _bookmaker_with_1x2(h="1.00")  # sentinel "no quote"
+        assert extract_1x2_odds(_envelope(bookmakers=[bm])) is None
+
+    def test_extra_value_labels_ignored(self):
+        bm = {
+            "id": PINNACLE_BOOKMAKER_ID, "name": "Pinnacle",
+            "bets": [{
+                "id": BET_MATCH_WINNER, "name": "Match Winner",
+                "values": [
+                    {"value": "Home", "odd": "2.10"},
+                    {"value": "Draw", "odd": "3.40"},
+                    {"value": "Away", "odd": "3.50"},
+                    {"value": "Garbage label", "odd": "9.99"},
+                ],
+            }],
+        }
+        assert extract_1x2_odds(_envelope(bookmakers=[bm])) == {
+            "H": 2.10, "D": 3.40, "A": 3.50,
+        }
+
+
+# ---------- extract_over_under_25 ------------------------------------
+
+class TestExtractOU25:
+    def test_happy_path(self):
+        env = _envelope(bookmakers=[_bookmaker_with_1x2_and_ou()])
+        out = extract_over_under_25(env, PINNACLE_BOOKMAKER_ID)
+        assert out == (2.05, 1.80)
+
+    def test_only_other_lines_returns_none(self):
+        bm = {
+            "id": PINNACLE_BOOKMAKER_ID, "name": "Pinnacle",
+            "bets": [{
+                "id": 5, "name": "Goals Over/Under",
+                "values": [
+                    {"value": "Over 1.5", "odd": "1.40"},
+                    {"value": "Under 1.5", "odd": "2.80"},
+                ],
+            }],
+        }
+        assert extract_over_under_25(_envelope(bookmakers=[bm])) is None
+
+    def test_missing_bookmaker_returns_none(self):
+        env = _envelope(bookmakers=[])
+        assert extract_over_under_25(env) is None
+
+
+# ---------- fixture_envelope_to_csv_row -------------------------------
+
+class TestFixtureEnvelopeToRow:
+    def test_full_payload(self):
+        env = _envelope(bookmakers=[_bookmaker_with_1x2_and_ou()])
+        fixture_record = {
+            "fixture": {"id": 123, "date": "2025-08-17T15:00:00+00:00"},
+            "teams": {"home": {"name": "Arsenal"},
+                      "away": {"name": "Liverpool"}},
+        }
+        row = fixture_envelope_to_csv_row(fixture_record, env, "EPL")
+        assert row is not None
+        assert row["date"] == "2025-08-17"
+        assert row["league"] == "EPL"
+        assert row["home_team"] == "Arsenal"
+        assert row["away_team"] == "Liverpool"
+        assert row["psc_home"] == 2.10
+        assert row["psc_draw"] == 3.40
+        assert row["psc_away"] == 3.50
+        assert row["psc_over25"] == 2.05
+        assert row["psc_under25"] == 1.80
+
+    def test_no_odds_envelope_returns_none(self):
+        fixture_record = {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+                          "teams": {"home": {"name": "A"}, "away": {"name": "B"}}}
+        assert fixture_envelope_to_csv_row(fixture_record, None, "EPL") is None
+
+    def test_envelope_without_1x2_returns_none(self):
+        # Envelope present but bookmaker lacks Match Winner → drop the row
+        bm = {"id": PINNACLE_BOOKMAKER_ID, "name": "Pinnacle",
+              "bets": [{"id": 99, "name": "Other", "values": []}]}
+        env = _envelope(bookmakers=[bm])
+        fixture_record = {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+                          "teams": {"home": {"name": "A"}, "away": {"name": "B"}}}
+        assert fixture_envelope_to_csv_row(fixture_record, env, "EPL") is None
+
+    def test_partial_payload_no_ou(self):
+        env = _envelope(bookmakers=[_bookmaker_with_1x2()])
+        fixture_record = {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+                          "teams": {"home": {"name": "A"}, "away": {"name": "B"}}}
+        row = fixture_envelope_to_csv_row(fixture_record, env, "EPL")
+        assert row is not None
+        assert "psc_over25" not in row
+        assert "psc_under25" not in row
+
+
+# ---------- CLI _gather_rows (mocked api_football) -----------------
+
+class TestGatherRows:
+    def _patch_fixtures(self, by_league: dict[str, list[dict]]):
+        def fake_fetch_fixtures(on_date, league_canonical=None, **kw):
+            return by_league.get(league_canonical, [])
+        return patch.object(
+            ingest_odds_mod.api_football,
+            "fetch_fixtures_for_date",
+            side_effect=fake_fetch_fixtures,
+        )
+
+    def _patch_odds(self, by_fixture_id: dict[int, dict | None]):
+        def fake_fetch_odds(fixture_id, **kw):
+            env = by_fixture_id.get(fixture_id)
+            return [env] if env is not None else []
+        return patch.object(
+            ingest_odds_mod.api_football,
+            "fetch_odds",
+            side_effect=fake_fetch_odds,
+        )
+
+    def test_two_leagues_three_fixtures(self, tmp_path):
+        fixtures = {
+            "EPL": [
+                {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+                 "teams": {"home": {"name": "Arsenal"}, "away": {"name": "Liverpool"}}},
+                {"fixture": {"id": 2, "date": "2025-08-17T17:30:00+00:00"},
+                 "teams": {"home": {"name": "Chelsea"}, "away": {"name": "Spurs"}}},
+            ],
+            "ESP_LA_LIGA": [
+                {"fixture": {"id": 3, "date": "2025-08-17T20:00:00+00:00"},
+                 "teams": {"home": {"name": "Real Madrid"}, "away": {"name": "Getafe"}}},
+            ],
+        }
+        odds = {
+            1: _envelope(bookmakers=[_bookmaker_with_1x2(h="2.10", d="3.40", a="3.50")]),
+            2: _envelope(bookmakers=[_bookmaker_with_1x2(h="2.60", d="3.30", a="2.80")]),
+            3: _envelope(bookmakers=[_bookmaker_with_1x2_and_ou()]),
+        }
+        with self._patch_fixtures(fixtures), self._patch_odds(odds):
+            rows, n_calls, n_skipped = _gather_rows(
+                ["EPL", "ESP_LA_LIGA"],
+                dt.date(2025, 8, 17),
+                cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False,
+                refresh_odds=False,
+            )
+        assert len(rows) == 3
+        # 2 league /fixtures + 3 /odds = 5 calls
+        assert n_calls == 5
+        assert n_skipped == 0
+        # First row checks
+        assert rows[0]["home_team"] == "Arsenal"
+        assert rows[0]["psc_home"] == 2.10
+        # La Liga row has O/U
+        la_row = next(r for r in rows if r["league"] == "ESP_LA_LIGA")
+        assert la_row["psc_over25"] == 2.05
+
+    def test_fixtures_without_pinnacle_skipped(self, tmp_path):
+        fixtures = {"EPL": [
+            {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+             "teams": {"home": {"name": "A"}, "away": {"name": "B"}}},
+            {"fixture": {"id": 2, "date": "2025-08-17T15:00:00+00:00"},
+             "teams": {"home": {"name": "C"}, "away": {"name": "D"}}},
+        ]}
+        odds = {
+            1: _envelope(bookmakers=[_bookmaker_with_1x2()]),
+            # Fixture 2 only has Bet365 — requesting Pinnacle → skipped
+            2: _envelope(bookmakers=[
+                _bookmaker_with_1x2(book_id=BET365_BOOKMAKER_ID),
+            ]),
+        }
+        with self._patch_fixtures(fixtures), self._patch_odds(odds):
+            rows, _, n_skipped = _gather_rows(
+                ["EPL"], dt.date(2025, 8, 17),
+                cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+            )
+        assert len(rows) == 1
+        assert n_skipped == 1
+
+    def test_empty_odds_response_skipped(self, tmp_path):
+        fixtures = {"EPL": [
+            {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+             "teams": {"home": {"name": "A"}, "away": {"name": "B"}}},
+        ]}
+        with self._patch_fixtures(fixtures), self._patch_odds({1: None}):
+            rows, _, n_skipped = _gather_rows(
+                ["EPL"], dt.date(2025, 8, 17),
+                cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+            )
+        assert rows == []
+        assert n_skipped == 1
+
+
+# ---------- CSV roundtrip --------------------------------------------
+
+class TestCsvWrite:
+    def test_render_rows_as_csv_roundtrips_via_pandas(self):
+        rows = [
+            {"date": "2025-08-17", "league": "EPL",
+             "home_team": "Arsenal", "away_team": "Liverpool",
+             "psc_home": 2.10, "psc_draw": 3.40, "psc_away": 3.50,
+             "psc_over25": 2.05, "psc_under25": 1.80},
+            {"date": "2025-08-17", "league": "EPL",
+             "home_team": "Chelsea", "away_team": "Spurs",
+             "psc_home": 2.60, "psc_draw": 3.30, "psc_away": 2.80},
+        ]
+        csv_text = render_rows_as_csv(rows)
+        # Header
+        first_line = csv_text.splitlines()[0]
+        for col in ("date", "league", "home_team", "psc_home",
+                    "psc_over25", "handicap_home"):
+            assert col in first_line
+        # Roundtrip via pandas
+        df = pd.read_csv(StringIO(csv_text))
+        assert len(df) == 2
+        assert df.iloc[0]["home_team"] == "Arsenal"
+        assert float(df.iloc[0]["psc_home"]) == 2.10
+        # NaN in the lottery-specific cols (left blank)
+        assert pd.isna(df.iloc[0]["odds_1x2_H"])
+
+    def test_empty_rows_writes_header_only(self):
+        csv_text = render_rows_as_csv([])
+        lines = csv_text.strip().splitlines()
+        # Exactly one line (the header) for empty input
+        assert len(lines) == 1
+        assert "date" in lines[0]
+
+    def test_write_to_file_path(self, tmp_path):
+        target = tmp_path / "sub" / "out.csv"
+        rows = [{"date": "2025-08-17", "league": "EPL",
+                 "home_team": "A", "away_team": "B",
+                 "psc_home": 2.0, "psc_draw": 3.0, "psc_away": 4.0}]
+        _write_csv(rows, target)
+        assert target.exists()
+        text = target.read_text()
+        assert "Arsenal" not in text  # sanity
+        assert "EPL" in text
+
+    def test_csv_columns_constant_includes_lottery_blanks(self):
+        # Schema includes handicap + lottery odds columns (left blank
+        # in the auto-generated output; user fills at bet time)
+        for col in ("handicap_home", "odds_1x2_H", "odds_1x2_D", "odds_1x2_A",
+                    "odds_handicap_H", "odds_handicap_D", "odds_handicap_A"):
+            assert col in CSV_COLUMNS
