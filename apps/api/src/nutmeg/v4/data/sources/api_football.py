@@ -110,7 +110,7 @@ def _request(
 # Mapping from our canonical league codes → API-Football league IDs.
 # Acquired by calling /leagues with a name query and recording the IDs once.
 # Reference: https://www.api-football.com/documentation-v3#tag/Leagues
-API_FOOTBALL_LEAGUE_IDS: dict[str, int] = {
+_DOMESTIC_LEAGUE_IDS: dict[str, int] = {
     "EPL": 39,
     "ESP_LA_LIGA": 140,
     "ITA_SERIE_A": 135,
@@ -125,6 +125,20 @@ API_FOOTBALL_LEAGUE_IDS: dict[str, int] = {
     "PRT_PRIMEIRA_LIGA": 94,
     "JPN_J1": 98,
 }
+
+# Cup + national-team competition IDs (V6 W11). Merged into the public
+# API_FOOTBALL_LEAGUE_IDS dict below so existing callers using
+# `league_id("UCL")` work without code changes.
+def _merged_league_ids() -> dict[str, int]:
+    from nutmeg.v4.data.competitions import CUP_COMPETITIONS
+    merged = dict(_DOMESTIC_LEAGUE_IDS)
+    for code, comp in CUP_COMPETITIONS.items():
+        if comp.api_football_id is not None:
+            merged[code] = comp.api_football_id
+    return merged
+
+
+API_FOOTBALL_LEAGUE_IDS: dict[str, int] = _merged_league_ids()
 
 
 def league_id(canonical: str) -> int:

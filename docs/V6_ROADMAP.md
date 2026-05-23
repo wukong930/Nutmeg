@@ -67,7 +67,7 @@ user can immediately use to place better bets.
 |---|---|---|---|
 | **V6 W9** ✅ | User-flow product CLI | `nutmeg-rec` 交互入口: 类型菜单 → 比赛 CSV → 资金 → 推荐. 新增 `combo.single_match` 单关 recommender (top_per_match=1 防止同场多投); 串关 + 复式 复用 V5/V6 引擎; Chinese-localized prompts + output; 全 ¥2/¥20k/31.5% vig 规则. 25 new tests (418/418 V4 suite passing). See [v6_w9_user_flow.md](v6_w9_user_flow.md) | shipped |
 | **V6 W10** ✅ | Chinese dashboard + 规则说明 | 新增 `GET /api/v4/rules` 端点暴露 `JINGCAI_DEFAULT` JSON; dashboard 加 `⑤ 规则说明` tab (投注规则 / 派奖机制 / 推荐门槛 / 玩法说明 / 风险提示) + 顶部 `rules-hint` 速查条; 修复 "of bankroll" 残余英文; 投注/凯利 input 步长锁 ¥2. 10 new tests (428/428 V4 suite passing). See [v6_w10_chinese_dashboard.md](v6_w10_chinese_dashboard.md) | shipped |
-| **V6 W11** | Cup data + national teams | World Cup, Euro, UCL knockout, FA Cup ingest; cross-league team handling | 3-5d |
+| **V6 W11** ✅ | 杯赛 + 国家队基础 | `competitions.py` 注册表 (UCL/UEL/UECL/FAC/COPA_DEL_REY/COPPA_ITALIA/DFB_POKAL/COUPE/WC/EURO/COPA_AMERICA/WC_QUAL_UEFA, API-Football ID 已合入 `API_FOOTBALL_LEAGUE_IDS`); `cup_features.py` 5 列 side-channel (is_cup_match/is_knockout/is_two_legged/is_national_team_match/competition_type_id); `lookup_cup_team_pair` 跨联赛 team_state 查找. 40 new tests (468/468 V4 suite passing). 杯赛训练数据回填留 V7. See [v6_w11_cup_data.md](v6_w11_cup_data.md) | shipped |
 | **V6 W12** | V6_HANDOFF + ship | Documentation, retrospective, `v6.0-shipped` tag | 2d |
 
 ## Quantitative targets
