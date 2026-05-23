@@ -60,6 +60,7 @@ nutmeg-recommend-pool = "nutmeg.v4.cli.recommend_pool:main"
 nutmeg-ingest-lineups = "nutmeg.v4.cli.ingest_lineups:main"
 nutmeg-refresh-lineups = "nutmeg.v4.cli.refresh_lineups:main"
 nutmeg-ab-report = "nutmeg.v4.cli.ab_report:main"
+nutmeg-rec = "nutmeg.v4.cli.rec:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]

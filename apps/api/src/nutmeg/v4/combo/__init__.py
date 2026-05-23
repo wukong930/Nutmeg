@@ -7,10 +7,17 @@ from nutmeg.v4.combo.enumerate import (
 )
 from nutmeg.v4.combo.kelly import fractional_kelly_stake
 from nutmeg.v4.combo.recommend import recommend_combinations
+from nutmeg.v4.combo.single_match import (
+    SingleMatchRecommendation,
+    SingleMatchTicket,
+    recommend_singles,
+)
 
 __all__ = [
     "MatchInput", "Selection", "build_selections_from_match",
     "Parlay", "generate_single_parlays", "rank_parlays",
     "fractional_kelly_stake",
     "recommend_combinations",
+    "recommend_singles",
+    "SingleMatchRecommendation", "SingleMatchTicket",
 ]
