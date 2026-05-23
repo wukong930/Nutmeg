@@ -62,6 +62,7 @@ nutmeg-refresh-lineups = "nutmeg.v4.cli.refresh_lineups:main"
 nutmeg-ab-report = "nutmeg.v4.cli.ab_report:main"
 nutmeg-rec = "nutmeg.v4.cli.rec:main"
 nutmeg-ingest-odds = "nutmeg.v4.cli.ingest_odds:main"
+nutmeg-auto-settle = "nutmeg.v4.cli.auto_settle:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]

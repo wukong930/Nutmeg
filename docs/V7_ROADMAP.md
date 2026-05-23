@@ -31,7 +31,7 @@ is "open dashboard → see recommendations → place bets → done".
 | W | Theme | Deliverable | Status |
 |---|---|---|---|
 | **V7 W1** ✅ | `nutmeg-ingest-odds` CLI | Pull /odds per-fixture for today's leagues, parse via `odds_parser`, emit CSV in the shape `nutmeg-rec` expects. GH Actions daily cron uploads it as artifact. `nutmeg-rec --auto-fetch` mode bypasses the manual CSV step entirely. | shipped |
-| V7 W2 | `nutmeg-auto-settle` CLI | Each evening: pull yesterday's final scores from API-Football `/fixtures` (status=FT/AET/PEN), upsert into `match_outcomes`, trigger `settle_unsettled`. Wire into GH Actions cron. | 2-3d |
+| **V7 W2** ✅ | `nutmeg-auto-settle` CLI | Pulls finished fixtures (FT/AET/PEN) from API-Football across leagues × past N days, upserts into `match_outcomes`, runs `settle_unsettled`. `--dry-run` mode for validation. Idempotent. Local-cron tool by design (observation DB is user-local). 30 new tests (520/520 V4 suite). See [v7_w2_auto_settle.md](v7_w2_auto_settle.md) | shipped |
 | V7 W3 | Weekly ROI report cron | Extend `weekly-bench.yml` to call `nutmeg-roi-report` + `nutmeg-ab-report --weeks 4` + `nutmeg-live-vs-backtest`; commit cards to `docs/weekly/`. **Triggers the V6 W8 lineup-aware ROI verdict to actually close.** | 1d |
 
 ## Track A — Lineup ROI decision (depends on Track C)
