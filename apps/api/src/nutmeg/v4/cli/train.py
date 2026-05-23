@@ -22,6 +22,11 @@ import pandas as pd
 from nutmeg.v4.calibration.temperature import fit_temperature_1x2
 from nutmeg.v4.data import load_all_matches
 from nutmeg.v4.features import GBM_FEATURE_COLUMNS, build_feature_frame
+from nutmeg.v4.features.lineup_features import _fixture_key
+from nutmeg.v4.features.pipeline import (
+    LINEUP_VALIDATED_COLUMNS,
+    feature_columns_with_lineups,
+)
 from nutmeg.v4.model.cat_lambda import fit_cat_lambda
 from nutmeg.v4.model.dixon_coles import lambdas_to_1x2_array
 from nutmeg.v4.model.gbm_lambda import fit_gbm_lambda
@@ -58,6 +63,26 @@ def main(argv: list[str] | None = None) -> int:
         "improvement vs lgb across 3 seasons). 'lgb' = lightgbm (V4 legacy "
         "fallback; available for A/B comparison).",
     )
+    parser.add_argument(
+        "--with-lineups",
+        action="store_true",
+        help="Include V6 W6 validated lineup features (recent_n_injuries 30-day "
+        "unique). Requires API-Football lineup cache; populated by "
+        "`nutmeg-ingest-lineups`. Cache dir defaults to data/external/api_football.",
+    )
+    parser.add_argument(
+        "--lineup-leagues",
+        default="EPL,ESP_LA_LIGA",
+        help="Comma-separated V4 league codes to pull lineup data for (only used "
+        "with --with-lineups). Default: EPL,ESP_LA_LIGA (the leagues validated "
+        "in V6 W6).",
+    )
+    parser.add_argument(
+        "--lineup-seasons",
+        default="2023,2024",
+        help="Comma-separated season-start years for lineup ingest (only used "
+        "with --with-lineups). Default: 2023,2024.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -69,8 +94,44 @@ def main(argv: list[str] | None = None) -> int:
     cutoff = pd.Timestamp(args.cutoff) if args.cutoff else df["date"].max() + pd.Timedelta(days=1)
     _info(f"Training cutoff: {cutoff.date()}", args.quiet)
 
+    # V6 W6: optional lineup feature integration. When --with-lineups, build
+    # the recent_injury_lookup from the API-Football cache and feed it through
+    # build_feature_frame so the validated 2-column subset is emitted.
+    lineup_lookup = None
+    injury_lookup = None
+    recent_injury_lookup = None
+    if args.with_lineups:
+        from nutmeg.v4.data.lineup_lookup import (
+            build_lineup_lookup_from_cache,
+            build_recent_injury_lookup,
+        )
+        lineups: dict = {}
+        recent: dict = {}
+        leagues_to_pull = [s.strip() for s in args.lineup_leagues.split(",") if s.strip()]
+        seasons_to_pull = [int(s.strip()) for s in args.lineup_seasons.split(",") if s.strip()]
+        for league in leagues_to_pull:
+            teams = sorted(
+                set(df.loc[df["league"] == league, "home_team"].dropna().unique())
+            )
+            for season in seasons_to_pull:
+                lin, _, _ = build_lineup_lookup_from_cache(league, season, teams)
+                lineups.update(lin)
+                ri = build_recent_injury_lookup(league, season, teams)
+                recent.update(ri)
+        lineup_lookup = lineups
+        recent_injury_lookup = recent
+        _info(
+            f"  lineup cache: {len(lineups)} fixtures, {len(recent)} with recent-injury counts",
+            args.quiet,
+        )
+
     _info("Building features ...", args.quiet)
-    feats = build_feature_frame(df)
+    feats = build_feature_frame(
+        df,
+        lineup_lookup=lineup_lookup,
+        injury_lookup=injury_lookup,
+        recent_injury_lookup=recent_injury_lookup,
+    )
 
     # Time split
     val_start = cutoff - pd.Timedelta(days=args.validation_days)
@@ -82,10 +143,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: not enough training matches ({len(train)})", file=sys.stderr)
         return 1
 
+    # Compose feature column list. With --with-lineups, append validated
+    # recent_n_injuries columns; else just V5 baseline.
+    base_numeric_cols = (
+        feature_columns_with_lineups() if args.with_lineups else list(GBM_FEATURE_COLUMNS)
+    )
+
     # Booster training — backend depends on --model
     if args.model == "cat":
-        _info("Training CatBoost-λ (Poisson × 2; league as categorical) ...", args.quiet)
-        cat_feature_cols = list(GBM_FEATURE_COLUMNS) + ["league"]
+        _info(
+            f"Training CatBoost-λ (Poisson × 2; league as categorical; "
+            f"{'with' if args.with_lineups else 'without'} lineup features) ...",
+            args.quiet,
+        )
+        cat_feature_cols = list(base_numeric_cols) + ["league"]
         booster = fit_cat_lambda(
             train, val, feature_cols=cat_feature_cols, cat_features=["league"]
         )
@@ -102,9 +173,13 @@ def main(argv: list[str] | None = None) -> int:
         lam_val = booster.predict(val_clean)
         lh_val, la_val = lam_val[:, 0], lam_val[:, 1]
     else:
-        _info("Training GBM-λ (Poisson lightgbm × 2) ...", args.quiet)
-        booster = fit_gbm_lambda(train, val, feature_cols=GBM_FEATURE_COLUMNS)
-        feature_columns_used = list(GBM_FEATURE_COLUMNS)
+        _info(
+            f"Training GBM-λ (Poisson lightgbm × 2; "
+            f"{'with' if args.with_lineups else 'without'} lineup features) ...",
+            args.quiet,
+        )
+        booster = fit_gbm_lambda(train, val, feature_cols=base_numeric_cols)
+        feature_columns_used = list(base_numeric_cols)
         cat_features_used = []
         model_type = "lightgbm"
         booster_home_obj = booster.model_home
@@ -112,8 +187,8 @@ def main(argv: list[str] | None = None) -> int:
         best_iter_home = booster.best_iter_home
         best_iter_away = booster.best_iter_away
 
-        val_clean = val.dropna(subset=GBM_FEATURE_COLUMNS).copy()
-        X_val = val_clean[GBM_FEATURE_COLUMNS].astype(float).values
+        val_clean = val.dropna(subset=base_numeric_cols).copy()
+        X_val = val_clean[base_numeric_cols].astype(float).values
         lh_val = booster.model_home.predict(X_val)
         la_val = booster.model_away.predict(X_val)
         lh_val = np.clip(lh_val, 0.05, 8.0)
@@ -149,6 +224,14 @@ def main(argv: list[str] | None = None) -> int:
             "gbm_best_iter_home": int(best_iter_home),
             "gbm_best_iter_away": int(best_iter_away),
             "trained_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            # V6 W7 marker
+            "with_lineups": bool(args.with_lineups),
+            "lineup_leagues": (
+                args.lineup_leagues.split(",") if args.with_lineups else []
+            ),
+            "lineup_seasons": (
+                [int(s) for s in args.lineup_seasons.split(",")] if args.with_lineups else []
+            ),
         },
         feature_columns=feature_columns_used,
         booster_home=booster_home_obj,

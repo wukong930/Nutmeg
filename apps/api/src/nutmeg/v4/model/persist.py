@@ -295,6 +295,9 @@ def build_features_for_fixtures(
     *,
     clubelo_cache_dir: Path | str = Path("data/external/clubelo"),
     clubelo_history: pd.DataFrame | None = None,
+    lineup_lookup: dict | None = None,
+    injury_lookup: dict | None = None,
+    recent_injury_lookup: dict | None = None,
 ) -> pd.DataFrame:
     """Given new fixtures (with odds), build the feature columns the GBM needs.
 
@@ -304,6 +307,12 @@ def build_features_for_fixtures(
     ``clubelo_cache_dir``/``clubelo_history`` are passed through to
     ``build_clubelo_features``; pass an explicit history DataFrame in tests
     to skip disk I/O.
+
+    V6 W7: pass ``lineup_lookup`` + ``recent_injury_lookup`` so lineup-aware
+    artifacts can populate the `lineup_*_recent_n_injuries` columns at
+    inference time. Without these the artifact will gracefully fall back
+    to zero counts; lineup-trained models then see the inference-time
+    rows as "no recent injuries" — biased toward conservative predictions.
     """
     out = fixtures.copy().reset_index(drop=True)
 
@@ -395,6 +404,23 @@ def build_features_for_fixtures(
     out = build_clubelo_features(
         out, cache_dir=clubelo_cache_dir, history=clubelo_history
     )
+
+    # V6 W7: lineup features for lineup-aware artifacts. When the caller
+    # supplies a lookup, run the same build_lineup_features path the
+    # training pipeline used. Without a lookup we set the lineup columns
+    # to zeros so the lineup-aware artifact has the columns it needs;
+    # zero-injury inference is a sane default (the model interprets it
+    # as "no signal" rather than crashing on missing columns).
+    if (artifact.metadata.get("with_lineups", False)
+            or lineup_lookup is not None
+            or recent_injury_lookup is not None):
+        from nutmeg.v4.features.lineup_features import build_lineup_features
+        out = build_lineup_features(
+            out,
+            lineup_lookup=lineup_lookup or {},
+            injury_lookup=injury_lookup,
+            recent_injury_lookup=recent_injury_lookup or {},
+        )
 
     return out
 

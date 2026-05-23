@@ -229,3 +229,63 @@ class TestE2ECatBoost:
         assert (lambdas >= 0.05).all() and (lambdas <= 8.0).all()
         # Some variation across leagues (sanity: not constant)
         assert lambdas[:, 0].std() > 0.1
+
+
+@pytest.mark.skipif(not DATA_DIR.exists(), reason="historical data not present")
+@pytest.mark.skipif(
+    not (REPO_ROOT / "data" / "external" / "api_football" / "_fixtures").exists(),
+    reason="API-Football lineup cache not populated (run nutmeg-ingest-lineups first)",
+)
+class TestE2ECatBoostLineups:
+    """V6 W7: train --with-lineups end-to-end. Skipped when the API-Football
+    cache isn't populated locally; on CI we'd populate it from a fixture set
+    rather than live API calls."""
+
+    @pytest.fixture(scope="class")
+    def trained_model_dir_lineup(self, tmp_path_factory):
+        out_dir = tmp_path_factory.mktemp("v6_cat_lineup_model")
+        result = _run_module(
+            "nutmeg.v4.cli.train",
+            "--cutoff", "2024-08-01",
+            "--out", str(out_dir),
+            "--model", "cat",
+            "--with-lineups",
+            "--lineup-leagues", "EPL,ESP_LA_LIGA",
+            "--lineup-seasons", "2023,2024",
+            "--quiet",
+        )
+        assert result.returncode == 0, f"lineup train failed: {result.stderr}"
+        return out_dir
+
+    def test_artifact_metadata_marks_with_lineups(self, trained_model_dir_lineup):
+        meta = json.loads((trained_model_dir_lineup / "metadata.json").read_text())
+        assert meta["metadata"]["with_lineups"] is True
+        assert "EPL" in meta["metadata"]["lineup_leagues"]
+
+    def test_feature_columns_include_recent_injuries(self, trained_model_dir_lineup):
+        meta = json.loads((trained_model_dir_lineup / "metadata.json").read_text())
+        feat_cols = meta["feature_columns"]
+        # The V6 W6 validated columns must be in the artifact's input list
+        assert "lineup_home_recent_n_injuries" in feat_cols
+        assert "lineup_away_recent_n_injuries" in feat_cols
+
+    @pytest.mark.skipif(not DEMO_FIXTURES.exists(), reason="demo fixtures not present")
+    def test_recommend_works_with_lineup_artifact(self, trained_model_dir_lineup, tmp_path):
+        """The lineup-aware artifact must serve recommendations even without
+        lineup_lookup passed at inference (graceful zero-injury default)."""
+        out_file = tmp_path / "rec.json"
+        result = _run_module(
+            "nutmeg.v4.cli.recommend",
+            "--fixtures", str(DEMO_FIXTURES),
+            "--model", str(trained_model_dir_lineup),
+            "--bankroll", "1000",
+            "--top-n", "3",
+            "--format", "json",
+            "--out", str(out_file),
+        )
+        assert result.returncode == 0, f"recommend with lineup artifact failed: {result.stderr}"
+        data = json.loads(out_file.read_text())
+        assert len(data["single_match_predictions"]) == 8
+        for p in data["single_match_predictions"]:
+            assert 0.05 <= p["lambda_home"] <= 8.0
+            assert 0.05 <= p["lambda_away"] <= 8.0
