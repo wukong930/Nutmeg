@@ -137,10 +137,15 @@ def _filter_injuries_before(
     """
     if not injuries:
         return injuries
-    return [
-        r for r in injuries
-        if (r.get("fixture", {}).get("date", "") or "")[:10] < match_date_str
-    ]
+    kept = []
+    for r in injuries:
+        date_part = (r.get("fixture", {}).get("date", "") or "")[:10]
+        # Drop records with no parseable date — conservative leak prevention
+        if not date_part:
+            continue
+        if date_part < match_date_str:
+            kept.append(r)
+    return kept
 
 
 def _recent_unique_injured_count(
