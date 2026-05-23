@@ -1,0 +1,14 @@
+[
+  {
+    "player": {"id": 1485, "name": "Bukayo Saka", "photo": "https://media.api-sports.io/football/players/19238.png", "type": "Missing Fixture", "reason": "Injury"},
+    "team": {"id": 42, "name": "Arsenal", "logo": "https://media.api-sports.io/football/teams/42.png"},
+    "fixture": {"id": 1208411, "timezone": "UTC", "date": "2025-04-08T19:00:00+00:00", "timestamp": 1744138800},
+    "league": {"id": 2, "season": 2024, "name": "UEFA Champions League", "country": "World", "logo": "https://media.api-sports.io/football/leagues/2.png", "flag": null}
+  },
+  {
+    "player": {"id": 19166, "name": "K. Havertz", "photo": "https://media.api-sports.io/football/players/19166.png", "type": "Missing Fixture", "reason": "Knee Injury"},
+    "team": {"id": 42, "name": "Arsenal", "logo": "https://media.api-sports.io/football/teams/42.png"},
+    "fixture": {"id": 1208599, "timezone": "UTC", "date": "2025-04-12T11:30:00+00:00", "timestamp": 1744457400},
+    "league": {"id": 39, "season": 2024, "name": "Premier League"}
+  }
+]

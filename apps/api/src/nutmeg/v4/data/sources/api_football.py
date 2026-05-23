@@ -196,6 +196,67 @@ def fetch_status() -> dict[str, Any]:
     return _request("/status", {})  # singleton response, len=1
 
 
+def fetch_team_squad_stats(
+    team_id: int,
+    season: int,
+    *,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+) -> list[dict[str, Any]]:
+    """Per-player season stats for a team's full squad.
+
+    Used by V6 W2 lineup features to compute `xi_minutes_share`: of the
+    11 players starting today, how much of this season's starting-XI
+    workload are they collectively responsible for? Sub-1.0 indicates
+    rotation / rest / injury-driven changes (less reliable XI), 1.0
+    means today's XI mirrors the season's most-trusted XI.
+
+    The endpoint returns one record per (player, league) — we filter
+    to the requested league and aggregate by player_id outside.
+    """
+    return _request("/players", {"team": team_id, "season": season},
+                    cache_dir=cache_dir, refresh=refresh)
+
+
+def compute_xi_minutes_share(
+    starting_xi_player_ids: list[int],
+    squad_stats: list[dict[str, Any]],
+) -> float:
+    """Given today's starting XI (player IDs) and the season squad stats,
+    compute the fraction of total season-starting minutes those 11 players
+    contributed.
+
+    Returns 1.0 when starting_xi is empty (no XI to evaluate yet) — caller
+    should pair with the lineup_present_flag to interpret.
+    Returns 0.5 (safe placeholder) when squad_stats is empty.
+    """
+    if not starting_xi_player_ids:
+        return 1.0
+    if not squad_stats:
+        return 0.5
+
+    total_starts = 0
+    xi_starts = 0
+    xi_set = set(starting_xi_player_ids)
+    for record in squad_stats:
+        player_id = record.get("player", {}).get("id")
+        stats_list = record.get("statistics", [])
+        # API-Football returns multiple stats blobs per player (one per
+        # competition). Sum starts across all of them.
+        player_starts = sum(
+            (s.get("games", {}).get("lineups") or 0) for s in stats_list
+        )
+        total_starts += player_starts
+        if player_id in xi_set:
+            xi_starts += player_starts
+
+    if total_starts <= 0:
+        return 0.5
+    # Normalize: max is 11 * (total_starts / 11) = total_starts when the
+    # team's 11 most-used players are starting; ratio is xi_starts / max_possible
+    return min(1.0, max(0.0, xi_starts / total_starts))
+
+
 __all__ = [
     "API_FOOTBALL_LEAGUE_IDS",
     "ApiFootballError",
@@ -204,5 +265,7 @@ __all__ = [
     "fetch_injuries",
     "fetch_odds",
     "fetch_status",
+    "fetch_team_squad_stats",
+    "compute_xi_minutes_share",
     "league_id",
 ]

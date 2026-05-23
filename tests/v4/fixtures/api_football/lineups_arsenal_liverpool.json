@@ -1,0 +1,55 @@
+[
+  {
+    "team": {
+      "id": 42,
+      "name": "Arsenal",
+      "logo": "https://media.api-sports.io/football/teams/42.png",
+      "colors": {"player": {"primary": "ff0000", "number": "ffffff", "border": "ffffff"}, "goalkeeper": {"primary": "ffff00", "number": "000000", "border": "000000"}}
+    },
+    "coach": {"id": 5045, "name": "M. Arteta", "photo": "https://media.api-sports.io/football/coachs/5045.png"},
+    "formation": "4-3-3",
+    "startXI": [
+      {"player": {"id": 19260, "name": "D. Raya", "number": 22, "pos": "G", "grid": "1:1"}},
+      {"player": {"id": 19150, "name": "J. Timber", "number": 12, "pos": "D", "grid": "2:4"}},
+      {"player": {"id": 19014, "name": "W. Saliba", "number": 2, "pos": "D", "grid": "2:3"}},
+      {"player": {"id": 19012, "name": "G. Magalhaes", "number": 6, "pos": "D", "grid": "2:2"}},
+      {"player": {"id": 19196, "name": "M. Lewis-Skelly", "number": 49, "pos": "D", "grid": "2:1"}},
+      {"player": {"id": 19015, "name": "T. Partey", "number": 5, "pos": "M", "grid": "3:3"}},
+      {"player": {"id": 19146, "name": "D. Rice", "number": 41, "pos": "M", "grid": "3:2"}},
+      {"player": {"id": 18987, "name": "M. Odegaard", "number": 8, "pos": "M", "grid": "3:1"}},
+      {"player": {"id": 19238, "name": "B. Saka", "number": 7, "pos": "F", "grid": "4:3"}},
+      {"player": {"id": 19166, "name": "K. Havertz", "number": 29, "pos": "F", "grid": "4:2"}},
+      {"player": {"id": 18934, "name": "G. Martinelli", "number": 11, "pos": "F", "grid": "4:1"}}
+    ],
+    "substitutes": [
+      {"player": {"id": 19026, "name": "N. Jorginho", "number": 20, "pos": "M", "grid": null}},
+      {"player": {"id": 19200, "name": "K. Tierney", "number": 3, "pos": "D", "grid": null}}
+    ]
+  },
+  {
+    "team": {
+      "id": 40,
+      "name": "Liverpool",
+      "logo": "https://media.api-sports.io/football/teams/40.png",
+      "colors": {"player": {"primary": "c8102e", "number": "ffffff", "border": "ffffff"}, "goalkeeper": {"primary": "00b894", "number": "ffffff", "border": "ffffff"}}
+    },
+    "coach": {"id": 1672, "name": "A. Slot", "photo": "https://media.api-sports.io/football/coachs/1672.png"},
+    "formation": "4-2-3-1",
+    "startXI": [
+      {"player": {"id": 281, "name": "A. Becker", "number": 1, "pos": "G", "grid": "1:1"}},
+      {"player": {"id": 296, "name": "T. Alexander-Arnold", "number": 66, "pos": "D", "grid": "2:4"}},
+      {"player": {"id": 290, "name": "V. van Dijk", "number": 4, "pos": "D", "grid": "2:3"}},
+      {"player": {"id": 282, "name": "I. Konate", "number": 5, "pos": "D", "grid": "2:2"}},
+      {"player": {"id": 18847, "name": "A. Robertson", "number": 26, "pos": "D", "grid": "2:1"}},
+      {"player": {"id": 326, "name": "R. Gravenberch", "number": 38, "pos": "M", "grid": "3:2"}},
+      {"player": {"id": 568, "name": "A. Mac Allister", "number": 10, "pos": "M", "grid": "3:1"}},
+      {"player": {"id": 304, "name": "M. Salah", "number": 11, "pos": "F", "grid": "4:3"}},
+      {"player": {"id": 27566, "name": "D. Szoboszlai", "number": 8, "pos": "F", "grid": "4:2"}},
+      {"player": {"id": 152981, "name": "Luis Diaz", "number": 7, "pos": "F", "grid": "4:1"}},
+      {"player": {"id": 18804, "name": "D. Nunez", "number": 9, "pos": "F", "grid": "5:1"}}
+    ],
+    "substitutes": [
+      {"player": {"id": 18948, "name": "C. Jones", "number": 17, "pos": "M", "grid": null}}
+    ]
+  }
+]
