@@ -32,7 +32,7 @@ is "open dashboard → see recommendations → place bets → done".
 |---|---|---|---|
 | **V7 W1** ✅ | `nutmeg-ingest-odds` CLI | Pull /odds per-fixture for today's leagues, parse via `odds_parser`, emit CSV in the shape `nutmeg-rec` expects. GH Actions daily cron uploads it as artifact. `nutmeg-rec --auto-fetch` mode bypasses the manual CSV step entirely. | shipped |
 | **V7 W2** ✅ | `nutmeg-auto-settle` CLI | Pulls finished fixtures (FT/AET/PEN) from API-Football across leagues × past N days, upserts into `match_outcomes`, runs `settle_unsettled`. `--dry-run` mode for validation. Idempotent. Local-cron tool by design (observation DB is user-local). 30 new tests (520/520 V4 suite). See [v7_w2_auto_settle.md](v7_w2_auto_settle.md) | shipped |
-| V7 W3 | Weekly ROI report cron | Extend `weekly-bench.yml` to call `nutmeg-roi-report` + `nutmeg-ab-report --weeks 4` + `nutmeg-live-vs-backtest`; commit cards to `docs/weekly/`. **Triggers the V6 W8 lineup-aware ROI verdict to actually close.** | 1d |
+| **V7 W3** ✅ | Weekly ROI report bundle | `nutmeg-weekly-report` CLI 把 roi-report + ab-report + live-vs-backtest 打包成一个调用; 输出 3 张卡到 docs/weekly/; exit code 透传 (2 = gap 越界, 触发 cron 告警); 设计为本地 cron (观测 DB 是本地的); 10 new tests (530/530 V4 suite). **Track C 闭环**: 用户日常步骤从 5 步压到 2 步. See [v7_w3_weekly_report.md](v7_w3_weekly_report.md) | shipped |
 
 ## Track A — Lineup ROI decision (depends on Track C)
 
