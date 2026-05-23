@@ -139,3 +139,86 @@ class TestE2E:
         growths = [r["log_growth"] for r in data["recommendations"]]
         for i in range(len(growths) - 1):
             assert growths[i] >= growths[i + 1] - 1e-9, "ranking not sorted by log_growth"
+
+
+@pytest.mark.skipif(not DATA_DIR.exists(), reason="historical data not present")
+class TestE2ECatBoost:
+    """V5 W7: same train→recommend round-trip but with `--model cat`.
+
+    Verifies that the CatBoost backend produces a working artifact (cbm files
+    plus metadata.json with model_type='catboost') and that recommend.py
+    auto-detects the type via load_artifact and predicts successfully.
+    """
+
+    @pytest.fixture(scope="class")
+    def trained_model_dir_cat(self, tmp_path_factory):
+        out_dir = tmp_path_factory.mktemp("v5_cat_model")
+        result = _run_module(
+            "nutmeg.v4.cli.train",
+            "--cutoff", "2024-08-01",
+            "--out", str(out_dir),
+            "--model", "cat",
+            "--quiet",
+        )
+        assert result.returncode == 0, f"cat train failed: {result.stderr}"
+        return out_dir
+
+    def test_cat_artifact_files(self, trained_model_dir_cat):
+        # CatBoost binary format (.cbm) instead of lightgbm (.txt)
+        for name in ["booster_home.cbm", "booster_away.cbm",
+                     "metadata.json", "temperature.json", "team_state.json"]:
+            assert (trained_model_dir_cat / name).exists(), f"missing: {name}"
+        # And the .txt files should NOT exist (we don't dual-write)
+        assert not (trained_model_dir_cat / "booster_home.txt").exists()
+
+    def test_cat_metadata_has_model_type(self, trained_model_dir_cat):
+        meta = json.loads((trained_model_dir_cat / "metadata.json").read_text())
+        assert meta["model_type"] == "catboost"
+        assert "league" in meta["cat_features"]
+        # league should appear in the feature column list passed to CatBoost
+        assert "league" in meta["feature_columns"]
+        # ... and the V4 numeric features are still there
+        assert "market_p_home" in meta["feature_columns"]
+        assert "elo_home" in meta["feature_columns"]
+
+    @pytest.mark.skipif(not DEMO_FIXTURES.exists(), reason="demo fixtures not present")
+    def test_cat_recommend_produces_predictions(self, trained_model_dir_cat, tmp_path):
+        out_file = tmp_path / "rec_cat.json"
+        result = _run_module(
+            "nutmeg.v4.cli.recommend",
+            "--fixtures", str(DEMO_FIXTURES),
+            "--model", str(trained_model_dir_cat),
+            "--bankroll", "1000",
+            "--top-n", "5",
+            "--format", "json",
+            "--out", str(out_file),
+        )
+        assert result.returncode == 0, f"cat recommend failed: {result.stderr}"
+        data = json.loads(out_file.read_text())
+        # Per-match lambdas valid and finite
+        assert len(data["single_match_predictions"]) == 8
+        for p in data["single_match_predictions"]:
+            assert 0.05 <= p["lambda_home"] <= 8.0
+            assert 0.05 <= p["lambda_away"] <= 8.0
+
+    def test_round_trip_load_artifact(self, trained_model_dir_cat):
+        """Direct API path: train CLI wrote → load_artifact reads → predict_lambdas works."""
+        import sys
+        sys.path.insert(0, str(REPO_ROOT / "apps" / "api" / "src"))
+        from nutmeg.v4.data.ingest import load_all_matches
+        from nutmeg.v4.features import build_feature_frame
+        from nutmeg.v4.model.persist import load_artifact, predict_lambdas
+
+        art = load_artifact(trained_model_dir_cat)
+        assert art.model_type == "catboost"
+        assert art.cat_features == ["league"]
+
+        # Predict on a slice of historical data
+        df = load_all_matches(REPO_ROOT / "data" / "historical_sources" / "football_data_co_uk")
+        feats = build_feature_frame(df.head(50))
+        lambdas = predict_lambdas(art, feats)
+        assert lambdas.shape == (50, 2)
+        # Reasonable football lambdas
+        assert (lambdas >= 0.05).all() and (lambdas <= 8.0).all()
+        # Some variation across leagues (sanity: not constant)
+        assert lambdas[:, 0].std() > 0.1

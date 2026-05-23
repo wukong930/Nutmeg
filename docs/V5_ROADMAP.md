@@ -30,7 +30,8 @@ V5 是在 V4（GBM-λ + Dixon-Coles + Temperature scaling）基础上的**演进
 | W4 ✅ | xG-lite + clubelo 特征 | `features/{xg_lite,clubelo_features}.py` + pipeline 集成 | **达成：24/25 log-loss 0.9987 → 0.9971（−0.0016）**；多季稳定改善 |
 | W5 ⚠️ | 市场动态 ablation | `features/market_dynamics.py` 框架就绪但 dormant | **负面结果**：drift 特征在 3 季验证中无法稳定降 log-loss；见 [v5_w5_ablation.md](v5_w5_ablation.md) |
 | W6 ✅ (mixed) | Ensemble ablation | xgb+cat+stacker 全部接入 walk_forward；`--with-ensemble` 比较 | **stacker 失败但 CatBoost 单模型胜出**（平均 -0.0033 vs LightGBM，三季全胜），见 [v5_w6_ablation.md](v5_w6_ablation.md)。W7 迁 prod 用 CatBoost。|
-| W7 | Bayesian 分层 | MAP per-league offset | J1/葡超 改善 ≥ +0.005，否则砍掉 |
+| W7 ✅ | CatBoost prod 迁移 | `--model cat`、artifact 多后端、e2e 测试 | CatBoost 可作 prod 选项（W6 已证 -0.0033 多季稳定改善）；默认暂留 lgb 给 W8 观察期 |
+| W7+ | Bayesian 分层（推迟） | MAP per-league offset | 推迟到 W9 — 先做 W8 实战 |
 | W8 | 实战观察循环 | 双快照（闭盘前/后）+ live_vs_backtest | 每周自动 ROI gap 报告 |
 | W9 | 校准微调 | 让球独立 T + per-league T | ECE ≤ 0.020 |
 | W10 | 实验追踪自动化 | GH Actions + `experiment_tracker` | 每周 `docs/weekly/<YYYY-WW>.md` 自动 push |

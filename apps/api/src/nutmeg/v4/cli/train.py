@@ -22,6 +22,7 @@ import pandas as pd
 from nutmeg.v4.calibration.temperature import fit_temperature_1x2
 from nutmeg.v4.data import load_all_matches
 from nutmeg.v4.features import GBM_FEATURE_COLUMNS, build_feature_frame
+from nutmeg.v4.model.cat_lambda import fit_cat_lambda
 from nutmeg.v4.model.dixon_coles import lambdas_to_1x2_array
 from nutmeg.v4.model.gbm_lambda import fit_gbm_lambda
 from nutmeg.v4.model.persist import V4Artifact, build_team_state, save_artifact
@@ -48,6 +49,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=DEFAULT_OUTPUT_DIR, help="Artifact output dir")
     parser.add_argument("--gbm-rho", type=float, default=DEFAULT_GBM_RHO,
                         help="DC tau correction parameter for lambda → score grid")
+    parser.add_argument(
+        "--model",
+        choices=("lgb", "cat"),
+        default="lgb",
+        help="Booster backend. 'lgb' = lightgbm (V4 default). 'cat' = CatBoost "
+        "(V5 W7 — uses `league` as a categorical feature; multi-season "
+        "tests show -0.0033 log-loss improvement vs lgb).",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -72,19 +81,47 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: not enough training matches ({len(train)})", file=sys.stderr)
         return 1
 
-    # GBM
-    _info("Training GBM-λ (Poisson lightgbm × 2) ...", args.quiet)
-    gbm = fit_gbm_lambda(train, val, feature_cols=GBM_FEATURE_COLUMNS)
-    _info(f"  best_iter home={gbm.best_iter_home}, away={gbm.best_iter_away}", args.quiet)
+    # Booster training — backend depends on --model
+    if args.model == "cat":
+        _info("Training CatBoost-λ (Poisson × 2; league as categorical) ...", args.quiet)
+        cat_feature_cols = list(GBM_FEATURE_COLUMNS) + ["league"]
+        booster = fit_cat_lambda(
+            train, val, feature_cols=cat_feature_cols, cat_features=["league"]
+        )
+        feature_columns_used = cat_feature_cols
+        cat_features_used = ["league"]
+        model_type = "catboost"
+        booster_home_obj = booster.model_home
+        booster_away_obj = booster.model_away
+        best_iter_home = booster.best_iter_home
+        best_iter_away = booster.best_iter_away
+
+        # Val predictions for temperature
+        val_clean = val.dropna(subset=["home_goals", "away_goals"]).copy()
+        lam_val = booster.predict(val_clean)
+        lh_val, la_val = lam_val[:, 0], lam_val[:, 1]
+    else:
+        _info("Training GBM-λ (Poisson lightgbm × 2) ...", args.quiet)
+        booster = fit_gbm_lambda(train, val, feature_cols=GBM_FEATURE_COLUMNS)
+        feature_columns_used = list(GBM_FEATURE_COLUMNS)
+        cat_features_used = []
+        model_type = "lightgbm"
+        booster_home_obj = booster.model_home
+        booster_away_obj = booster.model_away
+        best_iter_home = booster.best_iter_home
+        best_iter_away = booster.best_iter_away
+
+        val_clean = val.dropna(subset=GBM_FEATURE_COLUMNS).copy()
+        X_val = val_clean[GBM_FEATURE_COLUMNS].astype(float).values
+        lh_val = booster.model_home.predict(X_val)
+        la_val = booster.model_away.predict(X_val)
+        lh_val = np.clip(lh_val, 0.05, 8.0)
+        la_val = np.clip(la_val, 0.05, 8.0)
+
+    _info(f"  best_iter home={best_iter_home}, away={best_iter_away}", args.quiet)
 
     # Temperature calibration on validation predictions
     _info("Fitting temperature calibrator on validation pool ...", args.quiet)
-    val_clean = val.dropna(subset=GBM_FEATURE_COLUMNS).copy()
-    X_val = val_clean[GBM_FEATURE_COLUMNS].astype(float).values
-    lh_val = gbm.model_home.predict(X_val)
-    la_val = gbm.model_away.predict(X_val)
-    lh_val = np.clip(lh_val, 0.05, 8.0)
-    la_val = np.clip(la_val, 0.05, 8.0)
     probs_val = lambdas_to_1x2_array(np.column_stack([lh_val, la_val]), rho=args.gbm_rho)
     temperature_T = None
     if len(probs_val) >= 100:
@@ -108,15 +145,17 @@ def main(argv: list[str] | None = None) -> int:
             "n_train": int(len(train)),
             "n_val": int(len(val)),
             "gbm_rho": args.gbm_rho,
-            "gbm_best_iter_home": int(gbm.best_iter_home),
-            "gbm_best_iter_away": int(gbm.best_iter_away),
+            "gbm_best_iter_home": int(best_iter_home),
+            "gbm_best_iter_away": int(best_iter_away),
             "trained_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         },
-        feature_columns=GBM_FEATURE_COLUMNS,
-        booster_home=gbm.model_home,
-        booster_away=gbm.model_away,
+        feature_columns=feature_columns_used,
+        booster_home=booster_home_obj,
+        booster_away=booster_away_obj,
         temperature_T=temperature_T,
         team_state=team_state,
+        model_type=model_type,
+        cat_features=cat_features_used,
     )
 
     out_path = Path(args.out)

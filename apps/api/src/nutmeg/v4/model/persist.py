@@ -79,13 +79,19 @@ class TeamState:
 class V4Artifact:
     metadata: dict[str, Any]
     feature_columns: list[str]
-    booster_home: lgb.Booster
-    booster_away: lgb.Booster
+    booster_home: object  # lgb.Booster OR catboost.CatBoostRegressor
+    booster_away: object
     temperature_T: float | None
     team_state: dict[str, dict[str, TeamState]]  # league → team → TeamState
     elo_initial: float = DEFAULT_INITIAL
     elo_k: float = DEFAULT_K
     elo_home_adv: float = DEFAULT_HOME_ADV
+    # V5 W7 multi-backend support. model_type discriminates how predict_lambdas
+    # invokes the boosters and how save/load (de)serialize them. cat_features
+    # lists the categorical column names CatBoost uses (e.g. ["league"]);
+    # empty for lightgbm.
+    model_type: str = "lightgbm"
+    cat_features: list[str] = field(default_factory=list)
 
 
 # --------- save / load ----------------------------------------------------
@@ -93,8 +99,16 @@ class V4Artifact:
 def save_artifact(artifact: V4Artifact, out_dir: str | Path) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    artifact.booster_home.save_model(str(out / "booster_home.txt"))
-    artifact.booster_away.save_model(str(out / "booster_away.txt"))
+    if artifact.model_type == "catboost":
+        # CatBoost's native binary format. Note: the .cbm extension keeps the
+        # file format implicit; load_model() relies on it.
+        artifact.booster_home.save_model(str(out / "booster_home.cbm"))
+        artifact.booster_away.save_model(str(out / "booster_away.cbm"))
+    elif artifact.model_type == "lightgbm":
+        artifact.booster_home.save_model(str(out / "booster_home.txt"))
+        artifact.booster_away.save_model(str(out / "booster_away.txt"))
+    else:
+        raise ValueError(f"unknown model_type {artifact.model_type!r}")
     with open(out / "metadata.json", "w") as f:
         dump({
             "metadata": artifact.metadata,
@@ -102,6 +116,8 @@ def save_artifact(artifact: V4Artifact, out_dir: str | Path) -> Path:
             "elo_initial": artifact.elo_initial,
             "elo_k": artifact.elo_k,
             "elo_home_adv": artifact.elo_home_adv,
+            "model_type": artifact.model_type,
+            "cat_features": list(artifact.cat_features),
         }, f, indent=2, default=str)
     with open(out / "temperature.json", "w") as f:
         dump({"T": artifact.temperature_T}, f)
@@ -127,10 +143,23 @@ def save_artifact(artifact: V4Artifact, out_dir: str | Path) -> Path:
 
 def load_artifact(in_dir: str | Path) -> V4Artifact:
     in_path = Path(in_dir)
-    booster_home = lgb.Booster(model_file=str(in_path / "booster_home.txt"))
-    booster_away = lgb.Booster(model_file=str(in_path / "booster_away.txt"))
     with open(in_path / "metadata.json") as f:
         meta = load(f)
+    model_type = meta.get("model_type", "lightgbm")
+    cat_features = list(meta.get("cat_features", []))
+
+    if model_type == "catboost":
+        import catboost as cb  # imported lazily so lightgbm-only deploys avoid the cost
+        booster_home = cb.CatBoostRegressor()
+        booster_home.load_model(str(in_path / "booster_home.cbm"))
+        booster_away = cb.CatBoostRegressor()
+        booster_away.load_model(str(in_path / "booster_away.cbm"))
+    elif model_type == "lightgbm":
+        booster_home = lgb.Booster(model_file=str(in_path / "booster_home.txt"))
+        booster_away = lgb.Booster(model_file=str(in_path / "booster_away.txt"))
+    else:
+        raise ValueError(f"unknown model_type {model_type!r} in metadata.json")
+
     with open(in_path / "temperature.json") as f:
         T = load(f).get("T")
     with open(in_path / "team_state.json") as f:
@@ -160,6 +189,8 @@ def load_artifact(in_dir: str | Path) -> V4Artifact:
         elo_initial=meta.get("elo_initial", DEFAULT_INITIAL),
         elo_k=meta.get("elo_k", DEFAULT_K),
         elo_home_adv=meta.get("elo_home_adv", DEFAULT_HOME_ADV),
+        model_type=model_type,
+        cat_features=cat_features,
     )
 
 
@@ -372,10 +403,26 @@ def predict_lambdas(
     artifact: V4Artifact,
     feature_df: pd.DataFrame,
 ) -> np.ndarray:
-    """Run GBM and return (N, 2) lambdas. Rows with missing features get NaN."""
-    X = feature_df[artifact.feature_columns].astype(float).values
-    lh = artifact.booster_home.predict(X)
-    la = artifact.booster_away.predict(X)
-    lh = np.clip(lh, 0.05, 8.0)
-    la = np.clip(la, 0.05, 8.0)
+    """Run the artifact's two boosters and return (N, 2) lambdas.
+
+    Dispatches on ``artifact.model_type``:
+      - "lightgbm" → numpy array path (legacy V4 default)
+      - "catboost" → pandas DataFrame path with categorical columns as string
+                     (CatBoost takes the dataframe directly; lighter coupling
+                     than building a Pool ourselves)
+    Both branches clip the lambda to [0.05, 8.0] for DC-grid safety.
+    """
+    if artifact.model_type == "catboost":
+        X = feature_df[artifact.feature_columns].copy()
+        for c in artifact.cat_features:
+            if c in X.columns:
+                X[c] = X[c].astype(str).fillna("UNK")
+        lh = artifact.booster_home.predict(X)
+        la = artifact.booster_away.predict(X)
+    else:
+        X = feature_df[artifact.feature_columns].astype(float).values
+        lh = artifact.booster_home.predict(X)
+        la = artifact.booster_away.predict(X)
+    lh = np.clip(np.asarray(lh, dtype=float), 0.05, 8.0)
+    la = np.clip(np.asarray(la, dtype=float), 0.05, 8.0)
     return np.column_stack([lh, la])
