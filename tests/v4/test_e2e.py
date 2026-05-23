@@ -33,12 +33,19 @@ def _run_module(mod: str, *args: str) -> subprocess.CompletedProcess:
 class TestE2E:
     @pytest.fixture(scope="class")
     def trained_model_dir(self, tmp_path_factory):
-        """Train once for the whole class."""
+        """Train once for the whole class.
+
+        Explicitly pins to --model lgb because TestE2E asserts on the
+        lightgbm-specific .txt artifact filenames. The TestE2ECatBoost class
+        below covers the catboost path. After W12, default is `cat`, so this
+        is the explicit-fallback-to-lgb test.
+        """
         out_dir = tmp_path_factory.mktemp("v4_model")
         result = _run_module(
             "nutmeg.v4.cli.train",
             "--cutoff", "2024-08-01",
             "--out", str(out_dir),
+            "--model", "lgb",
             "--quiet",
         )
         assert result.returncode == 0, f"train failed: {result.stderr}"

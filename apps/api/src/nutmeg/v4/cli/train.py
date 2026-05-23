@@ -52,10 +52,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--model",
         choices=("lgb", "cat"),
-        default="lgb",
-        help="Booster backend. 'lgb' = lightgbm (V4 default). 'cat' = CatBoost "
-        "(V5 W7 — uses `league` as a categorical feature; multi-season "
-        "tests show -0.0033 log-loss improvement vs lgb).",
+        default="cat",
+        help="Booster backend. 'cat' = CatBoost (V5 W12 default — uses `league` "
+        "as a categorical feature; multi-season tests show -0.0033 log-loss "
+        "improvement vs lgb across 3 seasons). 'lgb' = lightgbm (V4 legacy "
+        "fallback; available for A/B comparison).",
     )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)

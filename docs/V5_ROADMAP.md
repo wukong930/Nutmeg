@@ -36,7 +36,7 @@ V5 是在 V4（GBM-λ + Dixon-Coles + Temperature scaling）基础上的**演进
 | W9 ⚠️ | Per-league temperature ablation | 模块就绪 + 9 单测 + walk_forward 集成；但 90 天 val 太小 → 过拟合，log-loss 3/3 季变差 | 见 [v5_w9_per_league_temperature.md](v5_w9_per_league_temperature.md)。框架保留，待 val 窗 ≥800/league 再启用 |
 | W10 ✅ | 实验追踪自动化 | `experiment_tracker.py` + `nutmeg-bench --track` + `nutmeg-experiment-diff` CLI + GH Actions 周日 cron `.github/workflows/weekly-bench.yml` | 见 [v5_w10_experiment_tracking.md](v5_w10_experiment_tracking.md) |
 | W11 ✅ | API 整合 | `POST /api/v4/predictions/upcoming` 轻量端点；`GET /api/v4/observation/live-vs-backtest`；ModelInfo + Health 加 `model_type`；RecommendRequest 加 `snapshot_phase` | 见 [v5_w11_api_consolidation.md](v5_w11_api_consolidation.md)。v1 路由 W2 已删 |
-| W12 | 评估与扩展决策 | V5_HANDOFF；决定是否买 API-Football | 实战 ROI ≥ +2pp 即解锁付费数据 |
+| W12 ✅ | V5 收尾 | CatBoost 切默认；`docs/V5_HANDOFF.md` + `docs/v5_w12_paid_data_decision.md` + `docs/V6_ROADMAP_DRAFT.md`；最终 cards；`v5.0-shipped` 里程碑 tag。付费数据延后到 V6（W8 cron 还没攒够 4 周数据） | V5 完成 |
 
 **回退点**：每周一个 git tag `v5.w<n>`，恶化时 `git reset --hard v5.w<n-1>` 重做。
 
