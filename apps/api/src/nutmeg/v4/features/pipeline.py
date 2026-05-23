@@ -21,6 +21,10 @@ from pathlib import Path
 import pandas as pd
 
 from nutmeg.v4.features.clubelo_features import CLUBELO_FEATURE_COLUMNS, build_clubelo_features
+from nutmeg.v4.features.cup_features import (
+    CUP_FEATURE_COLUMNS,
+    build_cup_features,
+)
 from nutmeg.v4.features.elo import build_elo_features
 from nutmeg.v4.features.form import build_form_features
 from nutmeg.v4.features.lineup_features import (
@@ -93,6 +97,74 @@ def feature_columns_with_lineups() -> list[str]:
     return list(GBM_FEATURE_COLUMNS) + LINEUP_VALIDATED_COLUMNS
 
 
+def feature_columns_with_cup(*, include_lineups: bool = False) -> list[str]:
+    """V7 W7 — feature column list including the 5 V6 W11 cup side-channel cols.
+
+    By default returns `GBM_FEATURE_COLUMNS + CUP_FEATURE_COLUMNS` (no
+    lineup cols). Pass `include_lineups=True` to stack on top of
+    `feature_columns_with_lineups()` for combined cup + lineup runs.
+
+    The separation is intentional: cup wiring + lineup wiring are
+    independently optional in `nutmeg-train`. Conflating them here would
+    cause `KeyError` when `--with-cup-features` is used without the
+    lineup cache.
+
+    Cup cols emit 0 on every domestic-league training row
+    (`is_cup_match=0` etc.) so adding them to the GBM input is a no-op
+    for the existing 24/25 backtest; they only contribute signal when
+    cup history rows have been merged into the training frame via the
+    V7 W6 cup_history parquets.
+
+    See [v7_w7_cup_features_pipeline.md](../../../../docs/v7_w7_cup_features_pipeline.md)
+    for the full wiring rationale + what V7 W7 deliberately doesn't do
+    (no cup-trained model yet — that needs odds backfill).
+    """
+    if include_lineups:
+        return feature_columns_with_lineups() + list(CUP_FEATURE_COLUMNS)
+    return list(GBM_FEATURE_COLUMNS) + list(CUP_FEATURE_COLUMNS)
+
+
+def _merge_cup_round_labels(
+    df: pd.DataFrame,
+    cup_history_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Left-join cup-history's `round_label` onto `df` by (date, league, home, away).
+
+    Rows in `df` not matching any cup-history row get `round_label=None`
+    (later treated as "no knockout flag" by `is_knockout_round`). Rows
+    that DO match get the cup's round string ("Group Stage - 3" /
+    "Round of 16" / "Final" / etc.) which `build_cup_features` then
+    decodes into the `is_knockout` flag.
+
+    Date normalization: both sides converted to date-only strings to
+    avoid datetime/string mismatch. df.date may be Timestamp; cup_history
+    rows have ISO YYYY-MM-DD strings (or datetime after multi-season load).
+    """
+    if cup_history_df is None or len(cup_history_df) == 0:
+        out = df.copy()
+        out["round_label"] = None
+        return out
+
+    df_left = df.copy()
+    df_left["_join_date"] = pd.to_datetime(df_left["date"]).dt.strftime("%Y-%m-%d")
+    df_right = cup_history_df[
+        ["date", "league", "home_team", "away_team", "round_label"]
+    ].copy()
+    df_right["_join_date"] = pd.to_datetime(df_right["date"]).dt.strftime("%Y-%m-%d")
+    # Drop the original `date` column on right side so the merge doesn't
+    # collide with df_left's `date` column
+    df_right = df_right.drop(columns=["date"])
+
+    merged = df_left.merge(
+        df_right,
+        on=["_join_date", "league", "home_team", "away_team"],
+        how="left",
+        suffixes=("", "_cup"),
+    )
+    merged = merged.drop(columns=["_join_date"])
+    return merged
+
+
 def build_feature_frame(
     df: pd.DataFrame,
     *,
@@ -101,6 +173,7 @@ def build_feature_frame(
     lineup_lookup: dict | None = None,
     injury_lookup: dict | None = None,
     recent_injury_lookup: dict | None = None,
+    cup_history_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Build all features. df must contain the canonical MATCH_COLUMNS.
 
@@ -118,6 +191,14 @@ def build_feature_frame(
     a lookup entry get 0 (no recent injuries data); the GBM should NOT
     be trained with these columns unless lineup data is available for
     most training rows (use `feature_columns_with_lineups()`).
+
+    V7 W7: when ``cup_history_df`` is provided (loaded via
+    `nutmeg.v4.data.cup_history.load_multi_season_cup_history`), the 5
+    V6 W11 cup feature columns are appended. Domestic-league rows merge
+    to no cup record → all 5 cup cols emit 0. Cup-match rows (those
+    actually present in the training frame; W7 ships the WIRING but
+    the training frame doesn't include cup rows yet — see W7 doc)
+    pick up `is_cup_match=1` plus the structural flags.
     """
     out = build_market_features(df)
     out = build_market_dynamics_features(out)
@@ -132,4 +213,11 @@ def build_feature_frame(
             injury_lookup=injury_lookup,
             recent_injury_lookup=recent_injury_lookup,
         )
+    # V7 W7: cup side-channel cols. Always safe to add — domestic-league
+    # rows emit 0 for every cup column. Only fires when caller passes
+    # cup_history_df so we don't impose pandas-merge cost on the default
+    # training path.
+    if cup_history_df is not None:
+        out = _merge_cup_round_labels(out, cup_history_df)
+        out = build_cup_features(out, league_col="league", round_col="round_label")
     return out

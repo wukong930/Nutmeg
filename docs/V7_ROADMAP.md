@@ -53,7 +53,7 @@ cup training data. Track B backfills.
 | W | Theme | Deliverable | Status |
 |---|---|---|---|
 | **V7 W6** ✅ | 杯赛历史 fixtures ingest | `data.cup_history` 数据层模块 (normalize_fixture / parquet roundtrip / multi-season concat / derive_round_flags); `nutmeg-ingest-cup-history` CLI (UCL/UEL/UECL/FAC/COPA_DEL_REY/COPPA_ITALIA/DFB_POKAL/COUPE_DE_FRANCE/WC/EURO/COPA_AMERICA/WC_QUAL_UEFA, 默认拒绝非 cup code); per-(league, season) parquet 输出; 29 new tests (559/559 V4 suite). See [v7_w6_cup_history_ingest.md](v7_w6_cup_history_ingest.md) | shipped |
-| V7 W7 | `feature_columns_with_cup()` integration | Wire the 5 W11 side-channel cols into a new feature set; multi-fold ablation (4 cutoffs × {EPL+UCL, ESP_LA_LIGA+UCL, ITA_SERIE_A+UCL, club_cup_pooled}) | 4-5d |
+| **V7 W7** ✅ | `feature_columns_with_cup()` + pipeline wiring | `feature_columns_with_cup(include_lineups=False/True)` 拆开 cup + lineup 独立; `build_feature_frame(cup_history_df=...)` 加 `_merge_cup_round_labels` left-join + 调 `build_cup_features`; `nutmeg-train --with-cup-features` + `--cup-leagues` / `--cup-seasons` / `--cup-history-dir` flags; 17 new tests (576/576 V4 suite). **多 fold ablation 推迟到 W8** (需先 backfill cup odds + reconcile team names). See [v7_w7_cup_features_pipeline.md](v7_w7_cup_features_pipeline.md) | shipped |
 | V7 W8 | Cup-aware artifact ship | `nutmeg-train --with-cup-features` → opt-in `data/v4_model_cat_cup/`. A/B vs default on cup-fixture predictions. | 2-3d |
 
 ## P2 — Stretch / opportunistic

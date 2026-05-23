@@ -22,6 +22,7 @@ import pandas as pd
 from nutmeg.v4.calibration.temperature import fit_temperature_1x2
 from nutmeg.v4.data import load_all_matches
 from nutmeg.v4.features import GBM_FEATURE_COLUMNS, build_feature_frame
+from nutmeg.v4.features.pipeline import feature_columns_with_cup
 from nutmeg.v4.features.lineup_features import _fixture_key
 from nutmeg.v4.features.pipeline import (
     LINEUP_VALIDATED_COLUMNS,
@@ -83,6 +84,38 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated season-start years for lineup ingest (only used "
         "with --with-lineups). Default: 2023,2024.",
     )
+    parser.add_argument(
+        "--with-cup-features",
+        action="store_true",
+        help="V7 W7 — include the 5 V6 W11 cup side-channel feature columns "
+        "(is_cup_match / is_knockout / is_two_legged / "
+        "is_national_team_match / competition_type_id). Loads cup-history "
+        "parquets (V7 W6) and merges round-label info onto the training "
+        "frame. Domestic-league rows emit 0 for every cup column; only "
+        "cup-match rows contribute signal. **NOTE**: V7 W7 ships the "
+        "wiring only; actual cup-data training value depends on cup "
+        "fixtures being present in the training frame, which requires "
+        "odds backfill (V7 W8+ work).",
+    )
+    parser.add_argument(
+        "--cup-history-dir",
+        default="data/external/cup_history",
+        help="Where the V7 W6 cup-history parquets live "
+        "(default data/external/cup_history). Only used with "
+        "--with-cup-features.",
+    )
+    parser.add_argument(
+        "--cup-leagues",
+        default="UCL,UEL",
+        help="Comma-separated cup codes to load from the cup-history dir "
+        "(default UCL,UEL). Only used with --with-cup-features.",
+    )
+    parser.add_argument(
+        "--cup-seasons",
+        default="2021,2022,2023,2024",
+        help="Comma-separated cup season-start years to load "
+        "(default 2021,2022,2023,2024). Only used with --with-cup-features.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -125,12 +158,35 @@ def main(argv: list[str] | None = None) -> int:
             args.quiet,
         )
 
+    # V7 W7: optional cup-history merge. When --with-cup-features, load
+    # per-(league, season) parquets from --cup-history-dir into a single
+    # DataFrame and pass through build_feature_frame so the 5 V6 W11 cup
+    # side-channel cols get appended. Domestic-league rows emit 0; cup
+    # rows (when present in `df`) pick up the structural flags.
+    cup_history_df = None
+    if args.with_cup_features:
+        from pathlib import Path as _Path
+        from nutmeg.v4.data.cup_history import load_multi_season_cup_history
+        cup_leagues = [s.strip() for s in args.cup_leagues.split(",") if s.strip()]
+        cup_seasons = [int(s.strip()) for s in args.cup_seasons.split(",") if s.strip()]
+        cup_history_df = load_multi_season_cup_history(
+            _Path(args.cup_history_dir),
+            leagues=cup_leagues,
+            seasons=cup_seasons,
+        )
+        _info(
+            f"  cup history: {len(cup_history_df)} fixtures across "
+            f"{len(cup_leagues)} cups × {len(cup_seasons)} seasons",
+            args.quiet,
+        )
+
     _info("Building features ...", args.quiet)
     feats = build_feature_frame(
         df,
         lineup_lookup=lineup_lookup,
         injury_lookup=injury_lookup,
         recent_injury_lookup=recent_injury_lookup,
+        cup_history_df=cup_history_df,
     )
 
     # Time split
@@ -143,11 +199,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: not enough training matches ({len(train)})", file=sys.stderr)
         return 1
 
-    # Compose feature column list. With --with-lineups, append validated
-    # recent_n_injuries columns; else just V5 baseline.
-    base_numeric_cols = (
-        feature_columns_with_lineups() if args.with_lineups else list(GBM_FEATURE_COLUMNS)
-    )
+    # Compose feature column list. Each flag is INDEPENDENT — the GBM
+    # input is the union of whichever transforms were actually run:
+    #   --with-lineups        → +2 lineup validated cols (V6 W6)
+    #   --with-cup-features   → +5 cup side-channel cols (V6 W11 + V7 W6)
+    #   both                  → +7 cols
+    #   neither               → V5 W12 baseline (39 cols)
+    # Conflating either flag into the other would break callers that only
+    # have one data source ingested.
+    if args.with_cup_features and args.with_lineups:
+        base_numeric_cols = feature_columns_with_cup(include_lineups=True)
+    elif args.with_cup_features:
+        base_numeric_cols = feature_columns_with_cup(include_lineups=False)
+    elif args.with_lineups:
+        base_numeric_cols = feature_columns_with_lineups()
+    else:
+        base_numeric_cols = list(GBM_FEATURE_COLUMNS)
 
     # Booster training — backend depends on --model
     if args.model == "cat":
