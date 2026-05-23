@@ -1,0 +1,108 @@
+name: Daily Lineup Refresh
+
+# V6 W8 — daily heartbeat that:
+#  1. proves the API-Football token still works (catches 401s before they
+#     break a real recommend call)
+#  2. refreshes the lineup + injury cache for past 3 days so the user's
+#     LOCAL clone, once it pulls (or once the user reruns the same job
+#     locally), has fresh data for tonight's prediction
+#  3. uploads the small daily summary JSON as a GH Actions artifact
+#     (cache files themselves stay gitignored; artifact has 14-day retention
+#     and is private to the repo Actions UI)
+#
+# The actual recommend command is intentionally NOT run on CI — the user
+# places real bets locally, with their own bankroll, and we don't want a
+# cloud cron deciding for them. The cron is purely a data-freshness +
+# canary tool.
+#
+# Required secret: NUTMEG_API_FOOTBALL_KEY (set via repo Settings → Secrets).
+# Repo lives at https://github.com/wukong930/Nutmeg. If the secret is
+# missing, the workflow short-circuits with a clear error.
+
+on:
+  schedule:
+    # 06:00 UTC ≈ after most Asian + European late kickoffs settle
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      leagues:
+        description: "Comma-separated V4 league codes"
+        default: "EPL,ESP_LA_LIGA"
+      days:
+        description: "Lookback window in days"
+        default: "3"
+      include_injuries:
+        description: "Also pull /injuries (per-team-season)"
+        type: boolean
+        default: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NUTMEG_API_FOOTBALL_KEY: ${{ secrets.NUTMEG_API_FOOTBALL_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify API token secret is set
+        run: |
+          if [ -z "$NUTMEG_API_FOOTBALL_KEY" ]; then
+            echo "::error::NUTMEG_API_FOOTBALL_KEY secret is not configured."
+            echo "Add it under repo Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          # Mask in logs as a belt-and-braces check (GH masks secrets by default)
+          echo "::add-mask::$NUTMEG_API_FOOTBALL_KEY"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install libomp (LightGBM runtime)
+        run: sudo apt-get update && sudo apt-get install -y libgomp1
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-extras
+
+      - name: Compute daily tag
+        id: tag
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Refresh lineups + injuries
+        run: |
+          LEAGUES="${{ github.event.inputs.leagues || 'EPL,ESP_LA_LIGA' }}"
+          DAYS="${{ github.event.inputs.days || '3' }}"
+          if [ "${{ github.event.inputs.include_injuries }}" = "false" ]; then
+            INJ_FLAG=""
+          else
+            INJ_FLAG="--include-injuries"
+          fi
+          PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.refresh_lineups \
+            --leagues "$LEAGUES" \
+            --days "$DAYS" \
+            --cache-dir data/external/api_football \
+            $INJ_FLAG
+
+      - name: Show daily summary
+        run: |
+          SUMMARY="data/external/api_football/_daily_refresh_${{ steps.tag.outputs.date }}.json"
+          if [ -f "$SUMMARY" ]; then
+            echo "=== Daily summary ==="
+            cat "$SUMMARY"
+          else
+            echo "::warning::No daily summary file produced (no fixtures in window?)"
+          fi
+
+      - name: Upload daily summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-refresh-${{ steps.tag.outputs.date }}
+          path: data/external/api_football/_daily_refresh_*.json
+          retention-days: 14
+          if-no-files-found: warn

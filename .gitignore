@@ -74,6 +74,11 @@ data/*.parquet
 # Experiment outputs (W10) — tracked via git tags + summary cards, not raw artifacts
 data/v4_model/experiments/
 
+# Trained model binaries — large + user-local; rebuild via nutmeg-train
+data/v4_model/
+data/v4_model_cat/
+data/v4_model_cat_lineups/
+
 # Local SQLite databases (observation layer, dev only)
 *.db
 *.sqlite
