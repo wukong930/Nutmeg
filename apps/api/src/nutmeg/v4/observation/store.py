@@ -39,7 +39,13 @@ from pathlib import Path
 from typing import Any, Iterator, Optional
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # v2 added snapshot_phase + model_type columns
+
+
+# Valid snapshot_phase values. "closing" is the legacy default used everywhere
+# pre-W8; "pre_close" is for ≥60-min-before-kickoff snapshots; "post_close"
+# is a snapshot taken AFTER closing line is published (rare; for diagnostics).
+SNAPSHOT_PHASES = ("pre_close", "closing", "post_close")
 
 
 SCHEMA_SQL = """
@@ -57,7 +63,14 @@ CREATE TABLE IF NOT EXISTS recommendation_sessions (
     n_fixtures    INTEGER NOT NULL,
     n_recommendations INTEGER NOT NULL,
     request_json  TEXT NOT NULL,
-    metadata_json TEXT
+    metadata_json TEXT,
+    -- V5 W8 additions: capture which snapshot phase this session represents
+    -- (pre_close = 60 min before kickoff; closing = at closing line publish;
+    -- post_close = diagnostic snapshot after closing). Most legacy rows are
+    -- "closing" — the migration backfills NULLs to that.
+    snapshot_phase TEXT DEFAULT 'closing',
+    -- Which model backend produced these recommendations (W7)
+    model_type    TEXT DEFAULT 'lightgbm'
 );
 
 CREATE TABLE IF NOT EXISTS single_predictions (
@@ -148,6 +161,28 @@ def open_db(path: str | Path) -> Iterator[sqlite3.Connection]:
 
 def _init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
+    # Migration: add snapshot_phase + model_type to pre-W8 v1 DBs that already
+    # exist on disk. SQLite is forgiving here — ALTER TABLE ADD COLUMN is
+    # idempotent if the column doesn't exist, but raises if it does, so we
+    # check first via PRAGMA.
+    cur = conn.execute("PRAGMA table_info(recommendation_sessions)")
+    cols = {row["name"] for row in cur.fetchall()}
+    if "snapshot_phase" not in cols:
+        conn.execute(
+            "ALTER TABLE recommendation_sessions ADD COLUMN snapshot_phase TEXT DEFAULT 'closing'"
+        )
+        conn.execute(
+            "UPDATE recommendation_sessions SET snapshot_phase = 'closing' "
+            "WHERE snapshot_phase IS NULL"
+        )
+    if "model_type" not in cols:
+        conn.execute(
+            "ALTER TABLE recommendation_sessions ADD COLUMN model_type TEXT DEFAULT 'lightgbm'"
+        )
+        conn.execute(
+            "UPDATE recommendation_sessions SET model_type = 'lightgbm' "
+            "WHERE model_type IS NULL"
+        )
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('version', ?)",
         (str(SCHEMA_VERSION),),
@@ -172,13 +207,20 @@ def insert_session(
     n_recommendations: int,
     request: dict,
     metadata: dict | None = None,
+    snapshot_phase: str = "closing",
+    model_type: str = "lightgbm",
 ) -> int:
+    if snapshot_phase not in SNAPSHOT_PHASES:
+        raise ValueError(
+            f"snapshot_phase must be one of {SNAPSHOT_PHASES}, got {snapshot_phase!r}"
+        )
     cur = conn.execute(
         """
         INSERT INTO recommendation_sessions
             (created_at, bankroll, model_cutoff, model_trained_at,
-             n_fixtures, n_recommendations, request_json, metadata_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             n_fixtures, n_recommendations, request_json, metadata_json,
+             snapshot_phase, model_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -186,6 +228,7 @@ def insert_session(
             n_fixtures, n_recommendations,
             json.dumps(request, ensure_ascii=False, default=str),
             json.dumps(metadata or {}, ensure_ascii=False, default=str),
+            snapshot_phase, model_type,
         ),
     )
     return int(cur.lastrowid)

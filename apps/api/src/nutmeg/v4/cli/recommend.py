@@ -236,6 +236,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--format", choices=["md", "json"], default="md")
     parser.add_argument("--record-to", default=None,
                         help="Optional SQLite path to record this recommendation session for later ROI tracking")
+    parser.add_argument(
+        "--snapshot-phase",
+        choices=("pre_close", "closing", "post_close"),
+        default="closing",
+        help="Which market phase this recommendation snapshot reflects. "
+        "'pre_close' for ≥60 min before kickoff, 'closing' (default) at "
+        "closing-line publish, 'post_close' for diagnostic after-the-fact "
+        "snapshots. Used by W8 live_vs_backtest to compare same-fixture "
+        "predictions across phases.",
+    )
     args = parser.parse_args(argv)
 
     fixtures = _read_fixtures(args.fixtures)
@@ -344,8 +354,16 @@ def main(argv: list[str] | None = None) -> int:
             "min_hit_probability": args.min_hit_probability,
             "min_kelly_stake": args.min_kelly_stake,
         }
-        session_id = record_session(args.record_to, request=request_dict, response=response_dict)
-        print(f"Recorded session #{session_id} to {args.record_to}", file=sys.stderr)
+        session_id = record_session(
+            args.record_to,
+            request=request_dict,
+            response=response_dict,
+            snapshot_phase=args.snapshot_phase,
+        )
+        print(
+            f"Recorded session #{session_id} (phase={args.snapshot_phase}) to {args.record_to}",
+            file=sys.stderr,
+        )
     return 0
 
 

@@ -22,14 +22,21 @@ def record_session(
     *,
     request: dict[str, Any],
     response: dict[str, Any],
+    snapshot_phase: str = "closing",
 ) -> int:
     """Write one recommend session to SQLite. Returns the session_id.
 
     `request` should be a dict equivalent to RecommendRequest (or what the
     CLI saw); `response` should be the recommend response dict (RecommendResponse).
     Both come straight from the API serialization layer.
+
+    ``snapshot_phase`` defaults to "closing" (the legacy V4 behavior — recording
+    at recommendation generation time which is usually shortly before kickoff).
+    Set to "pre_close" when running a ≥60-min-before-kickoff capture, and
+    "post_close" for after-the-fact diagnostic snapshots. See W8 docs.
     """
     model_info = response.get("model", {}) or {}
+    model_type = model_info.get("model_type", "lightgbm")
     with open_db(db_path) as conn:
         session_id = insert_session(
             conn,
@@ -40,6 +47,8 @@ def record_session(
             n_recommendations=int(response.get("n_recommendations", 0)),
             request=request,
             metadata={"model": model_info, "generated_at_utc": response.get("generated_at_utc")},
+            snapshot_phase=snapshot_phase,
+            model_type=model_type,
         )
         for p in response.get("single_match_predictions", []):
             insert_single_prediction(

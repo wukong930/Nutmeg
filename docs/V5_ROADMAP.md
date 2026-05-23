@@ -32,7 +32,7 @@ V5 是在 V4（GBM-λ + Dixon-Coles + Temperature scaling）基础上的**演进
 | W6 ✅ (mixed) | Ensemble ablation | xgb+cat+stacker 全部接入 walk_forward；`--with-ensemble` 比较 | **stacker 失败但 CatBoost 单模型胜出**（平均 -0.0033 vs LightGBM，三季全胜），见 [v5_w6_ablation.md](v5_w6_ablation.md)。W7 迁 prod 用 CatBoost。|
 | W7 ✅ | CatBoost prod 迁移 | `--model cat`、artifact 多后端、e2e 测试 | CatBoost 可作 prod 选项（W6 已证 -0.0033 多季稳定改善）；默认暂留 lgb 给 W8 观察期 |
 | W7+ | Bayesian 分层（推迟） | MAP per-league offset | 推迟到 W9 — 先做 W8 实战 |
-| W8 | 实战观察循环 | 双快照（闭盘前/后）+ live_vs_backtest | 每周自动 ROI gap 报告 |
+| W8 ✅ | 实战观察循环 | schema v2 (snapshot_phase + model_type)、`nutmeg-recommend --snapshot-phase`、`nutmeg-live-vs-backtest` CLI + 15 单元测试 | 见 [v5_w8_observation_loop.md](v5_w8_observation_loop.md)。CLI 跑通 demo DB，exit code 2 hooks 加好 |
 | W9 | 校准微调 | 让球独立 T + per-league T | ECE ≤ 0.020 |
 | W10 | 实验追踪自动化 | GH Actions + `experiment_tracker` | 每周 `docs/weekly/<YYYY-WW>.md` 自动 push |
 | W11 | 路由收敛 + 产品化 | 删 v1 路由，`/api/v4/predictions/upcoming` | 单一 v4 API |

@@ -53,6 +53,7 @@ nutmeg-recommend = "nutmeg.v4.cli.recommend:main"
 nutmeg-record-outcome = "nutmeg.v4.cli.record_outcome:main"
 nutmeg-roi-report = "nutmeg.v4.cli.roi_report:main"
 nutmeg-ingest-external = "nutmeg.v4.cli.ingest_external:main"
+nutmeg-live-vs-backtest = "nutmeg.v4.cli.live_vs_backtest:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
