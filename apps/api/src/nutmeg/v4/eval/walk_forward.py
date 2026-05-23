@@ -14,9 +14,12 @@ from nutmeg.v4.calibration import fit_temperature_1x2
 from nutmeg.v4.eval.baselines import pinnacle_baseline, uniform_baseline
 from nutmeg.v4.eval.metrics import summary
 from nutmeg.v4.features import GBM_FEATURE_COLUMNS, build_feature_frame
+from nutmeg.v4.model.cat_lambda import fit_cat_lambda
 from nutmeg.v4.model.dc_mle import fit_dixon_coles, predict_lambdas
 from nutmeg.v4.model.dixon_coles import lambdas_to_1x2_array
 from nutmeg.v4.model.gbm_lambda import fit_gbm_lambda
+from nutmeg.v4.model.stacker import fit_stacker
+from nutmeg.v4.model.xgb_lambda import fit_xgb_lambda
 
 
 @dataclass
@@ -33,6 +36,9 @@ class WalkForwardConfig:
     )
     min_train_matches: int = 100
     gbm_rho: float = -0.10   # tau correction for DC after GBM lambdas
+    # V5 W6: when True, also train XGBoost + CatBoost bases + stacker.
+    # The extra training adds ~30-60s per fold.
+    with_ensemble: bool = False
 
 
 def _three_way_split(df: pd.DataFrame, cfg: WalkForwardConfig, league: str):
@@ -97,6 +103,18 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
     val_pool = val_pool[val_pool.psc_home.notna()].copy()
     gbm = fit_gbm_lambda(train_pool, val_pool, feature_cols=GBM_FEATURE_COLUMNS)
 
+    # ---- V5 W6 ensemble: also train XGBoost + CatBoost on same pool ----
+    xgb_model = None
+    cat_model = None
+    if cfg.with_ensemble:
+        xgb_model = fit_xgb_lambda(train_pool, val_pool, feature_cols=GBM_FEATURE_COLUMNS)
+        # CatBoost gets `league` as a categorical feature in addition to the
+        # numeric GBM_FEATURE_COLUMNS — keeps the base meaningfully different.
+        cat_feature_cols = list(GBM_FEATURE_COLUMNS) + ["league"]
+        cat_model = fit_cat_lambda(
+            train_pool, val_pool, feature_cols=cat_feature_cols, cat_features=["league"],
+        )
+
     # Apply GBM to each league's val+test
     for d in per_league_data:
         test_clean = d["test"].dropna(subset=GBM_FEATURE_COLUMNS).copy()
@@ -117,6 +135,23 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
             d["probs_gbm_val"] = np.empty((0, 3))
         d["val_gbm_aligned"] = val_clean
 
+        # V5 W6: predict with xgb + cat on the same clean rows
+        if cfg.with_ensemble and xgb_model is not None and cat_model is not None:
+            lam_xgb_t = xgb_model.predict(test_clean)
+            d["probs_xgb_test"] = lambdas_to_1x2_array(lam_xgb_t, rho=cfg.gbm_rho)
+            lam_cat_t = cat_model.predict(test_clean)
+            d["probs_cat_test"] = lambdas_to_1x2_array(lam_cat_t, rho=cfg.gbm_rho)
+            if len(val_clean) > 0:
+                d["probs_xgb_val"] = lambdas_to_1x2_array(
+                    xgb_model.predict(val_clean), rho=cfg.gbm_rho
+                )
+                d["probs_cat_val"] = lambdas_to_1x2_array(
+                    cat_model.predict(val_clean), rho=cfg.gbm_rho
+                )
+            else:
+                d["probs_xgb_val"] = np.empty((0, 3))
+                d["probs_cat_val"] = np.empty((0, 3))
+
     # ---- Fit global temperature on validation predictions (one calibrator per model) ----
     # MLE-DC calibrator
     mle_val_probs = np.vstack([d["probs_mle_val"] for d in per_league_data if len(d["probs_mle_val"]) > 0])
@@ -130,11 +165,41 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
     ])
     cal_gbm = fit_temperature_1x2(gbm_val_probs, gbm_val_labels) if len(gbm_val_probs) >= 100 else None
 
+    # V5 W6 ensemble calibrators (stacker fits on val OOF, then temperature on val ensemble probs)
+    stacker = None
+    cal_ensemble = None
+    if cfg.with_ensemble:
+        xgb_val_probs = np.vstack(
+            [d.get("probs_xgb_val", np.empty((0, 3))) for d in per_league_data
+             if len(d.get("probs_xgb_val", np.empty((0, 3)))) > 0]
+        )
+        cat_val_probs = np.vstack(
+            [d.get("probs_cat_val", np.empty((0, 3))) for d in per_league_data
+             if len(d.get("probs_cat_val", np.empty((0, 3)))) > 0]
+        )
+        # All three base predictions must align on the same set of val rows
+        # (we used val_gbm_aligned for all three above, so this holds)
+        if (
+            len(gbm_val_probs) >= 100
+            and len(xgb_val_probs) == len(gbm_val_probs)
+            and len(cat_val_probs) == len(gbm_val_probs)
+        ):
+            stacker = fit_stacker(
+                [gbm_val_probs, xgb_val_probs, cat_val_probs], gbm_val_labels
+            )
+            # Use stacker on the same val data to fit ensemble temperature
+            ens_val_probs = stacker.predict(
+                [gbm_val_probs, xgb_val_probs, cat_val_probs]
+            )
+            cal_ensemble = fit_temperature_1x2(ens_val_probs, gbm_val_labels)
+
     # ---- Build report ----
     per_league = []
     all_pin, all_uni = [], []
     all_mle, all_mle_t = [], []
     all_gbm, all_gbm_t = [], []
+    all_xgb, all_cat = [], []
+    all_ens, all_ens_t = [], []
     all_y_full, all_y_gbm = [], []
 
     for d in per_league_data:
@@ -153,7 +218,24 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         # Pinnacle on the GBM-aligned subset (for apples-to-apples GBM vs Pinnacle)
         pin_gbm = pinnacle_baseline(test_gbm)
 
-        per_league.append({
+        # V5 W6 ensemble — only when feature flag on AND we have all three bases
+        probs_xgb = d.get("probs_xgb_test")
+        probs_cat = d.get("probs_cat_test")
+        probs_ens = None
+        probs_ens_t = None
+        if (
+            cfg.with_ensemble
+            and stacker is not None
+            and probs_xgb is not None
+            and probs_cat is not None
+            and len(probs_gbm) > 0
+        ):
+            probs_ens = stacker.predict([probs_gbm, probs_xgb, probs_cat])
+            probs_ens_t = (
+                cal_ensemble.predict(probs_ens) if cal_ensemble is not None else probs_ens
+            )
+
+        league_row = {
             "league": d["league"],
             "test_n": len(test),
             "test_n_gbm": len(test_gbm),
@@ -164,7 +246,13 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
             "mle_dc_temp":   summary(probs_mle_t, y_full) if cal_mle else None,
             "gbm_dc":        summary(probs_gbm, y_gbm) if len(probs_gbm) > 0 else None,
             "gbm_dc_temp":   summary(probs_gbm_t, y_gbm) if (cal_gbm and len(probs_gbm) > 0) else None,
-        })
+        }
+        if cfg.with_ensemble:
+            league_row["xgb_dc"] = summary(probs_xgb, y_gbm) if (probs_xgb is not None and len(probs_xgb) > 0) else None
+            league_row["cat_dc"] = summary(probs_cat, y_gbm) if (probs_cat is not None and len(probs_cat) > 0) else None
+            league_row["ensemble"] = summary(probs_ens, y_gbm) if probs_ens is not None else None
+            league_row["ensemble_temp"] = summary(probs_ens_t, y_gbm) if probs_ens_t is not None else None
+        per_league.append(league_row)
 
         all_pin.append(pin); all_uni.append(uni)
         all_mle.append(probs_mle); all_mle_t.append(probs_mle_t)
@@ -172,34 +260,53 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         if len(test_gbm) > 0:
             all_gbm.append(probs_gbm); all_gbm_t.append(probs_gbm_t)
             all_y_gbm.append(y_gbm)
+            if cfg.with_ensemble and probs_xgb is not None and probs_cat is not None:
+                all_xgb.append(probs_xgb)
+                all_cat.append(probs_cat)
+                if probs_ens is not None:
+                    all_ens.append(probs_ens)
+                if probs_ens_t is not None:
+                    all_ens_t.append(probs_ens_t)
 
     pooled_pin = np.vstack(all_pin); pooled_y_full = np.concatenate(all_y_full)
     pooled_uni = np.vstack(all_uni)
     pooled_mle = np.vstack(all_mle); pooled_mle_t = np.vstack(all_mle_t)
     pooled_gbm = np.vstack(all_gbm) if all_gbm else np.empty((0,3))
     pooled_gbm_t = np.vstack(all_gbm_t) if all_gbm_t else np.empty((0,3))
+    pooled_xgb = np.vstack(all_xgb) if all_xgb else np.empty((0,3))
+    pooled_cat = np.vstack(all_cat) if all_cat else np.empty((0,3))
+    pooled_ens = np.vstack(all_ens) if all_ens else np.empty((0,3))
+    pooled_ens_t = np.vstack(all_ens_t) if all_ens_t else np.empty((0,3))
     pooled_y_gbm = np.concatenate(all_y_gbm) if all_y_gbm else np.array([])
     # Pinnacle on GBM-aligned subset
     pinnacle_gbm = pinnacle_baseline(
         pd.concat([d["test_gbm_aligned"] for d in per_league_data], ignore_index=True)
     )
 
+    pooled = {
+        "test_n_full":   int(len(pooled_y_full)),
+        "test_n_gbm":    int(len(pooled_y_gbm)),
+        "pinnacle":      summary(pooled_pin, pooled_y_full),
+        "pinnacle_gbm":  summary(pinnacle_gbm, pooled_y_gbm) if len(pooled_y_gbm) > 0 else None,
+        "uniform":       summary(pooled_uni, pooled_y_full),
+        "mle_dc":        summary(pooled_mle, pooled_y_full),
+        "mle_dc_temp":   summary(pooled_mle_t, pooled_y_full) if cal_mle else None,
+        "gbm_dc":        summary(pooled_gbm, pooled_y_gbm) if len(pooled_y_gbm) > 0 else None,
+        "gbm_dc_temp":   summary(pooled_gbm_t, pooled_y_gbm) if (cal_gbm and len(pooled_y_gbm) > 0) else None,
+    }
+    if cfg.with_ensemble and len(pooled_y_gbm) > 0:
+        pooled["xgb_dc"] = summary(pooled_xgb, pooled_y_gbm) if len(pooled_xgb) > 0 else None
+        pooled["cat_dc"] = summary(pooled_cat, pooled_y_gbm) if len(pooled_cat) > 0 else None
+        pooled["ensemble"] = summary(pooled_ens, pooled_y_gbm) if len(pooled_ens) > 0 else None
+        pooled["ensemble_temp"] = summary(pooled_ens_t, pooled_y_gbm) if len(pooled_ens_t) > 0 else None
+
     return {
         "per_league": per_league,
-        "pooled": {
-            "test_n_full":   int(len(pooled_y_full)),
-            "test_n_gbm":    int(len(pooled_y_gbm)),
-            "pinnacle":      summary(pooled_pin, pooled_y_full),
-            "pinnacle_gbm":  summary(pinnacle_gbm, pooled_y_gbm) if len(pooled_y_gbm) > 0 else None,
-            "uniform":       summary(pooled_uni, pooled_y_full),
-            "mle_dc":        summary(pooled_mle, pooled_y_full),
-            "mle_dc_temp":   summary(pooled_mle_t, pooled_y_full) if cal_mle else None,
-            "gbm_dc":        summary(pooled_gbm, pooled_y_gbm) if len(pooled_y_gbm) > 0 else None,
-            "gbm_dc_temp":   summary(pooled_gbm_t, pooled_y_gbm) if (cal_gbm and len(pooled_y_gbm) > 0) else None,
-        },
+        "pooled": pooled,
         "calibrators": {
             "mle_T": cal_mle.T if cal_mle else None,
             "gbm_T": cal_gbm.T if cal_gbm else None,
+            "ensemble_T": cal_ensemble.T if cal_ensemble else None,
         },
         "cfg": {
             "train_window_days": cfg.train_window_days,

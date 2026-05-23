@@ -29,7 +29,7 @@ V5 是在 V4（GBM-λ + Dixon-Coles + Temperature scaling）基础上的**演进
 | W3 | 外部数据 ingest 铺底 | understat / clubelo / OddsPortal 入库 | 英超≥95%、J1=0%（接受） |
 | W4 ✅ | xG-lite + clubelo 特征 | `features/{xg_lite,clubelo_features}.py` + pipeline 集成 | **达成：24/25 log-loss 0.9987 → 0.9971（−0.0016）**；多季稳定改善 |
 | W5 ⚠️ | 市场动态 ablation | `features/market_dynamics.py` 框架就绪但 dormant | **负面结果**：drift 特征在 3 季验证中无法稳定降 log-loss；见 [v5_w5_ablation.md](v5_w5_ablation.md) |
-| W6 | Ensemble v1 | XGBoost + CatBoost + LogReg stacker | ensemble vs 最佳单模型 ≥ +0.001 |
+| W6 ✅ (mixed) | Ensemble ablation | xgb+cat+stacker 全部接入 walk_forward；`--with-ensemble` 比较 | **stacker 失败但 CatBoost 单模型胜出**（平均 -0.0033 vs LightGBM，三季全胜），见 [v5_w6_ablation.md](v5_w6_ablation.md)。W7 迁 prod 用 CatBoost。|
 | W7 | Bayesian 分层 | MAP per-league offset | J1/葡超 改善 ≥ +0.005，否则砍掉 |
 | W8 | 实战观察循环 | 双快照（闭盘前/后）+ live_vs_backtest | 每周自动 ROI gap 报告 |
 | W9 | 校准微调 | 让球独立 T + per-league T | ECE ≤ 0.020 |

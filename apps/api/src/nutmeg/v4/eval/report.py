@@ -65,6 +65,19 @@ def format_card(result):
         rows.append(_row("V4 GBM-λ + DC + Temp", gbm_t, pin["log_loss"], bold=True))
     if gbm:
         rows.append(_row("V4 GBM-λ + DC (raw)", gbm, pin["log_loss"]))
+    # V5 W6: alternative bases + ensemble (only present if walk-forward ran with_ensemble=True)
+    xgb = pooled.get("xgb_dc")
+    cat = pooled.get("cat_dc")
+    ens = pooled.get("ensemble")
+    ens_t = pooled.get("ensemble_temp")
+    if xgb:
+        rows.append(_row("V5 XGBoost + DC", xgb, pin["log_loss"]))
+    if cat:
+        rows.append(_row("V5 CatBoost + DC", cat, pin["log_loss"], bold=True))
+    if ens:
+        rows.append(_row("V5 Ensemble (stacker)", ens, pin["log_loss"]))
+    if ens_t:
+        rows.append(_row("V5 Ensemble + Temp", ens_t, pin["log_loss"]))
     if mle_t:
         rows.append(_row("V4 MLE DC + Temp", mle_t, pin["log_loss"]))
     rows.append(_row("V4 MLE DC (raw)", mle, pin["log_loss"]))

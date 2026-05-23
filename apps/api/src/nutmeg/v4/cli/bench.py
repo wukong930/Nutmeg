@@ -35,6 +35,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional path to also write the raw result as JSON",
     )
+    parser.add_argument(
+        "--with-ensemble",
+        action="store_true",
+        help="Also train XGBoost + CatBoost + stacker (V5 W6 ensemble path). "
+        "Adds ~60s per fold; required to see xgb/cat/ensemble columns in the card.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -44,9 +50,14 @@ def main(argv: list[str] | None = None) -> int:
     if not args.quiet:
         print(f"  loaded {len(df):,} matches", file=sys.stderr)
 
-    cfg = WalkForwardConfig()
+    cfg = WalkForwardConfig(with_ensemble=args.with_ensemble)
     if not args.quiet:
-        print(f"Running walk-forward: cutoff={cfg.test_cutoff.date()}, train_window={cfg.train_window_days}d ...", file=sys.stderr)
+        ens_msg = " + ensemble (xgb+cat+stacker)" if args.with_ensemble else ""
+        print(
+            f"Running walk-forward{ens_msg}: cutoff={cfg.test_cutoff.date()}, "
+            f"train_window={cfg.train_window_days}d ...",
+            file=sys.stderr,
+        )
     result = run_walk_forward(df, cfg)
 
     card = format_card(result)

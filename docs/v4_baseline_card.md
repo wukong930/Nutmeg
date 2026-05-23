@@ -1,15 +1,6 @@
 # V4 Baseline Card
 
-_Generated 2026-05-22 21:40 UTC_
-
-## Configuration
-
-- Train window:     **540** days before cutoff
-- Validation window: **90** days (tem  wrote docs/v4_baseline_card.md
-
-# V4 Baseline Card
-
-_Generated 2026-05-22 21:40 UTC_
+_Generated 2026-05-23 02:18 UTC_
 
 ## Configuration
 
@@ -31,6 +22,10 @@ _Generated 2026-05-22 21:40 UTC_
 |   Pinnacle (GBM-eligible)        | 0.9904 | 0.5916 | 0.5124 | 0.0123 | -0.0039 |
 | **V4 GBM-λ + DC + Temp**         | 0.9971 | 0.5961 | 0.5077 | 0.0185 | +0.0028 |
 | V4 GBM-λ + DC (raw)              | 0.9974 | 0.5961 | 0.5077 | 0.0151 | +0.0032 |
+| V5 XGBoost + DC                  | 0.9963 | 0.5953 | 0.5121 | 0.0153 | +0.0021 |
+| **V5 CatBoost + DC**             | 0.9960 | 0.5950 | 0.5112 | 0.0120 | +0.0018 |
+| V5 Ensemble (stacker)            | 0.9989 | 0.5971 | 0.5050 | 0.0203 | +0.0047 |
+| V5 Ensemble + Temp               | 0.9998 | 0.5977 | 0.5050 | 0.0259 | +0.0056 |
 | V4 MLE DC + Temp                 | 1.0377 | 0.6239 | 0.4679 | 0.0232 | +0.0435 |
 | V4 MLE DC (raw)                  | 1.0384 | 0.6244 | 0.4679 | 0.0276 | +0.0442 |
 | Uniform 1/3                      | 1.0986 | 0.6667 | 0.4343 | 0.1009 | +0.1044 |
@@ -61,4 +56,3 @@ _Generated 2026-05-22 21:40 UTC_
 - **GBM-λ + DC** uses market closing odds as features, so it naturally tracks the market. It should NOT be expected to dramatically beat Pinnacle pooled — that would imply Pinnacle is materially inefficient.
 - The **practical alpha** for the user is: same probabilistic quality as Pinnacle, but with internal score-grid that enables 让球 / 大小球 / 比分 / 串关 computation that the market line alone can't.
 - Per-league regressions point to where extra features (xG, lineups, schedule congestion) would add value next.
-

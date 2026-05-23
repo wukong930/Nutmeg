@@ -87,6 +87,27 @@ def format_multi_season(result: dict) -> str:
         lines.append(f"| {s['cutoff']} | {pin_e:.4f} | {gbm_e:.4f} |")
     lines.append("")
 
+    # V5 W6 ensemble columns — only when at least one season ran with_ensemble
+    any_ensemble = any(s.get("cat_dc") is not None for s in seasons)
+    if any_ensemble:
+        lines.append("## V5 W6 — Ensemble 三模型对比")
+        lines.append("")
+        lines.append("| Test cutoff | LightGBM (V4) | XGBoost | CatBoost | Ensemble | Ens + Temp |")
+        lines.append("|------------:|--------------:|--------:|---------:|---------:|-----------:|")
+        for s in seasons:
+            gt = _ll(s.get("gbm_dc_temp"))
+            xt = _ll(s.get("xgb_dc"))
+            ct = _ll(s.get("cat_dc"))
+            et = _ll(s.get("ensemble"))
+            ett = _ll(s.get("ensemble_temp"))
+            if gt is None or ct is None:
+                continue
+            lines.append(
+                f"| {s['cutoff']} | {_fmt(gt)} | {_fmt(xt)} | **{_fmt(ct)}** | "
+                f"{_fmt(et)} | {_fmt(ett)} |"
+            )
+        lines.append("")
+
     lines.append("## 解读")
     lines.append("")
     lines.append("- 若 **GBM Δ vs Pinnacle** 在所有季都接近 0（如 +0.005~+0.012），说明 V4 优势稳定。")

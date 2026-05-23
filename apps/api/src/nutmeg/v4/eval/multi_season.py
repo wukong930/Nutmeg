@@ -45,6 +45,11 @@ def run_multi_season(
             "mle_dc_temp":   pooled.get("mle_dc_temp"),
             "gbm_dc":        pooled.get("gbm_dc"),
             "gbm_dc_temp":   pooled.get("gbm_dc_temp"),
+            # V5 W6 ensemble columns (only populated when cfg.with_ensemble=True)
+            "xgb_dc":        pooled.get("xgb_dc"),
+            "cat_dc":        pooled.get("cat_dc"),
+            "ensemble":      pooled.get("ensemble"),
+            "ensemble_temp": pooled.get("ensemble_temp"),
             "calibrators":   result.get("calibrators"),
         })
     return {"seasons": seasons, "n_seasons": len(seasons)}

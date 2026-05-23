@@ -17,6 +17,7 @@ import pandas as pd
 from nutmeg.v4.data import load_all_matches
 from nutmeg.v4.eval.multi_season import DEFAULT_CUTOFFS, run_multi_season
 from nutmeg.v4.eval.multi_season_report import format_multi_season
+from nutmeg.v4.eval.walk_forward import WalkForwardConfig
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +28,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated YYYY-MM-DD list (default: 22/23, 23/24, 24/25 season starts)",
     )
     parser.add_argument("--output", default="docs/v4_multi_season_card.md")
+    parser.add_argument(
+        "--with-ensemble",
+        action="store_true",
+        help="Also train XGBoost + CatBoost + stacker (V5 W6). Adds ~3-4 min total.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -42,8 +48,10 @@ def main(argv: list[str] | None = None) -> int:
         cutoffs = DEFAULT_CUTOFFS
 
     if not args.quiet:
-        print(f"Running walk-forward for {len(cutoffs)} cutoffs ...", file=sys.stderr)
-    result = run_multi_season(df, cutoffs=cutoffs)
+        ens_msg = " + ensemble" if args.with_ensemble else ""
+        print(f"Running walk-forward for {len(cutoffs)} cutoffs{ens_msg} ...", file=sys.stderr)
+    base_cfg = WalkForwardConfig(with_ensemble=args.with_ensemble)
+    result = run_multi_season(df, cutoffs=cutoffs, base_cfg=base_cfg)
     if not args.quiet:
         print(f"  collected {result['n_seasons']} seasons", file=sys.stderr)
 
