@@ -65,6 +65,7 @@ nutmeg-ingest-odds = "nutmeg.v4.cli.ingest_odds:main"
 nutmeg-auto-settle = "nutmeg.v4.cli.auto_settle:main"
 nutmeg-weekly-report = "nutmeg.v4.cli.weekly_report:main"
 nutmeg-ingest-cup-history = "nutmeg.v4.cli.ingest_cup_history:main"
+nutmeg-ingest-cup-odds = "nutmeg.v4.cli.ingest_cup_odds:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
