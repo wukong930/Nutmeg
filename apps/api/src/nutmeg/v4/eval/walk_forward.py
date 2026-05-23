@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from nutmeg.v4.calibration import fit_temperature_1x2
+from nutmeg.v4.calibration.per_league import fit_per_league_temperature
 from nutmeg.v4.eval.baselines import pinnacle_baseline, uniform_baseline
 from nutmeg.v4.eval.metrics import summary
 from nutmeg.v4.features import GBM_FEATURE_COLUMNS, build_feature_frame
@@ -163,7 +164,24 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
     gbm_val_labels = np.concatenate([
         d["val_gbm_aligned"].result_1x2.values for d in per_league_data if len(d["probs_gbm_val"]) > 0
     ])
+    # V5 W9: also concatenate the league per row so per-league T can be fit
+    gbm_val_leagues = np.concatenate([
+        np.array([d["league"]] * len(d["probs_gbm_val"]))
+        for d in per_league_data if len(d["probs_gbm_val"]) > 0
+    ]) if any(len(d["probs_gbm_val"]) > 0 for d in per_league_data) else np.array([])
     cal_gbm = fit_temperature_1x2(gbm_val_probs, gbm_val_labels) if len(gbm_val_probs) >= 100 else None
+    cal_gbm_pl = (
+        # The 90-day val window in WalkForwardConfig leaves ~30-50 GBM-eligible
+        # matches per league — far below the 800-sample theoretical threshold.
+        # We lower to 30 (the same minimum used by fit_temperature_1x2 itself)
+        # so per-league T runs against ALL leagues with any val data; the
+        # cfg.validation_window_days could be raised in production for richer
+        # per-league fits, but for bench parity we keep the 90-day window.
+        fit_per_league_temperature(
+            gbm_val_probs, gbm_val_labels, gbm_val_leagues, min_samples=30
+        )
+        if len(gbm_val_probs) >= 100 else None
+    )
 
     # V5 W6 ensemble calibrators (stacker fits on val OOF, then temperature on val ensemble probs)
     stacker = None
@@ -198,6 +216,7 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
     all_pin, all_uni = [], []
     all_mle, all_mle_t = [], []
     all_gbm, all_gbm_t = [], []
+    all_gbm_pl_t = []   # V5 W9: per-league temperature
     all_xgb, all_cat = [], []
     all_ens, all_ens_t = [], []
     all_y_full, all_y_gbm = [], []
@@ -214,6 +233,12 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         probs_mle_t = cal_mle.predict(probs_mle) if cal_mle is not None else probs_mle
         probs_gbm = d["probs_gbm_test"]
         probs_gbm_t = cal_gbm.predict(probs_gbm) if (cal_gbm is not None and len(probs_gbm) > 0) else probs_gbm
+        # V5 W9: per-league T applied to this league's test slice
+        probs_gbm_pl_t = (
+            cal_gbm_pl.predict(probs_gbm, [d["league"]] * len(probs_gbm))
+            if (cal_gbm_pl is not None and len(probs_gbm) > 0)
+            else probs_gbm
+        )
 
         # Pinnacle on the GBM-aligned subset (for apples-to-apples GBM vs Pinnacle)
         pin_gbm = pinnacle_baseline(test_gbm)
@@ -246,6 +271,7 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
             "mle_dc_temp":   summary(probs_mle_t, y_full) if cal_mle else None,
             "gbm_dc":        summary(probs_gbm, y_gbm) if len(probs_gbm) > 0 else None,
             "gbm_dc_temp":   summary(probs_gbm_t, y_gbm) if (cal_gbm and len(probs_gbm) > 0) else None,
+            "gbm_dc_pl_temp": summary(probs_gbm_pl_t, y_gbm) if (cal_gbm_pl and len(probs_gbm) > 0) else None,
         }
         if cfg.with_ensemble:
             league_row["xgb_dc"] = summary(probs_xgb, y_gbm) if (probs_xgb is not None and len(probs_xgb) > 0) else None
@@ -259,6 +285,8 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         all_y_full.append(y_full)
         if len(test_gbm) > 0:
             all_gbm.append(probs_gbm); all_gbm_t.append(probs_gbm_t)
+            if cal_gbm_pl is not None:
+                all_gbm_pl_t.append(probs_gbm_pl_t)
             all_y_gbm.append(y_gbm)
             if cfg.with_ensemble and probs_xgb is not None and probs_cat is not None:
                 all_xgb.append(probs_xgb)
@@ -273,6 +301,7 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
     pooled_mle = np.vstack(all_mle); pooled_mle_t = np.vstack(all_mle_t)
     pooled_gbm = np.vstack(all_gbm) if all_gbm else np.empty((0,3))
     pooled_gbm_t = np.vstack(all_gbm_t) if all_gbm_t else np.empty((0,3))
+    pooled_gbm_pl_t = np.vstack(all_gbm_pl_t) if all_gbm_pl_t else np.empty((0,3))
     pooled_xgb = np.vstack(all_xgb) if all_xgb else np.empty((0,3))
     pooled_cat = np.vstack(all_cat) if all_cat else np.empty((0,3))
     pooled_ens = np.vstack(all_ens) if all_ens else np.empty((0,3))
@@ -293,6 +322,7 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         "mle_dc_temp":   summary(pooled_mle_t, pooled_y_full) if cal_mle else None,
         "gbm_dc":        summary(pooled_gbm, pooled_y_gbm) if len(pooled_y_gbm) > 0 else None,
         "gbm_dc_temp":   summary(pooled_gbm_t, pooled_y_gbm) if (cal_gbm and len(pooled_y_gbm) > 0) else None,
+        "gbm_dc_pl_temp": summary(pooled_gbm_pl_t, pooled_y_gbm) if (cal_gbm_pl and len(pooled_y_gbm) > 0) else None,
     }
     if cfg.with_ensemble and len(pooled_y_gbm) > 0:
         pooled["xgb_dc"] = summary(pooled_xgb, pooled_y_gbm) if len(pooled_xgb) > 0 else None
@@ -307,6 +337,7 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
             "mle_T": cal_mle.T if cal_mle else None,
             "gbm_T": cal_gbm.T if cal_gbm else None,
             "ensemble_T": cal_ensemble.T if cal_ensemble else None,
+            "gbm_pl_summary": cal_gbm_pl.summary() if cal_gbm_pl else None,
         },
         "cfg": {
             "train_window_days": cfg.train_window_days,
