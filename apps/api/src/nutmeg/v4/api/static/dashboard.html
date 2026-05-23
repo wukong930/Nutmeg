@@ -27,8 +27,8 @@
   <!-- Header -->
   <div class="flex items-center justify-between mb-6">
     <div>
-      <h1 class="text-2xl font-bold">Nutmeg V4 Dashboard</h1>
-      <p class="text-sm text-gray-500">基于 GBM-λ + Dixon-Coles 的足球预测与组合推荐系统</p>
+      <h1 class="text-2xl font-bold">Nutmeg · 竞彩足球助手</h1>
+      <p class="text-sm text-gray-500">中国体彩 · 胜平负 + 让球胜平负 · 串关推荐 (单关/复式 请用 <code class="bg-gray-100 px-1 rounded">nutmeg-rec</code> CLI)</p>
     </div>
     <div id="health-pill" class="text-sm">
       <span class="badge-warn">checking ...</span>
@@ -42,6 +42,7 @@
       <button data-tab="outcomes" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 录入结果</button>
       <button data-tab="roi" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ ROI 报告</button>
       <button data-tab="sessions" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 会话历史</button>
+      <button data-tab="rules" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ 规则说明</button>
     </nav>
   </div>
 
@@ -59,21 +60,26 @@
         class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
       <div class="mt-3 flex items-center space-x-4">
         <label class="text-sm">预算 ¥
-          <input id="bankroll" type="number" value="1000" class="w-24 px-2 py-1 border rounded text-sm">
+          <input id="bankroll" type="number" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm" title="起投 ¥2，建议 2 的倍数">
         </label>
         <label class="text-sm">最大推荐数
           <input id="top-n" type="number" value="10" min="1" max="50" class="w-16 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm">最小命中率
+        <label class="text-sm" title="模型预测命中率下限；默认 5% (与派奖率匹配)">最小命中率
           <input id="min-hit" type="number" value="0.05" step="0.01" min="0" max="1" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm">最小凯利 ¥
-          <input id="min-kelly" type="number" value="2" min="0" class="w-20 px-2 py-1 border rounded text-sm">
+        <label class="text-sm" title="凯利推荐金额下限；起投 ¥2 (步长 2)">最小凯利 ¥
+          <input id="min-kelly" type="number" value="2" min="2" step="2" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm flex items-center">
           <input id="record-session" type="checkbox" class="mr-1"> 记录到观测库
         </label>
       </div>
+      <p id="rules-hint" class="mt-2 text-xs text-gray-500">
+        竞彩规则: 起投 <strong>¥2</strong>, 单注上限 <strong>¥20,000</strong>,
+        混合过关 <strong>≤8 串</strong>, 派奖率 <strong>68.5%</strong> (vig 31.5%)。
+        <a href="#" data-tab-link="rules" class="text-indigo-600 hover:underline">详细规则 →</a>
+      </p>
       <div class="mt-4">
         <button id="btn-recommend" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
           生成推荐
@@ -163,6 +169,89 @@
     </div>
   </div>
 
+  <!-- Tab: Rules (V6 W10) -->
+  <div id="tab-rules" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
+      <h2 class="font-bold mb-2">中国体彩 · 竞彩足球 规则速查</h2>
+      <p class="text-sm text-gray-500 mb-4">数据来自 <code class="bg-gray-100 px-1 rounded">/api/v4/rules</code>,
+        与后端 <code class="bg-gray-100 px-1 rounded">nutmeg.v4.combo.lottery_rules.JINGCAI_DEFAULT</code> 保持同步。
+      </p>
+      <div id="rules-loading" class="text-sm text-gray-500">加载中 ...</div>
+      <div id="rules-content" class="hidden">
+
+        <h3 class="font-semibold mt-2 mb-2">💰 投注规则</h3>
+        <table class="mb-6">
+          <thead><tr><th>项目</th><th>取值</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td>起投单位</td><td class="num"><strong id="rule-stake-unit">—</strong></td>
+                <td>单注最低金额，必须是该数的整数倍 (¥2 起投, 倍数限制)</td></tr>
+            <tr><td>单注上限</td><td class="num"><strong id="rule-max-ticket">—</strong></td>
+                <td>每张票最大金额，超过则系统拒单</td></tr>
+            <tr><td>串关下限</td><td class="num"><strong id="rule-min-legs">—</strong></td>
+                <td>混合过关最少串关数 (2 串 1 起)</td></tr>
+            <tr><td>串关上限</td><td class="num"><strong id="rule-max-legs">—</strong></td>
+                <td>混合过关最多串关数 (8 串 1 封顶)</td></tr>
+          </tbody>
+        </table>
+
+        <h3 class="font-semibold mt-2 mb-2">🎲 派奖机制</h3>
+        <table class="mb-6">
+          <thead><tr><th>项目</th><th>取值</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td>派奖率</td><td class="num"><strong id="rule-payout">—</strong></td>
+                <td>平均派奖比例，¥1 投注长期回收 = 派奖率 × ¥1</td></tr>
+            <tr><td>庄家抽水 (vig)</td><td class="num"><strong id="rule-vig">—</strong></td>
+                <td>= 1 - 派奖率。对比 Pinnacle 体育博彩 vig ≈ 2.5%，竞彩高出 ~12x</td></tr>
+          </tbody>
+        </table>
+
+        <h3 class="font-semibold mt-2 mb-2">✅ 推荐门槛</h3>
+        <table class="mb-6">
+          <thead><tr><th>项目</th><th>取值</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td>最小 EV/单位</td><td class="num"><strong id="rule-min-ev">—</strong></td>
+                <td>票面 EV 低于此值则不推荐 (5% = 模型相对庄家盘口的安全边际)</td></tr>
+            <tr><td>最小命中率</td><td class="num"><strong id="rule-min-hit">—</strong></td>
+                <td>低命中率 + 高赔率 = 高方差，默认筛掉</td></tr>
+            <tr><td>凯利分数</td><td class="num"><strong>0.25</strong></td>
+                <td>部分凯利 (1/4 倍) 防止模型误差导致的过激加仓</td></tr>
+            <tr><td>单注预算占比</td><td class="num"><strong>≤ 5%</strong></td>
+                <td>单张票最高占预算 5%，避免单次重仓</td></tr>
+          </tbody>
+        </table>
+
+        <h3 class="font-semibold mt-2 mb-2">📋 玩法说明</h3>
+        <table class="mb-6">
+          <thead><tr><th>玩法</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><strong>胜平负 (1X2)</strong></td>
+                <td>不带让球，单纯判断主队胜 / 平 / 客队胜</td></tr>
+            <tr><td><strong>让球胜平负</strong></td>
+                <td>带<em>整数</em>让球数 (如 -1 = 主队让一球)；按让球后的比分判定胜平负</td></tr>
+            <tr><td><strong>浮动让球</strong></td>
+                <td>让球数在下单瞬间锁定 (SP 同步锁定)，与赛前其他时间无关</td></tr>
+            <tr><td><strong>浮动 SP</strong></td>
+                <td>赔率在下单瞬间锁定，竞彩平台显示的为参考值</td></tr>
+            <tr><td><strong>单关</strong></td>
+                <td>单场比赛，单注最低 ¥2，命中即返奖</td></tr>
+            <tr><td><strong>串关 (混合过关)</strong></td>
+                <td>2 ~ 8 场比赛全部命中才返奖，赔率累乘</td></tr>
+            <tr><td><strong>复式</strong></td>
+                <td>选 M 场预测 + N 串 1，下注全部 C(M,N) 张子票</td></tr>
+          </tbody>
+        </table>
+
+        <h3 class="font-semibold mt-2 mb-2">⚠️ 风险提示</h3>
+        <ul class="text-sm space-y-2 list-disc list-inside text-gray-700">
+          <li>本系统仅提供 <em>参考</em> 推荐，从不自动下单。所有票请人工到竞彩终端复核 SP 后再下注。</li>
+          <li>派奖率 68.5% 意味着即使是 +5% EV 的推荐，仍有较大方差；请用闲置资金、固定预算。</li>
+          <li>建议每周用<code class="bg-gray-100 px-1 rounded">②录入结果</code> + <code class="bg-gray-100 px-1 rounded">③ROI 报告</code> 复盘，连续 4 周 ROI 负值时停手复盘模型。</li>
+          <li>未成年人请勿购买，理性投注。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -187,19 +276,32 @@ const fmtPct = (x, d=1) => (Number(x)*100).toFixed(d) + '%';
 const sign = (x) => x > 0 ? 'pos' : (x < 0 ? 'neg' : '');
 
 // --- Tab switching ---
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => {
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    if (b.dataset.tab === name) {
+      b.classList.remove('border-transparent','text-gray-500');
+      b.classList.add('border-indigo-600','text-indigo-700');
+    } else {
       b.classList.remove('border-indigo-600','text-indigo-700');
       b.classList.add('border-transparent','text-gray-500');
-    });
-    btn.classList.remove('border-transparent','text-gray-500');
-    btn.classList.add('border-indigo-600','text-indigo-700');
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
-    $('#tab-' + btn.dataset.tab).classList.remove('hidden');
-    if (btn.dataset.tab === 'roi') loadROI();
-    if (btn.dataset.tab === 'sessions') loadSessions();
+    }
   });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  const panel = $('#tab-' + name);
+  if (panel) panel.classList.remove('hidden');
+  if (name === 'roi') loadROI();
+  if (name === 'sessions') loadSessions();
+  if (name === 'rules') loadRules();
+}
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+// Inline links that switch to a tab (e.g. "详细规则 →")
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('[data-tab-link]');
+  if (!link) return;
+  e.preventDefault();
+  switchTab(link.dataset.tabLink);
 });
 
 // --- Health pill ---
@@ -321,7 +423,7 @@ function renderRecommendations(body) {
           </div>
           <div class="text-sm text-gray-600 mb-2">
             <span class="font-medium">Kelly 推荐资金</span> ${fmtMoney(r.kelly_recommended_stake)}
-            (${fmtPct(r.kelly_capped_fraction)} of bankroll)
+            (占预算 ${fmtPct(r.kelly_capped_fraction)})
             · <span class="font-medium">预期回报</span> <span class="${sign(r.expected_return)}">${fmtMoney(r.expected_return)}</span>
             · <span class="font-medium">对数增长</span> ${r.log_growth.toFixed(4)}
           </div>
@@ -438,8 +540,47 @@ async function loadSessions() {
   }
 }
 
+// --- Rules (V6 W10) ---
+let RULES = null;  // cached after first load
+
+async function loadRules() {
+  // Already loaded?
+  if (RULES) { renderRules(); return; }
+  try {
+    const res = await fetch(API + '/rules');
+    if (!res.ok) {
+      $('#rules-loading').textContent = '⚠️ 加载规则失败: HTTP ' + res.status;
+      return;
+    }
+    RULES = await res.json();
+    renderRules();
+    // Refresh the recommend-tab hint with live values too
+    const hint = $('#rules-hint');
+    if (hint) {
+      hint.innerHTML = `竞彩规则: 起投 <strong>¥${RULES.stake_unit}</strong>, 单注上限 <strong>¥${RULES.max_ticket_stake.toLocaleString()}</strong>, 混合过关 <strong>≤${RULES.max_legs_per_ticket} 串</strong>, 派奖率 <strong>${(RULES.payout_ratio*100).toFixed(1)}%</strong> (vig ${(RULES.vig*100).toFixed(1)}%)。 <a href="#" data-tab-link="rules" class="text-indigo-600 hover:underline">详细规则 →</a>`;
+    }
+  } catch (e) {
+    $('#rules-loading').textContent = '⚠️ 加载规则失败: ' + e.message;
+  }
+}
+
+function renderRules() {
+  if (!RULES) return;
+  $('#rules-loading').classList.add('hidden');
+  $('#rules-content').classList.remove('hidden');
+  $('#rule-stake-unit').textContent  = '¥' + RULES.stake_unit;
+  $('#rule-max-ticket').textContent  = '¥' + RULES.max_ticket_stake.toLocaleString();
+  $('#rule-min-legs').textContent    = RULES.min_parlay_legs + ' 串';
+  $('#rule-max-legs').textContent    = RULES.max_legs_per_ticket + ' 串';
+  $('#rule-payout').textContent      = (RULES.payout_ratio * 100).toFixed(1) + '%';
+  $('#rule-vig').textContent         = (RULES.vig * 100).toFixed(1) + '%';
+  $('#rule-min-ev').textContent      = (RULES.min_ev_per_unit * 100).toFixed(0) + '%';
+  $('#rule-min-hit').textContent     = (RULES.min_hit_probability * 100).toFixed(0) + '%';
+}
+
 // --- Init ---
 loadHealth();
+loadRules();  // pre-fetch so the hint banner shows live values
 $('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 setInterval(loadHealth, 30_000);
 </script>

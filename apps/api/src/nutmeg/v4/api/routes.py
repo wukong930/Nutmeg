@@ -25,6 +25,7 @@ from nutmeg.v4.api.schemas import (
     FixtureOddsInput,
     HealthResponse,
     LegResponse,
+    LotteryRulesResponse,
     ModelInfo,
     RecommendRequest,
     RecommendResponse,
@@ -35,6 +36,7 @@ from nutmeg.v4.api.schemas import (
     UpcomingPredictionsResponse,
 )
 from nutmeg.v4.combo import MatchInput, recommend_combinations
+from nutmeg.v4.combo.lottery_rules import JINGCAI_DEFAULT
 from nutmeg.v4.model.dixon_coles import grid_to_1x2, grid_to_handicap_1x2, score_grid
 from nutmeg.v4.model.persist import (
     V4Artifact,
@@ -116,6 +118,31 @@ def dashboard() -> HTMLResponse:
     if not html_path.exists():
         raise HTTPException(status_code=500, detail="dashboard.html not bundled with package")
     return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+
+
+# ---------- /v4/rules (V6 W10) -------------------------------------------
+
+@router.get("/rules", response_model=LotteryRulesResponse)
+def rules() -> LotteryRulesResponse:
+    """Return the currently active 竞彩 LotteryRules constants.
+
+    The dashboard fetches this on load so rule-display text (¥2 起投,
+    ¥20k 上限, 派奖率 68.5%, EV 门槛 5%) stays in lockstep with the
+    server's actual enforcement logic. Single source of truth lives in
+    `nutmeg.v4.combo.lottery_rules.JINGCAI_DEFAULT`.
+    """
+    r = JINGCAI_DEFAULT
+    return LotteryRulesResponse(
+        stake_unit=r.stake_unit,
+        max_ticket_stake=r.max_ticket_stake,
+        max_period_stake=r.max_period_stake,
+        min_parlay_legs=r.min_parlay_legs,
+        max_legs_per_ticket=r.max_legs_per_ticket,
+        payout_ratio=r.payout_ratio,
+        vig=r.vig,
+        min_ev_per_unit=r.min_ev_per_unit,
+        min_hit_probability=r.min_hit_probability,
+    )
 
 
 # ---------- /v4/recommend -----------------------------------------------

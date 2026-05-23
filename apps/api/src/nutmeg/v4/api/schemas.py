@@ -165,3 +165,27 @@ class UpcomingPredictionsResponse(BaseModel):
     model: ModelInfo
     n_fixtures: int
     predictions: list[SinglePrediction]
+
+
+# ---------- /rules (V6 W10) ----------
+
+class LotteryRulesResponse(BaseModel):
+    """Snapshot of the currently active LotteryRules.
+
+    Returned by GET /api/v4/rules so the dashboard / external tools can
+    surface accurate, in-sync rule constants (¥2 unit, ¥20k cap, 31.5%
+    vig, 5% EV threshold) without hard-coding them client-side. Changes
+    in `combo.lottery_rules.JINGCAI_DEFAULT` propagate automatically.
+    """
+
+    stake_unit: float = Field(..., description="最小投注单位 (¥)")
+    max_ticket_stake: float = Field(..., description="单注最高金额 (¥)")
+    max_period_stake: float = Field(..., description="单期累计上限 (¥)")
+    min_parlay_legs: int = Field(..., description="混合过关最少串关数")
+    max_legs_per_ticket: int = Field(..., description="混合过关最多串关数")
+    payout_ratio: float = Field(..., description="平均派奖率 (e.g. 0.685)")
+    vig: float = Field(..., description="庄家抽水率 = 1 - payout_ratio")
+    min_ev_per_unit: float = Field(..., description="推荐门槛: 单位投注最小 EV")
+    min_hit_probability: float = Field(..., description="推荐门槛: 最小命中率")
+    label: str = Field(default="中国体彩 · 竞彩足球",
+                       description="规则集名称 (供 UI 展示)")
