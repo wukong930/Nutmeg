@@ -45,14 +45,21 @@ from nutmeg.v4.combo.kelly import (
     DEFAULT_MAX_STAKE_FRACTION,
     fractional_kelly_stake,
 )
+from nutmeg.v4.combo.lottery_rules import (
+    JINGCAI_DEFAULT,
+    LotteryRules,
+    cap_ticket_stake,
+    passes_recommendation_thresholds,
+    validate_legs_count,
+)
 from nutmeg.v4.combo.selections import Selection
 
 
-# Stake unit for 中国体彩 竞彩足球
-STAKE_UNIT_CNY = 2.0
-
-# Mixed-parlay max legs per 竞彩 rules (V6 W4 also enforces)
-MAX_LEGS_PER_TICKET = 8
+# Re-export key constants from lottery_rules for backward-compat with
+# downstream code that imports STAKE_UNIT_CNY / MAX_LEGS_PER_TICKET from
+# compound_pool. The single source of truth is now combo.lottery_rules.
+STAKE_UNIT_CNY = JINGCAI_DEFAULT.stake_unit
+MAX_LEGS_PER_TICKET = JINGCAI_DEFAULT.max_legs_per_ticket
 
 
 def quantize_stake(raw_stake: float, unit: float = STAKE_UNIT_CNY) -> float:
@@ -102,12 +109,17 @@ def evaluate_ticket(
     bankroll: float,
     kelly_fraction: float = DEFAULT_KELLY_FRACTION,
     max_stake_fraction_per_ticket: float = DEFAULT_MAX_STAKE_FRACTION,
-    stake_unit: float = STAKE_UNIT_CNY,
+    rules: LotteryRules = JINGCAI_DEFAULT,
 ) -> PoolTicket:
     """Compute hit_p / odds / EV / quantized stake for a single ticket.
 
-    ``max_stake_fraction_per_ticket`` is the per-ticket cap; the multi-
-    ticket budget cap is applied separately by recommend_pool.
+    Applies in order:
+      1. Fractional Kelly raw stake
+      2. ¥20,000 single-ticket lottery cap (rules.max_ticket_stake)
+      3. ¥2 quantization (rules.stake_unit)
+
+    ``max_stake_fraction_per_ticket`` is the BANKROLL-based per-ticket cap
+    (Kelly safety); the absolute ¥20k cap from lottery rules is on top.
     """
     if not legs:
         raise ValueError("ticket must have at least 1 leg")
@@ -126,7 +138,10 @@ def evaluate_ticket(
         kelly_fraction=kelly_fraction,
         max_stake_fraction=max_stake_fraction_per_ticket,
     )
-    quantized = quantize_stake(kr.recommended_stake, stake_unit)
+    # Apply lottery absolute cap BEFORE quantization (so a sub-¥2 over-cap
+    # doesn't round up past ¥20k).
+    capped = cap_ticket_stake(kr.recommended_stake, rules)
+    quantized = quantize_stake(capped, rules.stake_unit)
     expected_return = quantized * ev
     return PoolTicket(
         legs=legs,
@@ -142,6 +157,8 @@ def evaluate_ticket(
 def enumerate_combinations(
     chosen_per_match: list[Selection],
     n: int,
+    *,
+    rules: LotteryRules = JINGCAI_DEFAULT,
 ) -> list[tuple[Selection, ...]]:
     """C(M, N) ticket-shape: each combo picks N of the M user-chosen selections.
 
@@ -150,15 +167,13 @@ def enumerate_combinations(
     Compound (multi-outcome-per-match) pools are a different product;
     use ``combo.enumerate.enumerate_parlays`` for that.
 
-    Raises ValueError on n < 1, n > len(chosen_per_match), or n > MAX_LEGS_PER_TICKET.
+    Raises ValueError on n < 1, n > len(chosen_per_match), or n above
+    the lottery's max-legs-per-ticket rule (default 8 per 竞彩).
     """
     m = len(chosen_per_match)
     if not (1 <= n <= m):
         raise ValueError(f"n must be in [1, {m}], got {n}")
-    if n > MAX_LEGS_PER_TICKET:
-        raise ValueError(
-            f"竞彩 mixed-parlay max legs = {MAX_LEGS_PER_TICKET}, got n={n}"
-        )
+    validate_legs_count(n, rules=rules)
     return list(combinations(chosen_per_match, n))
 
 
@@ -170,15 +185,19 @@ def recommend_pool(
     max_total_budget: float | None = None,
     kelly_fraction: float = DEFAULT_KELLY_FRACTION,
     max_stake_fraction_per_ticket: float = DEFAULT_MAX_STAKE_FRACTION,
-    stake_unit: float = STAKE_UNIT_CNY,
+    rules: LotteryRules = JINGCAI_DEFAULT,
+    apply_thresholds: bool = True,
 ) -> PoolRecommendation:
-    """Recommend C(M,N) tickets, sized via independent Kelly + ¥2 quantization.
+    """Recommend C(M,N) tickets, sized via independent Kelly + lottery rules.
 
     Workflow:
-    1. Enumerate every C(M, N) leg combination
+    1. Enumerate every C(M, N) leg combination (after enforcing N ≤ 8)
     2. For each: compute hit_p (Π p_i) and combined_odds (Π odds_i)
-    3. Independent Kelly stake on each; quantize down to ¥2
-    4. If sum(stakes) > max_total_budget: proportionally rescale + re-quantize
+    3. (if apply_thresholds) skip tickets that fail
+       ``passes_recommendation_thresholds`` — sub-min-EV or sub-min-hit-p
+    4. Independent Kelly stake on each; apply ¥20k single-ticket cap;
+       quantize down to ¥2 (rules.stake_unit)
+    5. If sum(stakes) > max_total_budget: proportionally rescale + re-quantize
 
     Sort tickets by EV-per-unit descending so users see the best-value
     combinations first.
@@ -186,17 +205,36 @@ def recommend_pool(
     m = len(chosen_per_match)
     n_combos = comb(m, n)
 
-    raw_combos = enumerate_combinations(chosen_per_match, n)
-    tickets = [
-        evaluate_ticket(
+    raw_combos = enumerate_combinations(chosen_per_match, n, rules=rules)
+    tickets: list[PoolTicket] = []
+    for combo_legs in raw_combos:
+        # Compute first; threshold check is on hit_p + EV, not on stake.
+        # Tickets that fail the threshold still appear in `tickets` list
+        # with stake=0 (for diagnostic visibility) but won't be selected.
+        t = evaluate_ticket(
             legs=combo_legs,
             bankroll=bankroll,
             kelly_fraction=kelly_fraction,
             max_stake_fraction_per_ticket=max_stake_fraction_per_ticket,
-            stake_unit=stake_unit,
+            rules=rules,
         )
-        for combo_legs in raw_combos
-    ]
+        if apply_thresholds and not passes_recommendation_thresholds(
+            hit_probability=t.hit_probability,
+            ev_per_unit=t.ev_per_unit,
+            rules=rules,
+        ):
+            # Zero the stake but keep the ticket in the report for clarity
+            t = PoolTicket(
+                legs=t.legs,
+                hit_probability=t.hit_probability,
+                combined_odds=t.combined_odds,
+                ev_per_unit=t.ev_per_unit,
+                raw_kelly_stake=t.raw_kelly_stake,
+                stake=0.0,
+                expected_return=0.0,
+            )
+        tickets.append(t)
+
     # Sort by EV descending (most-valuable first)
     tickets.sort(key=lambda t: t.ev_per_unit, reverse=True)
 
@@ -206,7 +244,8 @@ def recommend_pool(
         scale = max_total_budget / total_stake
         rescaled: list[PoolTicket] = []
         for t in tickets:
-            new_stake = quantize_stake(t.stake * scale, stake_unit)
+            new_stake = quantize_stake(t.stake * scale, rules.stake_unit)
+            new_stake = cap_ticket_stake(new_stake, rules)
             rescaled.append(PoolTicket(
                 legs=t.legs,
                 hit_probability=t.hit_probability,

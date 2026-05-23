@@ -47,10 +47,10 @@ user can immediately use to place better bets.
 
 | W | Theme | Deliverable | Estimate |
 |---|---|---|---|
-| **V6 W1** | API-Football adapter | `sources/api_football.py` for fixtures/lineups/injuries/odds. Token via `.env` (gitignored). End-to-end test pulling yesterday EPL data. | 4-5d |
-| **V6 W2** | Lineup features | `features/lineups.py` — starting XI presence flags + key player missing + first-XI minutes-played momentum. Integration into `pipeline.py` + `build_features_for_fixtures`. | 4-5d |
-| **V6 W3** | M-select-N compound parlay | `combo/compound_pool.py` — generate C(M,N) combinations + Kelly per-combo + ¥2 quantization. CLI: `nutmeg-recommend --pool --n N --m M`. | 4-5d |
-| **V6 W4** | China lottery rules | Floating handicap capture in observation (handicap snapshot at bet placement); ¥31% vig EV threshold; max-parlay-stake ¥20k cap; mixed-parlay-8-legs validator. | 3-4d |
+| **V6 W1** ✅ | API-Football adapter | `sources/api_football.py` for fixtures/lineups/injuries/odds/squad-stats. Token via `.env` (gitignored). Pro plan verified (7.5k req/day). | shipped |
+| **V6 W2** ✅ | Lineup features | `features/lineup_features.py` — 9 cols: XI present flags, formation compactness (19 formations curated), injury counts, XI minutes-share. Placeholder + flag for missing data (W4 xg_lite pattern). 29 unit tests. | shipped |
+| **V6 W3** ✅ | M-select-N compound parlay | `combo/compound_pool.py` — C(M,N) enumeration + per-ticket Kelly + ¥2 quantization. `nutmeg-recommend-pool` CLI. 25 unit tests. | shipped |
+| **V6 W4** ✅ | China lottery rules | `combo/lottery_rules.py` — JINGCAI_DEFAULT rules dataclass: ¥2 unit, ¥20k single-ticket cap, ≤8 legs, payout-ratio 68.5%, vig-aware EV threshold (5% default). Integrated into compound_pool (cap + threshold filter); existing W8 settlement already captures floating handicap correctly. 27 unit tests. | shipped |
 
 ### P1 — Model upgrade with lineups + live validation (W5-8)
 

@@ -78,7 +78,7 @@ class TestEnumerateCombinations:
 
     def test_rejects_n_above_max_legs(self):
         sels = [_sel(f"m{i}") for i in range(10)]
-        with pytest.raises(ValueError, match=f"max legs = {MAX_LEGS_PER_TICKET}"):
+        with pytest.raises(ValueError, match=f"legs must be ≤ {MAX_LEGS_PER_TICKET}"):
             enumerate_combinations(sels, n=9)
 
     def test_no_duplicate_combinations(self):
