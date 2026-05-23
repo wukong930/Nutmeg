@@ -31,6 +31,8 @@ from nutmeg.v4.api.schemas import (
     RecommendationResponse,
     SelectionResponse,
     SinglePrediction,
+    UpcomingPredictionsRequest,
+    UpcomingPredictionsResponse,
 )
 from nutmeg.v4.combo import MatchInput, recommend_combinations
 from nutmeg.v4.model.dixon_coles import grid_to_1x2, grid_to_handicap_1x2, score_grid
@@ -96,6 +98,7 @@ def health() -> HealthResponse:
         training_cutoff=art.metadata.get("training_cutoff"),
         n_teams=n_teams,
         n_leagues=len(art.team_state),
+        model_type=art.model_type,
     )
 
 
@@ -279,10 +282,93 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
             n_train=art.metadata.get("n_train"),
             gbm_rho=gbm_rho,
             temperature_T=art.temperature_T,
+            model_type=art.model_type,
+            cat_features=art.cat_features,
         ),
         bankroll=req.bankroll,
         n_fixtures=len(req.fixtures),
         n_recommendations=len(recommendations_out),
         single_match_predictions=single_preds,
         recommendations=recommendations_out,
+    )
+
+
+# ---------- /v4/predictions/upcoming (V5 W11) ----------
+
+@router.post("/predictions/upcoming", response_model=UpcomingPredictionsResponse)
+def predictions_upcoming(req: UpcomingPredictionsRequest) -> UpcomingPredictionsResponse:
+    """Lightweight prediction-only endpoint.
+
+    Same input shape as /recommend, but returns ONLY per-fixture lambdas +
+    1X2 + (optional) handicap probabilities — no Kelly, no parlay
+    enumeration. Suitable for cheap "show me tomorrow's predictions" calls
+    from the dashboard or external integrations.
+    """
+    art = get_artifact()
+    if art is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"V4 model artifact not loaded; expected at {_artifact_path()}",
+        )
+
+    if not req.fixtures:
+        # Empty input is semantically valid for this endpoint — return empty
+        # predictions list with the same model_info envelope.
+        return UpcomingPredictionsResponse(
+            generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            model=ModelInfo(
+                trained_at_utc=art.metadata.get("trained_at_utc"),
+                training_cutoff=art.metadata.get("training_cutoff"),
+                n_train=art.metadata.get("n_train"),
+                gbm_rho=float(art.metadata.get("gbm_rho", -0.10)),
+                temperature_T=art.temperature_T,
+                model_type=art.model_type,
+                cat_features=art.cat_features,
+            ),
+            n_fixtures=0,
+            predictions=[],
+        )
+
+    fixtures_df = _fixtures_to_dataframe(req.fixtures)
+    feats = build_features_for_fixtures(art, fixtures_df)
+    lambdas = predict_lambdas(art, feats)
+    gbm_rho = float(art.metadata.get("gbm_rho", -0.10))
+
+    predictions = []
+    for i, f in enumerate(req.fixtures):
+        lh, la = lambdas[i]
+        grid = score_grid(lh, la, rho=gbm_rho)
+        ph, pd_, pa = grid_to_1x2(grid)
+        pred = SinglePrediction(
+            home_team=f.home_team,
+            away_team=f.away_team,
+            league=f.league,
+            date=f.date,
+            lambda_home=float(lh),
+            lambda_away=float(la),
+            p_home_1x2=float(ph),
+            p_draw_1x2=float(pd_),
+            p_away_1x2=float(pa),
+        )
+        if f.handicap_home is not None:
+            hph, hpd, hpa = grid_to_handicap_1x2(grid, handicap_home=f.handicap_home)
+            pred.handicap_home = f.handicap_home
+            pred.p_home_handicap = float(hph)
+            pred.p_draw_handicap = float(hpd)
+            pred.p_away_handicap = float(hpa)
+        predictions.append(pred)
+
+    return UpcomingPredictionsResponse(
+        generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        model=ModelInfo(
+            trained_at_utc=art.metadata.get("trained_at_utc"),
+            training_cutoff=art.metadata.get("training_cutoff"),
+            n_train=art.metadata.get("n_train"),
+            gbm_rho=gbm_rho,
+            temperature_T=art.temperature_T,
+            model_type=art.model_type,
+            cat_features=art.cat_features,
+        ),
+        n_fixtures=len(req.fixtures),
+        predictions=predictions,
     )

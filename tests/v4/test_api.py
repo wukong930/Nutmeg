@@ -213,3 +213,92 @@ class TestEdgeCases:
         body = r.json()
         # We don't assert exact 0 (model might find an edge); but recs should be small
         assert body["n_recommendations"] <= 10
+
+
+@pytest.mark.skipif(not ARTIFACT_PATH.exists(), reason="v4 artifact not present")
+class TestPredictionsUpcoming:
+    """V5 W11 — lightweight prediction-only endpoint."""
+
+    def test_basic(self, client):
+        req = {
+            "fixtures": [
+                _good_fixture("Arsenal", "Liverpool", "EPL"),
+                _good_fixture("Bayern Munich", "Dortmund", "GER_BUNDESLIGA"),
+            ]
+        }
+        r = client.post("/api/v4/predictions/upcoming", json=req)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["n_fixtures"] == 2
+        assert len(body["predictions"]) == 2
+        for p in body["predictions"]:
+            # 1X2 sums close to 1.0
+            assert abs(p["p_home_1x2"] + p["p_draw_1x2"] + p["p_away_1x2"] - 1.0) < 1e-3
+            assert 0.05 <= p["lambda_home"] <= 8.0
+            assert 0.05 <= p["lambda_away"] <= 8.0
+
+    def test_no_recommendations_field(self, client):
+        """Distinguishes this endpoint from /recommend — must NOT have a
+        `recommendations` field (consumers can rely on shape to dispatch)."""
+        req = {"fixtures": [_good_fixture()]}
+        r = client.post("/api/v4/predictions/upcoming", json=req)
+        body = r.json()
+        assert "recommendations" not in body
+        assert "predictions" in body
+
+    def test_includes_model_type(self, client):
+        """model_type surfaces in the response, telling the client which
+        backend produced the prediction (lightgbm vs catboost)."""
+        req = {"fixtures": [_good_fixture()]}
+        r = client.post("/api/v4/predictions/upcoming", json=req)
+        body = r.json()
+        assert body["model"]["model_type"] in ("lightgbm", "catboost")
+
+    def test_handicap_optional(self, client):
+        # No handicap → p_*_handicap stays None
+        req = {"fixtures": [_good_fixture()]}
+        r = client.post("/api/v4/predictions/upcoming", json=req)
+        p = r.json()["predictions"][0]
+        assert p.get("p_home_handicap") is None
+        assert p.get("handicap_home") is None
+
+        # With handicap → fields populated
+        f = _good_fixture()
+        f["handicap_home"] = -1
+        req = {"fixtures": [f]}
+        r = client.post("/api/v4/predictions/upcoming", json=req)
+        p = r.json()["predictions"][0]
+        assert p["handicap_home"] == -1
+        assert p["p_home_handicap"] is not None
+
+    def test_validation_empty_fixtures(self, client):
+        # Empty fixtures list — should reject (FixtureOddsInput has min_length=1
+        # via RecommendRequest but UpcomingPredictionsRequest doesn't set min;
+        # we accept empty and return empty list — semantically valid)
+        r = client.post("/api/v4/predictions/upcoming", json={"fixtures": []})
+        assert r.status_code == 200
+        assert r.json()["n_fixtures"] == 0
+        assert r.json()["predictions"] == []
+
+
+@pytest.mark.skipif(not ARTIFACT_PATH.exists(), reason="v4 artifact not present")
+class TestRecommendSnapshotPhase:
+    """V5 W11 — RecommendRequest.snapshot_phase carried through (validation)."""
+
+    def test_accepts_pre_close(self, client):
+        req = {
+            "fixtures": [_good_fixture()],
+            "bankroll": 1000.0,
+            "snapshot_phase": "pre_close",
+        }
+        r = client.post("/api/v4/recommend", json=req)
+        assert r.status_code == 200
+
+    def test_rejects_invalid_phase(self, client):
+        req = {
+            "fixtures": [_good_fixture()],
+            "bankroll": 1000.0,
+            "snapshot_phase": "bogus",
+        }
+        r = client.post("/api/v4/recommend", json=req)
+        assert r.status_code == 422  # pydantic Literal validation

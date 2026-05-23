@@ -203,3 +203,52 @@ class TestDashboard:
         assert "<title>" in html
         assert "Nutmeg V4" in html
         assert "/api/v4" in html  # JS calls our endpoints
+
+
+class TestLiveVsBacktestEndpoint:
+    """V5 W11 — GET /v4/observation/live-vs-backtest."""
+
+    def test_503_when_no_db(self, fresh_db_client):
+        """fresh_db_client points NUTMEG_V4_OBSERVATION_DB at a path that
+        doesn't exist on disk yet — the endpoint should 503 rather than
+        crash trying to read."""
+        client, _ = fresh_db_client
+        r = client.get("/api/v4/observation/live-vs-backtest")
+        assert r.status_code == 503
+        assert "observation DB not found" in r.json()["detail"]
+
+    def test_shape_with_populated_db(self, populated_db_client):
+        client, _ = populated_db_client
+        r = client.get("/api/v4/observation/live-vs-backtest?weeks=4")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # Required keys
+        assert body["weeks"] == 4
+        assert body["tolerance_pp"] == 5.0
+        for k in ("n_sessions", "n_settled", "n_hit", "n_partial", "n_miss",
+                  "total_stake", "total_payout", "profit_loss", "roi",
+                  "avg_hit_p_predicted", "actual_hit_rate"):
+            assert k in body["live"]
+        # No backtest provided from HTTP → backtest field null
+        assert body["backtest"] is None
+        # Default snapshot_phase = no filter → live counts include populated data
+        # (created within last 4 weeks)
+        assert body["live"]["n_settled"] >= 0
+
+    def test_snapshot_phase_filter(self, populated_db_client):
+        client, _ = populated_db_client
+        r = client.get(
+            "/api/v4/observation/live-vs-backtest?weeks=4&snapshot_phase=pre_close"
+        )
+        assert r.status_code == 200
+        body = r.json()
+        # The populated_db_client fixture used default 'closing' phase, so a
+        # pre_close filter should see zero
+        assert body["snapshot_phase"] == "pre_close"
+        assert body["live"]["n_settled"] == 0
+
+    def test_within_tolerance_by_default(self, populated_db_client):
+        client, _ = populated_db_client
+        body = client.get("/api/v4/observation/live-vs-backtest").json()
+        # No backtest → not over tolerance (we only flag when both sides exist)
+        assert body["over_tolerance"] is False

@@ -35,7 +35,7 @@ V5 是在 V4（GBM-λ + Dixon-Coles + Temperature scaling）基础上的**演进
 | W8 ✅ | 实战观察循环 | schema v2 (snapshot_phase + model_type)、`nutmeg-recommend --snapshot-phase`、`nutmeg-live-vs-backtest` CLI + 15 单元测试 | 见 [v5_w8_observation_loop.md](v5_w8_observation_loop.md)。CLI 跑通 demo DB，exit code 2 hooks 加好 |
 | W9 ⚠️ | Per-league temperature ablation | 模块就绪 + 9 单测 + walk_forward 集成；但 90 天 val 太小 → 过拟合，log-loss 3/3 季变差 | 见 [v5_w9_per_league_temperature.md](v5_w9_per_league_temperature.md)。框架保留，待 val 窗 ≥800/league 再启用 |
 | W10 ✅ | 实验追踪自动化 | `experiment_tracker.py` + `nutmeg-bench --track` + `nutmeg-experiment-diff` CLI + GH Actions 周日 cron `.github/workflows/weekly-bench.yml` | 见 [v5_w10_experiment_tracking.md](v5_w10_experiment_tracking.md) |
-| W11 | 路由收敛 + 产品化 | 删 v1 路由，`/api/v4/predictions/upcoming` | 单一 v4 API |
+| W11 ✅ | API 整合 | `POST /api/v4/predictions/upcoming` 轻量端点；`GET /api/v4/observation/live-vs-backtest`；ModelInfo + Health 加 `model_type`；RecommendRequest 加 `snapshot_phase` | 见 [v5_w11_api_consolidation.md](v5_w11_api_consolidation.md)。v1 路由 W2 已删 |
 | W12 | 评估与扩展决策 | V5_HANDOFF；决定是否买 API-Football | 实战 ROI ≥ +2pp 即解锁付费数据 |
 
 **回退点**：每周一个 git tag `v5.w<n>`，恶化时 `git reset --hard v5.w<n-1>` 重做。

@@ -19,6 +19,11 @@ from nutmeg.v4.observation import (
     settle_unsettled,
     upsert_outcome,
 )
+from nutmeg.v4.observation.live_vs_backtest import (
+    LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
+    compute_gap,
+    slice_live_settled,
+)
 from nutmeg.v4.observation.roi import (
     calibration_buckets,
     compute_headline,
@@ -242,3 +247,78 @@ def post_outcomes(req: OutcomesBatchRequest = Body(...)) -> OutcomesBatchRespons
             n += 1
         counts = settle_unsettled(conn)
     return OutcomesBatchResponse(n_recorded=n, settle_counts=counts)
+
+
+# ----- /v4/observation/live-vs-backtest (V5 W11) -----------------------------
+
+class LiveVsBacktestResponse(BaseModel):
+    """Read-only summary mirroring `nutmeg.v4.observation.live_vs_backtest.GapReport`.
+
+    The backtest comparison side is OPTIONAL — providing a backtest pooled
+    summary requires running a full walk_forward, which is expensive in an
+    HTTP path. The dashboard can pass the most recently tracked experiment's
+    pooled.json via the query body to compare; the bare endpoint just returns
+    the live slice.
+    """
+
+    weeks: int
+    snapshot_phase: Optional[str] = None
+    tolerance_pp: float
+    over_tolerance: bool
+    live: dict
+    backtest: Optional[dict] = None
+    hit_rate_gap_pp: Optional[float] = None
+
+
+@router.get(
+    "/live-vs-backtest",
+    response_model=LiveVsBacktestResponse,
+    summary="Live ROI / hit-rate vs (optional) backtest reference, last N weeks",
+)
+def live_vs_backtest_route(
+    weeks: int = 4, snapshot_phase: Optional[str] = None
+) -> LiveVsBacktestResponse:
+    """GET-only endpoint (read live DB; no backtest run inline).
+
+    For backtest comparison use the `nutmeg-live-vs-backtest` CLI which can
+    afford to run walk_forward; HTTP clients should poll this endpoint for
+    the live slice and run the diff offline.
+    """
+    db = _db_path()
+    if not _db_exists():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"observation DB not found at {db}",
+        )
+    from datetime import datetime, timedelta, timezone
+    end = datetime.now(timezone.utc).replace(microsecond=0)
+    start = end - timedelta(weeks=weeks)
+    with open_db(db) as conn:
+        live = slice_live_settled(
+            conn,
+            start_iso=start.isoformat(),
+            end_iso=end.isoformat(),
+            snapshot_phase=snapshot_phase,
+        )
+    report = compute_gap(live, None)  # no backtest from HTTP
+    return LiveVsBacktestResponse(
+        weeks=weeks,
+        snapshot_phase=snapshot_phase,
+        tolerance_pp=LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
+        over_tolerance=report.over_tolerance,
+        live={
+            "n_sessions": live.n_sessions,
+            "n_settled": live.n_settled,
+            "n_hit": live.n_hit,
+            "n_partial": live.n_partial,
+            "n_miss": live.n_miss,
+            "total_stake": live.total_stake,
+            "total_payout": live.total_payout,
+            "profit_loss": live.profit_loss,
+            "roi": live.roi,
+            "avg_hit_p_predicted": live.avg_hit_p_predicted,
+            "actual_hit_rate": live.actual_hit_rate,
+        },
+        backtest=None,
+        hit_rate_gap_pp=report.hit_rate_gap_pp,
+    )

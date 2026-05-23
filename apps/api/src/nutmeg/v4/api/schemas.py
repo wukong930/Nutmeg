@@ -55,6 +55,11 @@ class RecommendRequest(BaseModel):
     kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
     max_stake_fraction: float = Field(0.05, gt=0.0, le=1.0)
     include_compound: bool = Field(False, description="Enumerate 复式 legs")
+    # V5 W11: optional snapshot_phase carried through to observation recorder
+    # when --record-to / X-Record-DB is set on the server. Values come from
+    # SNAPSHOT_PHASES in nutmeg.v4.observation.store; defaults to "closing"
+    # (legacy V4 behavior).
+    snapshot_phase: Literal["pre_close", "closing", "post_close"] = "closing"
 
 
 # ---------- Response body ----------
@@ -109,6 +114,10 @@ class ModelInfo(BaseModel):
     n_train: Optional[int] = None
     gbm_rho: Optional[float] = None
     temperature_T: Optional[float] = None
+    # V5 W7 + W11: backend identity so callers (dashboard, observation recorder)
+    # can label data with which artifact produced it.
+    model_type: Optional[str] = "lightgbm"
+    cat_features: Optional[list[str]] = None
 
 
 class RecommendResponse(BaseModel):
@@ -131,4 +140,28 @@ class HealthResponse(BaseModel):
     training_cutoff: Optional[str] = None
     n_teams: Optional[int] = None
     n_leagues: Optional[int] = None
+    # V5 W11: surface the active backend in health so dashboards can show
+    # whether the running server is on `lightgbm` (V4 default) or `catboost`
+    # (W7 opt-in).
+    model_type: Optional[str] = "lightgbm"
     detail: Optional[str] = None
+
+
+# ---------- /predictions/upcoming (V5 W11) ----------
+
+class UpcomingPredictionsRequest(BaseModel):
+    """Lightweight body for the predictions/upcoming endpoint.
+
+    Same shape as RecommendRequest but without bankroll / Kelly knobs —
+    callers (dashboard, scheduled cron, mobile app) just want the model's
+    probability output, not parlay recommendations.
+    """
+
+    fixtures: list[FixtureOddsInput]
+
+
+class UpcomingPredictionsResponse(BaseModel):
+    generated_at_utc: str
+    model: ModelInfo
+    n_fixtures: int
+    predictions: list[SinglePrediction]
