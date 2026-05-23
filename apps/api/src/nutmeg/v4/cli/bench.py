@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from nutmeg.v4.data import load_all_matches
+from nutmeg.v4.eval.experiment_tracker import track_experiment
 from nutmeg.v4.eval.report import format_card
 from nutmeg.v4.eval.walk_forward import WalkForwardConfig, run_walk_forward
 
@@ -41,6 +42,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Also train XGBoost + CatBoost + stacker (V5 W6 ensemble path). "
         "Adds ~60s per fold; required to see xgb/cat/ensemble columns in the card.",
     )
+    parser.add_argument(
+        "--track",
+        action="store_true",
+        help="Track this run into data/v4_model/experiments/<sha>_<ts>/ "
+        "for the W10 experiment-diff workflow.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -67,6 +74,15 @@ def main(argv: list[str] | None = None) -> int:
     out_path.write_text(card, encoding="utf-8")
     if not args.quiet:
         print(f"  wrote {out_path}", file=sys.stderr)
+
+    if args.track:
+        rec = track_experiment(
+            result,
+            card_text=card,
+            model_type="ensemble" if args.with_ensemble else "lightgbm",
+        )
+        if not args.quiet:
+            print(f"  tracked experiment → {rec.experiment_dir}", file=sys.stderr)
 
     if args.json_output:
         # Strip numpy arrays before dumping

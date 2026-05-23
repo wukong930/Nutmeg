@@ -1,0 +1,78 @@
+name: Weekly Bench
+
+# V5 W10 — every Sunday at 02:00 UTC, run the full walk-forward benchmark
+# (single-season + multi-season), and commit the regenerated cards to
+# docs/weekly/<YYYY-WW>.md so the project's prediction quality trajectory
+# is visible in git history.
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"   # 02:00 UTC every Sunday
+  workflow_dispatch:        # also runnable on demand from the Actions tab
+
+permissions:
+  contents: write   # needed to commit the regenerated cards back
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install libomp (LightGBM macOS-style runtime; Ubuntu uses libgomp1)
+        run: sudo apt-get update && sudo apt-get install -y libgomp1
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-extras
+
+      - name: Compute week tag
+        id: week
+        run: echo "tag=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Run single-season bench
+        run: |
+          PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.bench \
+            --with-ensemble \
+            --track \
+            --output "docs/weekly/${{ steps.week.outputs.tag }}-bench.md" \
+            --quiet
+
+      - name: Run multi-season bench
+        run: |
+          PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.multi_season_bench \
+            --with-ensemble \
+            --output "docs/weekly/${{ steps.week.outputs.tag }}-multi.md" \
+            --quiet
+
+      - name: Run experiment diff (latest two tracked runs)
+        run: |
+          PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.experiment_diff \
+            --out "docs/weekly/${{ steps.week.outputs.tag }}-diff.md" \
+            || echo "Only one experiment tracked so far — diff skipped"
+
+      - name: Commit weekly cards
+        env:
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+        run: |
+          git add docs/weekly/${{ steps.week.outputs.tag }}-*.md \
+                  docs/v4_baseline_card.md \
+                  docs/v4_multi_season_card.md 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore(weekly): ${{ steps.week.outputs.tag }} bench cards [skip ci]"
+            git push origin main
+          fi
