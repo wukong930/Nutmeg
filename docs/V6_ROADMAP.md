@@ -56,7 +56,7 @@ user can immediately use to place better bets.
 
 | W | Theme | Deliverable | Estimate |
 |---|---|---|---|
-| **V6 W5** | CatBoost retrain with lineups | Multi-season validation; ablation on `with-lineups` vs `without-lineups`. Acceptance: ≥ -0.002 log-loss improvement multi-season. | 3-4d |
+| **V6 W5** ⚠️ | Lineup feature ablation | 380×2 EPL fixtures ingested (lineups + injuries); ablation found 7 of 9 W2 features fail; 1 features (30-day unique injured) saves −0.0038 log-loss on EPL 1-fold under strict leak controls. Multi-season + multi-league validation deferred (out of W5 budget). See [v6_w5_lineup_ablation.md](v6_w5_lineup_ablation.md) | shipped |
 | **V6 W6** | Production artifact migration | New artifact with lineup features; backward-compat path so old artifact still loads; A/B in `recommend.py`. | 2-3d |
 | **V6 W7** | Real-bet observation onboarding | User starts daily `nutmeg-recommend --snapshot-phase pre_close` + `closing` workflow; weekly cron analytics. | 1d setup + waiting |
 | **V6 W8** | Live ROI gate | After 4 weeks of real bets, decide: continue features OR investigate leakage OR claim victory. | 2d analysis |

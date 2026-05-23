@@ -57,6 +57,7 @@ nutmeg-ingest-external = "nutmeg.v4.cli.ingest_external:main"
 nutmeg-live-vs-backtest = "nutmeg.v4.cli.live_vs_backtest:main"
 nutmeg-experiment-diff = "nutmeg.v4.cli.experiment_diff:main"
 nutmeg-recommend-pool = "nutmeg.v4.cli.recommend_pool:main"
+nutmeg-ingest-lineups = "nutmeg.v4.cli.ingest_lineups:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]

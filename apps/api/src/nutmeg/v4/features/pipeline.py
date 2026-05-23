@@ -23,6 +23,7 @@ import pandas as pd
 from nutmeg.v4.features.clubelo_features import CLUBELO_FEATURE_COLUMNS, build_clubelo_features
 from nutmeg.v4.features.elo import build_elo_features
 from nutmeg.v4.features.form import build_form_features
+from nutmeg.v4.features.lineup_features import LINEUP_FEATURE_COLUMNS, build_lineup_features
 from nutmeg.v4.features.market import build_market_features
 from nutmeg.v4.features.market_dynamics import (
     MARKET_DYNAMICS_FEATURE_COLUMNS,
@@ -57,7 +58,24 @@ GBM_FEATURE_COLUMNS = [
     # is still wired into the pipeline so the columns exist on the frame
     # for diagnostics, but they're excluded from the GBM input. See
     # docs/v5_w5_ablation.md for the full numbers and reasoning.
+    #
+    # V6 W2 lineup features — gated. They're added to GBM_FEATURE_COLUMNS
+    # below ONLY when the build_feature_frame caller passes a lineup_lookup.
+    # Without lineup data (the common case for historical training rows
+    # not covered by W5 ingest), the columns would be 99% placeholder + 0
+    # for `lineup_available`, contributing essentially no signal and
+    # potentially confusing the GBM.
 ]
+
+
+# V6 W2: feature columns that ALSO go into GBM_FEATURE_COLUMNS when the
+# user opts in via build_feature_frame(..., lineup_lookup=...)
+LINEUP_GATED_COLUMNS = list(LINEUP_FEATURE_COLUMNS)
+
+
+def feature_columns_with_lineups() -> list[str]:
+    """Return the full feature column list including W6 lineup features."""
+    return list(GBM_FEATURE_COLUMNS) + LINEUP_GATED_COLUMNS
 
 
 def build_feature_frame(
@@ -65,11 +83,19 @@ def build_feature_frame(
     *,
     clubelo_cache_dir: Path | str = Path("data/external/clubelo"),
     clubelo_history: pd.DataFrame | None = None,
+    lineup_lookup: dict | None = None,
+    injury_lookup: dict | None = None,
 ) -> pd.DataFrame:
     """Build all features. df must contain the canonical MATCH_COLUMNS.
 
     ``clubelo_cache_dir`` is read once at the end. Pass ``clubelo_history``
     directly to skip disk I/O (used in tests).
+
+    V6 W5: when ``lineup_lookup`` is provided, lineup features are computed
+    and the columns get added to the frame. Rows whose fixture_key is not
+    in the lookup fill with placeholder values + ``lineup_available=0``,
+    so partial coverage (e.g. only some leagues have lineups ingested) is
+    handled gracefully.
     """
     out = build_market_features(df)
     out = build_market_dynamics_features(out)
@@ -77,4 +103,8 @@ def build_feature_frame(
     out = build_elo_features(out)
     out = build_xg_lite_features(out)
     out = build_clubelo_features(out, cache_dir=clubelo_cache_dir, history=clubelo_history)
+    if lineup_lookup is not None:
+        out = build_lineup_features(
+            out, lineup_lookup=lineup_lookup, injury_lookup=injury_lookup,
+        )
     return out

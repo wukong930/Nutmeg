@@ -89,6 +89,18 @@ LINEUP_FEATURE_COLUMNS = [
 ]
 
 
+# V6 W5 ablation determined that of the 9 lineup features, only
+# `lineup_home_recent_n_injuries` and `lineup_away_recent_n_injuries` —
+# the leak-free 30-day unique-injured count — actually improve log-loss.
+# Formation compactness and season-cumulative injury count regress or
+# leak. These two recent-injury columns are added separately so the
+# pipeline can opt in to JUST the validated subset.
+LINEUP_FEATURE_COLUMNS_RECENT_INJURY = [
+    "lineup_home_recent_n_injuries",
+    "lineup_away_recent_n_injuries",
+]
+
+
 def _formation_compactness(formation: str | None) -> float:
     if not formation:
         return DEFAULT_COMPACTNESS
@@ -160,6 +172,7 @@ def build_lineup_features(
     *,
     injury_lookup: dict[str, tuple[list | None, list | None]] | None = None,
     minutes_share_lookup: dict[str, tuple[float | None, float | None]] | None = None,
+    recent_injury_lookup: dict[str, tuple[int, int]] | None = None,
 ) -> pd.DataFrame:
     """Augment df with lineup feature columns.
 
@@ -170,6 +183,11 @@ def build_lineup_features(
 
     Same shape for ``injury_lookup`` and ``minutes_share_lookup``.
 
+    ``recent_injury_lookup`` is a V6 W5 addition mapping fixture_key →
+    (home_count, away_count) of leak-free 30-day-unique-injured player
+    counts. When provided, ``lineup_home_recent_n_injuries`` and
+    ``lineup_away_recent_n_injuries`` columns are added.
+
     Lookup keys are *strings* so the caller decides on canonical format
     rather than us baking a contract.
     """
@@ -177,10 +195,13 @@ def build_lineup_features(
     lineup_lookup = lineup_lookup or {}
     injury_lookup = injury_lookup or {}
     minutes_share_lookup = minutes_share_lookup or {}
+    recent_injury_lookup = recent_injury_lookup or {}
 
     # Vector-friendly: build the 9 feature arrays then assign as columns
     n = len(out)
     cols: dict[str, np.ndarray] = {c: np.empty(n) for c in LINEUP_FEATURE_COLUMNS}
+    recent_home = np.zeros(n, dtype=float)
+    recent_away = np.zeros(n, dtype=float)
 
     for i, row in enumerate(out.itertuples(index=False)):
         key = _fixture_key(row)
@@ -194,9 +215,14 @@ def build_lineup_features(
         )
         for c in LINEUP_FEATURE_COLUMNS:
             cols[c][i] = feats[c]
+        ri_h, ri_a = recent_injury_lookup.get(key, (0, 0))
+        recent_home[i] = ri_h
+        recent_away[i] = ri_a
 
     for c, arr in cols.items():
         out[c] = arr
+    out["lineup_home_recent_n_injuries"] = recent_home
+    out["lineup_away_recent_n_injuries"] = recent_away
     return out
 
 
