@@ -253,7 +253,7 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
 
     if req.k_max < req.k_min:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="k_max must be >= k_min",
         )
 
@@ -601,7 +601,7 @@ def _pick_to_selection(
     # handicap_1x2
     if pd.isna(row.get("handicap_home")):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"row {match_id}: pick={pick} requires handicap_home to be set",
         )
     handicap_home = int(row["handicap_home"])
@@ -611,7 +611,7 @@ def _pick_to_selection(
     odds = row.get(odds_col)
     if odds is None or pd.isna(odds):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"row {match_id}: pick={pick} but odds_handicap_{outcome} missing",
         )
     return Selection(
@@ -632,7 +632,7 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
     m = len(req.fixtures)
     if req.n > m:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"n={req.n} but only {m} fixtures in pool",
         )
 

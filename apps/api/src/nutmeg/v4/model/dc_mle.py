@@ -150,13 +150,19 @@ def fit_dixon_coles(
     bounds += [(-1.0, 1.0)] * (n_teams - 1)  # attack
     bounds += [(-1.0, 1.0)] * (n_teams - 1)  # defense
 
+    # post-v9 P1#6: scipy 1.18+ deprecates BOTH `disp` and `iprint` for
+    # L-BFGS-B; the verbose-flag chatter was never used in production
+    # (verbose=False everywhere) so we drop the option entirely. If actual
+    # convergence diagnostics are needed in the future, attach a callback
+    # or read `result.message` / `result.nit` after the fact.
+    options = {"maxiter": max_iter}
     result = minimize(
         _neg_log_likelihood,
         theta0,
         args=(home_idx, away_idx, home_goals, away_goals, weights, n_teams),
         method="L-BFGS-B",
         bounds=bounds,
-        options={"maxiter": max_iter, "disp": verbose},
+        options=options,
     )
 
     mu, home_adv, rho, attack, defense = _unpack(result.x, n_teams)

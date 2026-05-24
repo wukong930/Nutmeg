@@ -199,8 +199,11 @@ def fetch_nation_history(
     if raw.empty:
         return _empty_history_frame()
 
-    raw["From"] = pd.to_datetime(raw["From"], errors="coerce")
-    raw["To"] = pd.to_datetime(raw["To"], errors="coerce")
+    # post-v9 P1#6: explicit ISO format silences the "Could not infer
+    # format" UserWarning on rows with invalid dates (pandas falls back
+    # to dateutil per row otherwise). Clubelo always emits YYYY-MM-DD.
+    raw["From"] = pd.to_datetime(raw["From"], format="%Y-%m-%d", errors="coerce")
+    raw["To"] = pd.to_datetime(raw["To"], format="%Y-%m-%d", errors="coerce")
     out = pd.DataFrame({
         "code":      code_upper,
         "from_date": raw["From"],
@@ -254,7 +257,10 @@ def build_nation_elo_lookup(
     back to the most-recent row.
     """
     if as_of is None:
-        as_of = pd.Timestamp.utcnow().tz_localize(None)
+        # post-v9 P1#6: pd.Timestamp.utcnow() is deprecated in pandas 4.x.
+        # Replacement Timestamp.now('UTC') returns a tz-aware ts; strip
+        # tzinfo to match the (legacy tz-naive) interval columns.
+        as_of = pd.Timestamp.now("UTC").tz_localize(None)
     elif as_of.tzinfo is not None:
         as_of = as_of.tz_localize(None)
 
