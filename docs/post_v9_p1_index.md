@@ -42,6 +42,7 @@ P1#22  P1#19 cross-source caveat (docs-only; gate triage rules)  DOCS
 P1#23  --tolerance-pp flag       (CLI+HTTP; implements P1#22 #1) ML
 P1#24  weekly launchd gate job   (Sun 04:00; --tolerance-pp 50)  OPS
 P1#25  V10_ROADMAP_DRAFT.md      (placeholder; triggers + sketch) DOCS
+P1#26  GH Actions Playwright CI  (P1#15 work now runs in CI)     QA
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -262,6 +263,26 @@ fired and what concrete deliverable accompanies it.
 
 When V10 actually starts, this draft gets renamed (drop the
 `_DRAFT` suffix) and filled in with the week-by-week plan.
+
+#### P1#26 — GH Actions Playwright CI
+Added `.github/workflows/playwright.yml`. P1#15 shipped Playwright +
+axe-core tests in `tests/v4/test_e2e_playwright.py` but the existing
+nutmeg-ci.yml workflow only installs the `playwright` python package
+(via `uv sync --all-extras`), not the Chromium browser binary. Result:
+every test in that file silently `pytest.skip`s in CI.
+
+This workflow installs Chromium (cached via `~/.cache/ms-playwright`
+keyed on `pyproject.toml` hash) and actually runs the 9 E2E tests
+plus the 54 structural front-end tests (responsive a11y + i18n/PWA).
+
+Triggers: PR/push when dashboard / static / front-end test files
+change. Path filter saves ~3 min when only ML code changes. Always
+runnable on demand via `workflow_dispatch`.
+
+Upload trace artifact on failure for debugging.
+
+Verified locally: 9/9 Playwright tests pass in 9.39s.
+Verified YAML: parses cleanly, 3 triggers, single `playwright` job.
 
 ---
 

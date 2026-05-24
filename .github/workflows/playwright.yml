@@ -1,0 +1,106 @@
+name: Playwright E2E + WCAG
+
+# post-v9 P1#26 — P1#15 shipped Playwright + axe-core tests but they
+# only ran locally. The default Nutmeg CI workflow does `uv sync
+# --all-extras` (which installs the playwright python package) and
+# then `pytest tests/v4/` — but the Chromium browser binary itself
+# is never installed in that workflow, so tests/v4/test_e2e_playwright.py
+# silently `pytest.skip`s every test inside it.
+#
+# This workflow exists to actually run those tests in CI.
+#
+# Why a separate workflow:
+#  - Chromium download (~150MB) is too heavy for every push
+#  - Browser-based tests run much slower than the structural ones
+#  - Failures here block "front-end shipped" claims; failures in
+#    nutmeg-ci.yml block ML/data claims. Keeping them separate keeps
+#    the failure signal clean
+#
+# Path filter: only run when dashboard / static / Playwright tests
+# change. Skipping when only ML code changes saves ~3 min per push.
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/nutmeg/v4/api/static/**"
+      - "apps/api/src/nutmeg/v4/api/observation_routes.py"
+      - "apps/api/src/nutmeg/v4/api/rules_routes.py"
+      - "apps/api/src/nutmeg/v4/api/__init__.py"
+      - "tests/v4/test_e2e_playwright.py"
+      - "tests/v4/test_frontend_responsive_a11y.py"
+      - "tests/v4/test_i18n_and_pwa.py"
+      - ".github/workflows/playwright.yml"
+      - "pyproject.toml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/api/src/nutmeg/v4/api/static/**"
+      - "apps/api/src/nutmeg/v4/api/observation_routes.py"
+      - "apps/api/src/nutmeg/v4/api/rules_routes.py"
+      - "apps/api/src/nutmeg/v4/api/__init__.py"
+      - "tests/v4/test_e2e_playwright.py"
+      - "tests/v4/test_frontend_responsive_a11y.py"
+      - "tests/v4/test_i18n_and_pwa.py"
+      - ".github/workflows/playwright.yml"
+      - "pyproject.toml"
+  workflow_dispatch:   # always runnable on demand
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install libomp (LightGBM runtime)
+        run: sudo apt-get update && sudo apt-get install -y libgomp1
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Sync dependencies (includes playwright + pytest-playwright)
+        run: |
+          uv venv
+          uv sync --all-extras
+
+      # Cache Chromium binary so the ~150MB download only happens
+      # when Playwright bumps a major version.
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-chromium-
+
+      - name: Install Chromium (skipped on cache hit)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: .venv/bin/playwright install --with-deps chromium
+
+      - name: Install system deps for Chromium (always — apt deps not cached)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: .venv/bin/playwright install-deps chromium
+
+      - name: Run Playwright E2E + WCAG tests
+        run: |
+          PYTHONPATH=apps/api/src .venv/bin/python -m pytest \
+            tests/v4/test_e2e_playwright.py \
+            tests/v4/test_frontend_responsive_a11y.py \
+            tests/v4/test_i18n_and_pwa.py \
+            -v --tb=short
+
+      - name: Upload Playwright trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
