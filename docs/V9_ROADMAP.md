@@ -67,23 +67,12 @@ working state.
 
 Estimated 1-2 days.
 
-### V9 W3 — Observation recorder dashboard checkbox (Track D)
+### V9 W3 — Observation recorder dashboard checkbox (Track D) ✅
 
-Post-v8 P1#5 added the env-var-driven auto-record for /recommend/single
-and /pool, but the **dashboard's "记录到观测库" checkbox is still a
-visual-only no-op** (since V5 W11 era). V9 W3 makes it actually plumb
-through:
-
-1. Add `record_session: bool = False` to `RecommendRequest` /
-   `SingleRecommendRequest` / `PoolRecommendRequest`
-2. Endpoint side: when `record_session=True` AND
-   `NUTMEG_V4_OBSERVATION_DB` is set, record. (Both gates required —
-   request-only opt-out doesn't override server-side disable.)
-3. Dashboard JS: post the checkbox state through; visible feedback
-   ("已记录到观测库" on success)
-4. Tests for the request-field path + dashboard regex
-
-Estimated 1 day.
+Shipped. 20 new tests (759/759 V4 suite). 4-year V5 W11-era no-op
+finally plumbed through. Two-gate design (env + request flag) added.
+串关 endpoint now records for the first time. 单关 + 复式 tabs gained
+checkboxes. See [v9_w3_recorder_checkbox.md](v9_w3_recorder_checkbox.md).
 
 ### V9 W4 — CI fixture cache (Track E)
 

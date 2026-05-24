@@ -69,6 +69,9 @@
         <label class="text-sm">凯利分数
           <input id="single-kelly-fraction" type="number" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
+        <label class="text-sm flex items-center" title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
+          <input id="single-record-session" type="checkbox" class="mr-1"> 记录到观测库
+        </label>
       </div>
       <div class="mt-4">
         <button id="btn-recommend-single" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
@@ -185,6 +188,9 @@
         </label>
         <label class="text-sm">凯利分数
           <input id="pool-kelly-fraction" type="number" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm flex items-center" title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
+          <input id="pool-record-session" type="checkbox" class="mr-1"> 记录到观测库
         </label>
       </div>
       <div class="mt-4">
@@ -438,12 +444,14 @@ $('#btn-recommend').addEventListener('click', async () => {
     return;
   }
   $('#recommend-status').textContent = '⏳ 计算中 ...';
+  const recordChecked = $('#record-session').checked;
   const req = {
     fixtures,
     bankroll: Number($('#bankroll').value),
     top_n: Number($('#top-n').value),
     min_hit_probability: Number($('#min-hit').value),
     min_kelly_stake: Number($('#min-kelly').value),
+    record_session: recordChecked,
   };
   try {
     const res = await fetch(API + '/recommend', {
@@ -457,8 +465,11 @@ $('#btn-recommend').addEventListener('click', async () => {
     }
     const body = await res.json();
     renderRecommendations(body);
+    const recordedNote = recordChecked
+      ? ' · 📝 已请求录入观测库 (实际是否落库取决于服务器 NUTMEG_V4_OBSERVATION_DB)'
+      : '';
     $('#recommend-status').textContent =
-      `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 条推荐  (模型截止 ${body.model.training_cutoff})`;
+      `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 条推荐  (模型截止 ${body.model.training_cutoff})${recordedNote}`;
   } catch (e) {
     $('#recommend-status').textContent = '❌ ' + e.message;
   }
@@ -694,11 +705,13 @@ $('#btn-recommend-single').addEventListener('click', async () => {
     return;
   }
   $('#single-status').textContent = '⏳ 计算中 ...';
+  const recordCheckedSingle = $('#single-record-session').checked;
   const req = {
     fixtures,
     bankroll: Number($('#single-bankroll').value),
     top_per_match: Number($('#single-top-per-match').value),
     kelly_fraction: Number($('#single-kelly-fraction').value),
+    record_session: recordCheckedSingle,
   };
   try {
     const res = await fetch(API + '/recommend/single', {
@@ -711,8 +724,11 @@ $('#btn-recommend-single').addEventListener('click', async () => {
     }
     const body = await res.json();
     renderSingleRecommendations(body);
+    const recordedNote = recordCheckedSingle
+      ? ' · 📝 已请求录入观测库'
+      : '';
     $('#single-status').textContent =
-      `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 注推荐 (模型截止 ${body.model.training_cutoff})`;
+      `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 注推荐 (模型截止 ${body.model.training_cutoff})${recordedNote}`;
   } catch (e) {
     $('#single-status').textContent = '❌ ' + e.message;
   }
@@ -790,11 +806,13 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
   }
   $('#pool-status').textContent = '⏳ 枚举 + 计算 ...';
   const maxBudgetRaw = $('#pool-max-budget').value.trim();
+  const recordCheckedPool = $('#pool-record-session').checked;
   const req = {
     fixtures, n,
     bankroll: Number($('#pool-bankroll').value),
     max_total_budget: maxBudgetRaw ? Number(maxBudgetRaw) : null,
     kelly_fraction: Number($('#pool-kelly-fraction').value),
+    record_session: recordCheckedPool,
   };
   try {
     const res = await fetch(API + '/recommend/pool', {
@@ -807,8 +825,11 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
     }
     const body = await res.json();
     renderPoolRecommendations(body);
+    const recordedNote = recordCheckedPool
+      ? ' · 📝 已请求录入观测库'
+      : '';
     $('#pool-status').textContent =
-      `✓ ${body.m} 选 ${body.n} = ${body.n_combinations} 张候选, ${body.n_selected} 张选中`;
+      `✓ ${body.m} 选 ${body.n} = ${body.n_combinations} 张候选, ${body.n_selected} 张选中${recordedNote}`;
   } catch (e) {
     $('#pool-status').textContent = '❌ ' + e.message;
   }

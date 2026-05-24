@@ -319,6 +319,7 @@ class TestEndpointAutoRecord:
                 "odds_1x2_H": 2.50, "odds_1x2_D": 3.30, "odds_1x2_A": 2.80,
             }],
             "bankroll": 500.0, "top_per_match": 1,
+            "record_session": True,  # V9 W3 — must opt-in via request
         })
         assert r.status_code == 200
         # DB should now have one session
@@ -341,6 +342,7 @@ class TestEndpointAutoRecord:
                  "pick": "1x2_H"},
             ],
             "n": 2, "bankroll": 1000.0,
+            "record_session": True,  # V9 W3 — must opt-in via request
         })
         assert r.status_code == 200
         assert env_db.exists()
@@ -358,6 +360,7 @@ class TestEndpointAutoRecord:
                 "odds_1x2_H": 2.50, "odds_1x2_D": 3.30, "odds_1x2_A": 2.80,
             }],
             "bankroll": 500.0, "top_per_match": 1,
+            "record_session": True,  # V9 W3 — env-off blocks anyway
         })
         assert r.status_code == 200
         # No DB written anywhere

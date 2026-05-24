@@ -60,6 +60,11 @@ class RecommendRequest(BaseModel):
     # SNAPSHOT_PHASES in nutmeg.v4.observation.store; defaults to "closing"
     # (legacy V4 behavior).
     snapshot_phase: Literal["pre_close", "closing", "post_close"] = "closing"
+    # V9 W3: per-request opt-in for observation recording. Both this AND
+    # the server's NUTMEG_V4_OBSERVATION_DB env var must be set for a
+    # session to actually land in the DB. Defaults to False so existing
+    # callers don't accidentally start recording.
+    record_session: bool = False
 
 
 # ---------- Response body ----------
@@ -184,6 +189,10 @@ class SingleRecommendRequest(BaseModel):
     kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
     max_stake_fraction: float = Field(0.05, gt=0.0, le=1.0,
                                        description="Per-ticket cap as fraction of bankroll")
+    # V9 W3: see RecommendRequest.record_session
+    record_session: bool = Field(False, description=
+        "Opt-in observation recording. Requires NUTMEG_V4_OBSERVATION_DB "
+        "env var on the server to actually persist.")
 
 
 class SingleTicketResponse(BaseModel):
@@ -233,6 +242,10 @@ class PoolRecommendRequest(BaseModel):
                                                description="Optional pool-wide stake cap")
     kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
     max_stake_fraction_per_ticket: float = Field(0.05, gt=0.0, le=1.0)
+    # V9 W3: see RecommendRequest.record_session
+    record_session: bool = Field(False, description=
+        "Opt-in observation recording. Requires NUTMEG_V4_OBSERVATION_DB "
+        "env var on the server to actually persist.")
 
 
 class PoolLegResponse(BaseModel):

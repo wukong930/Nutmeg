@@ -71,14 +71,32 @@ def _artifact_path() -> str:
 
 
 def _observation_db_path() -> Optional[str]:
-    """Post-V8 P1#5 — env-var that turns on automatic session recording.
+    """Post-V8 P1#5 — env-var that turns on session recording capability.
 
-    Set NUTMEG_V4_OBSERVATION_DB=data/v4_observation.db to have the
-    /recommend/single + /recommend/pool endpoints auto-record every
-    response to the observation DB. Unset → endpoints stay stateless
-    (existing V4 W8 + V8 W6 behavior).
+    Set NUTMEG_V4_OBSERVATION_DB=data/v4_observation.db to ALLOW the
+    /recommend* endpoints to record sessions. V9 W3: this is now the
+    server-side enable gate; the request must ALSO have
+    `record_session=True` for an actual write to happen. Unset → no
+    recording regardless of request flag (existing V4 W8 + V8 W6
+    behavior).
     """
     return os.environ.get("NUTMEG_V4_OBSERVATION_DB")
+
+
+def _should_record_session(req_record_flag: bool) -> Optional[str]:
+    """V9 W3 — return the observation DB path iff both gates are satisfied.
+
+    Both gates required:
+      1. Server: NUTMEG_V4_OBSERVATION_DB is set
+      2. Request: record_session=True
+
+    Returns the DB path string when both hold, None otherwise. Callers
+    use the result as a truthiness check + the path to pass into the
+    recorder.
+    """
+    if not req_record_flag:
+        return None
+    return _observation_db_path()
 
 
 def get_artifact() -> Optional[V4Artifact]:
@@ -322,7 +340,7 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
             legs=legs_out,
         ))
 
-    return RecommendResponse(
+    response = RecommendResponse(
         generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         model=ModelInfo(
             trained_at_utc=art.metadata.get("trained_at_utc"),
@@ -339,6 +357,28 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
         single_match_predictions=single_preds,
         recommendations=recommendations_out,
     )
+
+    # V9 W3: 串关 (parlay) auto-record path — both env AND request flag required.
+    # Previously this endpoint never recorded (the dashboard's checkbox was
+    # a no-op since V5 W11). The CLI's `--record-to` (V5 W8) still works
+    # independently for command-line workflows.
+    db_path = _should_record_session(req.record_session)
+    if db_path:
+        from nutmeg.v4.observation import record_session as _record
+        try:
+            _record(
+                db_path,
+                request=req.model_dump(mode="json"),
+                response=response.model_dump(mode="json"),
+                snapshot_phase=req.snapshot_phase,
+            )
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "record_session failed (db=%s); recommendation returned anyway",
+                db_path,
+            )
+    return response
 
 
 # ---------- /v4/predictions/upcoming (V5 W11) ----------
@@ -492,8 +532,11 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
         total_expected_return=float(rec.total_expected_return),
     )
 
-    # Post-V8 P1#5: auto-record when NUTMEG_V4_OBSERVATION_DB is set
-    db_path = _observation_db_path()
+    # V9 W3: record when both gates pass (server env + request flag).
+    # Post-V8 P1#5 originally auto-recorded on env alone; V9 W3 adds the
+    # request-side opt-in so the dashboard's per-session checkbox controls
+    # whether a given response lands in the DB.
+    db_path = _should_record_session(req.record_session)
     if db_path:
         from nutmeg.v4.observation.recorder import record_single_session
         try:
@@ -503,8 +546,6 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
                 response=response.model_dump(mode="json"),
             )
         except Exception:  # noqa: BLE001
-            # Recording failure should never break the recommendation
-            # response — log it and move on.
             import logging
             logging.getLogger(__name__).exception(
                 "record_single_session failed (db=%s); recommendation returned anyway",
@@ -654,8 +695,8 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
         tickets=tickets_out,
     )
 
-    # Post-V8 P1#5: auto-record when NUTMEG_V4_OBSERVATION_DB is set
-    db_path = _observation_db_path()
+    # V9 W3: record when both gates pass (server env + request flag).
+    db_path = _should_record_session(req.record_session)
     if db_path:
         from nutmeg.v4.observation.recorder import record_pool_session
         try:
