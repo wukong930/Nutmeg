@@ -43,6 +43,7 @@ P1#23  --tolerance-pp flag       (CLI+HTTP; implements P1#22 #1) ML
 P1#24  weekly launchd gate job   (Sun 04:00; --tolerance-pp 50)  OPS
 P1#25  V10_ROADMAP_DRAFT.md      (placeholder; triggers + sketch) DOCS
 P1#26  GH Actions Playwright CI  (P1#15 work now runs in CI)     QA
+P1#27  V10_HANDOFF_TEMPLATE.md   (companion to P1#25 placeholder) DOCS
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -283,6 +284,22 @@ Upload trace artifact on failure for debugging.
 
 Verified locally: 9/9 Playwright tests pass in 9.39s.
 Verified YAML: parses cleanly, 3 triggers, single `playwright` job.
+
+#### P1#27 — `V10_HANDOFF_TEMPLATE.md` (companion to P1#25)
+Pre-wrote a fill-in skeleton at `docs/V10_HANDOFF_TEMPLATE.md` so
+the handoff structure exists before V10 starts. Mirrors the V5-V9
+10-section pattern with 🔲 TODO and ⬜ PLACEHOLDER markers throughout.
+
+Includes a "How to use this template" header that codifies:
+- Don't fill in just because N weeks passed (wait for a trigger)
+- When trigger fires: rename `_TEMPLATE` → `_HANDOFF`, rename
+  `V10_ROADMAP_DRAFT` → `V10_ROADMAP`, then start filling
+- §5 (numbers) is the truth check: thin Δ means V10 was actually a
+  P1 chain misnamed — rename rather than ship a thin V10
+- Don't add sections; the V5-V9 pattern is mature
+
+Paired with P1#25 this gives the project a complete "V10 starter
+kit" the moment any of the 5 triggers fires.
 
 ---
 
