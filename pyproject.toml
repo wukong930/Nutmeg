@@ -43,6 +43,11 @@ dev = [
   "pytest>=8.2",
   "ruff>=0.5",
   "types-PyYAML>=6.0",
+  # post-v9 P1#15: front-end E2E + WCAG audit via Playwright + axe-core
+  "playwright>=1.55",
+  "pytest-playwright>=0.8",
+  # NOTE: axe-core itself is loaded via CDN at test time (no Python package
+  # needed). After install run `.venv/bin/playwright install chromium`.
 ]
 
 [project.scripts]
