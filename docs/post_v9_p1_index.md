@@ -41,6 +41,7 @@ P1#21  cross-source backtest     (verdict source-dependent)      ML
 P1#22  P1#19 cross-source caveat (docs-only; gate triage rules)  DOCS
 P1#23  --tolerance-pp flag       (CLI+HTTP; implements P1#22 #1) ML
 P1#24  weekly launchd gate job   (Sun 04:00; --tolerance-pp 50)  OPS
+P1#25  V10_ROADMAP_DRAFT.md      (placeholder; triggers + sketch) DOCS
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -244,6 +245,23 @@ After this patch the local pipeline has 4 launchd jobs:
 daily_odds (14:00), daily_recommend (15:00), weekly_settle
 (Sun 02:00), weekly_gate (Sun 04:00). Re-run
 `./scripts/setup_local_pipeline.sh` to install the new job.
+
+#### P1#25 — `V10_ROADMAP_DRAFT.md` (placeholder, V10 not started)
+Wrote `docs/V10_ROADMAP_DRAFT.md` as an explicit "V10 hasn't started"
+placeholder. Lists 5 trigger conditions, current status of each,
+and what V10 looks like *if* each trigger fires. Also enumerates 4
+anti-patterns (don't start V10 to "feel productive", don't re-list
+closed backlog items, don't extrapolate from 1 week of live data,
+don't conflate P1#21 caveat with P1#18 being wrong).
+
+Important because the post-v9 P1 chain has grown to 20 patches and
+"what's next" was at risk of drifting into an implicit V10 sprint
+without a real trigger. The draft is the structural backstop: any
+future restart of weekly-cadence work has to cite which trigger
+fired and what concrete deliverable accompanies it.
+
+When V10 actually starts, this draft gets renamed (drop the
+`_DRAFT` suffix) and filled in with the week-by-week plan.
 
 ---
 
