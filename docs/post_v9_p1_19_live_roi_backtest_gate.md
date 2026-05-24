@@ -75,3 +75,77 @@ New coverage in `tests/v4/test_live_vs_backtest.py`:
 
 `tests/v4/test_observation_api.py` also covers the new `model_arm` query
 parameter on the read-only observation endpoint.
+
+## P1#22 amendment — cross-source caveat (5pp is not the right tolerance for cross-source)
+
+After P1#21 documented that the **same model on the same fixtures**
+can show a 30-50pp ROI gap purely because of bookmaker-snapshot
+timing differences (football-data PSC vs The Odds API "Pinnacle"
+historical snapshots), the 5pp default tolerance here needs a
+caveat:
+
+> **5pp is the right tolerance only when the live data source and
+> the reference-backtest data source are the same.**
+
+In production today they are NOT the same:
+
+| Slot | Source |
+|---|---|
+| Live daily cron | API-Football `/odds` endpoint (snapshot ≈ 6h before kickoff) |
+| P1#17/P1#18 backtest replay | football-data.co.uk PSC (snapshot ≈ at kickoff) |
+| P1#21 cross-source backtest | The Odds API historical (snapshot at 23:00 UTC daily) |
+
+The price-level gap between the three sources is enough on its own
+to push the ROI gap past 5pp without any model-quality change. So
+the gate will likely trigger `exit=2` even when the lineup-aware
+model is performing exactly as expected — a false-positive class
+this design didn't originally account for.
+
+### How to read a real `exit=2` going forward
+
+Three triage paths when the gate trips:
+
+1. **Re-run with a "noise floor" tolerance** of ±50pp first. If it
+   still trips, that's a real model/data issue worth investigating.
+   If it doesn't, the trip was almost certainly cross-source noise.
+   (No flag yet — set `LIVE_BACKTEST_TOLERANCE_PCT_POINTS` higher
+   manually for the manual re-run; a `--tolerance-pp N` CLI flag
+   is a candidate for a future P1#N if this becomes painful.)
+2. **Run a same-source apples-to-apples sub-check**: re-run the
+   P1#21 cross-source backtest restricted to the same date window
+   the live data covers. If the cross-source backtest's lineup-vs-
+   default verdict still matches the live arm's measured P/L
+   direction, the model is fine.
+3. **Check hit-rate gap separately**. Hit-rate is less sensitive
+   to bookmaker price differences than ROI is, because Kelly-stake
+   sizing amplifies price differences. Hit-rate gap > 5pp is more
+   likely to indicate a real model issue than ROI gap > 5pp alone.
+
+### When the cross-source caveat dissolves
+
+The clean fix is to **point the daily cron at the same source as
+the validation backtest**. Two possible paths:
+
+- **Path A (cheap)**: keep using API-Football for live odds; also
+  backfill football-data.co.uk PSC values for the same fixtures
+  post-hoc and store them alongside the recommendation; build a
+  same-source `nutmeg-roi-backtest --odds-source football_data`
+  parallel observation DB so the gate compares apples-to-apples.
+- **Path B (cleanest, more work)**: switch the live cron to fetch
+  closing prices from football-data's free historical CSVs after
+  each match round; this loses real-time betting capability but
+  makes the gate trustworthy. Probably not worth it for the
+  current product shape.
+
+Neither is urgent because the gate already runs and tests pass;
+the action item is just "when reviewing a P1#19 alert, apply the
+3-path triage above before concluding anything is broken."
+
+### Document trail
+
+- P1#17: built the historical replay tool (`docs/post_v9_p1_17_lineup_roi_backtest.md`)
+- P1#18: shipped lineup-aware as default (`docs/post_v9_p1_18_ship_lineup_aware.md`)
+- P1#19: this gate (above)
+- P1#21: discovered the cross-source ROI gap is large
+  (`docs/post_v9_p1_21_cross_source_backtest.md`)
+- P1#22: this amendment

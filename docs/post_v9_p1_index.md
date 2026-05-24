@@ -38,6 +38,7 @@ P1#18  SHIP lineup-aware default (V10 trigger #2 POSITIVE)       SHIP
 P1#19  live-vs-backtest gate     (CLI + exit codes)              ML
 P1#20  cup ablation NEGATIVE     (V10 trigger #1 closed, $30)    SHIP
 P1#21  cross-source backtest     (verdict source-dependent)      ML
+P1#22  P1#19 cross-source caveat (docs-only; gate triage rules)  DOCS
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -164,7 +165,7 @@ since V8 W3 — would have returned NaN even with data).
 The 9-month wait was dissolved by $30 + 3 hours of work.
 See `docs/post_v9_p1_20_cup_ablation_negative.md`.
 
-### Cross-source validation (P1#21)
+### Cross-source validation + caveat (P1#21-22)
 
 #### P1#21 — Cross-source backtest, verdict source-dependent
 Re-ran P1#18 lineup ROI verdict on a second source (The Odds API
@@ -188,6 +189,21 @@ domestic-league sport_keys added to `odds_api.SPORT_KEYS`. All
 reusable for future cross-source studies.
 
 See `docs/post_v9_p1_21_cross_source_backtest.md`.
+
+#### P1#22 — P1#19 cross-source caveat (docs-only)
+Tacked an amendment onto `docs/post_v9_p1_19_live_roi_backtest_gate.md`
+explaining that the 5pp default tolerance is only meaningful when
+the live cron and the reference backtest use the same odds source.
+In current production they don't (live=API-Football, reference=
+football-data PSC), so the gate will probably trip false-positive
+on cross-source noise.
+
+Added a 3-step triage procedure for a real `exit=2` alarm
+(re-run with wider tolerance; sub-check via same-source replay;
+inspect hit-rate gap separately from ROI gap). No code changes.
+
+Sets expectations BEFORE the first live alarm fires (the daily
+cron is currently building toward week-4 verdict).
 
 ---
 
