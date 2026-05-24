@@ -1,23 +1,31 @@
 name: Monthly API Token Health Check
 
 # post-v9 P1#11 — monthly canary that:
-#  1. confirms NUTMEG_API_FOOTBALL_KEY is still valid
+#  1. confirms NUTMEG_API_FOOTBALL_KEY is still valid (if set)
 #  2. surfaces the current rate-limit / subscription tier
 #  3. nudges the user to rotate the token if it's been ~6+ months
 #     since the secret was last touched
 #
 # This is the V6 W8 advisory ("rotate after chat exposure") turned
-# into a recurring reminder. Runs the 1st of each month at 09:00 UTC
-# (a reasonable working-hour for the user's timezone).
+# into a recurring reminder.
+#
+# post-v9 P1#28 update: the project moved to local launchd-based daily
+# cron at P1#16 (NUTMEG_API_FOOTBALL_KEY lives in local `.env`, not in
+# GH Secrets). The schedule trigger was REMOVED so GH Actions doesn't
+# silently fail every month on a missing secret. The workflow stays
+# manually triggerable via workflow_dispatch — useful if the user ever
+# re-enables a hosted cron, or wants a quick "is my token still alive"
+# check by running it on-demand.
+#
+# If the secret is genuinely not set, this workflow exits 0 with a
+# clear notice (NOT failure) — failing would just spam GH Actions UI
+# with red checks for an expected state.
 #
 # Token rotation is a USER action — this workflow only diagnoses; it
 # can't rotate the secret itself. The action runs `gh secret set` from
 # a local shell.
 
 on:
-  schedule:
-    # 1st of the month at 09:00 UTC
-    - cron: "0 9 1 * *"
   workflow_dispatch: {}
 
 jobs:
@@ -30,17 +38,24 @@ jobs:
           python-version: "3.13"
 
       - name: Verify NUTMEG_API_FOOTBALL_KEY is set
+        id: verify
         env:
           KEY: ${{ secrets.NUTMEG_API_FOOTBALL_KEY }}
         run: |
           if [ -z "$KEY" ]; then
-            echo "::error::NUTMEG_API_FOOTBALL_KEY secret is NOT set on this repo."
-            echo "  → User action: gh secret set NUTMEG_API_FOOTBALL_KEY (from local shell)"
-            exit 1
+            echo "::notice::NUTMEG_API_FOOTBALL_KEY secret is not set on this repo."
+            echo "  This is EXPECTED post-P1#16: the project moved daily cron to"
+            echo "  local launchd jobs that read the key from local .env."
+            echo "  If you want GH-hosted cron back: gh secret set NUTMEG_API_FOOTBALL_KEY"
+            echo "  Workflow exits 0 (not failure) to avoid spurious red checks."
+            echo "has_secret=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "✓ NUTMEG_API_FOOTBALL_KEY secret is present (length=${#KEY})"
+          echo "has_secret=true" >> "$GITHUB_OUTPUT"
 
       - name: Probe API-Football /status endpoint
+        if: steps.verify.outputs.has_secret == 'true'
         env:
           NUTMEG_API_FOOTBALL_KEY: ${{ secrets.NUTMEG_API_FOOTBALL_KEY }}
         run: |

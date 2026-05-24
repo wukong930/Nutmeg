@@ -20,13 +20,17 @@ name: Daily Lineup + Odds Refresh
 # canary tool.
 #
 # Required secret: NUTMEG_API_FOOTBALL_KEY (set via repo Settings → Secrets).
-# Repo lives at https://github.com/wukong930/Nutmeg. If the secret is
-# missing, the workflow short-circuits with a clear error.
+# Repo lives at https://github.com/wukong930/Nutmeg.
+#
+# post-v9 P1#28 update: schedule REMOVED. This workflow was failing
+# every day for ~6 months because NUTMEG_API_FOOTBALL_KEY was never
+# set on the repo (P1#16 moved daily cron to local launchd, which
+# reads the key from local .env). Workflow stays manually triggerable
+# via workflow_dispatch — useful if the user later sets the secret
+# and wants a hosted backup. Missing secret now exits 0 with a notice
+# (not red failure) per the same logic as monthly-token-check.
 
 on:
-  schedule:
-    # 06:00 UTC ≈ after most Asian + European late kickoffs settle
-    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       leagues:
@@ -55,35 +59,46 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Verify API token secret is set
+        id: verify
         run: |
           if [ -z "$NUTMEG_API_FOOTBALL_KEY" ]; then
-            echo "::error::NUTMEG_API_FOOTBALL_KEY secret is not configured."
-            echo "Add it under repo Settings → Secrets and variables → Actions."
-            exit 1
+            echo "::notice::NUTMEG_API_FOOTBALL_KEY secret is not configured."
+            echo "  Expected post-P1#16: daily cron moved to local launchd."
+            echo "  To re-enable GH-hosted runs: gh secret set NUTMEG_API_FOOTBALL_KEY"
+            echo "  Exiting 0 (not failure) to avoid spurious red checks."
+            echo "has_secret=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           # Mask in logs as a belt-and-braces check (GH masks secrets by default)
           echo "::add-mask::$NUTMEG_API_FOOTBALL_KEY"
+          echo "has_secret=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
+        if: steps.verify.outputs.has_secret == 'true'
         with:
           python-version: "3.13"
 
       - name: Install libomp (LightGBM runtime)
+        if: steps.verify.outputs.has_secret == 'true'
         run: sudo apt-get update && sudo apt-get install -y libgomp1
 
       - name: Install uv
+        if: steps.verify.outputs.has_secret == 'true'
         run: python -m pip install uv
 
       - name: Sync dependencies
+        if: steps.verify.outputs.has_secret == 'true'
         run: |
           uv venv
           uv sync --all-extras
 
       - name: Compute daily tag
+        if: steps.verify.outputs.has_secret == 'true'
         id: tag
         run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Refresh lineups + injuries
+        if: steps.verify.outputs.has_secret == 'true'
         run: |
           LEAGUES="${{ github.event.inputs.leagues || 'EPL,ESP_LA_LIGA,UCL,UEL' }}"
           DAYS="${{ github.event.inputs.days || '3' }}"
@@ -99,6 +114,7 @@ jobs:
             $INJ_FLAG
 
       - name: Show daily summary
+        if: steps.verify.outputs.has_secret == 'true'
         run: |
           SUMMARY="data/external/api_football/_daily_refresh_${{ steps.tag.outputs.date }}.json"
           if [ -f "$SUMMARY" ]; then
@@ -109,6 +125,7 @@ jobs:
           fi
 
       - name: Ingest today's odds (V7 W1)
+        if: steps.verify.outputs.has_secret == 'true'
         run: |
           LEAGUES="${{ github.event.inputs.leagues || 'EPL,ESP_LA_LIGA,UCL,UEL' }}"
           OUT="data/external/api_football/_daily_odds_${{ steps.tag.outputs.date }}.csv"
@@ -127,6 +144,7 @@ jobs:
           wc -l "$OUT" || true
 
       - name: Upload daily artifacts
+        if: steps.verify.outputs.has_secret == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: daily-${{ steps.tag.outputs.date }}
