@@ -43,7 +43,7 @@ block the code-gated bits.
 |---|---|---|---|
 | **V8 W6** ✅ | Dashboard 单关 + 复式 web tabs | 新增 `POST /api/v4/recommend/single` + `/recommend/pool` 端点 (调 V6 W9 `recommend_singles` + V6 W3 `recommend_pool`); dashboard 加 ① 单关 + ③ 复式 tabs (重排 tabs, 单关 = 默认); Pydantic schemas + enum 校验; sample 数据 + 表单 + 渲染 JS. 17 new tests (682/682 V4 suite). See [v8_w6_dashboard_single_pool.md](v8_w6_dashboard_single_pool.md) | shipped |
 | **V8 W7** ✅ | National-team Elo via clubelo | `nutmeg.v4.data.national_team_elo` 模块 (`NATION_CLUBELO_CODES` 68 国家 + `fetch_nation_history` + `build_nation_elo_lookup` + `lookup_nation_elo`); `nutmeg-ingest-national-elo` CLI; ~17 秒回填 68 国家. 31 new tests (713/713 V4 suite). Model 集成 (build_elo_features 调 lookup_nation_elo) 留 V9. See [v8_w7_national_team_elo.md](v8_w7_national_team_elo.md) | shipped |
-| V8 W8 | V8 ship | `V8_HANDOFF.md` + retrospective + `v8.0-shipped` tag | 2d |
+| **V8 W8** ✅ | V8 ship | [V8_HANDOFF.md](V8_HANDOFF.md) (单一信息源) + [v8_retrospective.md](v8_retrospective.md) (what worked / didn't / V9 backlog); tagged `v8.0-shipped`. 713/713 V4 suite passing. W4 + W5 仍 data-gated, 转给 V9 W1. | shipped |
 
 ## Numeric targets
 
