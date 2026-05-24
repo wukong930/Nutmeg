@@ -31,7 +31,12 @@ on:
     inputs:
       leagues:
         description: "Comma-separated V4 league codes"
-        default: "EPL,ESP_LA_LIGA"
+        # V9 W1 Path A: include UCL + UEL to forward-accumulate cup
+        # odds. On non-cup-match days these calls just return 0
+        # fixtures (harmless). Over a full UCL season (~250 matches),
+        # cup_odds parquets fill prospectively — closes the V8 W4
+        # historical-odds data gap by going forward instead of back.
+        default: "EPL,ESP_LA_LIGA,UCL,UEL"
       days:
         description: "Lookback window in days"
         default: "3"
@@ -80,7 +85,7 @@ jobs:
 
       - name: Refresh lineups + injuries
         run: |
-          LEAGUES="${{ github.event.inputs.leagues || 'EPL,ESP_LA_LIGA' }}"
+          LEAGUES="${{ github.event.inputs.leagues || 'EPL,ESP_LA_LIGA,UCL,UEL' }}"
           DAYS="${{ github.event.inputs.days || '3' }}"
           if [ "${{ github.event.inputs.include_injuries }}" = "false" ]; then
             INJ_FLAG=""
@@ -105,7 +110,7 @@ jobs:
 
       - name: Ingest today's odds (V7 W1)
         run: |
-          LEAGUES="${{ github.event.inputs.leagues || 'EPL,ESP_LA_LIGA' }}"
+          LEAGUES="${{ github.event.inputs.leagues || 'EPL,ESP_LA_LIGA,UCL,UEL' }}"
           OUT="data/external/api_football/_daily_odds_${{ steps.tag.outputs.date }}.csv"
           mkdir -p "$(dirname "$OUT")"
           # Pinnacle (bookmaker id 4) is the sharp default; falls back to
