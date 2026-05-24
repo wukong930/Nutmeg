@@ -235,8 +235,24 @@ class PoolRecommendRequest(BaseModel):
     max_stake_fraction_per_ticket: float = Field(0.05, gt=0.0, le=1.0)
 
 
+class PoolLegResponse(BaseModel):
+    """One leg of a pool ticket — like SelectionResponse but with the
+    match_id + market_type baked in so the row is settleable.
+
+    Post-V8 P1#5: previously PoolTicketResponse.legs used SelectionResponse
+    which dropped match_id/market_type — the observation recorder couldn't
+    write these rows in a settleable shape. PoolLegResponse closes that gap.
+    """
+    match_id: str
+    market_type: Literal["1x2", "handicap_1x2"]
+    outcome: Literal["H", "D", "A"]
+    odds: float
+    probability: float
+    edge: float
+
+
 class PoolTicketResponse(BaseModel):
-    legs: list[SelectionResponse]
+    legs: list[PoolLegResponse]
     hit_probability: float
     combined_odds: float
     ev_per_unit: float

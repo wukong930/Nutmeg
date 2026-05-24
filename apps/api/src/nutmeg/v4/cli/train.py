@@ -141,6 +141,17 @@ def main(argv: list[str] | None = None) -> int:
         "(default 0.86). Lower = more permissive but riskier silent "
         "wrong joins. Only used with --with-cup-data.",
     )
+    parser.add_argument(
+        "--nation-elo-cache-dir",
+        default=None,
+        help="Post-V8 P1#4 — when set (e.g. data/external/clubelo_national), "
+        "load per-nation Elo histories via build_nation_elo_lookup and pass "
+        "to build_elo_features. National-team-cup rows (WC, EURO, COPA_AMERICA, "
+        "WC_QUAL_UEFA) get seeded from the real clubelo nation Elo instead "
+        "of the default 1500. Requires --with-cup-data to be effective (cross-"
+        "league seeding only fires when that flag is set). Run `nutmeg-ingest-"
+        "national-elo` first to populate the cache.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -234,6 +245,18 @@ def main(argv: list[str] | None = None) -> int:
             args.quiet,
         )
 
+    # Post-V8 P1#4: optional nation-state Elo for national-team-cup rows
+    nation_state = None
+    if args.nation_elo_cache_dir:
+        from pathlib import Path as _Path
+        from nutmeg.v4.data.national_team_elo import build_nation_elo_lookup
+        nation_state = build_nation_elo_lookup(_Path(args.nation_elo_cache_dir))
+        _info(
+            f"  nation Elo: {len(nation_state)} countries loaded from "
+            f"{args.nation_elo_cache_dir}",
+            args.quiet,
+        )
+
     _info("Building features ...", args.quiet)
     # V8 W3: auto-enable cross-league seeding when --with-cup-data is set —
     # cup-row Elo/form needs to draw on the team's domestic-league history.
@@ -244,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
         recent_injury_lookup=recent_injury_lookup,
         cup_history_df=cup_history_df,
         cross_league_seed=args.with_cup_data,
+        nation_state=nation_state,
     )
 
     # Time split

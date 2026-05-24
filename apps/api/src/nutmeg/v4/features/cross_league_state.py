@@ -39,30 +39,55 @@ def seed_elo_value(
     league: str,
     team: str,
     default: float,
+    *,
+    nation_state: dict[str, float] | None = None,
+    is_national_team_league: bool = False,
 ) -> float:
     """Return a seeded Elo value for (league, team).
 
-    If `state[league][team]` would be the default (i.e., not yet seen
-    in THIS league pool), search the other leagues in `state` for a
-    different value. Returns the first non-default value found, else
-    the default.
+    Precedence:
+      1. If `state[league][team]` is already populated, return it
+      2. **Post-V8 P1#4**: when `is_national_team_league=True` AND
+         `nation_state` is provided, try `lookup_nation_elo(nation_state, team)`.
+         Hits get seeded into `state[league][team]` and returned.
+         (Skipped for non-national-team leagues since the nation lookup
+         could resolve "Manchester" → "ENG" which is wrong for club rows.)
+      3. Walk every other league pool for a non-default value
+         (the original V8 W3 cross-league seeding)
+      4. Return the default
 
-    Mutates `state` by writing the seeded value into
-    `state[league][team]` so subsequent reads short-circuit.
+    Mutates `state` by writing the seeded value into `state[league][team]`
+    so subsequent reads short-circuit.
+
+    `nation_state` is the dict returned by `build_nation_elo_lookup` —
+    `{clubelo_code: elo}`. The resolver tolerates name variants
+    ("United States" → "USA") via the V8 W7 alias map.
     """
     league_pool = state.get(league)
-    # Team already present in THIS league pool → keep existing value
+    # 1. Team already in THIS league pool
     if league_pool is not None and team in league_pool:
         return league_pool[team]
-    # Walk every other league pool for a non-default value
+
+    # 2. (Post-V8 P1#4) National-team Elo seed for national-team-cup leagues
+    if is_national_team_league and nation_state:
+        # Lazy import to avoid circular dependency (data → features in this
+        # module is a one-way relationship, but the function only needs to
+        # be importable once at first call)
+        from nutmeg.v4.data.national_team_elo import lookup_nation_elo
+        code, elo = lookup_nation_elo(nation_state, team)
+        if elo is not None:
+            if league_pool is None:
+                state[league] = {team: elo}
+            else:
+                league_pool[team] = elo
+            return elo
+
+    # 3. Walk every other league pool for a non-default value
     for other_league, other_pool in state.items():
         if other_league == league:
             continue
         if team in other_pool and other_pool[team] != default:
             seeded = other_pool[team]
-            # Write back so subsequent reads in THIS league are stable
-            # (defaultdict-based caller may auto-create league_pool;
-            # handle both dict-of-dict and defaultdict gracefully)
             if league_pool is None:
                 state[league] = {team: seeded}
             else:

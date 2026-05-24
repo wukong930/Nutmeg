@@ -27,6 +27,7 @@ from nutmeg.v4.api.schemas import (
     LegResponse,
     LotteryRulesResponse,
     ModelInfo,
+    PoolLegResponse,
     PoolRecommendRequest,
     PoolRecommendResponse,
     PoolTicketResponse,
@@ -67,6 +68,17 @@ _load_lock = Lock()
 
 def _artifact_path() -> str:
     return os.environ.get("NUTMEG_V4_ARTIFACT_PATH", DEFAULT_ARTIFACT_PATH)
+
+
+def _observation_db_path() -> Optional[str]:
+    """Post-V8 P1#5 — env-var that turns on automatic session recording.
+
+    Set NUTMEG_V4_OBSERVATION_DB=data/v4_observation.db to have the
+    /recommend/single + /recommend/pool endpoints auto-record every
+    response to the observation DB. Unset → endpoints stay stateless
+    (existing V4 W8 + V8 W6 behavior).
+    """
+    return os.environ.get("NUTMEG_V4_OBSERVATION_DB")
 
 
 def get_artifact() -> Optional[V4Artifact]:
@@ -469,7 +481,7 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
         for t in rec.selected_tickets
     ]
 
-    return SingleRecommendResponse(
+    response = SingleRecommendResponse(
         generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         model=_model_info_from_artifact(art),
         bankroll=req.bankroll,
@@ -479,6 +491,26 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
         total_stake=float(rec.total_stake),
         total_expected_return=float(rec.total_expected_return),
     )
+
+    # Post-V8 P1#5: auto-record when NUTMEG_V4_OBSERVATION_DB is set
+    db_path = _observation_db_path()
+    if db_path:
+        from nutmeg.v4.observation.recorder import record_single_session
+        try:
+            record_single_session(
+                db_path,
+                request=req.model_dump(mode="json"),
+                response=response.model_dump(mode="json"),
+            )
+        except Exception:  # noqa: BLE001
+            # Recording failure should never break the recommendation
+            # response — log it and move on.
+            import logging
+            logging.getLogger(__name__).exception(
+                "record_single_session failed (db=%s); recommendation returned anyway",
+                db_path,
+            )
+    return response
 
 
 # ---------- /v4/recommend/pool (V8 W6) ----------
@@ -589,7 +621,9 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
     tickets_out = [
         PoolTicketResponse(
             legs=[
-                SelectionResponse(
+                PoolLegResponse(
+                    match_id=leg.match_id,
+                    market_type=leg.market_type,
                     outcome=leg.outcome,
                     odds=float(leg.odds),
                     probability=float(leg.probability),
@@ -607,7 +641,7 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
         for t in rec.tickets  # all candidates, EV desc
     ]
 
-    return PoolRecommendResponse(
+    response = PoolRecommendResponse(
         generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         model=_model_info_from_artifact(art),
         bankroll=req.bankroll,
@@ -619,3 +653,21 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
         total_expected_return=float(rec.total_expected_return),
         tickets=tickets_out,
     )
+
+    # Post-V8 P1#5: auto-record when NUTMEG_V4_OBSERVATION_DB is set
+    db_path = _observation_db_path()
+    if db_path:
+        from nutmeg.v4.observation.recorder import record_pool_session
+        try:
+            record_pool_session(
+                db_path,
+                request=req.model_dump(mode="json"),
+                response=response.model_dump(mode="json"),
+            )
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "record_pool_session failed (db=%s); recommendation returned anyway",
+                db_path,
+            )
+    return response
