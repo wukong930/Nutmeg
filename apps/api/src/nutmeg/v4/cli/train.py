@@ -235,12 +235,15 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     _info("Building features ...", args.quiet)
+    # V8 W3: auto-enable cross-league seeding when --with-cup-data is set —
+    # cup-row Elo/form needs to draw on the team's domestic-league history.
     feats = build_feature_frame(
         df,
         lineup_lookup=lineup_lookup,
         injury_lookup=injury_lookup,
         recent_injury_lookup=recent_injury_lookup,
         cup_history_df=cup_history_df,
+        cross_league_seed=args.with_cup_data,
     )
 
     # Time split

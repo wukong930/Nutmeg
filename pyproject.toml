@@ -67,6 +67,7 @@ nutmeg-weekly-report = "nutmeg.v4.cli.weekly_report:main"
 nutmeg-ingest-cup-history = "nutmeg.v4.cli.ingest_cup_history:main"
 nutmeg-ingest-cup-odds = "nutmeg.v4.cli.ingest_cup_odds:main"
 nutmeg-canonical-report-cup = "nutmeg.v4.cli.canonical_report_cup:main"
+nutmeg-cup-ablation = "nutmeg.v4.cli.cup_ablation:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]

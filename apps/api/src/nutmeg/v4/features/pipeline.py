@@ -174,6 +174,7 @@ def build_feature_frame(
     injury_lookup: dict | None = None,
     recent_injury_lookup: dict | None = None,
     cup_history_df: pd.DataFrame | None = None,
+    cross_league_seed: bool = False,
 ) -> pd.DataFrame:
     """Build all features. df must contain the canonical MATCH_COLUMNS.
 
@@ -202,8 +203,8 @@ def build_feature_frame(
     """
     out = build_market_features(df)
     out = build_market_dynamics_features(out)
-    out = build_form_features(out)
-    out = build_elo_features(out)
+    out = build_form_features(out, cross_league_seed=cross_league_seed)
+    out = build_elo_features(out, cross_league_seed=cross_league_seed)
     out = build_xg_lite_features(out)
     out = build_clubelo_features(out, cache_dir=clubelo_cache_dir, history=clubelo_history)
     if lineup_lookup is not None:

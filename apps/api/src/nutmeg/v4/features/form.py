@@ -31,9 +31,31 @@ def _avg(vals: Deque) -> float:
                   if any(v is not None and not np.isnan(v) for v in vals) else np.nan)
 
 
-def build_form_features(df: pd.DataFrame, *, window: int = WINDOW) -> pd.DataFrame:
-    """Walk in time order, maintain per-(league, team) rolling deques."""
-    out = df.sort_values(["league", "date"]).reset_index(drop=True).copy()
+def build_form_features(
+    df: pd.DataFrame,
+    *,
+    window: int = WINDOW,
+    cross_league_seed: bool = False,
+) -> pd.DataFrame:
+    """Walk in time order, maintain per-(league, team) rolling deques.
+
+    V8 W3: when ``cross_league_seed=True``, the FIRST encounter of a
+    team in a new league pool seeds that pool with the team's recent
+    form history from any other league pool. Walks the rows in pure
+    chronological order (instead of per-league chunks) so cross-league
+    seeding sees the most-recent state.
+    """
+    # V8 W3: sort order matters for cross_league_seed semantics
+    if cross_league_seed:
+        from nutmeg.v4.features.cross_league_state import (
+            seed_form_deque,
+            seed_form_last_date,
+        )
+        out = df.sort_values(["date", "league"]).reset_index(drop=True).copy()
+    else:
+        seed_form_deque = None
+        seed_form_last_date = None
+        out = df.sort_values(["league", "date"]).reset_index(drop=True).copy()
 
     # Per-team rolling state. `shots` is shots-FOR; `shots_ag` is shots-AGAINST
     # (i.e., the opponent's shot count when this team played). The against
@@ -60,6 +82,21 @@ def build_form_features(df: pd.DataFrame, *, window: int = WINDOW) -> pd.DataFra
     for i, row in enumerate(out.itertuples(index=False)):
         kh = (row.league, row.home_team)
         ka = (row.league, row.away_team)
+
+        # V8 W3: cross-league seeding — when a team appears in a new
+        # league pool for the first time, copy its recent form history
+        # from any other league pool it has played in. Mutates each
+        # state dict so subsequent reads are stable.
+        if cross_league_seed:
+            for state_dict in (g_for, g_ag, shots, shots_ag, sot, sot_ag):
+                seed_form_deque(state_dict, row.league, row.home_team, window=window)
+                seed_form_deque(state_dict, row.league, row.away_team, window=window)
+            seeded_h_date = seed_form_last_date(last_date, row.league, row.home_team)
+            if seeded_h_date is not None and kh not in last_date:
+                last_date[kh] = seeded_h_date
+            seeded_a_date = seed_form_last_date(last_date, row.league, row.away_team)
+            if seeded_a_date is not None and ka not in last_date:
+                last_date[ka] = seeded_a_date
 
         init["form_home_goals_for_n"][i] = _avg(g_for[kh])
         init["form_home_goals_against_n"][i] = _avg(g_ag[kh])

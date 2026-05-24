@@ -40,6 +40,13 @@ class WalkForwardConfig:
     # V5 W6: when True, also train XGBoost + CatBoost bases + stacker.
     # The extra training adds ~30-60s per fold.
     with_ensemble: bool = False
+    # V8 W3: pass-through to build_feature_frame for cup-data ablation.
+    # cup_history_df adds the 5 W11 side-channel cup feature cols;
+    # cross_league_seed lets cup-row Elo/form draw on the team's
+    # domestic-league history (the right setting when training with
+    # --with-cup-data UNION rows).
+    cup_history_df: pd.DataFrame | None = None
+    cross_league_seed: bool = False
 
 
 def _three_way_split(df: pd.DataFrame, cfg: WalkForwardConfig, league: str):
@@ -68,7 +75,11 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
 
     # ---- Build features ONCE on full df (no leakage; pure per-row transforms /
     # rolling state that walks forward in time) ----
-    feats = build_feature_frame(df)
+    feats = build_feature_frame(
+        df,
+        cup_history_df=cfg.cup_history_df,
+        cross_league_seed=cfg.cross_league_seed,
+    )
 
     # ---- Per-league MLE DC (legacy comparison) ----
     per_league_data = []
