@@ -197,6 +197,72 @@ TEAM_ALIASES: dict[str, dict[str, str]] = {
 }
 
 
+# V8 W1 — Cup-team aliases. Cup competitions (UCL, UEL, etc.) bring teams
+# from multiple leagues into one fixture; the per-league TEAM_ALIASES isn't
+# enough because the API-Football name for "Manchester United" needs to
+# resolve to the V4 canonical "Man United" regardless of whether the row
+# is from EPL or a UCL match. CUP_TEAM_ALIASES is the catch-all global
+# alias map — falls back to walking every per-league dict via
+# `to_v4_canonical_global`.
+#
+# Add entries here when `nutmeg-canonical-report-cup` reports unmatched
+# names. Keep both the API-Football canonical form ("Manchester United")
+# AND any common alternates ("Man Utd") because the lookup tries the
+# normalized form against each.
+CUP_TEAM_ALIASES: dict[str, str] = {
+    # English teams in cup competitions
+    "manchester united": "Man United",
+    "man united": "Man United",
+    "manchester city": "Man City",
+    "man city": "Man City",
+    "tottenham hotspur": "Tottenham",
+    "newcastle united": "Newcastle",
+    "leicester city": "Leicester",
+    "leeds united": "Leeds",
+    "wolverhampton wanderers": "Wolves",
+    "nottingham forest": "Nott'm Forest",
+    "west ham united": "West Ham",
+    "west bromwich albion": "West Brom",
+    # Spanish
+    "real madrid cf": "Real Madrid",
+    "fc barcelona": "Barcelona",
+    "atletico madrid": "Ath Madrid",
+    "atletico de madrid": "Ath Madrid",
+    "athletic club": "Ath Bilbao",
+    "athletic bilbao": "Ath Bilbao",
+    # Italian
+    "ac milan": "Milan",
+    "internazionale": "Inter",
+    "inter milan": "Inter",
+    "juventus fc": "Juventus",
+    "ssc napoli": "Napoli",
+    # German
+    "fc bayern munchen": "Bayern Munich",
+    "bayern munchen": "Bayern Munich",
+    "borussia dortmund": "Dortmund",
+    "rb leipzig": "RB Leipzig",
+    "bayer 04 leverkusen": "Leverkusen",
+    "bayer leverkusen": "Leverkusen",
+    # French
+    "paris saint germain": "Paris SG",
+    "paris saint germain fc": "Paris SG",
+    "psg": "Paris SG",
+    "olympique de marseille": "Marseille",
+    "olympique lyonnais": "Lyon",
+    "as monaco": "Monaco",
+    # Portuguese
+    "fc porto": "Porto",
+    "sl benfica": "Benfica",
+    "sporting cp": "Sporting",
+    "sporting clube de portugal": "Sporting",
+    "sc braga": "Sp Braga",
+    # Dutch
+    "psv eindhoven": "PSV Eindhoven",
+    "afc ajax": "Ajax",
+    "feyenoord rotterdam": "Feyenoord",
+}
+
+
 @dataclass(frozen=True)
 class CanonicalLookupResult:
     """Result of a team-name lookup attempt.
@@ -271,5 +337,104 @@ def report_unmatched(
     pool = list(v4_team_pool)
     return [
         (name, to_v4_canonical(name, league, pool, fuzzy_threshold))
+        for name in external_names
+    ]
+
+
+# ---------- V8 W1 — cross-league / cup-team lookup --------------------
+
+def build_global_team_pool(
+    league_team_pools: dict[str, Iterable[str]],
+) -> list[str]:
+    """Union every league's V4 team pool into one flat sorted list.
+
+    Used as the lookup pool for cup matches where the team's native
+    league isn't known a priori (UCL Real Madrid vs Bayern → need to
+    find both teams across La Liga + Bundesliga pools).
+
+    Duplicate canonical names across leagues are de-duplicated. Order
+    is alphabetical so the output is stable for tests and diagnostics.
+    """
+    union: set[str] = set()
+    for teams in league_team_pools.values():
+        for t in teams:
+            if t:
+                union.add(t)
+    return sorted(union)
+
+
+def to_v4_canonical_global(
+    name: str,
+    global_team_pool: Iterable[str],
+    *,
+    fuzzy_threshold: float = 0.86,
+) -> CanonicalLookupResult:
+    """Resolve a cup-match team name to its V4 canonical name (any league).
+
+    Search precedence:
+        1. Exact match against `global_team_pool`
+        2. Normalized exact (handles accents / punctuation)
+        3. Lookup in `CUP_TEAM_ALIASES` (cup-specific catch-all map)
+        4. Walk every per-league `TEAM_ALIASES` dict — first hit that
+           resolves to a name actually in the global pool wins
+        5. Fuzzy match against the global pool
+
+    The V8 W1 design choice: cup teams DON'T know their native league at
+    join time, so the per-league `to_v4_canonical` API doesn't fit.
+    `to_v4_canonical_global` walks all alias dicts, returning the first
+    that resolves into the union pool. Add to `CUP_TEAM_ALIASES` when
+    `nutmeg-canonical-report-cup` reports unmatched names.
+    """
+    if not name:
+        return CanonicalLookupResult(None, "unmatched", 0.0)
+    pool = list(global_team_pool)
+    if not pool:
+        return CanonicalLookupResult(None, "unmatched", 0.0)
+
+    # 1. exact
+    if name in pool:
+        return CanonicalLookupResult(name, "exact", 1.0)
+
+    # 2. normalized exact
+    name_norm = normalize_name(name)
+    pool_norm = {normalize_name(t): t for t in pool}
+    if name_norm in pool_norm:
+        return CanonicalLookupResult(pool_norm[name_norm], "exact", 1.0)
+
+    # 3. cup-specific alias
+    if name_norm in CUP_TEAM_ALIASES:
+        canonical = CUP_TEAM_ALIASES[name_norm]
+        if canonical in pool:
+            return CanonicalLookupResult(canonical, "alias", 1.0)
+
+    # 4. walk per-league aliases (the catch-all for teams not in CUP_TEAM_ALIASES)
+    for league_aliases in TEAM_ALIASES.values():
+        if name_norm in league_aliases:
+            canonical = league_aliases[name_norm]
+            if canonical in pool:
+                return CanonicalLookupResult(canonical, "alias", 1.0)
+
+    # 5. fuzzy
+    matches = difflib.get_close_matches(
+        name_norm, list(pool_norm.keys()), n=1, cutoff=fuzzy_threshold,
+    )
+    if matches:
+        canonical = pool_norm[matches[0]]
+        ratio = difflib.SequenceMatcher(None, name_norm, matches[0]).ratio()
+        return CanonicalLookupResult(canonical, "fuzzy", ratio)
+
+    return CanonicalLookupResult(None, "unmatched", 0.0)
+
+
+def report_unmatched_global(
+    external_names: Iterable[str],
+    global_team_pool: Iterable[str],
+    *,
+    fuzzy_threshold: float = 0.86,
+) -> list[tuple[str, CanonicalLookupResult]]:
+    """Cross-league sibling of `report_unmatched`. Cup-ingest diagnostic."""
+    pool = list(global_team_pool)
+    return [
+        (name, to_v4_canonical_global(name, pool, fuzzy_threshold=fuzzy_threshold))
         for name in external_names
     ]
