@@ -54,13 +54,17 @@ fi
 # ===== 2. launchd jobs =====
 section "2. launchd jobs"
 JOBS=("com.nutmeg.daily_odds" "com.nutmeg.daily_recommend" "com.nutmeg.weekly_settle")
+# Snapshot launchctl list ONCE (avoid SIGPIPE issues with grep -q + pipefail
+# + repeated large-output pipes that previously caused false negatives).
+LIST_SNAPSHOT="$(launchctl list 2>/dev/null || true)"
 ANY_LOADED=0
 for job in "${JOBS[@]}"; do
-  if launchctl list 2>/dev/null | grep -q "$job"; then
+  # Use grep -F (fixed-string) so the . in com.nutmeg... isn't a regex wildcard.
+  line="$(printf '%s\n' "$LIST_SNAPSHOT" | grep -F "$job" || true)"
+  if [[ -n "$line" ]]; then
     ANY_LOADED=1
-    line="$(launchctl list 2>/dev/null | grep "$job")"
-    pid="$(echo "$line" | awk '{print $1}')"
-    last_exit="$(echo "$line" | awk '{print $2}')"
+    pid="$(printf '%s' "$line" | awk '{print $1}')"
+    last_exit="$(printf '%s' "$line" | awk '{print $2}')"
     if [[ "$last_exit" == "0" || "$pid" != "-" ]]; then
       ok "$job loaded (last exit=$last_exit, pid=$pid)"
     else
