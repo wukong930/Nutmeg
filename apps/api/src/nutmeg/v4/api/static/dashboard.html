@@ -2,6 +2,11 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<!-- post-v9 P1#13: viewport meta enables responsive rendering on mobile.
+     Without this iOS Safari + Android Chrome render at desktop width (~980px)
+     and force pinch-zoom. width=device-width tells the browser to honor
+     CSS media queries and the responsive sm:/md:/lg: Tailwind breakpoints. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nutmeg V4 Dashboard</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
@@ -22,34 +27,41 @@
 </head>
 <body class="bg-gray-50 text-gray-900">
 
-<div class="max-w-7xl mx-auto px-4 py-6">
+<!-- P1#13: tighter mobile padding (px-3) widening at sm breakpoint. -->
+<div class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
 
-  <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
+  <!-- Header — P1#13: stack vertically on mobile so the health pill
+       doesn't compete with the title for narrow-screen real estate. -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
     <div>
-      <h1 class="text-2xl font-bold">Nutmeg · 竞彩足球助手</h1>
-      <p class="text-sm text-gray-500">中国体彩 · 胜平负 + 让球胜平负 · 单关 / 串关 / 复式 全玩法推荐</p>
+      <h1 class="text-xl sm:text-2xl font-bold">Nutmeg · 竞彩足球助手</h1>
+      <p class="text-xs sm:text-sm text-gray-500">中国体彩 · 胜平负 + 让球胜平负 · 单关 / 串关 / 复式 全玩法推荐</p>
     </div>
     <div id="health-pill" class="text-sm">
       <span class="badge-warn">checking ...</span>
     </div>
   </div>
 
-  <!-- Tab nav -->
+  <!-- Tab nav — P1#13: mobile horizontal-scroll instead of wrap.
+       flex-wrap on mobile was eating ~120px of vertical space (3 rows of tabs).
+       overflow-x-auto + flex-nowrap keeps a single row + lets user swipe.
+       The whitespace-nowrap on each button prevents Chinese labels from
+       breaking mid-character. -->
   <div class="border-b border-gray-200 mb-6">
-    <nav class="flex space-x-1 flex-wrap">
-      <button data-tab="single"    class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">① 单关</button>
-      <button data-tab="recommend" class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
-      <button data-tab="pool"      class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
-      <button data-tab="outcomes"  class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
-      <button data-tab="roi"       class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
-      <button data-tab="sessions"  class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
-      <button data-tab="rules"     class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
+    <nav role="tablist" aria-label="主功能选项卡"
+         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px">
+      <button data-tab="single"    role="tab" aria-controls="tab-single"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">① 单关</button>
+      <button data-tab="recommend" role="tab" aria-controls="tab-recommend" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
+      <button data-tab="pool"      role="tab" aria-controls="tab-pool"      class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
+      <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
+      <button data-tab="roi"       role="tab" aria-controls="tab-roi"       class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
+      <button data-tab="sessions"  role="tab" aria-controls="tab-sessions"  class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
+      <button data-tab="rules"     role="tab" aria-controls="tab-rules"     class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
     </nav>
   </div>
 
   <!-- Tab: Single (单关) — V8 W6 -->
-  <div id="tab-single" class="tab-panel">
+  <div id="tab-single" role="tabpanel" aria-labelledby="tab-single" class="tab-panel">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
       <h2 class="font-bold mb-3">单关推荐</h2>
       <p class="text-sm text-gray-500 mb-3">单场比赛, 单注最低 ¥2; 系统从胜平负 + 让球胜平负 6 个候选里挑出 EV/单位最大的 1-2 注。</p>
@@ -58,16 +70,18 @@
         <button id="btn-clear-single" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
       </div>
       <textarea id="single-fixtures-json" rows="14"
-        class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
-      <div class="mt-3 flex items-center space-x-4 flex-wrap">
+        aria-label="单关 fixtures JSON 输入"
+        spellcheck="false" autocorrect="off" autocapitalize="off"
+        class="w-full p-3 border rounded font-mono text-xs sm:text-xs bg-gray-50 min-h-[200px]"></textarea>
+      <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
         <label class="text-sm">预算 ¥
-          <input id="single-bankroll" type="number" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
+          <input id="single-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm" title="每场比赛最多推荐多少注 (默认 1 — 避免同场押两个对立结果)">每场最多
-          <input id="single-top-per-match" type="number" value="1" min="1" max="3" class="w-16 px-2 py-1 border rounded text-sm">
+          <input id="single-top-per-match" type="number" inputmode="numeric" value="1" min="1" max="3" class="w-16 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm">凯利分数
-          <input id="single-kelly-fraction" type="number" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
+          <input id="single-kelly-fraction" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm flex items-center" title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
           <input id="single-record-session" type="checkbox" class="mr-1"> 记录到观测库
@@ -77,7 +91,7 @@
         <button id="btn-recommend-single" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
           生成单关推荐
         </button>
-        <span id="single-status" class="ml-3 text-sm text-gray-500"></span>
+        <span id="single-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
       </div>
     </div>
 
@@ -93,7 +107,7 @@
   </div>
 
   <!-- Tab: Recommend (串关) -->
-  <div id="tab-recommend" class="tab-panel hidden">
+  <div id="tab-recommend" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
       <h2 class="font-bold mb-3">输入今天的比赛与盘口</h2>
       <p class="text-sm text-gray-500 mb-3">粘贴 JSON 数组（每场一对象，字段见
@@ -103,19 +117,21 @@
         <button id="btn-clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
       </div>
       <textarea id="fixtures-json" rows="14"
+        aria-label="串关 fixtures JSON 输入"
+        spellcheck="false" autocorrect="off" autocapitalize="off"
         class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
-      <div class="mt-3 flex items-center space-x-4">
+      <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
         <label class="text-sm">预算 ¥
-          <input id="bankroll" type="number" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm" title="起投 ¥2，建议 2 的倍数">
+          <input id="bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm" title="起投 ¥2，建议 2 的倍数">
         </label>
         <label class="text-sm">最大推荐数
-          <input id="top-n" type="number" value="10" min="1" max="50" class="w-16 px-2 py-1 border rounded text-sm">
+          <input id="top-n" type="number" inputmode="numeric" value="10" min="1" max="50" class="w-16 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm" title="模型预测命中率下限；默认 5% (与派奖率匹配)">最小命中率
-          <input id="min-hit" type="number" value="0.05" step="0.01" min="0" max="1" class="w-20 px-2 py-1 border rounded text-sm">
+          <input id="min-hit" type="number" inputmode="decimal" value="0.05" step="0.01" min="0" max="1" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm" title="凯利推荐金额下限；起投 ¥2 (步长 2)">最小凯利 ¥
-          <input id="min-kelly" type="number" value="2" min="2" step="2" class="w-20 px-2 py-1 border rounded text-sm">
+          <input id="min-kelly" type="number" inputmode="numeric" value="2" min="2" step="2" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm flex items-center">
           <input id="record-session" type="checkbox" class="mr-1"> 记录到观测库
@@ -130,15 +146,19 @@
         <button id="btn-recommend" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
           生成推荐
         </button>
-        <span id="recommend-status" class="ml-3 text-sm text-gray-500"></span>
+        <span id="recommend-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
       </div>
     </div>
 
     <div id="recommend-output" class="hidden">
       <!-- Single-match predictions -->
-      <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
+      <div class="bg-white shadow-sm rounded-lg p-3 sm:p-6 mb-6">
         <h3 class="font-bold mb-3">单场预测</h3>
-        <div class="overflow-x-auto">
+        <!-- P1#13: dual-rendering. The 10-col table is fine on desktop
+             (md ≥ 768px). On mobile it overflows even with overflow-x-auto.
+             We render BOTH targets (table + card list); CSS shows exactly one. -->
+        <!-- Desktop: table -->
+        <div class="overflow-x-auto hidden md:block">
           <table id="predictions-table">
             <thead><tr>
               <th>比赛</th><th class="num">λ_主</th><th class="num">λ_客</th>
@@ -148,6 +168,8 @@
             <tbody></tbody>
           </table>
         </div>
+        <!-- Mobile: card list (one card per prediction) -->
+        <div id="predictions-cards" class="md:hidden space-y-2"></div>
       </div>
       <!-- Parlay recommendations -->
       <div class="bg-white shadow-sm rounded-lg p-6">
@@ -162,7 +184,7 @@
   </div>
 
   <!-- Tab: Pool (复式) — V8 W6 -->
-  <div id="tab-pool" class="tab-panel hidden">
+  <div id="tab-pool" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
       <h2 class="font-bold mb-3">复式过关推荐 (M 选 N)</h2>
       <p class="text-sm text-gray-500 mb-3">
@@ -174,20 +196,22 @@
         <button id="btn-clear-pool" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
       </div>
       <textarea id="pool-fixtures-json" rows="14"
+        aria-label="复式 fixtures JSON 输入"
+        spellcheck="false" autocorrect="off" autocapitalize="off"
         class="w-full p-3 border rounded text-xs bg-gray-50"
         placeholder='每场需含 pick 字段 — "1x2_H" / "1x2_D" / "1x2_A" / "hc_H" / "hc_D" / "hc_A"'></textarea>
-      <div class="mt-3 flex items-center space-x-4 flex-wrap">
+      <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
         <label class="text-sm">预算 ¥
-          <input id="pool-bankroll" type="number" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
+          <input id="pool-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm" title="每张票串关数 (1-8, 受混合过关 8 串上限)">N (串关数)
-          <input id="pool-n" type="number" value="3" min="1" max="8" class="w-16 px-2 py-1 border rounded text-sm">
+          <input id="pool-n" type="number" inputmode="numeric" value="3" min="1" max="8" class="w-16 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm" title="可选: 整个复式池子的总投注上限 ¥; 留空 = 无限制">总预算上限 ¥
-          <input id="pool-max-budget" type="number" placeholder="无限制" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
+          <input id="pool-max-budget" type="number" inputmode="numeric" placeholder="无限制" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm">凯利分数
-          <input id="pool-kelly-fraction" type="number" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
+          <input id="pool-kelly-fraction" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm flex items-center" title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
           <input id="pool-record-session" type="checkbox" class="mr-1"> 记录到观测库
@@ -197,7 +221,7 @@
         <button id="btn-recommend-pool" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
           生成复式推荐
         </button>
-        <span id="pool-status" class="ml-3 text-sm text-gray-500"></span>
+        <span id="pool-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
       </div>
     </div>
 
@@ -214,7 +238,7 @@
   </div>
 
   <!-- Tab: Outcomes -->
-  <div id="tab-outcomes" class="tab-panel hidden">
+  <div id="tab-outcomes" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6">
       <h2 class="font-bold mb-3">录入比赛结果（自动结算）</h2>
       <p class="text-sm text-gray-500 mb-3">每行一场，格式：
@@ -227,14 +251,14 @@
         <button id="btn-submit-outcomes" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium">
           提交并结算
         </button>
-        <span id="outcomes-status" class="ml-3 text-sm text-gray-500"></span>
+        <span id="outcomes-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
       </div>
       <div id="outcomes-result" class="mt-4 hidden p-4 bg-green-50 border border-green-200 rounded text-sm"></div>
     </div>
   </div>
 
   <!-- Tab: ROI -->
-  <div id="tab-roi" class="tab-panel hidden">
+  <div id="tab-roi" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
       <h2 class="font-bold mb-3">ROI 总览</h2>
       <div id="roi-headline" class="text-sm text-gray-500">加载中 ...</div>
@@ -260,7 +284,7 @@
   </div>
 
   <!-- Tab: Sessions -->
-  <div id="tab-sessions" class="tab-panel hidden">
+  <div id="tab-sessions" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6">
       <h2 class="font-bold mb-3">最近会话</h2>
       <div id="sessions-table"></div>
@@ -268,7 +292,7 @@
   </div>
 
   <!-- Tab: Rules (V6 W10) -->
-  <div id="tab-rules" class="tab-panel hidden">
+  <div id="tab-rules" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
       <h2 class="font-bold mb-2">中国体彩 · 竞彩足球 规则速查</h2>
       <p class="text-sm text-gray-500 mb-4">数据来自 <code class="bg-gray-100 px-1 rounded">/api/v4/rules</code>,
@@ -373,15 +397,46 @@ const fmtMoney = (x) => '¥' + Number(x).toFixed(2);
 const fmtPct = (x, d=1) => (Number(x)*100).toFixed(d) + '%';
 const sign = (x) => x > 0 ? 'pos' : (x < 0 ? 'neg' : '');
 
+// P1#13: setStatus — visual styling for status messages instead of just
+// emoji + plain text. error → red banner, loading → spinner + dim text,
+// success → plain text. Caller passes the message WITHOUT the emoji prefix;
+// helper adds the visual icon. Existing call sites can be migrated
+// incrementally; raw textContent still works for backward compat.
+const STATUS_BASE_CLASS = 'ml-3 text-sm';
+function setStatus(sel, kind, msg) {
+  const el = typeof sel === 'string' ? $(sel) : sel;
+  if (!el) return;
+  // Reset to base classes
+  el.className = STATUS_BASE_CLASS;
+  let html = '';
+  if (kind === 'error') {
+    el.classList.add('inline-block','px-2','py-1','rounded','border-l-4',
+                      'border-red-500','bg-red-50','text-red-700','font-medium');
+    html = '<span aria-hidden="true">❌</span> ' + msg;
+  } else if (kind === 'loading') {
+    el.classList.add('text-gray-500','inline-flex','items-center','gap-1');
+    html = '<span class="inline-block animate-pulse" aria-hidden="true">⏳</span> ' + msg;
+  } else if (kind === 'success') {
+    el.classList.add('text-gray-700');
+    html = '<span aria-hidden="true">✓</span> ' + msg;
+  } else {
+    el.classList.add('text-gray-500');
+    html = msg;
+  }
+  el.innerHTML = html;
+}
+
 // --- Tab switching ---
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => {
     if (b.dataset.tab === name) {
       b.classList.remove('border-transparent','text-gray-500');
       b.classList.add('border-indigo-600','text-indigo-700');
+      b.setAttribute('aria-selected', 'true');   // P1#13 a11y
     } else {
       b.classList.remove('border-indigo-600','text-indigo-700');
       b.classList.add('border-transparent','text-gray-500');
+      b.setAttribute('aria-selected', 'false');  // P1#13 a11y
     }
   });
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
@@ -443,7 +498,7 @@ $('#btn-recommend').addEventListener('click', async () => {
     $('#recommend-status').textContent = '❌ 需要 fixtures 数组';
     return;
   }
-  $('#recommend-status').textContent = '⏳ 计算中 ...';
+  setStatus('#recommend-status', 'loading', '计算中 ...');
   const recordChecked = $('#record-session').checked;
   // P1#8: snapshot the latest session id BEFORE the POST so we can detect
   // whether the request actually advanced it (real write vs env-disabled).
@@ -463,7 +518,8 @@ $('#btn-recommend').addEventListener('click', async () => {
       body: JSON.stringify(req),
     });
     if (!res.ok) {
-      $('#recommend-status').textContent = '❌ ' + res.status + ': ' + (await res.text()).slice(0, 200);
+      setStatus('#recommend-status', 'error',
+        `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
       return;
     }
     const body = await res.json();
@@ -475,17 +531,21 @@ $('#btn-recommend').addEventListener('click', async () => {
       `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 条推荐  (模型截止 ${body.model.training_cutoff})${recordedNote}`;
     await verifyRecordedAndAppend('#recommend-status', recordChecked, beforeId);
   } catch (e) {
-    $('#recommend-status').textContent = '❌ ' + e.message;
+    setStatus('#recommend-status', 'error', e.message);
   }
 });
 
 function renderRecommendations(body) {
   $('#recommend-output').classList.remove('hidden');
-  // Predictions table
+  // P1#13: dual-render both desktop table + mobile card list.
+  // CSS hides one based on viewport (md:hidden vs hidden md:block).
   const ptbody = $('#predictions-table tbody');
+  const pcards = $('#predictions-cards');
   ptbody.innerHTML = '';
+  pcards.innerHTML = '';
   for (const p of body.single_match_predictions) {
     const hc = p.handicap_home !== null && p.handicap_home !== undefined;
+    // Desktop: table row
     ptbody.insertAdjacentHTML('beforeend',
       `<tr>
         <td>${p.home_team} <span class="text-gray-400">vs</span> ${p.away_team} <span class="text-xs text-gray-400">(${p.league})</span></td>
@@ -499,6 +559,27 @@ function renderRecommendations(body) {
         <td class="num">${hc ? fmtPct(p.p_draw_handicap) : '—'}</td>
         <td class="num">${hc ? fmtPct(p.p_away_handicap) : '—'}</td>
       </tr>`);
+    // Mobile: card
+    const handicapRow = hc
+      ? `<div class="text-xs text-gray-500 mt-2 pt-2 border-t">
+           让球 <strong>${(p.handicap_home > 0 ? '+' : '') + p.handicap_home}</strong> ·
+           主 ${fmtPct(p.p_home_handicap)} · 平 ${fmtPct(p.p_draw_handicap)} · 客 ${fmtPct(p.p_away_handicap)}
+         </div>`
+      : '';
+    pcards.insertAdjacentHTML('beforeend',
+      `<div class="border rounded p-3 bg-gray-50">
+        <div class="font-medium text-sm mb-1">
+          ${p.home_team} <span class="text-gray-400">vs</span> ${p.away_team}
+          <span class="text-xs text-gray-400">(${p.league})</span>
+        </div>
+        <div class="text-xs text-gray-600 mb-1">λ 主/客: <strong>${p.lambda_home.toFixed(2)}</strong> / <strong>${p.lambda_away.toFixed(2)}</strong></div>
+        <div class="text-sm">
+          胜 <strong>${fmtPct(p.p_home_1x2)}</strong> ·
+          平 <strong>${fmtPct(p.p_draw_1x2)}</strong> ·
+          负 <strong>${fmtPct(p.p_away_1x2)}</strong>
+        </div>
+        ${handicapRow}
+      </div>`);
   }
   // Recommendations
   $('#recs-count').textContent = `(${body.n_recommendations})`;
@@ -563,7 +644,7 @@ $('#btn-submit-outcomes').addEventListener('click', async () => {
       away_goals: Number(parts[5]),
     });
   }
-  $('#outcomes-status').textContent = '⏳ 提交中 ...';
+  setStatus('#outcomes-status', 'loading', '提交中 ...');
   try {
     const res = await fetch(API + '/observation/outcomes', {
       method: 'POST',
@@ -571,7 +652,8 @@ $('#btn-submit-outcomes').addEventListener('click', async () => {
       body: JSON.stringify({ outcomes }),
     });
     if (!res.ok) {
-      $('#outcomes-status').textContent = '❌ ' + res.status + ': ' + (await res.text()).slice(0, 200);
+      setStatus('#outcomes-status', 'error',
+        `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
       return;
     }
     const body = await res.json();
@@ -582,7 +664,7 @@ $('#btn-submit-outcomes').addEventListener('click', async () => {
        ${body.settle_counts.still_unknown} 条仍待其他比赛结果。`;
     loadHealth();  // refresh badge
   } catch (e) {
-    $('#outcomes-status').textContent = '❌ ' + e.message;
+    setStatus('#outcomes-status', 'error', e.message);
   }
 });
 
@@ -598,11 +680,11 @@ async function loadROI() {
     const h = body.headline;
     const calGap = h.actual_hit_rate - h.avg_hit_p_predicted;
     $('#roi-headline').innerHTML = `
-      <div class="grid grid-cols-4 gap-4">
-        <div><div class="text-xs text-gray-500">已结算</div><div class="text-2xl font-bold">${h.n_settled}</div></div>
-        <div><div class="text-xs text-gray-500">命中 / 错失</div><div class="text-2xl font-bold">${h.n_hit} / ${h.n_miss}</div></div>
-        <div><div class="text-xs text-gray-500">净盈亏</div><div class="text-2xl font-bold ${sign(h.profit_loss)}">${fmtMoney(h.profit_loss)}</div></div>
-        <div><div class="text-xs text-gray-500">ROI</div><div class="text-2xl font-bold ${sign(h.roi)}">${fmtPct(h.roi, 2)}</div></div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div><div class="text-xs text-gray-500">已结算</div><div class="text-xl sm:text-2xl font-bold">${h.n_settled}</div></div>
+        <div><div class="text-xs text-gray-500">命中 / 错失</div><div class="text-xl sm:text-2xl font-bold">${h.n_hit} / ${h.n_miss}</div></div>
+        <div><div class="text-xs text-gray-500">净盈亏</div><div class="text-xl sm:text-2xl font-bold ${sign(h.profit_loss)}">${fmtMoney(h.profit_loss)}</div></div>
+        <div><div class="text-xs text-gray-500">ROI</div><div class="text-xl sm:text-2xl font-bold ${sign(h.roi)}">${fmtPct(h.roi, 2)}</div></div>
       </div>
       <div class="mt-4 text-sm text-gray-600">
         总投入 ${fmtMoney(h.total_stake)} · 总回收 ${fmtMoney(h.total_payout)} ·
@@ -611,21 +693,22 @@ async function loadROI() {
       </div>
     `;
     // by k
+    // P1#13: wrap each ROI table in overflow-x-auto so mobile can scroll horizontally
     $('#roi-by-k').innerHTML = body.by_k_legs.length === 0 ? '<span class="text-gray-500">无数据</span>' :
-      '<table><thead><tr><th>k</th><th class="num">n</th><th class="num">命中</th><th class="num">投入</th><th class="num">P/L</th><th class="num">ROI</th></tr></thead><tbody>' +
-      body.by_k_legs.map(r => `<tr><td>${r.k_legs} 串 1</td><td class="num">${r.n}</td><td class="num">${r.n_hit}</td><td class="num">${fmtMoney(r.stake)}</td><td class="num ${sign(r.pl)}">${fmtMoney(r.pl)}</td><td class="num ${sign(r.pl)}">${fmtPct(r.pl/Math.max(r.stake,1e-9))}</td></tr>`).join('') + '</tbody></table>';
+      '<div class="overflow-x-auto"><table><thead><tr><th>k</th><th class="num">n</th><th class="num">命中</th><th class="num">投入</th><th class="num">P/L</th><th class="num">ROI</th></tr></thead><tbody>' +
+      body.by_k_legs.map(r => `<tr><td>${r.k_legs} 串 1</td><td class="num">${r.n}</td><td class="num">${r.n_hit}</td><td class="num">${fmtMoney(r.stake)}</td><td class="num ${sign(r.pl)}">${fmtMoney(r.pl)}</td><td class="num ${sign(r.pl)}">${fmtPct(r.pl/Math.max(r.stake,1e-9))}</td></tr>`).join('') + '</tbody></table></div>';
     // by league
     $('#roi-by-league').innerHTML = body.by_league.length === 0 ? '<span class="text-gray-500">无数据</span>' :
-      '<table><thead><tr><th>联赛</th><th class="num">n</th><th class="num">命中率</th><th class="num">P/L</th><th class="num">ROI</th></tr></thead><tbody>' +
-      body.by_league.map(r => `<tr><td>${r.league}</td><td class="num">${r.n}</td><td class="num">${fmtPct(r.hit_rate)}</td><td class="num ${sign(r.pl)}">${fmtMoney(r.pl)}</td><td class="num ${sign(r.roi)}">${fmtPct(r.roi)}</td></tr>`).join('') + '</tbody></table>';
+      '<div class="overflow-x-auto"><table><thead><tr><th>联赛</th><th class="num">n</th><th class="num">命中率</th><th class="num">P/L</th><th class="num">ROI</th></tr></thead><tbody>' +
+      body.by_league.map(r => `<tr><td>${r.league}</td><td class="num">${r.n}</td><td class="num">${fmtPct(r.hit_rate)}</td><td class="num ${sign(r.pl)}">${fmtMoney(r.pl)}</td><td class="num ${sign(r.roi)}">${fmtPct(r.roi)}</td></tr>`).join('') + '</tbody></table></div>';
     // calibration
     $('#roi-calibration').innerHTML = body.calibration.length === 0 ? '<span class="text-gray-500">无数据</span>' :
-      '<table><thead><tr><th>预测命中率区间</th><th class="num">n</th><th class="num">平均预测</th><th class="num">实际</th><th class="num">偏差</th></tr></thead><tbody>' +
-      body.calibration.map(b => `<tr><td>${fmtPct(b.bin_lo,0)}–${fmtPct(b.bin_hi,0)}</td><td class="num">${b.n}</td><td class="num">${fmtPct(b.avg_predicted)}</td><td class="num">${fmtPct(b.actual_hit_rate)}</td><td class="num ${b.actual_hit_rate-b.avg_predicted>=0?'pos':'neg'}">${(b.actual_hit_rate-b.avg_predicted>=0?'+':'') + (b.actual_hit_rate-b.avg_predicted).toFixed(3)}</td></tr>`).join('') + '</tbody></table>';
+      '<div class="overflow-x-auto"><table><thead><tr><th>预测命中率区间</th><th class="num">n</th><th class="num">平均预测</th><th class="num">实际</th><th class="num">偏差</th></tr></thead><tbody>' +
+      body.calibration.map(b => `<tr><td>${fmtPct(b.bin_lo,0)}–${fmtPct(b.bin_hi,0)}</td><td class="num">${b.n}</td><td class="num">${fmtPct(b.avg_predicted)}</td><td class="num">${fmtPct(b.actual_hit_rate)}</td><td class="num ${b.actual_hit_rate-b.avg_predicted>=0?'pos':'neg'}">${(b.actual_hit_rate-b.avg_predicted>=0?'+':'') + (b.actual_hit_rate-b.avg_predicted).toFixed(3)}</td></tr>`).join('') + '</tbody></table></div>';
     // weekly
     $('#roi-weekly').innerHTML = body.weekly.length === 0 ? '<span class="text-gray-500">无数据</span>' :
-      '<table><thead><tr><th>周次</th><th class="num">n</th><th class="num">投入</th><th class="num">本周 P/L</th><th class="num">累计 P/L</th></tr></thead><tbody>' +
-      body.weekly.map(w => `<tr><td>${w.week}</td><td class="num">${w.n}</td><td class="num">${fmtMoney(w.stake)}</td><td class="num ${sign(w.pl)}">${fmtMoney(w.pl)}</td><td class="num ${sign(w.cumulative_pl)}">${fmtMoney(w.cumulative_pl)}</td></tr>`).join('') + '</tbody></table>';
+      '<div class="overflow-x-auto"><table><thead><tr><th>周次</th><th class="num">n</th><th class="num">投入</th><th class="num">本周 P/L</th><th class="num">累计 P/L</th></tr></thead><tbody>' +
+      body.weekly.map(w => `<tr><td>${w.week}</td><td class="num">${w.n}</td><td class="num">${fmtMoney(w.stake)}</td><td class="num ${sign(w.pl)}">${fmtMoney(w.pl)}</td><td class="num ${sign(w.cumulative_pl)}">${fmtMoney(w.cumulative_pl)}</td></tr>`).join('') + '</tbody></table></div>';
   } catch (e) {
     $('#roi-headline').textContent = '❌ ' + e.message;
   }
@@ -639,9 +722,10 @@ async function loadSessions() {
       $('#sessions-table').innerHTML = '<span class="text-gray-500">还没有会话。</span>';
       return;
     }
+    // P1#13: wrap sessions table in overflow-x-auto for mobile scrolling
     $('#sessions-table').innerHTML =
-      '<table><thead><tr><th>ID</th><th>时间 (UTC)</th><th class="num">预算</th><th class="num">比赛数</th><th class="num">推荐数</th><th>模型截止日</th></tr></thead><tbody>' +
-      body.sessions.map(s => `<tr><td>#${s.session_id}</td><td class="text-xs text-gray-500">${s.created_at}</td><td class="num">${fmtMoney(s.bankroll)}</td><td class="num">${s.n_fixtures}</td><td class="num">${s.n_recommendations}</td><td class="text-xs text-gray-500">${s.model_cutoff || '—'}</td></tr>`).join('') + '</tbody></table>';
+      '<div class="overflow-x-auto"><table><thead><tr><th>ID</th><th>时间 (UTC)</th><th class="num">预算</th><th class="num">比赛数</th><th class="num">推荐数</th><th>模型截止日</th></tr></thead><tbody>' +
+      body.sessions.map(s => `<tr><td>#${s.session_id}</td><td class="text-xs text-gray-500">${s.created_at}</td><td class="num">${fmtMoney(s.bankroll)}</td><td class="num">${s.n_fixtures}</td><td class="num">${s.n_recommendations}</td><td class="text-xs text-gray-500">${s.model_cutoff || '—'}</td></tr>`).join('') + '</tbody></table></div>';
   } catch (e) {
     $('#sessions-table').textContent = '❌ ' + e.message;
   }
@@ -708,7 +792,7 @@ $('#btn-recommend-single').addEventListener('click', async () => {
     $('#single-status').textContent = '❌ 需要 fixtures 数组';
     return;
   }
-  $('#single-status').textContent = '⏳ 计算中 ...';
+  setStatus('#single-status', 'loading', '计算中 ...');
   const recordCheckedSingle = $('#single-record-session').checked;
   const beforeIdSingle = recordCheckedSingle ? await getLatestSessionId() : null;
   const req = {
@@ -724,7 +808,8 @@ $('#btn-recommend-single').addEventListener('click', async () => {
       body: JSON.stringify(req),
     });
     if (!res.ok) {
-      $('#single-status').textContent = '❌ ' + res.status + ': ' + (await res.text()).slice(0, 200);
+      setStatus('#single-status', 'error',
+        `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
       return;
     }
     const body = await res.json();
@@ -736,7 +821,7 @@ $('#btn-recommend-single').addEventListener('click', async () => {
       `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 注推荐 (模型截止 ${body.model.training_cutoff})${recordedNote}`;
     await verifyRecordedAndAppend('#single-status', recordCheckedSingle, beforeIdSingle);
   } catch (e) {
-    $('#single-status').textContent = '❌ ' + e.message;
+    setStatus('#single-status', 'error', e.message);
   }
 });
 
@@ -752,8 +837,10 @@ function renderSingleRecommendations(body) {
   }
   list.classList.remove('hidden');
   empty.classList.add('hidden');
+  // P1#13: dual render (table on md+, card list on mobile)
   list.insertAdjacentHTML('beforeend',
-    '<table><thead><tr>' +
+    // Desktop: original table, wrapped for overflow safety
+    '<div class="overflow-x-auto hidden md:block"><table><thead><tr>' +
     '<th>#</th><th>比赛</th><th>玩法</th><th>选</th>' +
     '<th class="num">模型概率</th><th class="num">赔率</th>' +
     '<th class="num">EV/单位</th><th class="num">投注</th><th class="num">预期回报</th>' +
@@ -772,7 +859,30 @@ function renderSingleRecommendations(body) {
     `</tbody><tfoot><tr><td colspan="7" class="text-right font-bold">总计</td>` +
     `<td class="num font-bold">${fmtMoney(body.total_stake)}</td>` +
     `<td class="num font-bold ${sign(body.total_expected_return)}">${fmtMoney(body.total_expected_return)}</td>` +
-    `</tr></tfoot></table>` +
+    `</tr></tfoot></table></div>` +
+    // Mobile: card list
+    '<div class="md:hidden space-y-2">' +
+    body.tickets.map((t, i) => {
+      const match = t.match_id.replace(/^[A-Z_]+_/, '').replace('_vs_', ' vs ');
+      const market = MARKET_LABEL[t.market_type] || t.market_type;
+      return `<div class="border rounded p-3 bg-gray-50">
+        <div class="flex justify-between items-baseline mb-1">
+          <span class="text-xs text-gray-400">#${i+1}</span>
+          <span class="text-sm font-bold">${fmtMoney(t.stake)} → <span class="${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</span></span>
+        </div>
+        <div class="font-medium text-sm">${match}</div>
+        <div class="text-xs text-gray-600 mb-1">${market} · <strong>${t.outcome}</strong> @ ${t.odds.toFixed(2)}</div>
+        <div class="text-xs">
+          模型 <strong>${fmtPct(t.probability)}</strong> ·
+          EV <strong class="${sign(t.ev_per_unit)}">${(t.ev_per_unit>=0?'+':'') + fmtPct(t.ev_per_unit, 2)}</strong>
+        </div>
+      </div>`;
+    }).join('') +
+    `<div class="border-t pt-2 text-sm font-bold flex justify-between">
+       <span>总计</span>
+       <span>${fmtMoney(body.total_stake)} → <span class="${sign(body.total_expected_return)}">${fmtMoney(body.total_expected_return)}</span></span>
+     </div>` +
+    '</div>' +
     '<p class="mt-3 text-xs text-gray-500">⚠️ 系统不进行自动投注；推荐仅供参考。请按 ¥2 倍数确认 SP 后下注。</p>'
   );
 }
@@ -810,7 +920,7 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
     $('#pool-status').textContent = `❌ N=${n} 大于池子大小 (M=${fixtures.length})`;
     return;
   }
-  $('#pool-status').textContent = '⏳ 枚举 + 计算 ...';
+  setStatus('#pool-status', 'loading', '枚举 + 计算 ...');
   const maxBudgetRaw = $('#pool-max-budget').value.trim();
   const recordCheckedPool = $('#pool-record-session').checked;
   const beforeIdPool = recordCheckedPool ? await getLatestSessionId() : null;
@@ -827,7 +937,8 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
       body: JSON.stringify(req),
     });
     if (!res.ok) {
-      $('#pool-status').textContent = '❌ ' + res.status + ': ' + (await res.text()).slice(0, 200);
+      setStatus('#pool-status', 'error',
+        `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
       return;
     }
     const body = await res.json();
@@ -839,7 +950,7 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
       `✓ ${body.m} 选 ${body.n} = ${body.n_combinations} 张候选, ${body.n_selected} 张选中${recordedNote}`;
     await verifyRecordedAndAppend('#pool-status', recordCheckedPool, beforeIdPool);
   } catch (e) {
-    $('#pool-status').textContent = '❌ ' + e.message;
+    setStatus('#pool-status', 'error', e.message);
   }
 });
 
@@ -862,8 +973,9 @@ function renderPoolRecommendations(body) {
   }
   list.classList.remove('hidden');
   empty.classList.add('hidden');
+  // P1#13: dual-render (table on md+, card list on mobile)
   list.insertAdjacentHTML('beforeend',
-    '<table><thead><tr>' +
+    '<div class="overflow-x-auto hidden md:block"><table><thead><tr>' +
     '<th>#</th><th class="num">命中率</th><th class="num">总赔率</th>' +
     '<th class="num">EV/单位</th><th class="num">投注</th><th class="num">预期回报</th><th>选项</th>' +
     '</tr></thead><tbody>' +
@@ -876,7 +988,22 @@ function renderPoolRecommendations(body) {
       <td class="num ${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</td>
       <td class="text-xs">${t.legs.map(l => `<span class="inline-block bg-gray-100 px-1 mx-0.5 rounded">${l.outcome}@${l.odds.toFixed(2)}</span>`).join(' + ')}</td>
     </tr>`).join('') +
-    '</tbody></table>' +
+    '</tbody></table></div>' +
+    // Mobile: card list
+    '<div class="md:hidden space-y-2">' +
+    selected.map((t, i) => `<div class="border rounded p-3 bg-gray-50">
+      <div class="flex justify-between items-baseline mb-1">
+        <span class="text-xs text-gray-400">#${i+1}</span>
+        <span class="text-sm font-bold">${fmtMoney(t.stake)} → <span class="${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</span></span>
+      </div>
+      <div class="text-xs text-gray-600 mb-1">
+        命中 <strong>${fmtPct(t.hit_probability, 2)}</strong> ·
+        总赔率 <strong>${t.combined_odds.toFixed(2)}</strong> ·
+        EV <strong class="${sign(t.ev_per_unit)}">${(t.ev_per_unit>=0?'+':'') + fmtPct(t.ev_per_unit, 2)}</strong>
+      </div>
+      <div class="text-xs">${t.legs.map(l => `<span class="inline-block bg-gray-100 px-1 mx-0.5 rounded">${l.outcome}@${l.odds.toFixed(2)}</span>`).join(' + ')}</div>
+    </div>`).join('') +
+    '</div>' +
     '<p class="mt-3 text-xs text-gray-500">⚠️ 系统不进行自动投注；推荐仅供参考。</p>'
   );
 }
