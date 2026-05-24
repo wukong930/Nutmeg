@@ -114,12 +114,10 @@ retrospectives' backlog) **permanently closed**. See
 [v9_w6_calibration_negative.md](v9_w6_calibration_negative.md) +
 [v9_w6_calibration_ablation.md](v9_w6_calibration_ablation.md).
 
-### V9 ship — closeout
+### V9 ship — closeout ✅
 
-`V9_HANDOFF.md` + `v9_retrospective.md` + `v9.0-shipped` tag.
-
-The V9 retrospective should be **shorter than V6/V7/V8 retros** because
-V9 itself is shorter. Maybe ~150 lines instead of ~250.
+`V9_HANDOFF.md` + `v9_retrospective.md` + `v9.0-shipped` tag all
+shipped. Retrospective came in at 215 lines (vs ~250 for V6/V7/V8).
 
 ## Tag plan
 
@@ -130,8 +128,8 @@ V9 itself is shorter. Maybe ~150 lines instead of ~250.
 | `v9.w3` | Dashboard recorder checkbox | |
 | `v9.w4` | CI fixture cache | |
 | `v9.w5` | ECE audit | shipped |
-| `v9.w6` | calibration fix attempt (negative writeup) | |
-| `v9.0-shipped` | V9 closeout | |
+| `v9.w6` | calibration fix attempt (negative writeup) | shipped |
+| `v9.0-shipped` | V9 closeout | shipped |
 
 ## Numeric targets
 
