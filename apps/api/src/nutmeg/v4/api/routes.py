@@ -39,6 +39,9 @@ from nutmeg.v4.api.schemas import (
     SingleRecommendResponse,
     SinglePrediction,
     SingleTicketResponse,
+    TodayRecommendationsRequest,
+    TodayRecommendationsResponse,
+    TodaySummary,
     UpcomingPredictionsRequest,
     UpcomingPredictionsResponse,
 )
@@ -820,3 +823,198 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
                 db_path,
             )
     return response
+
+
+# ---------- /today-recommendations (V10 W1 Track A) ----------
+
+def _fixture_rows_to_inputs(rows: list[dict]) -> list[FixtureOddsInput]:
+    """Convert ingest_odds CSV-row dicts to FixtureOddsInput pydantic objects.
+
+    Drops rows missing required psc_* (closing odds) — those can't be
+    scored. Logs the drop count for observability.
+    """
+    out: list[FixtureOddsInput] = []
+    for r in rows:
+        try:
+            # ingest_odds returns numeric fields as either floats or ""
+            # (when bookmaker didn't quote that market). FixtureOddsInput
+            # validates `> 1.0`; empty string fails. So we coerce + skip.
+            def _f(key: str, default=None):
+                v = r.get(key)
+                if v is None or v == "":
+                    return default
+                return float(v)
+
+            psc_h = _f("psc_home")
+            psc_d = _f("psc_draw")
+            psc_a = _f("psc_away")
+            if psc_h is None or psc_d is None or psc_a is None:
+                continue
+
+            out.append(FixtureOddsInput(
+                date=r["date"],
+                league=r["league"],
+                home_team=r["home_team"],
+                away_team=r["away_team"],
+                psc_home=psc_h,
+                psc_draw=psc_d,
+                psc_away=psc_a,
+                odds_1x2_H=_f("odds_1x2_H"),
+                odds_1x2_D=_f("odds_1x2_D"),
+                odds_1x2_A=_f("odds_1x2_A"),
+                handicap_home=int(r["handicap_home"]) if r.get("handicap_home") not in (None, "") else None,
+                odds_handicap_H=_f("odds_handicap_H"),
+                odds_handicap_D=_f("odds_handicap_D"),
+                odds_handicap_A=_f("odds_handicap_A"),
+                psc_over25=_f("psc_over25"),
+                psc_under25=_f("psc_under25"),
+            ))
+        except Exception:  # noqa: BLE001
+            # Tolerate per-row failures — better to return partial recs
+            # than to 500 the whole endpoint
+            import logging
+            logging.getLogger(__name__).exception(
+                "today-recommendations: dropped fixture row %r",
+                {k: r.get(k) for k in ("date", "league", "home_team", "away_team")},
+            )
+    return out
+
+
+@router.post(
+    "/today-recommendations",
+    response_model=TodayRecommendationsResponse,
+    summary="Unified daily recommendation flow: auto-fetch fixtures + run single + parlay",
+)
+def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendationsResponse:
+    """V10 W1 Track A — the user-facing "land on the page" endpoint.
+
+    Reuses existing endpoint functions (`recommend`, `recommend_single`)
+    internally; no new ML logic. Server-side fetches fixtures via
+    `nutmeg.v4.cli.ingest_odds._gather_rows` (V7 W1).
+
+    Returns None for any included game type that produced 0 recommendations
+    or whose pipeline raised — UI renders "no recommendations today" rather
+    than throwing a 500.
+
+    Pool intentionally NOT included for V10 W1: it requires per-fixture
+    `pick` selection which needs a separate auto-pick policy decision.
+    Deferred to W2.
+    """
+    import datetime as _dt
+    from pathlib import Path as _Path
+
+    from nutmeg.v4.cli.ingest_odds import (
+        PINNACLE_BOOKMAKER_ID,
+        _gather_rows,
+    )
+
+    # Resolve date
+    if req.date is None:
+        on_date = _dt.date.today()
+    else:
+        try:
+            on_date = _dt.date.fromisoformat(req.date)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"date must be ISO YYYY-MM-DD: {exc}",
+            )
+
+    # Fetch fixtures (uses API-Football; will use cache if available)
+    try:
+        rows, _n_calls, _n_skipped = _gather_rows(
+            req.leagues,
+            on_date,
+            cache_dir=_Path("data/external/api_football"),
+            bookmaker_id=PINNACLE_BOOKMAKER_ID,
+            refresh_fixtures=False,
+            refresh_odds=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # API-Football errors (rate limit, network, missing key) → return
+        # empty response with clear summary, not 500. Caller sees
+        # fixtures_fetched=0 and can show "no data today / API issue".
+        import logging
+        logging.getLogger(__name__).warning(
+            "today-recommendations fixture fetch failed: %s", exc,
+        )
+        rows = []
+
+    fixtures = _fixture_rows_to_inputs(rows)
+    fixtures_fetched = len(fixtures)
+
+    single_resp: SingleRecommendResponse | None = None
+    parlay_resp: RecommendResponse | None = None
+    total_recs = 0
+    total_stake = 0.0
+    stake_weighted_ev_sum = 0.0
+
+    if fixtures_fetched > 0 and "single" in req.include:
+        try:
+            single_req = SingleRecommendRequest(
+                fixtures=fixtures,
+                bankroll=req.bankroll,
+                kelly_fraction=req.kelly_fraction,
+                record_session=req.record_session,
+            )
+            single_resp = recommend_single(single_req)
+            if single_resp.n_recommendations > 0:
+                total_recs += single_resp.n_recommendations
+                total_stake += single_resp.total_stake
+                # Sum EV-weighted-by-stake for the weighted_ev computation
+                for t in single_resp.tickets:
+                    stake_weighted_ev_sum += t.stake * t.ev_per_unit
+            else:
+                single_resp = None
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "today-recommendations: single pipeline failed",
+            )
+            single_resp = None
+
+    if fixtures_fetched >= 2 and "parlay" in req.include:
+        try:
+            parlay_req = RecommendRequest(
+                fixtures=fixtures,
+                bankroll=req.bankroll,
+                top_n=10,
+                k_min=2,
+                k_max=min(8, fixtures_fetched),
+                min_hit_probability=req.min_hit_probability,
+                min_kelly_stake=req.min_kelly_stake,
+                kelly_fraction=req.kelly_fraction,
+                include_compound=False,
+                record_session=req.record_session,
+            )
+            parlay_resp = recommend(parlay_req)
+            if parlay_resp.n_recommendations > 0:
+                total_recs += parlay_resp.n_recommendations
+                total_stake += parlay_resp.total_stake
+                for r in parlay_resp.recommendations:
+                    stake_weighted_ev_sum += r.stake_units * 1.0 * r.ev_per_unit  # stake_units is in ¥ for parlays
+            else:
+                parlay_resp = None
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "today-recommendations: parlay pipeline failed",
+            )
+            parlay_resp = None
+
+    weighted_ev = (stake_weighted_ev_sum / total_stake) if total_stake > 0 else None
+
+    return TodayRecommendationsResponse(
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
+        date=on_date.isoformat(),
+        leagues=req.leagues,
+        bankroll=req.bankroll,
+        fixtures_fetched=fixtures_fetched,
+        single=single_resp,
+        parlay=parlay_resp,
+        summary=TodaySummary(
+            total_recs=total_recs,
+            total_stake=total_stake,
+            weighted_ev=weighted_ev,
+        ),
+    )

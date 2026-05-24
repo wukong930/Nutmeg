@@ -28,16 +28,21 @@ def test_workflow_has_name(workflow):
     assert workflow.get("name")
 
 
-def test_workflow_schedule_first_of_month_09utc(workflow):
-    # `on` is a YAML reserved key that becomes True boolean in some parsers.
-    # PyYAML's safe_load keeps it as the string "on" by default.
+def test_workflow_schedule_removed(workflow):
+    """post-v9 P1#28: schedule removed; workflow is manual-only now.
+
+    Rationale: the GH secret was never set on the repo (P1#16 moved
+    daily cron to local launchd), so the scheduled monthly run was
+    silently failing every month. Removing schedule eliminates the
+    false-positive red checks. Workflow stays manually triggerable.
+    """
     on_block = workflow.get(True) or workflow.get("on")
     assert on_block is not None
     schedule = on_block.get("schedule")
-    assert schedule is not None
-    # cron line should be "0 9 1 * *" (09:00 UTC on the 1st)
-    cron_lines = [s.get("cron") for s in schedule]
-    assert "0 9 1 * *" in cron_lines
+    assert schedule is None, (
+        "schedule should be removed (P1#28); "
+        "GH secret is intentionally absent post-P1#16 launchd migration."
+    )
 
 
 def test_workflow_has_manual_dispatch(workflow):

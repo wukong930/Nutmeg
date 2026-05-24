@@ -287,6 +287,67 @@ class PoolRecommendResponse(BaseModel):
     tickets: list[PoolTicketResponse]  # all enumerated, sorted by EV desc
 
 
+# ---------- /today-recommendations (V10 W1 Track A) ----------
+
+class TodayRecommendationsRequest(BaseModel):
+    """POST /v4/today-recommendations body.
+
+    V10 W1 Track A — the user-facing "land on the page and see
+    recommendations" endpoint. Replaces the old engineer-facing flow
+    that required the user to paste fixtures JSON.
+
+    Server-side: fetches today's fixtures via api_football, runs the
+    single + parlay recommend pipelines, returns a unified response.
+    """
+
+    date: Optional[str] = Field(None, description=
+        "ISO YYYY-MM-DD; defaults to today (UTC).")
+    leagues: list[str] = Field(
+        default_factory=lambda: ["EPL", "ESP_LA_LIGA"],
+        description="V4 canonical league codes (default: EPL + La Liga).",
+    )
+    bankroll: float = Field(1000.0, gt=0,
+        description="Total bankroll. Default ¥1000.")
+    include: list[Literal["single", "parlay"]] = Field(
+        default_factory=lambda: ["single", "parlay"],
+        description="Which game types to include. Pool deferred to W2.",
+    )
+    # carry-over from RecommendRequest for advanced overrides
+    kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
+    min_hit_probability: float = Field(0.05, ge=0.0, le=1.0)
+    min_kelly_stake: float = Field(2.0, ge=0.0)
+    record_session: bool = Field(False, description=
+        "Opt-in observation recording (see RecommendRequest.record_session).")
+
+
+class TodaySummary(BaseModel):
+    """Aggregated stats across all recommendation types."""
+    total_recs: int
+    total_stake: float
+    weighted_ev: Optional[float] = Field(None, description=
+        "Stake-weighted average EV. None if total_stake == 0.")
+
+
+class TodayRecommendationsResponse(BaseModel):
+    """Unified response for the V10 landing flow.
+
+    Each game-type field is None when:
+      (a) excluded via request.include, OR
+      (b) the underlying engine returned 0 recommendations.
+
+    `fixtures_fetched` reports how many fixtures the server pulled
+    for the date+leagues (regardless of whether they passed the EV gate).
+    """
+    generated_at_utc: str
+    date: str
+    leagues: list[str]
+    bankroll: float
+    fixtures_fetched: int
+    single: Optional[SingleRecommendResponse] = None
+    parlay: Optional[RecommendResponse] = None
+    summary: TodaySummary
+
+
 # ---------- /rules (V6 W10) ----------
 
 class LotteryRulesResponse(BaseModel):
