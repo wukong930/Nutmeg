@@ -167,6 +167,97 @@ class UpcomingPredictionsResponse(BaseModel):
     predictions: list[SinglePrediction]
 
 
+# ---------- /recommend/single (V8 W6) ----------
+
+class SingleRecommendRequest(BaseModel):
+    """POST /v4/recommend/single body — 单关 (single-leg) flow.
+
+    Same fixture shape as /v4/recommend (one row per match). The server
+    runs `recommend_singles` (V6 W9) against the V5 W12 default artifact
+    + lottery rules, returns at most `top_per_match` recommendations per
+    fixture sorted by EV desc.
+    """
+    fixtures: list[FixtureOddsInput] = Field(..., min_length=1, max_length=50)
+    bankroll: float = Field(1000.0, gt=0)
+    top_per_match: int = Field(1, ge=1, le=3,
+                                description="Max recommendations per fixture (default 1, max 3)")
+    kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
+    max_stake_fraction: float = Field(0.05, gt=0.0, le=1.0,
+                                       description="Per-ticket cap as fraction of bankroll")
+
+
+class SingleTicketResponse(BaseModel):
+    match_id: str
+    market_type: Literal["1x2", "handicap_1x2"]
+    outcome: Literal["H", "D", "A"]
+    odds: float
+    probability: float
+    ev_per_unit: float
+    stake: float                  # ¥2-quantized
+    raw_kelly_stake: float        # pre-quantization (diagnostic)
+    expected_return: float
+
+
+class SingleRecommendResponse(BaseModel):
+    generated_at_utc: str
+    model: ModelInfo
+    bankroll: float
+    n_fixtures: int
+    n_recommendations: int
+    tickets: list[SingleTicketResponse]
+    total_stake: float
+    total_expected_return: float
+
+
+# ---------- /recommend/pool (V8 W6) ----------
+
+class PoolFixturePick(FixtureOddsInput):
+    """Pool fixture row — same FixtureOddsInput shape plus a `pick` field.
+
+    `pick` is the user's pre-decided outcome for that match, one of:
+        "1x2_H", "1x2_D", "1x2_A", "hc_H", "hc_D", "hc_A"
+    Compound parlay then enumerates every C(M, N) ticket across those
+    M picks.
+    """
+    pick: Literal["1x2_H", "1x2_D", "1x2_A", "hc_H", "hc_D", "hc_A"]
+
+
+class PoolRecommendRequest(BaseModel):
+    """POST /v4/recommend/pool body — 复式 (M-select-N compound parlay)."""
+
+    fixtures: list[PoolFixturePick] = Field(..., min_length=1, max_length=20)
+    n: int = Field(..., ge=1, le=8,
+                    description="Legs per ticket (1..8 per 竞彩 rules)")
+    bankroll: float = Field(1000.0, gt=0)
+    max_total_budget: Optional[float] = Field(None, gt=0,
+                                               description="Optional pool-wide stake cap")
+    kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
+    max_stake_fraction_per_ticket: float = Field(0.05, gt=0.0, le=1.0)
+
+
+class PoolTicketResponse(BaseModel):
+    legs: list[SelectionResponse]
+    hit_probability: float
+    combined_odds: float
+    ev_per_unit: float
+    stake: float                  # ¥2-quantized
+    raw_kelly_stake: float
+    expected_return: float
+
+
+class PoolRecommendResponse(BaseModel):
+    generated_at_utc: str
+    model: ModelInfo
+    bankroll: float
+    m: int                            # input pool size
+    n: int                            # legs per ticket
+    n_combinations: int               # = C(m, n)
+    n_selected: int                   # tickets with stake > 0
+    total_stake: float
+    total_expected_return: float
+    tickets: list[PoolTicketResponse]  # all enumerated, sorted by EV desc
+
+
 # ---------- /rules (V6 W10) ----------
 
 class LotteryRulesResponse(BaseModel):

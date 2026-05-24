@@ -69,7 +69,8 @@ class TestDashboardChineseLocalization:
         return r.text
 
     def test_dashboard_has_rules_tab(self, html: str):
-        assert "⑤ 规则说明" in html
+        # V8 W6 renumbered tabs (added 单关 + 复式), rules moved from ⑤ to ⑦
+        assert "规则说明" in html
         assert "data-tab=\"rules\"" in html
         assert "tab-rules" in html
 

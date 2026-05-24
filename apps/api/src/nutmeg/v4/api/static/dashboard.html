@@ -28,7 +28,7 @@
   <div class="flex items-center justify-between mb-6">
     <div>
       <h1 class="text-2xl font-bold">Nutmeg · 竞彩足球助手</h1>
-      <p class="text-sm text-gray-500">中国体彩 · 胜平负 + 让球胜平负 · 串关推荐 (单关/复式 请用 <code class="bg-gray-100 px-1 rounded">nutmeg-rec</code> CLI)</p>
+      <p class="text-sm text-gray-500">中国体彩 · 胜平负 + 让球胜平负 · 单关 / 串关 / 复式 全玩法推荐</p>
     </div>
     <div id="health-pill" class="text-sm">
       <span class="badge-warn">checking ...</span>
@@ -37,17 +37,60 @@
 
   <!-- Tab nav -->
   <div class="border-b border-gray-200 mb-6">
-    <nav class="flex space-x-1">
-      <button data-tab="recommend" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">① 推荐</button>
-      <button data-tab="outcomes" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 录入结果</button>
-      <button data-tab="roi" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ ROI 报告</button>
-      <button data-tab="sessions" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 会话历史</button>
-      <button data-tab="rules" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ 规则说明</button>
+    <nav class="flex space-x-1 flex-wrap">
+      <button data-tab="single"    class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">① 单关</button>
+      <button data-tab="recommend" class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
+      <button data-tab="pool"      class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
+      <button data-tab="outcomes"  class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
+      <button data-tab="roi"       class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
+      <button data-tab="sessions"  class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
+      <button data-tab="rules"     class="tab-btn px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
     </nav>
   </div>
 
-  <!-- Tab: Recommend -->
-  <div id="tab-recommend" class="tab-panel">
+  <!-- Tab: Single (单关) — V8 W6 -->
+  <div id="tab-single" class="tab-panel">
+    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
+      <h2 class="font-bold mb-3">单关推荐</h2>
+      <p class="text-sm text-gray-500 mb-3">单场比赛, 单注最低 ¥2; 系统从胜平负 + 让球胜平负 6 个候选里挑出 EV/单位最大的 1-2 注。</p>
+      <div class="flex space-x-2 mb-3">
+        <button id="btn-load-sample-single" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
+        <button id="btn-clear-single" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+      </div>
+      <textarea id="single-fixtures-json" rows="14"
+        class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
+      <div class="mt-3 flex items-center space-x-4 flex-wrap">
+        <label class="text-sm">预算 ¥
+          <input id="single-bankroll" type="number" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm" title="每场比赛最多推荐多少注 (默认 1 — 避免同场押两个对立结果)">每场最多
+          <input id="single-top-per-match" type="number" value="1" min="1" max="3" class="w-16 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm">凯利分数
+          <input id="single-kelly-fraction" type="number" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
+        </label>
+      </div>
+      <div class="mt-4">
+        <button id="btn-recommend-single" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+          生成单关推荐
+        </button>
+        <span id="single-status" class="ml-3 text-sm text-gray-500"></span>
+      </div>
+    </div>
+
+    <div id="single-output" class="hidden">
+      <div class="bg-white shadow-sm rounded-lg p-6">
+        <h3 class="font-bold mb-3">推荐票 <span id="single-count" class="text-sm font-normal text-gray-500"></span></h3>
+        <div id="single-list"></div>
+        <div id="single-empty" class="hidden text-gray-500 text-sm">
+          <strong>无可下注组合 —</strong> 今日所有市场未通过 EV / 命中率门槛 (建议 no-bet)。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Recommend (串关) -->
+  <div id="tab-recommend" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
       <h2 class="font-bold mb-3">输入今天的比赛与盘口</h2>
       <p class="text-sm text-gray-500 mb-3">粘贴 JSON 数组（每场一对象，字段见
@@ -110,6 +153,55 @@
         <div id="recs-empty" class="hidden text-gray-500 text-sm">
           <strong>无 +EV 组合：今日所有市场无值得下注的机会。</strong>
           系统建议 no-bet（这是健康的——市场赔率太接近真实概率时不下注是正确的）。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Pool (复式) — V8 W6 -->
+  <div id="tab-pool" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
+      <h2 class="font-bold mb-3">复式过关推荐 (M 选 N)</h2>
+      <p class="text-sm text-gray-500 mb-3">
+        预选 M 场比赛, 每场指定 pick (1x2_H/D/A 或 hc_H/D/A), 系统枚举所有 C(M, N) 张子票,
+        独立凯利计算每张 ¥2 起投仓位。最终命中按子票数结算。
+      </p>
+      <div class="flex space-x-2 mb-3">
+        <button id="btn-load-sample-pool" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (4 场, pick 已填)</button>
+        <button id="btn-clear-pool" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+      </div>
+      <textarea id="pool-fixtures-json" rows="14"
+        class="w-full p-3 border rounded text-xs bg-gray-50"
+        placeholder='每场需含 pick 字段 — "1x2_H" / "1x2_D" / "1x2_A" / "hc_H" / "hc_D" / "hc_A"'></textarea>
+      <div class="mt-3 flex items-center space-x-4 flex-wrap">
+        <label class="text-sm">预算 ¥
+          <input id="pool-bankroll" type="number" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm" title="每张票串关数 (1-8, 受混合过关 8 串上限)">N (串关数)
+          <input id="pool-n" type="number" value="3" min="1" max="8" class="w-16 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm" title="可选: 整个复式池子的总投注上限 ¥; 留空 = 无限制">总预算上限 ¥
+          <input id="pool-max-budget" type="number" placeholder="无限制" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
+        </label>
+        <label class="text-sm">凯利分数
+          <input id="pool-kelly-fraction" type="number" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
+        </label>
+      </div>
+      <div class="mt-4">
+        <button id="btn-recommend-pool" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+          生成复式推荐
+        </button>
+        <span id="pool-status" class="ml-3 text-sm text-gray-500"></span>
+      </div>
+    </div>
+
+    <div id="pool-output" class="hidden">
+      <div class="bg-white shadow-sm rounded-lg p-6">
+        <h3 class="font-bold mb-3">推荐票 <span id="pool-count" class="text-sm font-normal text-gray-500"></span></h3>
+        <div id="pool-summary" class="text-sm text-gray-600 mb-3"></div>
+        <div id="pool-list"></div>
+        <div id="pool-empty" class="hidden text-gray-500 text-sm">
+          <strong>无可下注组合 —</strong> 所有 N 串 1 票 EV ≤ 0 或 Kelly 仓位 &lt; ¥2 (建议 no-bet)。
         </div>
       </div>
     </div>
@@ -578,10 +670,194 @@ function renderRules() {
   $('#rule-min-hit').textContent     = (RULES.min_hit_probability * 100).toFixed(0) + '%';
 }
 
+// --- V8 W6: Single (单关) ---
+const MARKET_LABEL = { '1x2': '胜平负', 'handicap_1x2': '让球胜平负' };
+
+$('#btn-load-sample-single').addEventListener('click', () => {
+  $('#single-fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
+});
+$('#btn-clear-single').addEventListener('click', () => {
+  $('#single-fixtures-json').value = '';
+  $('#single-output').classList.add('hidden');
+});
+
+$('#btn-recommend-single').addEventListener('click', async () => {
+  let fixtures;
+  try {
+    fixtures = JSON.parse($('#single-fixtures-json').value);
+  } catch (e) {
+    $('#single-status').textContent = '❌ JSON 解析失败：' + e.message;
+    return;
+  }
+  if (!Array.isArray(fixtures) || fixtures.length === 0) {
+    $('#single-status').textContent = '❌ 需要 fixtures 数组';
+    return;
+  }
+  $('#single-status').textContent = '⏳ 计算中 ...';
+  const req = {
+    fixtures,
+    bankroll: Number($('#single-bankroll').value),
+    top_per_match: Number($('#single-top-per-match').value),
+    kelly_fraction: Number($('#single-kelly-fraction').value),
+  };
+  try {
+    const res = await fetch(API + '/recommend/single', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      $('#single-status').textContent = '❌ ' + res.status + ': ' + (await res.text()).slice(0, 200);
+      return;
+    }
+    const body = await res.json();
+    renderSingleRecommendations(body);
+    $('#single-status').textContent =
+      `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 注推荐 (模型截止 ${body.model.training_cutoff})`;
+  } catch (e) {
+    $('#single-status').textContent = '❌ ' + e.message;
+  }
+});
+
+function renderSingleRecommendations(body) {
+  $('#single-output').classList.remove('hidden');
+  $('#single-count').textContent = `(${body.n_recommendations} 注 / 总投注 ${fmtMoney(body.total_stake)})`;
+  const list = $('#single-list'), empty = $('#single-empty');
+  list.innerHTML = '';
+  if (body.n_recommendations === 0) {
+    list.classList.add('hidden');
+    empty.classList.remove('hidden');
+    return;
+  }
+  list.classList.remove('hidden');
+  empty.classList.add('hidden');
+  list.insertAdjacentHTML('beforeend',
+    '<table><thead><tr>' +
+    '<th>#</th><th>比赛</th><th>玩法</th><th>选</th>' +
+    '<th class="num">模型概率</th><th class="num">赔率</th>' +
+    '<th class="num">EV/单位</th><th class="num">投注</th><th class="num">预期回报</th>' +
+    '</tr></thead><tbody>' +
+    body.tickets.map((t, i) => `<tr>
+      <td>${i+1}</td>
+      <td>${t.match_id.replace(/^[A-Z_]+_/, '').replace('_vs_', ' vs ')}</td>
+      <td>${MARKET_LABEL[t.market_type] || t.market_type}</td>
+      <td><strong>${t.outcome}</strong></td>
+      <td class="num">${fmtPct(t.probability)}</td>
+      <td class="num">${t.odds.toFixed(2)}</td>
+      <td class="num ${sign(t.ev_per_unit)}">${(t.ev_per_unit>=0?'+':'') + fmtPct(t.ev_per_unit, 2)}</td>
+      <td class="num">${fmtMoney(t.stake)}</td>
+      <td class="num ${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</td>
+    </tr>`).join('') +
+    `</tbody><tfoot><tr><td colspan="7" class="text-right font-bold">总计</td>` +
+    `<td class="num font-bold">${fmtMoney(body.total_stake)}</td>` +
+    `<td class="num font-bold ${sign(body.total_expected_return)}">${fmtMoney(body.total_expected_return)}</td>` +
+    `</tr></tfoot></table>` +
+    '<p class="mt-3 text-xs text-gray-500">⚠️ 系统不进行自动投注；推荐仅供参考。请按 ¥2 倍数确认 SP 后下注。</p>'
+  );
+}
+
+// --- V8 W6: Pool (复式) ---
+const POOL_SAMPLE = [
+  {date:'2025-08-17',league:'EPL',home_team:'Arsenal',away_team:'Liverpool',psc_home:2.20,psc_draw:3.40,psc_away:3.40,odds_1x2_H:1.85,odds_1x2_D:3.20,odds_1x2_A:4.00,pick:'1x2_H'},
+  {date:'2025-08-17',league:'EPL',home_team:'Man City',away_team:'Brighton',psc_home:1.50,psc_draw:4.50,psc_away:6.00,odds_1x2_H:1.45,odds_1x2_D:4.30,odds_1x2_A:7.00,pick:'1x2_H'},
+  {date:'2025-08-17',league:'ESP_LA_LIGA',home_team:'Real Madrid',away_team:'Getafe',psc_home:1.30,psc_draw:5.50,psc_away:9.00,handicap_home:-1,odds_handicap_H:1.95,odds_handicap_D:3.40,odds_handicap_A:3.85,pick:'hc_H'},
+  {date:'2025-08-17',league:'ITA_SERIE_A',home_team:'Inter',away_team:'Roma',psc_home:2.05,psc_draw:3.50,psc_away:3.70,odds_1x2_H:1.90,odds_1x2_D:3.40,odds_1x2_A:4.10,pick:'1x2_H'},
+];
+
+$('#btn-load-sample-pool').addEventListener('click', () => {
+  $('#pool-fixtures-json').value = JSON.stringify(POOL_SAMPLE, null, 2);
+});
+$('#btn-clear-pool').addEventListener('click', () => {
+  $('#pool-fixtures-json').value = '';
+  $('#pool-output').classList.add('hidden');
+});
+
+$('#btn-recommend-pool').addEventListener('click', async () => {
+  let fixtures;
+  try {
+    fixtures = JSON.parse($('#pool-fixtures-json').value);
+  } catch (e) {
+    $('#pool-status').textContent = '❌ JSON 解析失败：' + e.message;
+    return;
+  }
+  if (!Array.isArray(fixtures) || fixtures.length === 0) {
+    $('#pool-status').textContent = '❌ 需要 fixtures 数组';
+    return;
+  }
+  const n = Number($('#pool-n').value);
+  if (n > fixtures.length) {
+    $('#pool-status').textContent = `❌ N=${n} 大于池子大小 (M=${fixtures.length})`;
+    return;
+  }
+  $('#pool-status').textContent = '⏳ 枚举 + 计算 ...';
+  const maxBudgetRaw = $('#pool-max-budget').value.trim();
+  const req = {
+    fixtures, n,
+    bankroll: Number($('#pool-bankroll').value),
+    max_total_budget: maxBudgetRaw ? Number(maxBudgetRaw) : null,
+    kelly_fraction: Number($('#pool-kelly-fraction').value),
+  };
+  try {
+    const res = await fetch(API + '/recommend/pool', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      $('#pool-status').textContent = '❌ ' + res.status + ': ' + (await res.text()).slice(0, 200);
+      return;
+    }
+    const body = await res.json();
+    renderPoolRecommendations(body);
+    $('#pool-status').textContent =
+      `✓ ${body.m} 选 ${body.n} = ${body.n_combinations} 张候选, ${body.n_selected} 张选中`;
+  } catch (e) {
+    $('#pool-status').textContent = '❌ ' + e.message;
+  }
+});
+
+function renderPoolRecommendations(body) {
+  $('#pool-output').classList.remove('hidden');
+  $('#pool-count').textContent = `(${body.n_selected}/${body.n_combinations})`;
+  $('#pool-summary').innerHTML =
+    `共 <strong>${body.n_combinations}</strong> 张候选 (${body.m} 选 ${body.n}),
+     选中 <strong>${body.n_selected}</strong> 张,
+     总投注 <strong>${fmtMoney(body.total_stake)}</strong>,
+     预期总回报 <strong class="${sign(body.total_expected_return)}">${fmtMoney(body.total_expected_return)}</strong>`;
+  const list = $('#pool-list'), empty = $('#pool-empty');
+  list.innerHTML = '';
+  // selected only (stake > 0); zero-stake tickets are diagnostic
+  const selected = body.tickets.filter(t => t.stake > 0);
+  if (selected.length === 0) {
+    list.classList.add('hidden');
+    empty.classList.remove('hidden');
+    return;
+  }
+  list.classList.remove('hidden');
+  empty.classList.add('hidden');
+  list.insertAdjacentHTML('beforeend',
+    '<table><thead><tr>' +
+    '<th>#</th><th class="num">命中率</th><th class="num">总赔率</th>' +
+    '<th class="num">EV/单位</th><th class="num">投注</th><th class="num">预期回报</th><th>选项</th>' +
+    '</tr></thead><tbody>' +
+    selected.map((t, i) => `<tr>
+      <td>${i+1}</td>
+      <td class="num">${fmtPct(t.hit_probability, 2)}</td>
+      <td class="num">${t.combined_odds.toFixed(2)}</td>
+      <td class="num ${sign(t.ev_per_unit)}">${(t.ev_per_unit>=0?'+':'') + fmtPct(t.ev_per_unit, 2)}</td>
+      <td class="num">${fmtMoney(t.stake)}</td>
+      <td class="num ${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</td>
+      <td class="text-xs">${t.legs.map(l => `<span class="inline-block bg-gray-100 px-1 mx-0.5 rounded">${l.outcome}@${l.odds.toFixed(2)}</span>`).join(' + ')}</td>
+    </tr>`).join('') +
+    '</tbody></table>' +
+    '<p class="mt-3 text-xs text-gray-500">⚠️ 系统不进行自动投注；推荐仅供参考。</p>'
+  );
+}
+
 // --- Init ---
 loadHealth();
 loadRules();  // pre-fetch so the hint banner shows live values
 $('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
+$('#single-fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
+$('#pool-fixtures-json').value = JSON.stringify(POOL_SAMPLE, null, 2);
 setInterval(loadHealth, 30_000);
 </script>
 

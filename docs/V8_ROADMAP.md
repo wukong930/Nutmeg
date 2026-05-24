@@ -41,7 +41,7 @@ block the code-gated bits.
 
 | W | Theme | Deliverable | Status |
 |---|---|---|---|
-| V8 W6 | Web form wrapping `nutmeg-rec` | HTML form on the dashboard calling `/api/v4/recommend` + `/api/v4/rules` + `/api/v4/predictions/upcoming` → renders markdown card | 4-5d |
+| **V8 W6** ✅ | Dashboard 单关 + 复式 web tabs | 新增 `POST /api/v4/recommend/single` + `/recommend/pool` 端点 (调 V6 W9 `recommend_singles` + V6 W3 `recommend_pool`); dashboard 加 ① 单关 + ③ 复式 tabs (重排 tabs, 单关 = 默认); Pydantic schemas + enum 校验; sample 数据 + 表单 + 渲染 JS. 17 new tests (682/682 V4 suite). See [v8_w6_dashboard_single_pool.md](v8_w6_dashboard_single_pool.md) | shipped |
 | V8 W7 | National-team Elo | clubelo `/<NationCode>` ingest; new `national_team_state` dict; integrate with W11 `find_team_state_cross_league` | 3-4d |
 | V8 W8 | V8 ship | `V8_HANDOFF.md` + retrospective + `v8.0-shipped` tag | 2d |
 

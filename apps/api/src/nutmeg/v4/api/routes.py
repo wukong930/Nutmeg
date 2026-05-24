@@ -27,16 +27,25 @@ from nutmeg.v4.api.schemas import (
     LegResponse,
     LotteryRulesResponse,
     ModelInfo,
+    PoolRecommendRequest,
+    PoolRecommendResponse,
+    PoolTicketResponse,
     RecommendRequest,
     RecommendResponse,
     RecommendationResponse,
     SelectionResponse,
+    SingleRecommendRequest,
+    SingleRecommendResponse,
     SinglePrediction,
+    SingleTicketResponse,
     UpcomingPredictionsRequest,
     UpcomingPredictionsResponse,
 )
 from nutmeg.v4.combo import MatchInput, recommend_combinations
+from nutmeg.v4.combo.compound_pool import recommend_pool
 from nutmeg.v4.combo.lottery_rules import JINGCAI_DEFAULT
+from nutmeg.v4.combo.selections import Selection
+from nutmeg.v4.combo.single_match import recommend_singles
 from nutmeg.v4.model.dixon_coles import grid_to_1x2, grid_to_handicap_1x2, score_grid
 from nutmeg.v4.model.persist import (
     V4Artifact,
@@ -398,4 +407,215 @@ def predictions_upcoming(req: UpcomingPredictionsRequest) -> UpcomingPredictions
         ),
         n_fixtures=len(req.fixtures),
         predictions=predictions,
+    )
+
+
+# ---------- /v4/recommend/single (V8 W6) ----------
+
+def _model_info_from_artifact(art) -> ModelInfo:
+    return ModelInfo(
+        trained_at_utc=art.metadata.get("trained_at_utc"),
+        training_cutoff=art.metadata.get("training_cutoff"),
+        n_train=art.metadata.get("n_train"),
+        gbm_rho=float(art.metadata.get("gbm_rho", -0.10)),
+        temperature_T=art.temperature_T,
+        model_type=art.model_type,
+        cat_features=art.cat_features,
+    )
+
+
+@router.post("/recommend/single", response_model=SingleRecommendResponse)
+def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
+    """V8 W6 — 单关 (single-leg) recommendations via the V6 W9 engine."""
+    art = get_artifact()
+    if art is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"V4 model artifact not loaded; expected at {_artifact_path()}",
+        )
+
+    fixtures_df = _fixtures_to_dataframe(req.fixtures)
+    feats = build_features_for_fixtures(art, fixtures_df)
+    lambdas = predict_lambdas(art, feats)
+    gbm_rho = float(art.metadata.get("gbm_rho", -0.10))
+
+    matches: list[MatchInput] = []
+    for i in range(len(fixtures_df)):
+        row = fixtures_df.iloc[i]
+        mi = _fixture_to_match_input(row, lambdas[i, 0], lambdas[i, 1], gbm_rho)
+        if mi:
+            matches.append(mi)
+
+    rec = recommend_singles(
+        matches,
+        bankroll=req.bankroll,
+        kelly_fraction=req.kelly_fraction,
+        max_stake_fraction_per_ticket=req.max_stake_fraction,
+        top_per_match=req.top_per_match,
+    )
+
+    tickets_out = [
+        SingleTicketResponse(
+            match_id=t.selection.match_id,
+            market_type=t.selection.market_type,
+            outcome=t.selection.outcome,
+            odds=float(t.selection.odds),
+            probability=float(t.selection.probability),
+            ev_per_unit=float(t.ev_per_unit),
+            stake=float(t.stake),
+            raw_kelly_stake=float(t.raw_kelly_stake),
+            expected_return=float(t.expected_return),
+        )
+        for t in rec.selected_tickets
+    ]
+
+    return SingleRecommendResponse(
+        generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        model=_model_info_from_artifact(art),
+        bankroll=req.bankroll,
+        n_fixtures=len(req.fixtures),
+        n_recommendations=len(tickets_out),
+        tickets=tickets_out,
+        total_stake=float(rec.total_stake),
+        total_expected_return=float(rec.total_expected_return),
+    )
+
+
+# ---------- /v4/recommend/pool (V8 W6) ----------
+
+# Map the PoolFixturePick `pick` field to a (market_type, outcome) tuple
+_POOL_PICK_MAP: dict[str, tuple[str, str]] = {
+    "1x2_H": ("1x2", "H"),
+    "1x2_D": ("1x2", "D"),
+    "1x2_A": ("1x2", "A"),
+    "hc_H":  ("handicap_1x2", "H"),
+    "hc_D":  ("handicap_1x2", "D"),
+    "hc_A":  ("handicap_1x2", "A"),
+}
+
+
+def _pick_to_selection(
+    row: pd.Series,
+    lh: float,
+    la: float,
+    gbm_rho: float,
+    pick: str,
+) -> Optional[Selection]:
+    """Convert one (fixture row, pick) → one Selection for the compound pool.
+
+    Mirrors the CLI's `_row_to_selection` in cli/recommend_pool.py but
+    consumes a typed `pick` string instead of a CSV cell.
+    """
+    grid = score_grid(float(lh), float(la), rho=gbm_rho)
+    match_id = f"{row['league']}_{row['home_team']}_vs_{row['away_team']}"
+    market_type, outcome = _POOL_PICK_MAP[pick]
+
+    if market_type == "1x2":
+        ph, pd_, pa = grid_to_1x2(grid)
+        prob = {"H": ph, "D": pd_, "A": pa}[outcome]
+        odds_col = f"odds_1x2_{outcome}"
+        odds = row.get(odds_col)
+        if odds is None or pd.isna(odds):
+            psc_col = {
+                "H": "psc_home", "D": "psc_draw", "A": "psc_away",
+            }[outcome]
+            odds = row[psc_col]
+        return Selection(
+            match_id=match_id, market_type="1x2", outcome=outcome,
+            probability=float(prob), odds=float(odds),
+        )
+
+    # handicap_1x2
+    if pd.isna(row.get("handicap_home")):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"row {match_id}: pick={pick} requires handicap_home to be set",
+        )
+    handicap_home = int(row["handicap_home"])
+    hp_h, hp_d, hp_a = grid_to_handicap_1x2(grid, handicap_home=handicap_home)
+    prob = {"H": hp_h, "D": hp_d, "A": hp_a}[outcome]
+    odds_col = f"odds_handicap_{outcome}"
+    odds = row.get(odds_col)
+    if odds is None or pd.isna(odds):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"row {match_id}: pick={pick} but odds_handicap_{outcome} missing",
+        )
+    return Selection(
+        match_id=match_id, market_type="handicap_1x2", outcome=outcome,
+        probability=float(prob), odds=float(odds),
+    )
+
+
+@router.post("/recommend/pool", response_model=PoolRecommendResponse)
+def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
+    """V8 W6 — 复式 (M-select-N compound parlay) via the V6 W3 engine."""
+    art = get_artifact()
+    if art is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"V4 model artifact not loaded; expected at {_artifact_path()}",
+        )
+    m = len(req.fixtures)
+    if req.n > m:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"n={req.n} but only {m} fixtures in pool",
+        )
+
+    fixtures_df = _fixtures_to_dataframe(req.fixtures)
+    feats = build_features_for_fixtures(art, fixtures_df)
+    lambdas = predict_lambdas(art, feats)
+    gbm_rho = float(art.metadata.get("gbm_rho", -0.10))
+
+    selections: list[Selection] = []
+    for i in range(len(fixtures_df)):
+        row = fixtures_df.iloc[i]
+        sel = _pick_to_selection(
+            row, lambdas[i, 0], lambdas[i, 1], gbm_rho,
+            req.fixtures[i].pick,
+        )
+        if sel is not None:
+            selections.append(sel)
+
+    rec = recommend_pool(
+        selections, n=req.n,
+        bankroll=req.bankroll,
+        max_total_budget=req.max_total_budget,
+        kelly_fraction=req.kelly_fraction,
+        max_stake_fraction_per_ticket=req.max_stake_fraction_per_ticket,
+    )
+
+    tickets_out = [
+        PoolTicketResponse(
+            legs=[
+                SelectionResponse(
+                    outcome=leg.outcome,
+                    odds=float(leg.odds),
+                    probability=float(leg.probability),
+                    edge=float(leg.edge),
+                )
+                for leg in t.legs
+            ],
+            hit_probability=float(t.hit_probability),
+            combined_odds=float(t.combined_odds),
+            ev_per_unit=float(t.ev_per_unit),
+            stake=float(t.stake),
+            raw_kelly_stake=float(t.raw_kelly_stake),
+            expected_return=float(t.expected_return),
+        )
+        for t in rec.tickets  # all candidates, EV desc
+    ]
+
+    return PoolRecommendResponse(
+        generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        model=_model_info_from_artifact(art),
+        bankroll=req.bankroll,
+        m=rec.m,
+        n=rec.n,
+        n_combinations=rec.n_combinations,
+        n_selected=len(rec.selected_tickets),
+        total_stake=float(rec.total_stake),
+        total_expected_return=float(rec.total_expected_return),
+        tickets=tickets_out,
     )
