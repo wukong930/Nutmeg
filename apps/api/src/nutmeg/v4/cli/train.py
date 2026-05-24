@@ -114,7 +114,32 @@ def main(argv: list[str] | None = None) -> int:
         "--cup-seasons",
         default="2021,2022,2023,2024",
         help="Comma-separated cup season-start years to load "
-        "(default 2021,2022,2023,2024). Only used with --with-cup-features.",
+        "(default 2021,2022,2023,2024). Used with --with-cup-features "
+        "and/or --with-cup-data.",
+    )
+    parser.add_argument(
+        "--with-cup-data",
+        action="store_true",
+        help="V8 W2 — UNION cup training rows into the V4 training frame. "
+        "Reads V7 W6 cup-history + V7 W8 cup-odds parquets, applies "
+        "to_v4_canonical_global to map team names, pads V4 schema cols "
+        "the parquets don't carry (shots/corners/cards → NaN; alt-book "
+        "odds → psc_* proxy). Different from --with-cup-features (which "
+        "only ADDS the 5 cup feature COLUMNS without adding any rows). "
+        "Combine both flags for the full cup-data + cup-features run.",
+    )
+    parser.add_argument(
+        "--cup-odds-dir",
+        default="data/external/cup_odds",
+        help="V8 W2 — where V7 W8 cup-odds parquets live "
+        "(default data/external/cup_odds). Only used with --with-cup-data.",
+    )
+    parser.add_argument(
+        "--cup-canonical-fuzzy",
+        type=float, default=0.86,
+        help="V8 W1 fuzzy-match cutoff for cup team-name resolution "
+        "(default 0.86). Lower = more permissive but riskier silent "
+        "wrong joins. Only used with --with-cup-data.",
     )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
@@ -123,6 +148,35 @@ def main(argv: list[str] | None = None) -> int:
     _info(f"Loading matches from {args.data} ...", args.quiet)
     df = load_all_matches(args.data)
     _info(f"  loaded {len(df):,} matches", args.quiet)
+
+    # V8 W2: optional cup-data UNION. When --with-cup-data, load
+    # V7 W6 + V7 W8 cup parquets, canonicalize team names, pad V4
+    # schema cols, and concat into the training frame. Different
+    # from --with-cup-features (which only adds COLUMNS); --with-
+    # cup-data adds ROWS.
+    if args.with_cup_data:
+        from pathlib import Path as _Path
+        from nutmeg.v4.data.cup_training import (
+            build_cup_training_rows,
+            union_league_and_cup,
+        )
+        cup_leagues = [s.strip() for s in args.cup_leagues.split(",") if s.strip()]
+        cup_seasons = [int(s.strip()) for s in args.cup_seasons.split(",") if s.strip()]
+        cup_rows = build_cup_training_rows(
+            _Path(args.cup_history_dir),
+            _Path(args.cup_odds_dir),
+            leagues=cup_leagues,
+            seasons=cup_seasons,
+            league_team_df=df,
+            fuzzy_threshold=args.cup_canonical_fuzzy,
+        )
+        _info(
+            f"  cup data: {len(cup_rows)} resolved cup rows "
+            f"({len(cup_leagues)} cups × {len(cup_seasons)} seasons)",
+            args.quiet,
+        )
+        df = union_league_and_cup(df, cup_rows)
+        _info(f"  after cup UNION: {len(df):,} matches total", args.quiet)
 
     cutoff = pd.Timestamp(args.cutoff) if args.cutoff else df["date"].max() + pd.Timedelta(days=1)
     _info(f"Training cutoff: {cutoff.date()}", args.quiet)

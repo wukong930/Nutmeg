@@ -27,7 +27,7 @@ block the code-gated bits.
 | W | Theme | Deliverable | Status |
 |---|---|---|---|
 | **V8 W1** ✅ | `team_canonical` global lookup | `to_v4_canonical_global` no-league-hint variant; `CUP_TEAM_ALIASES` catch-all; `build_global_team_pool` union helper; `nutmeg-canonical-report-cup` diagnostic CLI. 24 new tests (622/622 V4 suite). See [v8_w1_team_canonical_global.md](v8_w1_team_canonical_global.md) | shipped |
-| V8 W2 | Cup row UNION into `load_all_matches` | Extend training data loader to optionally concat cup_history × cup_odds (via `merge_cup_fixtures_and_odds` + `to_v4_canonical_global`) into the V4 training frame. New `--with-cup-data` train flag (different from W7's `--with-cup-features` which adds feature COLUMNS without rows). | 3-4d |
+| **V8 W2** ✅ | Cup row UNION into 训练 frame | `nutmeg.v4.data.cup_training`: `build_cup_training_rows` (cup_history × cup_odds → MATCH_COLUMNS schema, applies `to_v4_canonical_global`, pads NaN cols, copies Pinnacle into alt-book proxies); `union_league_and_cup` (concat + 时间排序); `nutmeg-train --with-cup-data` flag (与 W7 `--with-cup-features` 独立 — data vs features). 20 new tests (642/642 V4 suite). **W3 ablation 前若 Elo NaN on cup rows, 需先 cross-league team_state walker**. See [v8_w2_cup_data_union.md](v8_w2_cup_data_union.md) | shipped |
 | V8 W3 | Multi-fold ablation | 4 cutoffs × {EPL-only, EPL+UCL, ESP+UCL, all-clubs+UCL} ablation. Ship gate: ≥ 3/4 folds improve by ≥ −0.001 log-loss. | 2-3d |
 | V8 W4 | Cup-aware artifact ship | If W3 gate passes: train + persist `data/v4_model_cat_cup/`. A/B against default on UCL fixtures. | 2-3d |
 
