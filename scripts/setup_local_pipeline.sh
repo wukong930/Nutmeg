@@ -144,14 +144,33 @@ install_job "com.nutmeg.weekly_settle" \
   2 0 0 \
   "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true"
 
+# Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
+# post-v9 P1#24: automate the P1#19 cross-source-aware gate.
+# Compares live lineup-aware ROI to the P1#17 historical replay
+# baseline. Uses --tolerance-pp 50 (cross-source noise floor per
+# P1#22 — live cron uses API-Football odds; reference uses
+# football-data.co.uk PSC; their snapshot-time differences alone
+# cause 30-50pp ROI gap without any model issue).
+#
+# Output: docs/weekly/p1_19_gate_$(date +%Y-W%V).md
+# Exit code: 0 within tolerance; 2 over tolerance (logged but not
+# alarmed — operator should `tail` the err log on Monday morning).
+BACKTEST_DB="$REPO_ROOT/data/v4_observation_backtest.db"
+GATE_OUT_DIR="$REPO_ROOT/docs/weekly"
+install_job "com.nutmeg.weekly_gate" \
+  4 0 0 \
+  "$ENV_PREFIX && mkdir -p $GATE_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.live_vs_backtest --db $DB_PATH --weeks 4 --live-model-arm lineup_aware --roi-backtest-db $BACKTEST_DB --roi-backtest-arm lineup_aware --tolerance-pp 50 --out $GATE_OUT_DIR/p1_19_gate_\$(date +%Y-W%V).md || true"
+
 echo ""
 echo "✓ Done. Jobs are loaded. Logs:"
 echo "    $LOG_DIR/com.nutmeg.daily_odds.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_recommend.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_settle.{out,err}.log"
+echo "    $LOG_DIR/com.nutmeg.weekly_gate.{out,err}.log"
 echo ""
 echo "Next:"
 echo "  • Verify with: ./scripts/health_check.sh"
 echo "  • Inspect jobs: launchctl list | grep com.nutmeg"
-echo "  • Wait until 14:00 / 15:00 / Sunday 02:00 for next run"
+echo "  • Wait until 14:00 / 15:00 / Sunday 02:00 / Sunday 04:00 for next run"
+echo "  • Weekly gate reports land at: $GATE_OUT_DIR/p1_19_gate_<ISO-week>.md"
 echo "  • Uninstall: ./scripts/teardown_local_pipeline.sh"

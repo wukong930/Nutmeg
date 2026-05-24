@@ -68,10 +68,12 @@ class TestSetupScriptContent:
     def setup_body(self) -> str:
         return (SCRIPTS_DIR / "setup_local_pipeline.sh").read_text()
 
-    def test_installs_three_named_jobs(self, setup_body):
+    def test_installs_named_jobs(self, setup_body):
+        # post-v9 P1#24: added com.nutmeg.weekly_gate (4th job)
         for label in ("com.nutmeg.daily_odds",
                       "com.nutmeg.daily_recommend",
-                      "com.nutmeg.weekly_settle"):
+                      "com.nutmeg.weekly_settle",
+                      "com.nutmeg.weekly_gate"):
             assert label in setup_body, f"setup missing job label: {label}"
 
     def test_uses_launchctl_bootstrap(self, setup_body):

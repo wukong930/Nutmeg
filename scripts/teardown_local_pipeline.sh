@@ -9,7 +9,7 @@
 set -euo pipefail
 
 PLIST_DIR="$HOME/Library/LaunchAgents"
-JOBS=("com.nutmeg.daily_odds" "com.nutmeg.daily_recommend" "com.nutmeg.weekly_settle")
+JOBS=("com.nutmeg.daily_odds" "com.nutmeg.daily_recommend" "com.nutmeg.weekly_settle" "com.nutmeg.weekly_gate")
 
 echo "Uninstalling launchd jobs ..."
 for job in "${JOBS[@]}"; do

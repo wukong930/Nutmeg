@@ -24,11 +24,12 @@ Local launchd jobs:
 
 | Job | When | What it does |
 |---|---|---|
-| `com.nutmeg.daily_odds` | 14:00 daily | Fetch today's odds for 5 leagues + UCL + UEL (Path A accumulation for cup-odds parquets) |
+| `com.nutmeg.daily_odds` | 14:00 daily | Fetch today's odds for 5 domestic leagues (post-P1#20: UCL/UEL removed since cup ablation closed negative) |
 | `com.nutmeg.daily_recommend` | 15:00 daily | Generate EPL + La Liga recommendations, record session into observation DB |
 | `com.nutmeg.weekly_settle` | Sunday 02:00 | Settle past-week match outcomes + refresh `docs/local_ab_report_latest.md` |
+| `com.nutmeg.weekly_gate` | Sunday 04:00 | Run P1#19 live-vs-backtest gate (cross-source-aware, `--tolerance-pp 50` per P1#22 noise floor); write report to `docs/weekly/p1_19_gate_<ISO-week>.md` |
 
-All 3 read `NUTMEG_API_FOOTBALL_KEY` from `.env` at run time
+All 4 read `NUTMEG_API_FOOTBALL_KEY` from `.env` at run time
 (no plaintext key in plist files).
 
 ## One-time setup (5 minutes)
@@ -58,6 +59,7 @@ cron has fired):
   ✓ com.nutmeg.daily_odds loaded (last exit=0, pid=-)
   ✓ com.nutmeg.daily_recommend loaded (last exit=0, pid=-)
   ✓ com.nutmeg.weekly_settle loaded (last exit=0, pid=-)
+  ✓ com.nutmeg.weekly_gate loaded (last exit=0, pid=-)
 
 ━━ 3. Cup odds accumulation (Path A — V10 trigger #1) ━━
   • 8 parquet files in data/external/cup_odds/
@@ -139,7 +141,7 @@ automatically every Sunday — just open that file.)
 ./scripts/teardown_local_pipeline.sh
 ```
 
-Removes the 3 launchd jobs + their plists. Logs in `logs/launchd/`
+Removes the 4 launchd jobs + their plists. Logs in `logs/launchd/`
 are preserved for forensics; delete manually if you don't need them.
 
 ## What about my laptop being off?
@@ -184,7 +186,7 @@ The cron still fires; it just produces 0 recommendations that day.
 
 ```
 scripts/
-  setup_local_pipeline.sh        # install 3 launchd jobs
+  setup_local_pipeline.sh        # install 4 launchd jobs
   teardown_local_pipeline.sh     # uninstall (preserves logs)
   health_check.sh                # single-command status
   run_local_server.sh            # launch FastAPI uvicorn
@@ -192,14 +194,17 @@ scripts/
 docs/
   local_deployment_guide.md      # this file
   local_ab_report_latest.md      # written by weekly_settle each Sun 02:00
+  weekly/p1_19_gate_<YYYY-Www>.md  # written by weekly_gate each Sun 04:00
 
 logs/launchd/                    # per-job stdout + stderr (auto-created)
   com.nutmeg.daily_odds.{out,err}.log
   com.nutmeg.daily_recommend.{out,err}.log
   com.nutmeg.weekly_settle.{out,err}.log
+  com.nutmeg.weekly_gate.{out,err}.log
 
 ~/Library/LaunchAgents/          # the actual plists (installed)
   com.nutmeg.daily_odds.plist
   com.nutmeg.daily_recommend.plist
   com.nutmeg.weekly_settle.plist
+  com.nutmeg.weekly_gate.plist
 ```

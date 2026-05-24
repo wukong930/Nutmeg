@@ -40,6 +40,7 @@ P1#20  cup ablation NEGATIVE     (V10 trigger #1 closed, $30)    SHIP
 P1#21  cross-source backtest     (verdict source-dependent)      ML
 P1#22  P1#19 cross-source caveat (docs-only; gate triage rules)  DOCS
 P1#23  --tolerance-pp flag       (CLI+HTTP; implements P1#22 #1) ML
+P1#24  weekly launchd gate job   (Sun 04:00; --tolerance-pp 50)  OPS
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -222,6 +223,27 @@ rejected. Default unchanged → backwards-compatible.
 verified: `--tolerance-pp 60` suppresses the ~52pp ROI gap from
 the P1#21 strict-Pinnacle backtest; default `--tolerance-pp 5`
 still trips with exit=2.
+
+#### P1#24 — weekly launchd gate job (`com.nutmeg.weekly_gate`)
+Added a 4th launchd job that auto-runs the P1#19 gate every
+Sunday 04:00 (2h after `com.nutmeg.weekly_settle` lands the
+freshly-settled data). Uses `--tolerance-pp 50` as the cross-
+source noise floor per the P1#22 amendment.
+
+Each week's report writes to
+`docs/weekly/p1_19_gate_<YYYY-Www>.md`. Exit code is swallowed
+via `|| true` (so launchd always sees "success") — operator
+reads the gate verdict by checking the markdown file Monday
+morning, not by parsing return codes.
+
+Changes in `scripts/setup_local_pipeline.sh`, `teardown_local_pipeline.sh`,
+`health_check.sh`, `docs/local_deployment_guide.md`, and test
+`tests/v4/test_local_pipeline_scripts.py::test_installs_named_jobs`.
+
+After this patch the local pipeline has 4 launchd jobs:
+daily_odds (14:00), daily_recommend (15:00), weekly_settle
+(Sun 02:00), weekly_gate (Sun 04:00). Re-run
+`./scripts/setup_local_pipeline.sh` to install the new job.
 
 ---
 
