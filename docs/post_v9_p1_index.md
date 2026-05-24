@@ -44,6 +44,7 @@ P1#24  weekly launchd gate job   (Sun 04:00; --tolerance-pp 50)  OPS
 P1#25  V10_ROADMAP_DRAFT.md      (placeholder; triggers + sketch) DOCS
 P1#26  GH Actions Playwright CI  (P1#15 work now runs in CI)     QA
 P1#27  V10_HANDOFF_TEMPLATE.md   (companion to P1#25 placeholder) DOCS
+P1#28  silence stale GH cron     (drop schedule on 2 workflows)  OPS
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -300,6 +301,28 @@ Includes a "How to use this template" header that codifies:
 
 Paired with P1#25 this gives the project a complete "V10 starter
 kit" the moment any of the 5 triggers fires.
+
+#### P1#28 — Silence stale GH cron (validate P1#11 + clean up P1#16 fallout)
+Manually triggered `monthly-token-check.yml` for the first time (P1#11
+wrote it but never confirmed it actually worked). It correctly failed
+on missing `NUTMEG_API_FOOTBALL_KEY` secret.
+
+But this "fail" was a false alarm. P1#16 moved daily cron to local
+launchd; the GH secret was never set, so `daily-recommend.yml` AND
+`monthly-token-check.yml` had been failing every day/month for ~6
+months on the Actions tab. Nobody noticed (first-failure-only emails).
+
+Fixed both workflows:
+- Drop `schedule:` triggers; keep `workflow_dispatch:` only
+- Missing secret → exit 0 with `::notice` (not exit 1 with `::error`)
+- daily-recommend: gate 7 subsequent steps on `has_secret == 'true'`
+- monthly-token-check: gate probe step on same
+
+Verified via fresh trigger (GH run `26367845624`): exits `success`
+with clear notice. Zero false-positive failures going forward.
+
+`nutmeg-ci.yml` + `weekly-bench.yml` + new `playwright.yml`
+unaffected — none need the API-Football secret.
 
 ---
 
