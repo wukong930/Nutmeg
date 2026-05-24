@@ -78,14 +78,19 @@ jobs:
 
           # post-v9 P1#29: the bench workflow takes ~3 min; during that
           # window other commits can land on main, making `git push`
-          # rejected as non-fast-forward. Pull --rebase, then push, with
-          # a few retries on stacked race conditions. Final failure is
-          # logged as a notice (the commits are still local-only) — not
-          # exit 1, because re-running the workflow next week will pick
-          # them up (and commit messages include the date, so duplicates
-          # are easy to spot).
+          # rejected as non-fast-forward.
+          #
+          # The retry path uses --autostash because the bench step writes
+          # several non-committed side-effect files (experiment tracker
+          # journal, intermediate artifacts) that block a clean rebase.
+          # Autostash carries them out and back automatically.
+          #
+          # Final failure is logged as a notice (commits stay local-only),
+          # NOT exit 1, because the underlying bench calculation still
+          # succeeded; losing one week's commit to main isn't a
+          # correctness issue and next week's run regenerates the cards.
           for attempt in 1 2 3; do
-            if git pull --rebase origin main && git push origin main; then
+            if git pull --rebase --autostash origin main && git push origin main; then
               echo "::notice::Pushed bench cards on attempt $attempt"
               exit 0
             fi
