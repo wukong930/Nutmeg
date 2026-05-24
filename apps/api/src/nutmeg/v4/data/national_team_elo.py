@@ -74,7 +74,7 @@ NATION_CLUBELO_CODES: dict[str, list[str]] = {
     "ROU": ["Romania"],
     "SCO": ["Scotland"],
     "WAL": ["Wales"],
-    "IRL": ["Republic of Ireland", "Ireland"],
+    "IRL": ["Republic of Ireland", "Ireland", "Rep. Of Ireland"],  # P1#10: API-Football variant
     "NIR": ["Northern Ireland"],
     "SRB": ["Serbia"],
     "GRE": ["Greece"],
@@ -83,12 +83,12 @@ NATION_CLUBELO_CODES: dict[str, list[str]] = {
     "SVK": ["Slovakia"],
     "SVN": ["Slovenia"],
     "ALB": ["Albania"],
-    "BIH": ["Bosnia and Herzegovina", "Bosnia"],
+    "BIH": ["Bosnia and Herzegovina", "Bosnia", "Bosnia & Herzegovina"],  # P1#10
     "BUL": ["Bulgaria"],
     "ISL": ["Iceland"],
     "FIN": ["Finland"],
     "GEO": ["Georgia"],
-    "MKD": ["North Macedonia", "Macedonia"],
+    "MKD": ["North Macedonia", "Macedonia", "FYR Macedonia"],  # P1#10: API-Football legacy name
 
     # CONMEBOL
     "BRA": ["Brazil"],
@@ -109,6 +109,7 @@ NATION_CLUBELO_CODES: dict[str, list[str]] = {
     "CRC": ["Costa Rica"],
     "JAM": ["Jamaica"],
     "HON": ["Honduras"],
+    "PAN": ["Panama"],   # P1#10: WC 2018 + COPA 2024 participant
 
     # AFC + AFC-cross (commonly in WC qualifying)
     "JPN": ["Japan"],

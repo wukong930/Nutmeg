@@ -1,0 +1,82 @@
+name: Monthly API Token Health Check
+
+# post-v9 P1#11 — monthly canary that:
+#  1. confirms NUTMEG_API_FOOTBALL_KEY is still valid
+#  2. surfaces the current rate-limit / subscription tier
+#  3. nudges the user to rotate the token if it's been ~6+ months
+#     since the secret was last touched
+#
+# This is the V6 W8 advisory ("rotate after chat exposure") turned
+# into a recurring reminder. Runs the 1st of each month at 09:00 UTC
+# (a reasonable working-hour for the user's timezone).
+#
+# Token rotation is a USER action — this workflow only diagnoses; it
+# can't rotate the secret itself. The action runs `gh secret set` from
+# a local shell.
+
+on:
+  schedule:
+    # 1st of the month at 09:00 UTC
+    - cron: "0 9 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  token-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify NUTMEG_API_FOOTBALL_KEY is set
+        env:
+          KEY: ${{ secrets.NUTMEG_API_FOOTBALL_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::NUTMEG_API_FOOTBALL_KEY secret is NOT set on this repo."
+            echo "  → User action: gh secret set NUTMEG_API_FOOTBALL_KEY (from local shell)"
+            exit 1
+          fi
+          echo "✓ NUTMEG_API_FOOTBALL_KEY secret is present (length=${#KEY})"
+
+      - name: Probe API-Football /status endpoint
+        env:
+          NUTMEG_API_FOOTBALL_KEY: ${{ secrets.NUTMEG_API_FOOTBALL_KEY }}
+        run: |
+          python -m pip install --quiet httpx
+          python <<'PY'
+          import os
+          import sys
+          import httpx
+          key = os.environ["NUTMEG_API_FOOTBALL_KEY"]
+          r = httpx.get(
+              "https://v3.football.api-sports.io/status",
+              headers={"x-apisports-key": key},
+              timeout=10.0,
+          )
+          if r.status_code != 200:
+              print(f"::error::API-Football /status returned {r.status_code} — token likely invalid", flush=True)
+              print(f"  → User action: rotate the token at https://dashboard.api-football.com")
+              print(f"  → Then: gh secret set NUTMEG_API_FOOTBALL_KEY")
+              sys.exit(1)
+          data = r.json()
+          # API-Football /status response has a "response" key with subscription info
+          resp = data.get("response", {})
+          subs = resp.get("subscription", {})
+          reqs = resp.get("requests", {})
+          plan = subs.get("plan", "unknown")
+          end = subs.get("end", "unknown")
+          used = reqs.get("current", -1)
+          limit = reqs.get("limit_day", -1)
+          print(f"::notice::Token valid — plan={plan}, subscription_ends={end}")
+          print(f"::notice::Today's API budget: used {used} / limit {limit}")
+          if isinstance(used, int) and isinstance(limit, int) and limit > 0:
+              pct = 100 * used / limit
+              if pct >= 80:
+                  print(f"::warning::Daily budget {pct:.0f}% consumed — investigate cron / manual usage")
+          # Reminder banner — once a month is fine, no programmatic age check
+          # (GH doesn't expose secret last-rotated date)
+          print("::notice::🔐 V6 W8 reminder: rotate this token if it's been ≥ 6 months since last rotation")
+          print("  → User action: gh secret set NUTMEG_API_FOOTBALL_KEY (paste a fresh dashboard.api-football.com key)")
+          PY

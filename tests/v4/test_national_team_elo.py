@@ -49,6 +49,31 @@ class TestRegistry:
         # The 3-letter code itself should also self-resolve
         assert _NAME_TO_CODE["eng"] == "ENG"
 
+    # post-v9 P1#10: aliases added after verifying API-Football naming variants
+
+    def test_p1_10_panama_added(self):
+        """WC 2018 + COPA 2024 participant; was missing pre-P1#10."""
+        assert "PAN" in NATION_CLUBELO_CODES
+        assert _NAME_TO_CODE["panama"] == "PAN"
+
+    def test_p1_10_rep_of_ireland_alias(self):
+        """API-Football emits 'Rep. Of Ireland' for WC qualifying."""
+        assert _NAME_TO_CODE["rep. of ireland"] == "IRL"
+        # original aliases still work
+        assert _NAME_TO_CODE["republic of ireland"] == "IRL"
+
+    def test_p1_10_bosnia_ampersand_alias(self):
+        """API-Football uses '&' not 'and' for Bosnia."""
+        assert _NAME_TO_CODE["bosnia & herzegovina"] == "BIH"
+        # original aliases still work
+        assert _NAME_TO_CODE["bosnia and herzegovina"] == "BIH"
+
+    def test_p1_10_fyr_macedonia_alias(self):
+        """API-Football uses legacy 'FYR Macedonia' for older fixtures."""
+        assert _NAME_TO_CODE["fyr macedonia"] == "MKD"
+        # original aliases still work
+        assert _NAME_TO_CODE["north macedonia"] == "MKD"
+
 
 # ---------- fetch_nation_history -----------------------------------
 
