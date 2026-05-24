@@ -1,0 +1,4174 @@
+[
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208025,
+      "timezone": "UTC",
+      "date": "2024-08-17T14:00:00+00:00",
+      "timestamp": 1723903200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208025,
+      "timezone": "UTC",
+      "date": "2024-08-17T14:00:00+00:00",
+      "timestamp": 1723903200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 328105,
+      "name": "L. Miley",
+      "photo": "https://media.api-sports.io/football/players/328105.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208025,
+      "timezone": "UTC",
+      "date": "2024-08-17T14:00:00+00:00",
+      "timestamp": 1723903200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 31146,
+      "name": "S. Tonali",
+      "photo": "https://media.api-sports.io/football/players/31146.png",
+      "type": "Missing Fixture",
+      "reason": "Suspended"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208025,
+      "timezone": "UTC",
+      "date": "2024-08-17T14:00:00+00:00",
+      "timestamp": 1723903200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208025,
+      "timezone": "UTC",
+      "date": "2024-08-17T14:00:00+00:00",
+      "timestamp": 1723903200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208031,
+      "timezone": "UTC",
+      "date": "2024-08-25T13:00:00+00:00",
+      "timestamp": 1724590800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208031,
+      "timezone": "UTC",
+      "date": "2024-08-25T13:00:00+00:00",
+      "timestamp": 1724590800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 328105,
+      "name": "L. Miley",
+      "photo": "https://media.api-sports.io/football/players/328105.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208031,
+      "timezone": "UTC",
+      "date": "2024-08-25T13:00:00+00:00",
+      "timestamp": 1724590800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2806,
+      "name": "F. Schar",
+      "photo": "https://media.api-sports.io/football/players/2806.png",
+      "type": "Missing Fixture",
+      "reason": "Red Card"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208031,
+      "timezone": "UTC",
+      "date": "2024-08-25T13:00:00+00:00",
+      "timestamp": 1724590800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 31146,
+      "name": "S. Tonali",
+      "photo": "https://media.api-sports.io/football/players/31146.png",
+      "type": "Missing Fixture",
+      "reason": "Suspended"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208031,
+      "timezone": "UTC",
+      "date": "2024-08-25T13:00:00+00:00",
+      "timestamp": 1724590800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 138906,
+      "name": "J. White",
+      "photo": "https://media.api-sports.io/football/players/138906.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208031,
+      "timezone": "UTC",
+      "date": "2024-08-25T13:00:00+00:00",
+      "timestamp": 1724590800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208031,
+      "timezone": "UTC",
+      "date": "2024-08-25T13:00:00+00:00",
+      "timestamp": 1724590800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208048,
+      "timezone": "UTC",
+      "date": "2024-09-01T12:30:00+00:00",
+      "timestamp": 1725193800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208048,
+      "timezone": "UTC",
+      "date": "2024-09-01T12:30:00+00:00",
+      "timestamp": 1725193800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 328105,
+      "name": "L. Miley",
+      "photo": "https://media.api-sports.io/football/players/328105.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208048,
+      "timezone": "UTC",
+      "date": "2024-09-01T12:30:00+00:00",
+      "timestamp": 1725193800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2806,
+      "name": "F. Schar",
+      "photo": "https://media.api-sports.io/football/players/2806.png",
+      "type": "Missing Fixture",
+      "reason": "Red Card"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208048,
+      "timezone": "UTC",
+      "date": "2024-09-01T12:30:00+00:00",
+      "timestamp": 1725193800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208048,
+      "timezone": "UTC",
+      "date": "2024-09-01T12:30:00+00:00",
+      "timestamp": 1725193800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 1463,
+      "name": "J. Willock",
+      "photo": "https://media.api-sports.io/football/players/1463.png",
+      "type": "Questionable",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208048,
+      "timezone": "UTC",
+      "date": "2024-09-01T12:30:00+00:00",
+      "timestamp": 1725193800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208060,
+      "timezone": "UTC",
+      "date": "2024-09-15T15:30:00+00:00",
+      "timestamp": 1726414200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208060,
+      "timezone": "UTC",
+      "date": "2024-09-15T15:30:00+00:00",
+      "timestamp": 1726414200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 328105,
+      "name": "L. Miley",
+      "photo": "https://media.api-sports.io/football/players/328105.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208060,
+      "timezone": "UTC",
+      "date": "2024-09-15T15:30:00+00:00",
+      "timestamp": 1726414200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208060,
+      "timezone": "UTC",
+      "date": "2024-09-15T15:30:00+00:00",
+      "timestamp": 1726414200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208064,
+      "timezone": "UTC",
+      "date": "2024-09-21T14:00:00+00:00",
+      "timestamp": 1726927200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208064,
+      "timezone": "UTC",
+      "date": "2024-09-21T14:00:00+00:00",
+      "timestamp": 1726927200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 328105,
+      "name": "L. Miley",
+      "photo": "https://media.api-sports.io/football/players/328105.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208064,
+      "timezone": "UTC",
+      "date": "2024-09-21T14:00:00+00:00",
+      "timestamp": 1726927200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208064,
+      "timezone": "UTC",
+      "date": "2024-09-21T14:00:00+00:00",
+      "timestamp": 1726927200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208087,
+      "timezone": "UTC",
+      "date": "2024-10-05T16:30:00+00:00",
+      "timestamp": 1728145800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2864,
+      "name": "A. Isak",
+      "photo": "https://media.api-sports.io/football/players/2864.png",
+      "type": "Missing Fixture",
+      "reason": "Finger Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208087,
+      "timezone": "UTC",
+      "date": "2024-10-05T16:30:00+00:00",
+      "timestamp": 1728145800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208087,
+      "timezone": "UTC",
+      "date": "2024-10-05T16:30:00+00:00",
+      "timestamp": 1728145800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 328105,
+      "name": "L. Miley",
+      "photo": "https://media.api-sports.io/football/players/328105.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208087,
+      "timezone": "UTC",
+      "date": "2024-10-05T16:30:00+00:00",
+      "timestamp": 1728145800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208087,
+      "timezone": "UTC",
+      "date": "2024-10-05T16:30:00+00:00",
+      "timestamp": 1728145800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18941,
+      "name": "M. Targett",
+      "photo": "https://media.api-sports.io/football/players/18941.png",
+      "type": "Questionable",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208087,
+      "timezone": "UTC",
+      "date": "2024-10-05T16:30:00+00:00",
+      "timestamp": 1728145800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208096,
+      "timezone": "UTC",
+      "date": "2024-10-19T14:00:00+00:00",
+      "timestamp": 1729346400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208096,
+      "timezone": "UTC",
+      "date": "2024-10-19T14:00:00+00:00",
+      "timestamp": 1729346400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 169,
+      "name": "K. Trippier",
+      "photo": "https://media.api-sports.io/football/players/169.png",
+      "type": "Missing Fixture",
+      "reason": "Muscle Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208096,
+      "timezone": "UTC",
+      "date": "2024-10-19T14:00:00+00:00",
+      "timestamp": 1729346400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Questionable",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208096,
+      "timezone": "UTC",
+      "date": "2024-10-19T14:00:00+00:00",
+      "timestamp": 1729346400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208107,
+      "timezone": "UTC",
+      "date": "2024-10-27T14:00:00+00:00",
+      "timestamp": 1730037600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208107,
+      "timezone": "UTC",
+      "date": "2024-10-27T14:00:00+00:00",
+      "timestamp": 1730037600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 169,
+      "name": "K. Trippier",
+      "photo": "https://media.api-sports.io/football/players/169.png",
+      "type": "Missing Fixture",
+      "reason": "Muscle Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208107,
+      "timezone": "UTC",
+      "date": "2024-10-27T14:00:00+00:00",
+      "timestamp": 1730037600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208107,
+      "timezone": "UTC",
+      "date": "2024-10-27T14:00:00+00:00",
+      "timestamp": 1730037600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18886,
+      "name": "M. Dubravka",
+      "photo": "https://media.api-sports.io/football/players/18886.png",
+      "type": "Questionable",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208107,
+      "timezone": "UTC",
+      "date": "2024-10-27T14:00:00+00:00",
+      "timestamp": 1730037600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208118,
+      "timezone": "UTC",
+      "date": "2024-11-02T12:30:00+00:00",
+      "timestamp": 1730550600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208118,
+      "timezone": "UTC",
+      "date": "2024-11-02T12:30:00+00:00",
+      "timestamp": 1730550600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 169,
+      "name": "K. Trippier",
+      "photo": "https://media.api-sports.io/football/players/169.png",
+      "type": "Missing Fixture",
+      "reason": "Muscle Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208118,
+      "timezone": "UTC",
+      "date": "2024-11-02T12:30:00+00:00",
+      "timestamp": 1730550600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208118,
+      "timezone": "UTC",
+      "date": "2024-11-02T12:30:00+00:00",
+      "timestamp": 1730550600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19163,
+      "name": "J. Murphy",
+      "photo": "https://media.api-sports.io/football/players/19163.png",
+      "type": "Questionable",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208118,
+      "timezone": "UTC",
+      "date": "2024-11-02T12:30:00+00:00",
+      "timestamp": 1730550600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208129,
+      "timezone": "UTC",
+      "date": "2024-11-10T14:00:00+00:00",
+      "timestamp": 1731247200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208129,
+      "timezone": "UTC",
+      "date": "2024-11-10T14:00:00+00:00",
+      "timestamp": 1731247200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Back Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208129,
+      "timezone": "UTC",
+      "date": "2024-11-10T14:00:00+00:00",
+      "timestamp": 1731247200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208141,
+      "timezone": "UTC",
+      "date": "2024-11-25T20:00:00+00:00",
+      "timestamp": 1732564800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18961,
+      "name": "D. Burn",
+      "photo": "https://media.api-sports.io/football/players/18961.png",
+      "type": "Missing Fixture",
+      "reason": "Yellow Cards"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208141,
+      "timezone": "UTC",
+      "date": "2024-11-25T20:00:00+00:00",
+      "timestamp": 1732564800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208141,
+      "timezone": "UTC",
+      "date": "2024-11-25T20:00:00+00:00",
+      "timestamp": 1732564800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208141,
+      "timezone": "UTC",
+      "date": "2024-11-25T20:00:00+00:00",
+      "timestamp": 1732564800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208146,
+      "timezone": "UTC",
+      "date": "2024-11-30T15:00:00+00:00",
+      "timestamp": 1732978800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208146,
+      "timezone": "UTC",
+      "date": "2024-11-30T15:00:00+00:00",
+      "timestamp": 1732978800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208146,
+      "timezone": "UTC",
+      "date": "2024-11-30T15:00:00+00:00",
+      "timestamp": 1732978800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208161,
+      "timezone": "UTC",
+      "date": "2024-12-04T19:30:00+00:00",
+      "timestamp": 1733340600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208161,
+      "timezone": "UTC",
+      "date": "2024-12-04T19:30:00+00:00",
+      "timestamp": 1733340600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208161,
+      "timezone": "UTC",
+      "date": "2024-12-04T19:30:00+00:00",
+      "timestamp": 1733340600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208164,
+      "timezone": "UTC",
+      "date": "2024-12-07T15:00:00+00:00",
+      "timestamp": 1733583600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208164,
+      "timezone": "UTC",
+      "date": "2024-12-07T15:00:00+00:00",
+      "timestamp": 1733583600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208164,
+      "timezone": "UTC",
+      "date": "2024-12-07T15:00:00+00:00",
+      "timestamp": 1733583600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208179,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208179,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208179,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208179,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18911,
+      "name": "N. Pope",
+      "photo": "https://media.api-sports.io/football/players/18911.png",
+      "type": "Questionable",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208179,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 723,
+      "name": "Joelinton",
+      "photo": "https://media.api-sports.io/football/players/723.png",
+      "type": "Missing Fixture",
+      "reason": "Yellow Cards"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208188,
+      "timezone": "UTC",
+      "date": "2024-12-21T15:00:00+00:00",
+      "timestamp": 1734793200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208188,
+      "timezone": "UTC",
+      "date": "2024-12-21T15:00:00+00:00",
+      "timestamp": 1734793200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208188,
+      "timezone": "UTC",
+      "date": "2024-12-21T15:00:00+00:00",
+      "timestamp": 1734793200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18911,
+      "name": "N. Pope",
+      "photo": "https://media.api-sports.io/football/players/18911.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208188,
+      "timezone": "UTC",
+      "date": "2024-12-21T15:00:00+00:00",
+      "timestamp": 1734793200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208188,
+      "timezone": "UTC",
+      "date": "2024-12-21T15:00:00+00:00",
+      "timestamp": 1734793200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Questionable",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208188,
+      "timezone": "UTC",
+      "date": "2024-12-21T15:00:00+00:00",
+      "timestamp": 1734793200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208199,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208199,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18911,
+      "name": "N. Pope",
+      "photo": "https://media.api-sports.io/football/players/18911.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208199,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208199,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Questionable",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208199,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208210,
+      "timezone": "UTC",
+      "date": "2024-12-30T20:00:00+00:00",
+      "timestamp": 1735588800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208210,
+      "timezone": "UTC",
+      "date": "2024-12-30T20:00:00+00:00",
+      "timestamp": 1735588800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18911,
+      "name": "N. Pope",
+      "photo": "https://media.api-sports.io/football/players/18911.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208210,
+      "timezone": "UTC",
+      "date": "2024-12-30T20:00:00+00:00",
+      "timestamp": 1735588800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208210,
+      "timezone": "UTC",
+      "date": "2024-12-30T20:00:00+00:00",
+      "timestamp": 1735588800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Questionable",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208210,
+      "timezone": "UTC",
+      "date": "2024-12-30T20:00:00+00:00",
+      "timestamp": 1735588800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2855,
+      "name": "E. Krafth",
+      "photo": "https://media.api-sports.io/football/players/2855.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208221,
+      "timezone": "UTC",
+      "date": "2025-01-04T12:30:00+00:00",
+      "timestamp": 1735993800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208221,
+      "timezone": "UTC",
+      "date": "2025-01-04T12:30:00+00:00",
+      "timestamp": 1735993800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18911,
+      "name": "N. Pope",
+      "photo": "https://media.api-sports.io/football/players/18911.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208221,
+      "timezone": "UTC",
+      "date": "2025-01-04T12:30:00+00:00",
+      "timestamp": 1735993800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2806,
+      "name": "F. Schar",
+      "photo": "https://media.api-sports.io/football/players/2806.png",
+      "type": "Missing Fixture",
+      "reason": "Yellow Cards"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208221,
+      "timezone": "UTC",
+      "date": "2025-01-04T12:30:00+00:00",
+      "timestamp": 1735993800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208221,
+      "timezone": "UTC",
+      "date": "2025-01-04T12:30:00+00:00",
+      "timestamp": 1735993800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18778,
+      "name": "H. Barnes",
+      "photo": "https://media.api-sports.io/football/players/18778.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208231,
+      "timezone": "UTC",
+      "date": "2025-01-15T19:30:00+00:00",
+      "timestamp": 1736969400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208231,
+      "timezone": "UTC",
+      "date": "2025-01-15T19:30:00+00:00",
+      "timestamp": 1736969400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18911,
+      "name": "N. Pope",
+      "photo": "https://media.api-sports.io/football/players/18911.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208231,
+      "timezone": "UTC",
+      "date": "2025-01-15T19:30:00+00:00",
+      "timestamp": 1736969400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208231,
+      "timezone": "UTC",
+      "date": "2025-01-15T19:30:00+00:00",
+      "timestamp": 1736969400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18778,
+      "name": "H. Barnes",
+      "photo": "https://media.api-sports.io/football/players/18778.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208240,
+      "timezone": "UTC",
+      "date": "2025-01-18T12:30:00+00:00",
+      "timestamp": 1737203400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208240,
+      "timezone": "UTC",
+      "date": "2025-01-18T12:30:00+00:00",
+      "timestamp": 1737203400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18911,
+      "name": "N. Pope",
+      "photo": "https://media.api-sports.io/football/players/18911.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208240,
+      "timezone": "UTC",
+      "date": "2025-01-18T12:30:00+00:00",
+      "timestamp": 1737203400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208240,
+      "timezone": "UTC",
+      "date": "2025-01-18T12:30:00+00:00",
+      "timestamp": 1737203400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18778,
+      "name": "H. Barnes",
+      "photo": "https://media.api-sports.io/football/players/18778.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208250,
+      "timezone": "UTC",
+      "date": "2025-01-25T15:00:00+00:00",
+      "timestamp": 1737817200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208250,
+      "timezone": "UTC",
+      "date": "2025-01-25T15:00:00+00:00",
+      "timestamp": 1737817200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208250,
+      "timezone": "UTC",
+      "date": "2025-01-25T15:00:00+00:00",
+      "timestamp": 1737817200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18778,
+      "name": "H. Barnes",
+      "photo": "https://media.api-sports.io/football/players/18778.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208260,
+      "timezone": "UTC",
+      "date": "2025-02-01T15:00:00+00:00",
+      "timestamp": 1738422000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208260,
+      "timezone": "UTC",
+      "date": "2025-02-01T15:00:00+00:00",
+      "timestamp": 1738422000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2939,
+      "name": "C. Wilson",
+      "photo": "https://media.api-sports.io/football/players/2939.png",
+      "type": "Questionable",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208260,
+      "timezone": "UTC",
+      "date": "2025-02-01T15:00:00+00:00",
+      "timestamp": 1738422000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 723,
+      "name": "Joelinton",
+      "photo": "https://media.api-sports.io/football/players/723.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208269,
+      "timezone": "UTC",
+      "date": "2025-02-15T15:00:00+00:00",
+      "timestamp": 1739631600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208269,
+      "timezone": "UTC",
+      "date": "2025-02-15T15:00:00+00:00",
+      "timestamp": 1739631600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Questionable",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208269,
+      "timezone": "UTC",
+      "date": "2025-02-15T15:00:00+00:00",
+      "timestamp": 1739631600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 723,
+      "name": "Joelinton",
+      "photo": "https://media.api-sports.io/football/players/723.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208281,
+      "timezone": "UTC",
+      "date": "2025-02-23T14:00:00+00:00",
+      "timestamp": 1740319200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208281,
+      "timezone": "UTC",
+      "date": "2025-02-23T14:00:00+00:00",
+      "timestamp": 1740319200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Questionable",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208281,
+      "timezone": "UTC",
+      "date": "2025-02-23T14:00:00+00:00",
+      "timestamp": 1740319200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 723,
+      "name": "Joelinton",
+      "photo": "https://media.api-sports.io/football/players/723.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208291,
+      "timezone": "UTC",
+      "date": "2025-02-26T20:15:00+00:00",
+      "timestamp": 1740600900
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208291,
+      "timezone": "UTC",
+      "date": "2025-02-26T20:15:00+00:00",
+      "timestamp": 1740600900
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Questionable",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208291,
+      "timezone": "UTC",
+      "date": "2025-02-26T20:15:00+00:00",
+      "timestamp": 1740600900
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208301,
+      "timezone": "UTC",
+      "date": "2025-03-10T20:00:00+00:00",
+      "timestamp": 1741636800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 138787,
+      "name": "A. Gordon",
+      "photo": "https://media.api-sports.io/football/players/138787.png",
+      "type": "Missing Fixture",
+      "reason": "Red Card"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208301,
+      "timezone": "UTC",
+      "date": "2025-03-10T20:00:00+00:00",
+      "timestamp": 1741636800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208301,
+      "timezone": "UTC",
+      "date": "2025-03-10T20:00:00+00:00",
+      "timestamp": 1741636800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208301,
+      "timezone": "UTC",
+      "date": "2025-03-10T20:00:00+00:00",
+      "timestamp": 1741636800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208320,
+      "timezone": "UTC",
+      "date": "2025-04-02T18:45:00+00:00",
+      "timestamp": 1743619500
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 138787,
+      "name": "A. Gordon",
+      "photo": "https://media.api-sports.io/football/players/138787.png",
+      "type": "Missing Fixture",
+      "reason": "Red Card"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208320,
+      "timezone": "UTC",
+      "date": "2025-04-02T18:45:00+00:00",
+      "timestamp": 1743619500
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208320,
+      "timezone": "UTC",
+      "date": "2025-04-02T18:45:00+00:00",
+      "timestamp": 1743619500
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208320,
+      "timezone": "UTC",
+      "date": "2025-04-02T18:45:00+00:00",
+      "timestamp": 1743619500
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208329,
+      "timezone": "UTC",
+      "date": "2025-04-07T19:00:00+00:00",
+      "timestamp": 1744052400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208329,
+      "timezone": "UTC",
+      "date": "2025-04-07T19:00:00+00:00",
+      "timestamp": 1744052400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208329,
+      "timezone": "UTC",
+      "date": "2025-04-07T19:00:00+00:00",
+      "timestamp": 1744052400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 138787,
+      "name": "A. Gordon",
+      "photo": "https://media.api-sports.io/football/players/138787.png",
+      "type": "Questionable",
+      "reason": "Groin Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208329,
+      "timezone": "UTC",
+      "date": "2025-04-07T19:00:00+00:00",
+      "timestamp": 1744052400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208339,
+      "timezone": "UTC",
+      "date": "2025-04-13T15:30:00+00:00",
+      "timestamp": 1744558200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208339,
+      "timezone": "UTC",
+      "date": "2025-04-13T15:30:00+00:00",
+      "timestamp": 1744558200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208339,
+      "timezone": "UTC",
+      "date": "2025-04-13T15:30:00+00:00",
+      "timestamp": 1744558200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 1463,
+      "name": "J. Willock",
+      "photo": "https://media.api-sports.io/football/players/1463.png",
+      "type": "Missing Fixture",
+      "reason": "Contusion"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208339,
+      "timezone": "UTC",
+      "date": "2025-04-13T15:30:00+00:00",
+      "timestamp": 1744558200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208311,
+      "timezone": "UTC",
+      "date": "2025-04-16T18:30:00+00:00",
+      "timestamp": 1744828200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208311,
+      "timezone": "UTC",
+      "date": "2025-04-16T18:30:00+00:00",
+      "timestamp": 1744828200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208311,
+      "timezone": "UTC",
+      "date": "2025-04-16T18:30:00+00:00",
+      "timestamp": 1744828200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 38734,
+      "name": "S. Botman",
+      "photo": "https://media.api-sports.io/football/players/38734.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208343,
+      "timezone": "UTC",
+      "date": "2025-04-19T16:30:00+00:00",
+      "timestamp": 1745080200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208343,
+      "timezone": "UTC",
+      "date": "2025-04-19T16:30:00+00:00",
+      "timestamp": 1745080200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208343,
+      "timezone": "UTC",
+      "date": "2025-04-19T16:30:00+00:00",
+      "timestamp": 1745080200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208359,
+      "timezone": "UTC",
+      "date": "2025-04-26T14:00:00+00:00",
+      "timestamp": 1745676000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208359,
+      "timezone": "UTC",
+      "date": "2025-04-26T14:00:00+00:00",
+      "timestamp": 1745676000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208366,
+      "timezone": "UTC",
+      "date": "2025-05-04T13:00:00+00:00",
+      "timestamp": 1746363600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 723,
+      "name": "Joelinton",
+      "photo": "https://media.api-sports.io/football/players/723.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208366,
+      "timezone": "UTC",
+      "date": "2025-05-04T13:00:00+00:00",
+      "timestamp": 1746363600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18894,
+      "name": "J. Lascelles",
+      "photo": "https://media.api-sports.io/football/players/18894.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208366,
+      "timezone": "UTC",
+      "date": "2025-05-04T13:00:00+00:00",
+      "timestamp": 1746363600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18941,
+      "name": "M. Targett",
+      "photo": "https://media.api-sports.io/football/players/18941.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208366,
+      "timezone": "UTC",
+      "date": "2025-05-04T13:00:00+00:00",
+      "timestamp": 1746363600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208378,
+      "timezone": "UTC",
+      "date": "2025-05-11T11:00:00+00:00",
+      "timestamp": 1746961200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 723,
+      "name": "Joelinton",
+      "photo": "https://media.api-sports.io/football/players/723.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208378,
+      "timezone": "UTC",
+      "date": "2025-05-11T11:00:00+00:00",
+      "timestamp": 1746961200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18941,
+      "name": "M. Targett",
+      "photo": "https://media.api-sports.io/football/players/18941.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208378,
+      "timezone": "UTC",
+      "date": "2025-05-11T11:00:00+00:00",
+      "timestamp": 1746961200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208383,
+      "timezone": "UTC",
+      "date": "2025-05-18T15:30:00+00:00",
+      "timestamp": 1747582200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 723,
+      "name": "Joelinton",
+      "photo": "https://media.api-sports.io/football/players/723.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208383,
+      "timezone": "UTC",
+      "date": "2025-05-18T15:30:00+00:00",
+      "timestamp": 1747582200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18941,
+      "name": "M. Targett",
+      "photo": "https://media.api-sports.io/football/players/18941.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208383,
+      "timezone": "UTC",
+      "date": "2025-05-18T15:30:00+00:00",
+      "timestamp": 1747582200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 169,
+      "name": "K. Trippier",
+      "photo": "https://media.api-sports.io/football/players/169.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208383,
+      "timezone": "UTC",
+      "date": "2025-05-18T15:30:00+00:00",
+      "timestamp": 1747582200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 284492,
+      "name": "L. Hall",
+      "photo": "https://media.api-sports.io/football/players/284492.png",
+      "type": "Missing Fixture",
+      "reason": "Foot Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208398,
+      "timezone": "UTC",
+      "date": "2025-05-25T15:00:00+00:00",
+      "timestamp": 1748185200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 723,
+      "name": "Joelinton",
+      "photo": "https://media.api-sports.io/football/players/723.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208398,
+      "timezone": "UTC",
+      "date": "2025-05-25T15:00:00+00:00",
+      "timestamp": 1748185200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18941,
+      "name": "M. Targett",
+      "photo": "https://media.api-sports.io/football/players/18941.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 34,
+      "name": "Newcastle",
+      "logo": "https://media.api-sports.io/football/teams/34.png"
+    },
+    "fixture": {
+      "id": 1208398,
+      "timezone": "UTC",
+      "date": "2025-05-25T15:00:00+00:00",
+      "timestamp": 1748185200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  }
+]

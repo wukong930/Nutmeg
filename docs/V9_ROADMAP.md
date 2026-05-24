@@ -74,19 +74,16 @@ finally plumbed through. Two-gate design (env + request flag) added.
 串关 endpoint now records for the first time. 单关 + 复式 tabs gained
 checkboxes. See [v9_w3_recorder_checkbox.md](v9_w3_recorder_checkbox.md).
 
-### V9 W4 — CI fixture cache (Track E)
+### V9 W4 — CI fixture cache (Track E) ✅
 
-Three V* retrospectives (V6, V7, V8) noted CI doesn't exercise
-`--with-lineups` / `--with-cup-data` paths because the API-Football
-cache isn't in CI. V9 W4 bakes a minimal cache:
-
-1. ~30 lineup payloads + ~5 fixture days from EPL 24/25 → committed
-   under `tests/v4/fixtures/api_football_min/`
-2. Update existing test e2e modules to point at this cache instead of
-   skipping
-3. CI now exercises the lineup-aware artifact training path end-to-end
-
-Estimated 1-2 days.
+Shipped. 1.4 MB cache committed (5 EPL 24/25 fixtures + 5 lineup
+payloads + 10 team-season injuries). New `test_e2e_lineup_with_cache.py`
+runs `build_lineup_lookup_from_cache` → `build_recent_injury_lookup`
+→ `build_lineup_features` chain end-to-end on real data in CI. Closes
+the lineup half of the 3-retrospective backlog item. Cup half stays
+open until V9 W1 Path A accumulates ~250 cup_odds rows (~9 months).
+12 new tests (771/771 V4 suite). See
+[v9_w4_ci_fixture_cache.md](v9_w4_ci_fixture_cache.md).
 
 ### V9 W5 — ECE-vs-log-loss per-bucket Brier audit (Track E)
 

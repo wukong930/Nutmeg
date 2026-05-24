@@ -1,0 +1,2830 @@
+[
+  {
+    "player": {
+      "id": 104,
+      "name": "Carlos Vinicius",
+      "photo": "https://media.api-sports.io/football/players/104.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208055,
+      "timezone": "UTC",
+      "date": "2024-09-14T14:00:00+00:00",
+      "timestamp": 1726322400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 104,
+      "name": "Carlos Vinicius",
+      "photo": "https://media.api-sports.io/football/players/104.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208064,
+      "timezone": "UTC",
+      "date": "2024-09-21T14:00:00+00:00",
+      "timestamp": 1726927200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 104,
+      "name": "Carlos Vinicius",
+      "photo": "https://media.api-sports.io/football/players/104.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208089,
+      "timezone": "UTC",
+      "date": "2024-10-05T14:00:00+00:00",
+      "timestamp": 1728136800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 131,
+      "name": "J. Cuenca",
+      "photo": "https://media.api-sports.io/football/players/131.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208089,
+      "timezone": "UTC",
+      "date": "2024-10-05T14:00:00+00:00",
+      "timestamp": 1728136800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 104,
+      "name": "Carlos Vinicius",
+      "photo": "https://media.api-sports.io/football/players/104.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208092,
+      "timezone": "UTC",
+      "date": "2024-10-19T14:00:00+00:00",
+      "timestamp": 1729346400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2920,
+      "name": "T. Castagne",
+      "photo": "https://media.api-sports.io/football/players/2920.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208092,
+      "timezone": "UTC",
+      "date": "2024-10-19T14:00:00+00:00",
+      "timestamp": 1729346400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 131,
+      "name": "J. Cuenca",
+      "photo": "https://media.api-sports.io/football/players/131.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208092,
+      "timezone": "UTC",
+      "date": "2024-10-19T14:00:00+00:00",
+      "timestamp": 1729346400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2823,
+      "name": "S. Lukic",
+      "photo": "https://media.api-sports.io/football/players/2823.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208092,
+      "timezone": "UTC",
+      "date": "2024-10-19T14:00:00+00:00",
+      "timestamp": 1729346400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2729,
+      "name": "J. Andersen",
+      "photo": "https://media.api-sports.io/football/players/2729.png",
+      "type": "Missing Fixture",
+      "reason": "Red Card"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208109,
+      "timezone": "UTC",
+      "date": "2024-10-26T16:30:00+00:00",
+      "timestamp": 1729960200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2920,
+      "name": "T. Castagne",
+      "photo": "https://media.api-sports.io/football/players/2920.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208109,
+      "timezone": "UTC",
+      "date": "2024-10-26T16:30:00+00:00",
+      "timestamp": 1729960200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2823,
+      "name": "S. Lukic",
+      "photo": "https://media.api-sports.io/football/players/2823.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208109,
+      "timezone": "UTC",
+      "date": "2024-10-26T16:30:00+00:00",
+      "timestamp": 1729960200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 104,
+      "name": "Carlos Vinicius",
+      "photo": "https://media.api-sports.io/football/players/104.png",
+      "type": "Questionable",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208109,
+      "timezone": "UTC",
+      "date": "2024-10-26T16:30:00+00:00",
+      "timestamp": 1729960200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2823,
+      "name": "S. Lukic",
+      "photo": "https://media.api-sports.io/football/players/2823.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208114,
+      "timezone": "UTC",
+      "date": "2024-11-04T20:00:00+00:00",
+      "timestamp": 1730750400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 104,
+      "name": "Carlos Vinicius",
+      "photo": "https://media.api-sports.io/football/players/104.png",
+      "type": "Questionable",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208114,
+      "timezone": "UTC",
+      "date": "2024-11-04T20:00:00+00:00",
+      "timestamp": 1730750400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2823,
+      "name": "S. Lukic",
+      "photo": "https://media.api-sports.io/football/players/2823.png",
+      "type": "Missing Fixture",
+      "reason": "Shoulder Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208126,
+      "timezone": "UTC",
+      "date": "2024-11-09T15:00:00+00:00",
+      "timestamp": 1731164400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208137,
+      "timezone": "UTC",
+      "date": "2024-11-23T15:00:00+00:00",
+      "timestamp": 1732374000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2729,
+      "name": "J. Andersen",
+      "photo": "https://media.api-sports.io/football/players/2729.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208150,
+      "timezone": "UTC",
+      "date": "2024-12-01T13:30:00+00:00",
+      "timestamp": 1733059800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 131,
+      "name": "J. Cuenca",
+      "photo": "https://media.api-sports.io/football/players/131.png",
+      "type": "Missing Fixture",
+      "reason": "Knock"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208150,
+      "timezone": "UTC",
+      "date": "2024-12-01T13:30:00+00:00",
+      "timestamp": 1733059800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208150,
+      "timezone": "UTC",
+      "date": "2024-12-01T13:30:00+00:00",
+      "timestamp": 1733059800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2729,
+      "name": "J. Andersen",
+      "photo": "https://media.api-sports.io/football/players/2729.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208157,
+      "timezone": "UTC",
+      "date": "2024-12-05T19:30:00+00:00",
+      "timestamp": 1733427000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19025,
+      "name": "T. Cairney",
+      "photo": "https://media.api-sports.io/football/players/19025.png",
+      "type": "Missing Fixture",
+      "reason": "Red Card"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208157,
+      "timezone": "UTC",
+      "date": "2024-12-05T19:30:00+00:00",
+      "timestamp": 1733427000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2823,
+      "name": "S. Lukic",
+      "photo": "https://media.api-sports.io/football/players/2823.png",
+      "type": "Missing Fixture",
+      "reason": "Yellow Cards"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208157,
+      "timezone": "UTC",
+      "date": "2024-12-05T19:30:00+00:00",
+      "timestamp": 1733427000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208157,
+      "timezone": "UTC",
+      "date": "2024-12-05T19:30:00+00:00",
+      "timestamp": 1733427000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2729,
+      "name": "J. Andersen",
+      "photo": "https://media.api-sports.io/football/players/2729.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208167,
+      "timezone": "UTC",
+      "date": "2024-12-08T14:00:00+00:00",
+      "timestamp": 1733666400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19025,
+      "name": "T. Cairney",
+      "photo": "https://media.api-sports.io/football/players/19025.png",
+      "type": "Missing Fixture",
+      "reason": "Red Card"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208167,
+      "timezone": "UTC",
+      "date": "2024-12-08T14:00:00+00:00",
+      "timestamp": 1733666400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208167,
+      "timezone": "UTC",
+      "date": "2024-12-08T14:00:00+00:00",
+      "timestamp": 1733666400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208167,
+      "timezone": "UTC",
+      "date": "2024-12-08T14:00:00+00:00",
+      "timestamp": 1733666400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2729,
+      "name": "J. Andersen",
+      "photo": "https://media.api-sports.io/football/players/2729.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208177,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 152967,
+      "name": "C. Bassey",
+      "photo": "https://media.api-sports.io/football/players/152967.png",
+      "type": "Missing Fixture",
+      "reason": "Yellow Cards"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208177,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19025,
+      "name": "T. Cairney",
+      "photo": "https://media.api-sports.io/football/players/19025.png",
+      "type": "Missing Fixture",
+      "reason": "Red Card"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208177,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208177,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208177,
+      "timezone": "UTC",
+      "date": "2024-12-14T15:00:00+00:00",
+      "timestamp": 1734188400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208187,
+      "timezone": "UTC",
+      "date": "2024-12-22T14:00:00+00:00",
+      "timestamp": 1734876000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 899,
+      "name": "A. Pereira",
+      "photo": "https://media.api-sports.io/football/players/899.png",
+      "type": "Missing Fixture",
+      "reason": "Yellow Cards"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208187,
+      "timezone": "UTC",
+      "date": "2024-12-22T14:00:00+00:00",
+      "timestamp": 1734876000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208187,
+      "timezone": "UTC",
+      "date": "2024-12-22T14:00:00+00:00",
+      "timestamp": 1734876000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208187,
+      "timezone": "UTC",
+      "date": "2024-12-22T14:00:00+00:00",
+      "timestamp": 1734876000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208196,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208196,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208196,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 1934,
+      "name": "S. Berge",
+      "photo": "https://media.api-sports.io/football/players/1934.png",
+      "type": "Questionable",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208196,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 1161,
+      "name": "E. Smith Rowe",
+      "photo": "https://media.api-sports.io/football/players/1161.png",
+      "type": "Questionable",
+      "reason": "Leg Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208196,
+      "timezone": "UTC",
+      "date": "2024-12-26T15:00:00+00:00",
+      "timestamp": 1735225200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 1934,
+      "name": "S. Berge",
+      "photo": "https://media.api-sports.io/football/players/1934.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208207,
+      "timezone": "UTC",
+      "date": "2024-12-29T15:00:00+00:00",
+      "timestamp": 1735484400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208207,
+      "timezone": "UTC",
+      "date": "2024-12-29T15:00:00+00:00",
+      "timestamp": 1735484400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208207,
+      "timezone": "UTC",
+      "date": "2024-12-29T15:00:00+00:00",
+      "timestamp": 1735484400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208207,
+      "timezone": "UTC",
+      "date": "2024-12-29T15:00:00+00:00",
+      "timestamp": 1735484400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 1934,
+      "name": "S. Berge",
+      "photo": "https://media.api-sports.io/football/players/1934.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208217,
+      "timezone": "UTC",
+      "date": "2025-01-05T14:00:00+00:00",
+      "timestamp": 1736085600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208217,
+      "timezone": "UTC",
+      "date": "2025-01-05T14:00:00+00:00",
+      "timestamp": 1736085600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208217,
+      "timezone": "UTC",
+      "date": "2025-01-05T14:00:00+00:00",
+      "timestamp": 1736085600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208217,
+      "timezone": "UTC",
+      "date": "2025-01-05T14:00:00+00:00",
+      "timestamp": 1736085600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208229,
+      "timezone": "UTC",
+      "date": "2025-01-14T19:30:00+00:00",
+      "timestamp": 1736883000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208229,
+      "timezone": "UTC",
+      "date": "2025-01-14T19:30:00+00:00",
+      "timestamp": 1736883000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208238,
+      "timezone": "UTC",
+      "date": "2025-01-18T15:00:00+00:00",
+      "timestamp": 1737212400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208238,
+      "timezone": "UTC",
+      "date": "2025-01-18T15:00:00+00:00",
+      "timestamp": 1737212400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208247,
+      "timezone": "UTC",
+      "date": "2025-01-26T19:00:00+00:00",
+      "timestamp": 1737918000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208247,
+      "timezone": "UTC",
+      "date": "2025-01-26T19:00:00+00:00",
+      "timestamp": 1737918000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208260,
+      "timezone": "UTC",
+      "date": "2025-02-01T15:00:00+00:00",
+      "timestamp": 1738422000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208260,
+      "timezone": "UTC",
+      "date": "2025-02-01T15:00:00+00:00",
+      "timestamp": 1738422000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Questionable",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208260,
+      "timezone": "UTC",
+      "date": "2025-02-01T15:00:00+00:00",
+      "timestamp": 1738422000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208266,
+      "timezone": "UTC",
+      "date": "2025-02-15T15:00:00+00:00",
+      "timestamp": 1739631600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208266,
+      "timezone": "UTC",
+      "date": "2025-02-15T15:00:00+00:00",
+      "timestamp": 1739631600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208266,
+      "timezone": "UTC",
+      "date": "2025-02-15T15:00:00+00:00",
+      "timestamp": 1739631600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208277,
+      "timezone": "UTC",
+      "date": "2025-02-22T15:00:00+00:00",
+      "timestamp": 1740236400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208277,
+      "timezone": "UTC",
+      "date": "2025-02-22T15:00:00+00:00",
+      "timestamp": 1740236400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208277,
+      "timezone": "UTC",
+      "date": "2025-02-22T15:00:00+00:00",
+      "timestamp": 1740236400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208288,
+      "timezone": "UTC",
+      "date": "2025-02-25T19:30:00+00:00",
+      "timestamp": 1740511800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208288,
+      "timezone": "UTC",
+      "date": "2025-02-25T19:30:00+00:00",
+      "timestamp": 1740511800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208288,
+      "timezone": "UTC",
+      "date": "2025-02-25T19:30:00+00:00",
+      "timestamp": 1740511800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 1161,
+      "name": "E. Smith Rowe",
+      "photo": "https://media.api-sports.io/football/players/1161.png",
+      "type": "Questionable",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208288,
+      "timezone": "UTC",
+      "date": "2025-02-25T19:30:00+00:00",
+      "timestamp": 1740511800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208294,
+      "timezone": "UTC",
+      "date": "2025-03-08T15:00:00+00:00",
+      "timestamp": 1741446000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208294,
+      "timezone": "UTC",
+      "date": "2025-03-08T15:00:00+00:00",
+      "timestamp": 1741446000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208294,
+      "timezone": "UTC",
+      "date": "2025-03-08T15:00:00+00:00",
+      "timestamp": 1741446000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 18753,
+      "name": "A. Traore",
+      "photo": "https://media.api-sports.io/football/players/18753.png",
+      "type": "Questionable",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208294,
+      "timezone": "UTC",
+      "date": "2025-03-08T15:00:00+00:00",
+      "timestamp": 1741446000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2823,
+      "name": "S. Lukic",
+      "photo": "https://media.api-sports.io/football/players/2823.png",
+      "type": "Missing Fixture",
+      "reason": "Yellow Cards"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208307,
+      "timezone": "UTC",
+      "date": "2025-03-16T13:30:00+00:00",
+      "timestamp": 1742131800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Thigh Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208307,
+      "timezone": "UTC",
+      "date": "2025-03-16T13:30:00+00:00",
+      "timestamp": 1742131800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208307,
+      "timezone": "UTC",
+      "date": "2025-03-16T13:30:00+00:00",
+      "timestamp": 1742131800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208307,
+      "timezone": "UTC",
+      "date": "2025-03-16T13:30:00+00:00",
+      "timestamp": 1742131800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208314,
+      "timezone": "UTC",
+      "date": "2025-04-01T18:45:00+00:00",
+      "timestamp": 1743533100
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 657,
+      "name": "K. Tete",
+      "photo": "https://media.api-sports.io/football/players/657.png",
+      "type": "Missing Fixture",
+      "reason": "Knee Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208314,
+      "timezone": "UTC",
+      "date": "2025-04-01T18:45:00+00:00",
+      "timestamp": 1743533100
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208314,
+      "timezone": "UTC",
+      "date": "2025-04-01T18:45:00+00:00",
+      "timestamp": 1743533100
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208327,
+      "timezone": "UTC",
+      "date": "2025-04-06T13:00:00+00:00",
+      "timestamp": 1743944400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208327,
+      "timezone": "UTC",
+      "date": "2025-04-06T13:00:00+00:00",
+      "timestamp": 1743944400
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208333,
+      "timezone": "UTC",
+      "date": "2025-04-14T19:00:00+00:00",
+      "timestamp": 1744657200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19221,
+      "name": "H. Wilson",
+      "photo": "https://media.api-sports.io/football/players/19221.png",
+      "type": "Questionable",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208333,
+      "timezone": "UTC",
+      "date": "2025-04-14T19:00:00+00:00",
+      "timestamp": 1744657200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208347,
+      "timezone": "UTC",
+      "date": "2025-04-20T13:00:00+00:00",
+      "timestamp": 1745154000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208361,
+      "timezone": "UTC",
+      "date": "2025-04-26T14:00:00+00:00",
+      "timestamp": 1745676000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 195106,
+      "name": "Rodrigo Muniz",
+      "photo": "https://media.api-sports.io/football/players/195106.png",
+      "type": "Missing Fixture",
+      "reason": "Inactive"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208361,
+      "timezone": "UTC",
+      "date": "2025-04-26T14:00:00+00:00",
+      "timestamp": 1745676000
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208364,
+      "timezone": "UTC",
+      "date": "2025-05-03T11:30:00+00:00",
+      "timestamp": 1746271800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 195106,
+      "name": "Rodrigo Muniz",
+      "photo": "https://media.api-sports.io/football/players/195106.png",
+      "type": "Missing Fixture",
+      "reason": "Achilles Tendon Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208364,
+      "timezone": "UTC",
+      "date": "2025-05-03T11:30:00+00:00",
+      "timestamp": 1746271800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2920,
+      "name": "T. Castagne",
+      "photo": "https://media.api-sports.io/football/players/2920.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208374,
+      "timezone": "UTC",
+      "date": "2025-05-10T14:00:00+00:00",
+      "timestamp": 1746885600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2823,
+      "name": "S. Lukic",
+      "photo": "https://media.api-sports.io/football/players/2823.png",
+      "type": "Missing Fixture",
+      "reason": "Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208374,
+      "timezone": "UTC",
+      "date": "2025-05-10T14:00:00+00:00",
+      "timestamp": 1746885600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208374,
+      "timezone": "UTC",
+      "date": "2025-05-10T14:00:00+00:00",
+      "timestamp": 1746885600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208374,
+      "timezone": "UTC",
+      "date": "2025-05-10T14:00:00+00:00",
+      "timestamp": 1746885600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 195106,
+      "name": "Rodrigo Muniz",
+      "photo": "https://media.api-sports.io/football/players/195106.png",
+      "type": "Missing Fixture",
+      "reason": "Achilles Tendon Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208374,
+      "timezone": "UTC",
+      "date": "2025-05-10T14:00:00+00:00",
+      "timestamp": 1746885600
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2920,
+      "name": "T. Castagne",
+      "photo": "https://media.api-sports.io/football/players/2920.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208385,
+      "timezone": "UTC",
+      "date": "2025-05-18T14:00:00+00:00",
+      "timestamp": 1747576800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208385,
+      "timezone": "UTC",
+      "date": "2025-05-18T14:00:00+00:00",
+      "timestamp": 1747576800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208385,
+      "timezone": "UTC",
+      "date": "2025-05-18T14:00:00+00:00",
+      "timestamp": 1747576800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 195106,
+      "name": "Rodrigo Muniz",
+      "photo": "https://media.api-sports.io/football/players/195106.png",
+      "type": "Missing Fixture",
+      "reason": "Achilles Tendon Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208385,
+      "timezone": "UTC",
+      "date": "2025-05-18T14:00:00+00:00",
+      "timestamp": 1747576800
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 2920,
+      "name": "T. Castagne",
+      "photo": "https://media.api-sports.io/football/players/2920.png",
+      "type": "Missing Fixture",
+      "reason": "Ankle Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208394,
+      "timezone": "UTC",
+      "date": "2025-05-25T15:00:00+00:00",
+      "timestamp": 1748185200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 727,
+      "name": "R. Nelson",
+      "photo": "https://media.api-sports.io/football/players/727.png",
+      "type": "Missing Fixture",
+      "reason": "Hamstring Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208394,
+      "timezone": "UTC",
+      "date": "2025-05-25T15:00:00+00:00",
+      "timestamp": 1748185200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 19480,
+      "name": "H. Reed",
+      "photo": "https://media.api-sports.io/football/players/19480.png",
+      "type": "Missing Fixture",
+      "reason": "Calf Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208394,
+      "timezone": "UTC",
+      "date": "2025-05-25T15:00:00+00:00",
+      "timestamp": 1748185200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  },
+  {
+    "player": {
+      "id": 195106,
+      "name": "Rodrigo Muniz",
+      "photo": "https://media.api-sports.io/football/players/195106.png",
+      "type": "Missing Fixture",
+      "reason": "Achilles Tendon Injury"
+    },
+    "team": {
+      "id": 36,
+      "name": "Fulham",
+      "logo": "https://media.api-sports.io/football/teams/36.png"
+    },
+    "fixture": {
+      "id": 1208394,
+      "timezone": "UTC",
+      "date": "2025-05-25T15:00:00+00:00",
+      "timestamp": 1748185200
+    },
+    "league": {
+      "id": 39,
+      "season": 2024,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": "https://media.api-sports.io/flags/gb-eng.svg"
+    }
+  }
+]
