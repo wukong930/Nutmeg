@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     api_football_base_url: str = "https://v3.football.api-sports.io"
     api_football_timeout_seconds: float = 15.0
 
+    # post-v9 P1#20: The Odds API ($30/mo Starter tier). Used by
+    # nutmeg.v4.data.sources.odds_api to backfill UCL/UEL historical
+    # closing odds — the data set V8 W4 documented API-Football couldn't
+    # provide. Sent as `?apiKey=...` query param (not header).
+    odds_api_key: str | None = None
+    odds_api_base_url: str = "https://api.the-odds-api.com/v4"
+    odds_api_timeout_seconds: float = 20.0
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

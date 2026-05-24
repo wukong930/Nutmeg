@@ -124,13 +124,18 @@ def run_one_fold(
     )
     result = run_walk_forward(df, cfg)
     pooled = result.get("pooled", {})
+    # post-v9 P1#20 fix: walk_forward's pooled dict uses 'test_n_gbm' (not
+    # 'n_test') and per-model summary blocks like pooled['gbm_dc_temp'] =
+    # {'log_loss': ..., 'brier': ..., 'hit_rate': ...}. Original code was
+    # reading flat keys that don't exist → always-NaN ablation reports.
+    gbm_t = pooled.get("gbm_dc_temp") or {}
+    gbm = pooled.get("gbm_dc") or {}
     return {
-        "n_test": int(pooled.get("n_test", 0)),
-        # Use the CatBoost (or LightGBM if catboost missing) GBM line — that's
-        # what the production artifact ships
-        "log_loss_gbm_temp": float(pooled.get("log_loss_gbm_temp", float("nan"))),
-        "brier_gbm_temp":    float(pooled.get("brier_gbm_temp", float("nan"))),
-        "hit_rate_gbm":      float(pooled.get("hit_rate_gbm", float("nan"))),
+        "n_test": int(pooled.get("test_n_gbm", 0)),
+        # Use the GBM-temperature-calibrated line — what V5 W12 ships
+        "log_loss_gbm_temp": float(gbm_t.get("log_loss", float("nan"))),
+        "brier_gbm_temp":    float(gbm_t.get("brier", float("nan"))),
+        "hit_rate_gbm":      float(gbm.get("hit_rate", float("nan"))),
     }
 
 
