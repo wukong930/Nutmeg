@@ -45,6 +45,7 @@ P1#25  V10_ROADMAP_DRAFT.md      (placeholder; triggers + sketch) DOCS
 P1#26  GH Actions Playwright CI  (P1#15 work now runs in CI)     QA
 P1#27  V10_HANDOFF_TEMPLATE.md   (companion to P1#25 placeholder) DOCS
 P1#28  silence stale GH cron     (drop schedule on 2 workflows)  OPS
+P1#29  weekly_bench autostash    (race condition fix; cards now ship) OPS
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -323,6 +324,30 @@ with clear notice. Zero false-positive failures going forward.
 
 `nutmeg-ci.yml` + `weekly-bench.yml` + new `playwright.yml`
 unaffected — none need the API-Football secret.
+
+#### P1#29 — Weekly bench cards now actually ship (race condition fix)
+Same-pattern audit as P1#28: `weekly_bench.yml` (Sun 02:00 UTC,
+shipped V5 W10) had `docs/weekly/` empty for the project's entire
+lifetime. Root cause: bench takes ~3 min; any commit landing on
+main during that window makes the final `git push origin main`
+rejected as non-fast-forward.
+
+Fix (iterated twice):
+1. First attempt (`07ef5a4`): 3-retry loop with `git pull --rebase`
+   + `git push`. Final failure exits 0 with notice (not exit 1)
+2. Manual verification revealed bench step writes side-effect files
+   (experiment tracker journal) that block clean rebase with
+   "unstaged changes" error
+3. Second attempt (`a0c074c`): add `--autostash` to the pull.
+   Stashes uncommitted changes, rebases, then pops the stash
+
+End-to-end verified: GH run `26368370410` succeeded on attempt 1
+with autostash. Cards `docs/weekly/2026-W21-bench.md` +
+`2026-W21-multi.md` now committed to main (first bench cards ever
+to actually ship from this cron).
+
+Future Sunday 02:00 UTC runs will continue producing weekly cards;
+docs/weekly/ will accumulate one cohort per week going forward.
 
 ---
 
