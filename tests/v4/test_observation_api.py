@@ -333,3 +333,27 @@ class TestLiveVsBacktestEndpoint:
         body = client.get("/api/v4/observation/live-vs-backtest").json()
         # No backtest → not over tolerance (we only flag when both sides exist)
         assert body["over_tolerance"] is False
+
+    def test_tolerance_pp_query_param(self, populated_db_client):
+        """P1#23: caller can override the default 5pp tolerance via query
+        param (e.g. for cross-source noise-floor checks)."""
+        client, _ = populated_db_client
+        body = client.get(
+            "/api/v4/observation/live-vs-backtest?weeks=4&tolerance_pp=42"
+        ).json()
+        assert body["tolerance_pp"] == 42.0
+
+    def test_tolerance_pp_default_is_5(self, populated_db_client):
+        """Backwards compat: omitting tolerance_pp returns the original 5pp."""
+        client, _ = populated_db_client
+        body = client.get("/api/v4/observation/live-vs-backtest?weeks=4").json()
+        assert body["tolerance_pp"] == 5.0
+
+    def test_tolerance_pp_negative_rejected(self, populated_db_client):
+        """P1#23: negative tolerance is nonsense; reject with 400."""
+        client, _ = populated_db_client
+        resp = client.get(
+            "/api/v4/observation/live-vs-backtest?weeks=4&tolerance_pp=-1"
+        )
+        assert resp.status_code == 400
+        assert "tolerance_pp must be >= 0" in resp.json()["detail"]

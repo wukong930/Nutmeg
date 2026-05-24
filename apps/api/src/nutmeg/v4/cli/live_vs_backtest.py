@@ -26,7 +26,10 @@ from pathlib import Path
 
 from nutmeg.v4.data.ingest import load_all_matches
 from nutmeg.v4.eval.walk_forward import WalkForwardConfig, run_walk_forward
-from nutmeg.v4.observation.live_vs_backtest import format_report
+from nutmeg.v4.observation.live_vs_backtest import (
+    LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
+    format_report,
+)
 from nutmeg.v4.observation.live_vs_backtest import run as live_vs_backtest_run
 
 
@@ -70,8 +73,24 @@ def main(argv: list[str] | None = None) -> int:
         default="lineup_aware",
         help="Model arm to slice from --roi-backtest-db.",
     )
+    parser.add_argument(
+        "--tolerance-pp",
+        type=float,
+        default=LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
+        help=(
+            f"Gap-in-pp at which exit=2 triggers (default {LIVE_BACKTEST_TOLERANCE_PCT_POINTS}). "
+            "5pp is right for SAME-SOURCE comparisons. For cross-source "
+            "(e.g., live API-Football vs football-data PSC reference) set "
+            "to ~50pp first — see docs/post_v9_p1_19_live_roi_backtest_gate.md "
+            "P1#22 amendment for the triage logic."
+        ),
+    )
     parser.add_argument("--out", default=None, help="Output markdown file (default stdout)")
     args = parser.parse_args(argv)
+
+    if args.tolerance_pp < 0:
+        print("ERROR: --tolerance-pp must be >= 0", file=sys.stderr)
+        return 1
 
     if not Path(args.db).exists():
         print(f"ERROR: observation DB not found: {args.db}", file=sys.stderr)
@@ -109,9 +128,10 @@ def main(argv: list[str] | None = None) -> int:
         live_model_arm=args.live_model_arm,
         roi_backtest_db=args.roi_backtest_db,
         roi_backtest_arm=args.roi_backtest_arm,
+        tolerance_pp=args.tolerance_pp,
     )
     as_of = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    card = format_report(report, weeks=args.weeks, as_of_iso=as_of)
+    card = format_report(report, weeks=args.weeks, as_of_iso=as_of, tolerance_pp=args.tolerance_pp)
 
     if args.out:
         out_p = Path(args.out)

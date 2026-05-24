@@ -224,8 +224,24 @@ def roi_backtest_slice_from_db(db_path: str | Path, *, arm: str = "lineup_aware"
     )
 
 
-def compute_gap(live: LiveSlice, backtest: BacktestSlice | None) -> GapReport:
-    """Wrap the two slices into a comparable report."""
+def compute_gap(
+    live: LiveSlice,
+    backtest: BacktestSlice | None,
+    *,
+    tolerance_pp: float = LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
+) -> GapReport:
+    """Wrap the two slices into a comparable report.
+
+    ``tolerance_pp`` is the pp threshold at which `over_tolerance` flips
+    to True. Defaults to LIVE_BACKTEST_TOLERANCE_PCT_POINTS (5.0pp), which
+    is right for same-source comparisons (live + reference both sourced
+    from the same bookmaker / snapshot timing).
+
+    For cross-source comparisons (e.g., live API-Football vs reference
+    football-data PSC), set tolerance_pp higher (~50pp). See P1#22 doc
+    for triage rationale; the cross-source price-level gap alone can
+    push ROI gap past 30pp without any model issue.
+    """
     if backtest is None:
         return GapReport(live=live, backtest=None, roi_gap_pp=None,
                          hit_rate_gap_pp=None, over_tolerance=False)
@@ -240,9 +256,9 @@ def compute_gap(live: LiveSlice, backtest: BacktestSlice | None) -> GapReport:
         if backtest.roi is not None
         else None
     )
-    over_tol = abs(hit_rate_gap_pp) > LIVE_BACKTEST_TOLERANCE_PCT_POINTS
+    over_tol = abs(hit_rate_gap_pp) > tolerance_pp
     if roi_gap_pp is not None:
-        over_tol = over_tol or abs(roi_gap_pp) > LIVE_BACKTEST_TOLERANCE_PCT_POINTS
+        over_tol = over_tol or abs(roi_gap_pp) > tolerance_pp
     return GapReport(
         live=live,
         backtest=backtest,
@@ -252,7 +268,13 @@ def compute_gap(live: LiveSlice, backtest: BacktestSlice | None) -> GapReport:
     )
 
 
-def format_report(report: GapReport, *, weeks: int, as_of_iso: str) -> str:
+def format_report(
+    report: GapReport,
+    *,
+    weeks: int,
+    as_of_iso: str,
+    tolerance_pp: float = LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
+) -> str:
     """Markdown card."""
     lines: list[str] = []
     lines.append("# Live vs Backtest — V5 W8")
@@ -315,7 +337,7 @@ def format_report(report: GapReport, *, weeks: int, as_of_iso: str) -> str:
             lines.append(f"- ROI gap (live - backtest): **{report.roi_gap_pp:+.2f} pp**")
         if report.hit_rate_gap_pp is not None:
             lines.append(f"- Hit-rate gap (live - backtest): **{report.hit_rate_gap_pp:+.2f} pp**")
-        lines.append(f"- Tolerance: ±{LIVE_BACKTEST_TOLERANCE_PCT_POINTS:.1f} pp")
+        lines.append(f"- Tolerance: ±{tolerance_pp:.1f} pp")
         if report.over_tolerance:
             lines.append("- **⚠️ OVER TOLERANCE** — investigate (leakage? lucky variance? "
                          "market drift since training cutoff?)")
@@ -344,6 +366,7 @@ def run(
     live_model_arm: str | None = None,
     roi_backtest_db: str | Path | None = None,
     roi_backtest_arm: str = "lineup_aware",
+    tolerance_pp: float = LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
 ) -> GapReport:
     """End-to-end helper. Loads live slice from db, pairs with backtest dict
     (typically the ``pooled`` field of a walk_forward result), and returns
@@ -365,7 +388,7 @@ def run(
         backtest = backtest_slice_from_pooled(backtest_pooled, backtest_cutoff or "")
     else:
         backtest = None
-    return compute_gap(live, backtest)
+    return compute_gap(live, backtest, tolerance_pp=tolerance_pp)
 
 
 __all__ = [

@@ -318,13 +318,22 @@ def live_vs_backtest_route(
     weeks: int = 4,
     snapshot_phase: str | None = None,
     model_arm: Literal["all", "lineup_aware", "lineup_free"] | None = None,
+    tolerance_pp: float = LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
 ) -> LiveVsBacktestResponse:
     """GET-only endpoint (read live DB; no backtest run inline).
 
     For backtest comparison use the `nutmeg-live-vs-backtest` CLI which can
     afford to run walk_forward; HTTP clients should poll this endpoint for
     the live slice and run the diff offline.
+
+    ``tolerance_pp`` defaults to LIVE_BACKTEST_TOLERANCE_PCT_POINTS (5.0).
+    Set higher (~50pp) for cross-source noise-floor checks; see P1#22 doc.
     """
+    if tolerance_pp < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tolerance_pp must be >= 0",
+        )
     db = _db_path()
     if not _db_exists():
         raise HTTPException(
@@ -341,12 +350,12 @@ def live_vs_backtest_route(
             snapshot_phase=snapshot_phase,
             model_arm=model_arm,
         )
-    report = compute_gap(live, None)  # no backtest from HTTP
+    report = compute_gap(live, None, tolerance_pp=tolerance_pp)  # no backtest from HTTP
     return LiveVsBacktestResponse(
         weeks=weeks,
         snapshot_phase=snapshot_phase,
         model_arm=model_arm,
-        tolerance_pp=LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
+        tolerance_pp=tolerance_pp,
         over_tolerance=report.over_tolerance,
         live={
             "n_sessions": live.n_sessions,

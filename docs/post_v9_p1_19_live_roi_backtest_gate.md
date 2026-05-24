@@ -108,9 +108,9 @@ Three triage paths when the gate trips:
 1. **Re-run with a "noise floor" tolerance** of ±50pp first. If it
    still trips, that's a real model/data issue worth investigating.
    If it doesn't, the trip was almost certainly cross-source noise.
-   (No flag yet — set `LIVE_BACKTEST_TOLERANCE_PCT_POINTS` higher
-   manually for the manual re-run; a `--tolerance-pp N` CLI flag
-   is a candidate for a future P1#N if this becomes painful.)
+   Shipped in P1#23 as a `--tolerance-pp N` flag (CLI) and a
+   `tolerance_pp` query parameter (HTTP endpoint). Example:
+   `nutmeg-live-vs-backtest --tolerance-pp 50 ...`
 2. **Run a same-source apples-to-apples sub-check**: re-run the
    P1#21 cross-source backtest restricted to the same date window
    the live data covers. If the cross-source backtest's lineup-vs-

@@ -503,3 +503,99 @@ class TestFormatReport:
         assert report.backtest.source == "roi_backtest"
         assert "historical ROI replay" in out
         assert "ROI gap (live - backtest)" in out
+
+
+# ---- P1#23: --tolerance-pp custom threshold ------------------------------
+
+class TestTolerancePpCustom:
+    """Cross-source comparisons (P1#21) can show 30-50pp ROI gap purely from
+    bookmaker snapshot-time differences. The default 5pp tolerance is right
+    for same-source comparisons but produces false-positive over_tolerance
+    when applied to cross-source comparisons. P1#23 makes the threshold
+    configurable per call."""
+
+    def _make_pair(self, live_roi: float, ref_roi: float):
+        live = lvb.LiveSlice(
+            n_sessions=10, n_settled=20, n_hit=5, n_partial=0, n_miss=15,
+            total_stake=1000.0, total_payout=1000.0 * (1 + live_roi),
+            profit_loss=1000.0 * live_roi, roi=live_roi,
+            avg_hit_p_predicted=0.3, actual_hit_rate=0.25,
+        )
+        backtest = lvb.BacktestSlice(
+            cutoff="roi-backtest", test_n_full=100, test_n_gbm=100,
+            log_loss=None, hit_rate=0.25, ece=None,
+            source="roi_backtest", label="lineup-aware ROI backtest",
+            n_sessions=20, n_settled=100, roi=ref_roi,
+        )
+        return live, backtest
+
+    def test_default_tolerance_still_5pp(self) -> None:
+        """Default kwarg unchanged so callers that don't pass tolerance_pp
+        get the same 5pp behavior as before P1#23."""
+        live, backtest = self._make_pair(live_roi=0.10, ref_roi=0.04)  # 6pp gap
+        report = lvb.compute_gap(live, backtest)
+        assert abs(report.roi_gap_pp - 6.0) < 0.01
+        assert report.over_tolerance is True  # 6pp > default 5pp
+
+    def test_wider_tolerance_suppresses_alert(self) -> None:
+        """Cross-source noise floor: with 50pp tolerance, a 6pp gap should
+        NOT trigger over_tolerance."""
+        live, backtest = self._make_pair(live_roi=0.10, ref_roi=0.04)
+        report = lvb.compute_gap(live, backtest, tolerance_pp=50.0)
+        assert report.over_tolerance is False
+
+    def test_narrower_tolerance_amplifies_alert(self) -> None:
+        """Same 6pp gap with 1pp tolerance → still triggers (5pp default
+        wasn't the only flip point)."""
+        live, backtest = self._make_pair(live_roi=0.10, ref_roi=0.04)
+        report = lvb.compute_gap(live, backtest, tolerance_pp=1.0)
+        assert report.over_tolerance is True
+
+    def test_run_threads_tolerance_through(self, tmp_path: Path) -> None:
+        """End-to-end: pass tolerance_pp=50 to run() and verify it reaches
+        the GapReport (no over_tolerance on a 30pp ROI gap)."""
+        live_db = tmp_path / "live.db"
+        ref_db = tmp_path / "roi_backtest.db"
+        with open_db(live_db) as conn:
+            _insert_settled_session(
+                conn, with_lineups=True, hit=1, stake=100.0, payout=400.0,
+                hit_probability=0.45,
+            )  # ROI = +3.00 (300pp)
+        with open_db(ref_db) as conn:
+            _insert_settled_session(
+                conn, with_lineups=True, hit=1, stake=100.0, payout=110.0,
+                hit_probability=0.40,
+            )  # ROI = +0.10 (10pp). Gap ~290pp.
+
+        # Default 5pp tolerance → over_tolerance
+        r_default = lvb.run(
+            str(live_db), weeks=2, backtest_pooled=None, backtest_cutoff=None,
+            live_model_arm="lineup_aware",
+            roi_backtest_db=ref_db, roi_backtest_arm="lineup_aware",
+        )
+        assert r_default.over_tolerance is True
+
+        # 1000pp tolerance (silly noise floor) → suppressed
+        r_loose = lvb.run(
+            str(live_db), weeks=2, backtest_pooled=None, backtest_cutoff=None,
+            live_model_arm="lineup_aware",
+            roi_backtest_db=ref_db, roi_backtest_arm="lineup_aware",
+            tolerance_pp=1000.0,
+        )
+        assert r_loose.over_tolerance is False
+
+    def test_format_report_uses_custom_tolerance(self) -> None:
+        """Markdown card should print the actual tolerance, not the
+        hardcoded module constant."""
+        live, backtest = self._make_pair(live_roi=0.10, ref_roi=0.04)
+        report = lvb.compute_gap(live, backtest, tolerance_pp=42.0)
+        out = lvb.format_report(
+            report, weeks=2, as_of_iso="2025-01-15 10:00 UTC",
+            tolerance_pp=42.0,
+        )
+        assert "Tolerance: ±42.0 pp" in out
+        # Backwards compat: default tolerance_pp arg = 5.0
+        out_default = lvb.format_report(
+            report, weeks=2, as_of_iso="2025-01-15 10:00 UTC",
+        )
+        assert "Tolerance: ±5.0 pp" in out_default

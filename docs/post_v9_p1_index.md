@@ -39,6 +39,7 @@ P1#19  live-vs-backtest gate     (CLI + exit codes)              ML
 P1#20  cup ablation NEGATIVE     (V10 trigger #1 closed, $30)    SHIP
 P1#21  cross-source backtest     (verdict source-dependent)      ML
 P1#22  P1#19 cross-source caveat (docs-only; gate triage rules)  DOCS
+P1#23  --tolerance-pp flag       (CLI+HTTP; implements P1#22 #1) ML
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -204,6 +205,23 @@ inspect hit-rate gap separately from ROI gap). No code changes.
 
 Sets expectations BEFORE the first live alarm fires (the daily
 cron is currently building toward week-4 verdict).
+
+#### P1#23 — `--tolerance-pp` flag (implements P1#22 triage step 1)
+Threaded `tolerance_pp` through `compute_gap()`, `format_report()`,
+and `run()` in `nutmeg.v4.observation.live_vs_backtest`. Added:
+
+- CLI: `nutmeg-live-vs-backtest --tolerance-pp N` (default 5.0)
+- HTTP: `GET /api/v4/observation/live-vs-backtest?tolerance_pp=N`
+
+Implements the cross-source noise-floor check from P1#22 without
+needing to edit module constants or re-deploy. Negative values
+rejected. Default unchanged → backwards-compatible.
+
+8 new tests (4 module-level for `compute_gap`/`run`/`format_report`,
+3 HTTP endpoint, 1 covering invalid input). Real cross-source data
+verified: `--tolerance-pp 60` suppresses the ~52pp ROI gap from
+the P1#21 strict-Pinnacle backtest; default `--tolerance-pp 5`
+still trips with exit=2.
 
 ---
 
