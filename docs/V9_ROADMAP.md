@@ -98,10 +98,21 @@ prior dampens (structural, not fixable). W6 will test which. See
 [v9_w5_ece_audit.md](v9_w5_ece_audit.md) (data) +
 [v9_w5_ece_audit_writeup.md](v9_w5_ece_audit_writeup.md) (analysis).
 
-### V9 W6 — Conditional: calibration fix if W5 found something
+### V9 W6 — Calibration fix attempt — ❌ NEGATIVE result, ECE backlog CLOSED ✅
 
-Skipped if W5 was inconclusive. Otherwise: minimal calibration tweak
-+ multi-season re-validation + (if confirmed) ship.
+Shipped as a documented negative result. Added cal_cat_temp +
+cal_cat_iso to walk_forward (+11 tests, 803/803 V4 suite). Multi-cutoff
+ablation (2022/2023/2024-08-01) via new `nutmeg-cat-calibration-ablation`:
+**isotonic improved 0/3 cutoffs** (mean Δ +0.0789 log-loss, catastrophic),
+**temperature improved 2/3 cutoffs** but mean Δ = -0.0001 (noise). The
+(0.6, 0.8] bucket gap V9 W5 flagged is non-stationary across seasons
+and per-class isotonic over-fits on the 90-day val window. Verdict:
+**structural information gap** — Pinnacle's market prior deliberately
+prices what CatBoost picks up as confidence. **No production change
+ships.** 6th project negative result. ECE-vs-log-loss mystery (3
+retrospectives' backlog) **permanently closed**. See
+[v9_w6_calibration_negative.md](v9_w6_calibration_negative.md) +
+[v9_w6_calibration_ablation.md](v9_w6_calibration_ablation.md).
 
 ### V9 ship — closeout
 
@@ -118,8 +129,8 @@ V9 itself is shorter. Maybe ~150 lines instead of ~250.
 | `v9.w2` | National-team Elo verification (probably negative writeup) | |
 | `v9.w3` | Dashboard recorder checkbox | |
 | `v9.w4` | CI fixture cache | |
-| `v9.w5` | ECE audit | |
-| `v9.w6` | (conditional) calibration fix | |
+| `v9.w5` | ECE audit | shipped |
+| `v9.w6` | calibration fix attempt (negative writeup) | |
 | `v9.0-shipped` | V9 closeout | |
 
 ## Numeric targets

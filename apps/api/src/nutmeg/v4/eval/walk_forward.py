@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from nutmeg.v4.calibration import fit_temperature_1x2
+from nutmeg.v4.calibration import fit_isotonic_1x2, fit_temperature_1x2
 from nutmeg.v4.calibration.per_league import fit_per_league_temperature
 from nutmeg.v4.eval.baselines import pinnacle_baseline, uniform_baseline
 from nutmeg.v4.eval.metrics import summary
@@ -222,6 +222,24 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
             )
             cal_ensemble = fit_temperature_1x2(ens_val_probs, gbm_val_labels)
 
+    # V9 W6: CatBoost-specific calibrators. Raw cat_dc has been the
+    # production default since V5 W12 and never got its own temperature
+    # or isotonic. The V9 W5 audit found a concentrated log-loss gap
+    # in the (0.6, 0.8] p(true) bucket — exactly the kind of mismatch
+    # per-class isotonic targets. Fit both temperature (1-param, can't
+    # overfit) and isotonic (sklearn IsotonicRegression per class) on
+    # the same val pool we already built for the ensemble stacker.
+    cal_cat_temp = None
+    cal_cat_iso = None
+    if cfg.with_ensemble:
+        cat_val_probs_check = np.vstack(
+            [d.get("probs_cat_val", np.empty((0, 3))) for d in per_league_data
+             if len(d.get("probs_cat_val", np.empty((0, 3)))) > 0]
+        )
+        if len(cat_val_probs_check) >= 100:
+            cal_cat_temp = fit_temperature_1x2(cat_val_probs_check, gbm_val_labels)
+            cal_cat_iso = fit_isotonic_1x2(cat_val_probs_check, gbm_val_labels)
+
     # ---- Build report ----
     per_league = []
     all_pin, all_uni = [], []
@@ -229,6 +247,7 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
     all_gbm, all_gbm_t = [], []
     all_gbm_pl_t = []   # V5 W9: per-league temperature
     all_xgb, all_cat = [], []
+    all_cat_temp, all_cat_iso = [], []   # V9 W6: CatBoost calibrated variants
     all_ens, all_ens_t = [], []
     all_y_full, all_y_gbm = [], []
 
@@ -257,6 +276,17 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         # V5 W6 ensemble — only when feature flag on AND we have all three bases
         probs_xgb = d.get("probs_xgb_test")
         probs_cat = d.get("probs_cat_test")
+        # V9 W6: CatBoost calibrated variants — None if no calibrator or no rows
+        probs_cat_temp = (
+            cal_cat_temp.predict(probs_cat)
+            if (cal_cat_temp is not None and probs_cat is not None and len(probs_cat) > 0)
+            else None
+        )
+        probs_cat_iso = (
+            cal_cat_iso.predict(probs_cat)
+            if (cal_cat_iso is not None and probs_cat is not None and len(probs_cat) > 0)
+            else None
+        )
         probs_ens = None
         probs_ens_t = None
         if (
@@ -287,6 +317,9 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         if cfg.with_ensemble:
             league_row["xgb_dc"] = summary(probs_xgb, y_gbm) if (probs_xgb is not None and len(probs_xgb) > 0) else None
             league_row["cat_dc"] = summary(probs_cat, y_gbm) if (probs_cat is not None and len(probs_cat) > 0) else None
+            # V9 W6: per-league CatBoost calibrated summaries
+            league_row["cat_dc_temp"] = summary(probs_cat_temp, y_gbm) if probs_cat_temp is not None else None
+            league_row["cat_dc_iso"] = summary(probs_cat_iso, y_gbm) if probs_cat_iso is not None else None
             league_row["ensemble"] = summary(probs_ens, y_gbm) if probs_ens is not None else None
             league_row["ensemble_temp"] = summary(probs_ens_t, y_gbm) if probs_ens_t is not None else None
         per_league.append(league_row)
@@ -302,6 +335,11 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
             if cfg.with_ensemble and probs_xgb is not None and probs_cat is not None:
                 all_xgb.append(probs_xgb)
                 all_cat.append(probs_cat)
+                # V9 W6: accumulate calibrated CatBoost variants in lockstep with raw
+                if probs_cat_temp is not None:
+                    all_cat_temp.append(probs_cat_temp)
+                if probs_cat_iso is not None:
+                    all_cat_iso.append(probs_cat_iso)
                 if probs_ens is not None:
                     all_ens.append(probs_ens)
                 if probs_ens_t is not None:
@@ -315,6 +353,8 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
     pooled_gbm_pl_t = np.vstack(all_gbm_pl_t) if all_gbm_pl_t else np.empty((0,3))
     pooled_xgb = np.vstack(all_xgb) if all_xgb else np.empty((0,3))
     pooled_cat = np.vstack(all_cat) if all_cat else np.empty((0,3))
+    pooled_cat_temp = np.vstack(all_cat_temp) if all_cat_temp else np.empty((0,3))
+    pooled_cat_iso = np.vstack(all_cat_iso) if all_cat_iso else np.empty((0,3))
     pooled_ens = np.vstack(all_ens) if all_ens else np.empty((0,3))
     pooled_ens_t = np.vstack(all_ens_t) if all_ens_t else np.empty((0,3))
     pooled_y_gbm = np.concatenate(all_y_gbm) if all_y_gbm else np.array([])
@@ -338,6 +378,9 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
     if cfg.with_ensemble and len(pooled_y_gbm) > 0:
         pooled["xgb_dc"] = summary(pooled_xgb, pooled_y_gbm) if len(pooled_xgb) > 0 else None
         pooled["cat_dc"] = summary(pooled_cat, pooled_y_gbm) if len(pooled_cat) > 0 else None
+        # V9 W6: CatBoost calibrated variants in pooled summary
+        pooled["cat_dc_temp"] = summary(pooled_cat_temp, pooled_y_gbm) if len(pooled_cat_temp) > 0 else None
+        pooled["cat_dc_iso"] = summary(pooled_cat_iso, pooled_y_gbm) if len(pooled_cat_iso) > 0 else None
         pooled["ensemble"] = summary(pooled_ens, pooled_y_gbm) if len(pooled_ens) > 0 else None
         pooled["ensemble_temp"] = summary(pooled_ens_t, pooled_y_gbm) if len(pooled_ens_t) > 0 else None
 
@@ -353,6 +396,8 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         "gbm_dc":           pooled_gbm,
         "gbm_dc_temp":      pooled_gbm_t,
         "cat_dc":           pooled_cat,
+        "cat_dc_temp":      pooled_cat_temp,    # V9 W6
+        "cat_dc_iso":       pooled_cat_iso,     # V9 W6
         "xgb_dc":           pooled_xgb,
         "ensemble":         pooled_ens,
         "ensemble_temp":    pooled_ens_t,
@@ -367,6 +412,9 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
             "gbm_T": cal_gbm.T if cal_gbm else None,
             "ensemble_T": cal_ensemble.T if cal_ensemble else None,
             "gbm_pl_summary": cal_gbm_pl.summary() if cal_gbm_pl else None,
+            # V9 W6: CatBoost calibrators
+            "cat_T": cal_cat_temp.T if cal_cat_temp else None,
+            "cat_iso_n_train": cal_cat_iso.n_train if cal_cat_iso else None,
         },
         "cfg": {
             "train_window_days": cfg.train_window_days,
