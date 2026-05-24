@@ -72,7 +72,24 @@ jobs:
                   docs/v4_multi_season_card.md 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
-          else
-            git commit -m "chore(weekly): ${{ steps.week.outputs.tag }} bench cards [skip ci]"
-            git push origin main
+            exit 0
           fi
+          git commit -m "chore(weekly): ${{ steps.week.outputs.tag }} bench cards [skip ci]"
+
+          # post-v9 P1#29: the bench workflow takes ~3 min; during that
+          # window other commits can land on main, making `git push`
+          # rejected as non-fast-forward. Pull --rebase, then push, with
+          # a few retries on stacked race conditions. Final failure is
+          # logged as a notice (the commits are still local-only) — not
+          # exit 1, because re-running the workflow next week will pick
+          # them up (and commit messages include the date, so duplicates
+          # are easy to spot).
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin main; then
+              echo "::notice::Pushed bench cards on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::Push attempt $attempt failed; retrying"
+            sleep 5
+          done
+          echo "::notice::3 push attempts failed — leaving bench cards as a local-only commit on the runner. Next week's run will regenerate them."
