@@ -268,3 +268,59 @@ class TestDashboardWiring:
     def test_visible_feedback_when_checked(self, html):
         # "已请求录入观测库" appears in 3 success branches
         assert html.count("已请求录入观测库") >= 3
+
+    # post-v9 P1#7: localStorage persistence across page reloads --------
+
+    def test_localstorage_init_helper_present(self, html):
+        # P1#7 added initRecordSessionPersistence + a key map
+        assert "initRecordSessionPersistence" in html
+        assert "RECORD_LS_KEYS" in html
+
+    def test_localstorage_keys_namespaced(self, html):
+        # All 3 keys should be under nutmeg.record_session.* namespace
+        for key in (
+            "nutmeg.record_session.parlay",
+            "nutmeg.record_session.single",
+            "nutmeg.record_session.pool",
+        ):
+            assert key in html, f"localStorage key missing: {key}"
+
+    def test_localstorage_init_called_at_startup(self, html):
+        # Must be invoked in the Init section, not just defined
+        idx_def = html.index("function initRecordSessionPersistence")
+        idx_call = html.rindex("initRecordSessionPersistence()")
+        # The call site appears AFTER the definition
+        assert idx_call > idx_def
+
+    def test_localstorage_private_mode_safe(self, html):
+        # Both read + write paths must be try/catch wrapped so private
+        # browser mode (localStorage throws) doesn't break the page
+        # Cheap heuristic: catch keyword should appear at least twice
+        # in the helper's scope (read + write)
+        helper_start = html.index("function initRecordSessionPersistence")
+        helper_end = html.index("setInterval(loadHealth")
+        helper_src = html[helper_start:helper_end]
+        assert helper_src.count("catch") >= 2
+
+    # post-v9 P1#8: real write-back confirmation via /sessions/latest -----
+
+    def test_sessions_latest_helpers_present(self, html):
+        assert "getLatestSessionId" in html
+        assert "verifyRecordedAndAppend" in html
+        assert "/observation/sessions/latest" in html
+
+    def test_all_three_branches_capture_beforeid_and_verify(self, html):
+        # Each of the 3 success branches should: (a) capture beforeId
+        # before POST, (b) call verifyRecordedAndAppend after POST.
+        # Per-tab var names: beforeId / beforeIdSingle / beforeIdPool
+        for var in ("beforeId", "beforeIdSingle", "beforeIdPool"):
+            assert var in html, f"missing beforeId variable: {var}"
+        # The verify helper is called for all 3 status elements
+        assert html.count("verifyRecordedAndAppend(") >= 3
+
+    def test_verify_uses_correct_status_selectors(self, html):
+        # Each branch verifies its own status element
+        for sel in ("'#recommend-status'", "'#single-status'", "'#pool-status'"):
+            assert f"verifyRecordedAndAppend({sel}" in html, (
+                f"verify call missing for selector {sel}"
+            )

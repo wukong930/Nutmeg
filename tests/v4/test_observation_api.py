@@ -155,6 +155,58 @@ class TestSessionsEndpoint:
         assert r.status_code == 200
 
 
+# post-v9 P1#8 — /sessions/latest read-back for dashboard write confirmation
+
+class TestSessionsLatestEndpoint:
+    def test_recorded_false_when_no_db(self, fresh_db_client):
+        client, _ = fresh_db_client
+        r = client.get("/api/v4/observation/sessions/latest")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["recorded"] is False
+        assert body["session"] is None
+
+    def test_recorded_true_with_session(self, populated_db_client):
+        client, _ = populated_db_client
+        r = client.get("/api/v4/observation/sessions/latest")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["recorded"] is True
+        sess = body["session"]
+        assert sess is not None
+        assert sess["bankroll"] == 1000.0
+        assert sess["n_recommendations"] == 2
+        assert isinstance(sess["session_id"], int)
+
+    def test_session_id_advances_after_write(self, populated_db_client, tmp_path):
+        """The dashboard relies on this: after a successful POST, the
+        latest session_id should be greater than what was returned
+        before the POST. This test simulates that by inserting a
+        second session and re-querying."""
+        client, db = populated_db_client
+        # before: latest is the single seeded session
+        r1 = client.get("/api/v4/observation/sessions/latest")
+        before_id = r1.json()["session"]["session_id"]
+
+        # write a 2nd session directly
+        from nutmeg.v4.observation import record_session
+        record_session(
+            db,
+            request={},
+            response={
+                "generated_at_utc": "2026-05-22T11:00:00+00:00",
+                "model": {"training_cutoff": "2025-06-01"},
+                "bankroll": 500.0, "n_fixtures": 1, "n_recommendations": 0,
+                "single_match_predictions": [],
+                "recommendations": [],
+            },
+        )
+
+        r2 = client.get("/api/v4/observation/sessions/latest")
+        after_id = r2.json()["session"]["session_id"]
+        assert after_id > before_id, "latest session_id should advance after a new write"
+
+
 class TestPostOutcomes:
     def test_post_and_auto_settle(self, fresh_db_client):
         client, db = fresh_db_client

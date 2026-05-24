@@ -174,6 +174,13 @@ def format_audit_card(
     bucket with the largest weighted_ll_diff > 0.001 as a candidate
     fixable bucket. If no bucket clears that threshold, the gap is
     spread uniformly → "structural" verdict.
+
+    **Note (post-v9 P1#9)**: single-cutoff verdicts can be misleading
+    when bucket-level patterns are non-stationary across seasons (see
+    V9 W5/W6: the bucket flagged at 2024-08-01 was unstable across
+    2022/2023/2024). For investigations, prefer
+    `format_multi_cutoff_audit_card` which requires the same bucket
+    to dominate on ≥ 2/3 cutoffs before flagging it as fixable.
     """
     cmp = compare_two_models(name_a, probs_a, name_b, probs_b, y, bin_edges=bin_edges)
 
@@ -257,6 +264,156 @@ def format_audit_card(
     return "\n".join(lines)
 
 
+def format_multi_cutoff_audit_card(
+    name_a: str, name_b: str,
+    per_cutoff: list[dict],
+    *,
+    bin_edges: tuple = DEFAULT_BIN_EDGES,
+    min_dominant_bin_count: int | None = None,
+) -> str:
+    """post-v9 P1#9: multi-cutoff verdict closing V9 retrospective W5 self-criticism.
+
+    The V9 W5 single-cutoff verdict ("🎯 concentrated bucket found") over-promised
+    because it couldn't see year-to-year stability. V9 W6's multi-cutoff ablation
+    proved the (0.6, 0.8] bucket pattern was non-stationary (iso fixed it at
+    2022-08-01 but worsened it at 2023/2024). This function bakes the multi-cutoff
+    check into the audit itself so future investigations don't fall into the same
+    trap.
+
+    Parameters
+    ----------
+    per_cutoff : list of dict
+        Each dict has keys ``cutoff`` (str date), ``probs_a`` (ndarray (N, 3)),
+        ``probs_b`` (ndarray (N, 3)), ``y`` (label vector). Must contain ≥ 2
+        entries — single-cutoff calls should use ``format_audit_card`` directly.
+    min_dominant_bin_count : int, optional
+        Minimum number of cutoffs the same bin must dominate before the verdict
+        flags it as a fixable candidate. Default = ceil(2/3 of cutoffs); for 3
+        cutoffs that's 2.
+    """
+    if len(per_cutoff) < 2:
+        raise ValueError(
+            "format_multi_cutoff_audit_card requires ≥ 2 cutoffs; "
+            "use format_audit_card for single-cutoff analysis"
+        )
+    if min_dominant_bin_count is None:
+        # 2/3-rounded-up rule: stable enough to flag, lenient enough to surface
+        min_dominant_bin_count = (2 * len(per_cutoff) + 2) // 3
+
+    # Per-cutoff aggregates
+    per_cutoff_summary: list[dict] = []
+    for entry in per_cutoff:
+        cutoff = entry["cutoff"]
+        probs_a, probs_b, y = entry["probs_a"], entry["probs_b"], entry["y"]
+        cmp = compare_two_models(name_a, probs_a, name_b, probs_b, y, bin_edges=bin_edges)
+        p_true_a = _per_row_p_true(probs_a, y)
+        p_true_b = _per_row_p_true(probs_b, y)
+        pooled_a = float(-np.log(p_true_a).mean())
+        pooled_b = float(-np.log(p_true_b).mean())
+        biggest_row = cmp.loc[cmp["weighted_ll_diff"].idxmax()]
+        per_cutoff_summary.append({
+            "cutoff": cutoff,
+            "n": int(len(y)),
+            "pooled_a": pooled_a,
+            "pooled_b": pooled_b,
+            "pooled_diff": pooled_b - pooled_a,
+            "biggest_bin": str(biggest_row["bin"]),
+            "biggest_diff": float(biggest_row["weighted_ll_diff"]),
+            "cmp": cmp,
+        })
+
+    lines: list[str] = []
+    lines.append(
+        f"# Multi-cutoff ECE-vs-log-loss audit — "
+        f"{len(per_cutoff_summary)} cutoffs\n"
+    )
+    lines.append(
+        f"Per-bucket decomposition of the {name_b} vs {name_a} pooled "
+        f"log-loss gap, repeated across {len(per_cutoff_summary)} cutoffs "
+        "so non-stationary patterns are visible. Verdict flags a bucket "
+        f"only if it dominates on ≥ {min_dominant_bin_count}/"
+        f"{len(per_cutoff_summary)} cutoffs (closes V9 retrospective "
+        "W5 self-criticism).\n"
+    )
+
+    # Pooled per cutoff
+    lines.append("## Pooled log-loss per cutoff\n")
+    lines.append(
+        f"| Cutoff | n | {name_a} | {name_b} | Δ ({name_b} − {name_a}) |"
+    )
+    lines.append("|---|---:|---:|---:|---:|")
+    for r in per_cutoff_summary:
+        lines.append(
+            f"| {r['cutoff']} | {r['n']:,} | {r['pooled_a']:.4f} | "
+            f"{r['pooled_b']:.4f} | {r['pooled_diff']:+.4f} |"
+        )
+    lines.append("")
+
+    # Per-cutoff dominant bucket
+    lines.append("## Per-cutoff dominant bucket (largest weighted-ll Δ)\n")
+    lines.append("| Cutoff | Dominant bin | Δ contribution |")
+    lines.append("|---|---|---:|")
+    for r in per_cutoff_summary:
+        lines.append(
+            f"| {r['cutoff']} | `{r['biggest_bin']}` | {r['biggest_diff']:+.4f} |"
+        )
+    lines.append("")
+
+    # Cross-cutoff stability check
+    from collections import Counter
+    bin_counts = Counter(r["biggest_bin"] for r in per_cutoff_summary)
+    most_common_bin, most_common_count = bin_counts.most_common(1)[0]
+    avg_diff_in_dominant = float(np.mean([
+        r["biggest_diff"] for r in per_cutoff_summary
+        if r["biggest_bin"] == most_common_bin
+    ]))
+
+    lines.append("## Cross-cutoff stability\n")
+    lines.append(
+        f"- Most-frequent dominant bin: `{most_common_bin}` "
+        f"({most_common_count}/{len(per_cutoff_summary)} cutoffs)\n"
+        f"- Mean Δ in that bin (only the cutoffs where it dominated): "
+        f"`{avg_diff_in_dominant:+.4f}`\n"
+        f"- Threshold for 'stable': ≥ {min_dominant_bin_count}/"
+        f"{len(per_cutoff_summary)} cutoffs AND mean Δ > 0.001\n"
+    )
+
+    # Verdict
+    lines.append("## Verdict\n")
+    stable = most_common_count >= min_dominant_bin_count and avg_diff_in_dominant > 0.001
+    if stable:
+        lines.append(
+            f"🎯 **Stable concentrated bucket**: `{most_common_bin}` dominates "
+            f"{most_common_count}/{len(per_cutoff_summary)} cutoffs with mean "
+            f"Δ `{avg_diff_in_dominant:+.4f}`. This is a credible calibration "
+            f"target — a per-bucket isotonic / temperature on `{most_common_bin}` "
+            f"would address the same locus across multiple seasons. Worth a "
+            f"V9 W6-style ablation attempt (with multi-cutoff verification of "
+            f"the FIX too, not just the audit).\n"
+        )
+    elif most_common_count >= min_dominant_bin_count:
+        lines.append(
+            f"🟡 **Same bin recurs but the gap is small**: `{most_common_bin}` "
+            f"dominates {most_common_count}/{len(per_cutoff_summary)} cutoffs but "
+            f"mean Δ is `{avg_diff_in_dominant:+.4f}` < +0.001 threshold. "
+            f"Calibration tweak unlikely to clear noise. Document as "
+            f"low-priority structural pattern.\n"
+        )
+    else:
+        lines.append(
+            f"❌ **Non-stationary gap**: the dominant bin varies across "
+            f"cutoffs (most common `{most_common_bin}` only "
+            f"{most_common_count}/{len(per_cutoff_summary)}). The gap is "
+            f"structural — different rows mis-fit each season. "
+            f"**No fixable bucket exists**; calibration won't help. "
+            f"(This is the pattern V9 W6 confirmed; the single-cutoff "
+            f"V9 W5 audit would have flagged 🎯 but multi-cutoff would "
+            f"correctly say ❌.)\n"
+        )
+
+    return "\n".join(lines)
+
+
 __all__ = [
     "DEFAULT_BIN_EDGES",
     "BucketStats",
@@ -264,4 +421,5 @@ __all__ = [
     "bucket_breakdown_df",
     "compare_two_models",
     "format_audit_card",
+    "format_multi_cutoff_audit_card",
 ]

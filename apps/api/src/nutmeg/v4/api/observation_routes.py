@@ -133,6 +133,15 @@ class SessionsResponse(BaseModel):
     sessions: list[SessionSummary]
 
 
+class LatestSessionResponse(BaseModel):
+    """post-v9 P1#8: lightweight read-back so dashboard can confirm
+    'did my last POST actually persist?'. Returns None if observation
+    DB is empty or doesn't exist — that's the only valid `recorded=False`
+    signal. Don't conflate with 'env disabled' (caller already knows env)."""
+    recorded: bool
+    session: Optional[SessionSummary] = None
+
+
 class OutcomeInput(BaseModel):
     match_date: date
     league: str = Field(..., min_length=1)
@@ -226,6 +235,33 @@ def list_sessions(limit: int = 20) -> SessionsResponse:
     return SessionsResponse(
         n=len(rows),
         sessions=[SessionSummary(**dict(r)) for r in rows],
+    )
+
+
+@router.get("/sessions/latest", response_model=LatestSessionResponse)
+def latest_session() -> LatestSessionResponse:
+    """post-v9 P1#8: read-back endpoint for dashboard write confirmation.
+
+    Returns `recorded=True` + the most recent session if the observation
+    DB exists and has rows; `recorded=False` + `session=None` otherwise.
+    Dashboard JS calls this immediately after a successful recommend
+    POST to confirm the write actually landed (vs the request flag being
+    set but the server env disabled, in which case session_id won't
+    advance — the dashboard compares before/after to know)."""
+    if not _db_exists():
+        return LatestSessionResponse(recorded=False, session=None)
+    with open_db(_db_path()) as conn:
+        row = conn.execute(
+            """SELECT session_id, created_at, bankroll, n_fixtures,
+                       n_recommendations, model_cutoff
+                FROM recommendation_sessions
+                ORDER BY session_id DESC LIMIT 1""",
+        ).fetchone()
+    if row is None:
+        return LatestSessionResponse(recorded=False, session=None)
+    return LatestSessionResponse(
+        recorded=True,
+        session=SessionSummary(**dict(row)),
     )
 
 

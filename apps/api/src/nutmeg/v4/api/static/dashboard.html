@@ -445,6 +445,9 @@ $('#btn-recommend').addEventListener('click', async () => {
   }
   $('#recommend-status').textContent = '⏳ 计算中 ...';
   const recordChecked = $('#record-session').checked;
+  // P1#8: snapshot the latest session id BEFORE the POST so we can detect
+  // whether the request actually advanced it (real write vs env-disabled).
+  const beforeId = recordChecked ? await getLatestSessionId() : null;
   const req = {
     fixtures,
     bankroll: Number($('#bankroll').value),
@@ -466,10 +469,11 @@ $('#btn-recommend').addEventListener('click', async () => {
     const body = await res.json();
     renderRecommendations(body);
     const recordedNote = recordChecked
-      ? ' · 📝 已请求录入观测库 (实际是否落库取决于服务器 NUTMEG_V4_OBSERVATION_DB)'
+      ? ' · 📝 已请求录入观测库'
       : '';
     $('#recommend-status').textContent =
       `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 条推荐  (模型截止 ${body.model.training_cutoff})${recordedNote}`;
+    await verifyRecordedAndAppend('#recommend-status', recordChecked, beforeId);
   } catch (e) {
     $('#recommend-status').textContent = '❌ ' + e.message;
   }
@@ -706,6 +710,7 @@ $('#btn-recommend-single').addEventListener('click', async () => {
   }
   $('#single-status').textContent = '⏳ 计算中 ...';
   const recordCheckedSingle = $('#single-record-session').checked;
+  const beforeIdSingle = recordCheckedSingle ? await getLatestSessionId() : null;
   const req = {
     fixtures,
     bankroll: Number($('#single-bankroll').value),
@@ -729,6 +734,7 @@ $('#btn-recommend-single').addEventListener('click', async () => {
       : '';
     $('#single-status').textContent =
       `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 注推荐 (模型截止 ${body.model.training_cutoff})${recordedNote}`;
+    await verifyRecordedAndAppend('#single-status', recordCheckedSingle, beforeIdSingle);
   } catch (e) {
     $('#single-status').textContent = '❌ ' + e.message;
   }
@@ -807,6 +813,7 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
   $('#pool-status').textContent = '⏳ 枚举 + 计算 ...';
   const maxBudgetRaw = $('#pool-max-budget').value.trim();
   const recordCheckedPool = $('#pool-record-session').checked;
+  const beforeIdPool = recordCheckedPool ? await getLatestSessionId() : null;
   const req = {
     fixtures, n,
     bankroll: Number($('#pool-bankroll').value),
@@ -830,6 +837,7 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
       : '';
     $('#pool-status').textContent =
       `✓ ${body.m} 选 ${body.n} = ${body.n_combinations} 张候选, ${body.n_selected} 张选中${recordedNote}`;
+    await verifyRecordedAndAppend('#pool-status', recordCheckedPool, beforeIdPool);
   } catch (e) {
     $('#pool-status').textContent = '❌ ' + e.message;
   }
@@ -873,12 +881,63 @@ function renderPoolRecommendations(body) {
   );
 }
 
+// --- post-v9 P1#8: read-back to confirm the server actually persisted ---
+// V9 W3 only showed "已请求录入" (requested). P1#8 closes the deferred item
+// by calling /observation/sessions/latest before + after the POST and
+// comparing session IDs. Server-env-disabled case → id doesn't advance →
+// "⚠️ 未落库" (with NUTMEG_V4_OBSERVATION_DB hint). Real write → "✅ 已落库 #N".
+async function getLatestSessionId() {
+  try {
+    const r = await fetch(API + '/observation/sessions/latest');
+    if (!r.ok) return null;
+    const body = await r.json();
+    return (body.recorded && body.session) ? body.session.session_id : null;
+  } catch (_) { return null; }
+}
+async function verifyRecordedAndAppend(statusSel, recordChecked, beforeId) {
+  if (!recordChecked) return;
+  const afterId = await getLatestSessionId();
+  const el = $(statusSel);
+  const advanced = (afterId !== null) && (beforeId === null || afterId > beforeId);
+  if (advanced) {
+    el.textContent += ` · ✅ 已落库 session #${afterId}`;
+  } else {
+    el.textContent += ' · ⚠️ 未实际落库 (服务器 NUTMEG_V4_OBSERVATION_DB 未设?)';
+  }
+}
+
+// --- post-v9 P1#7: persist record-session checkbox state across reloads ---
+// V9 W3 chose not to add localStorage; this patch closes that deferred item.
+// One key per checkbox; saved on every change. Safe if localStorage is
+// disabled (private mode etc) — falls back to in-memory default.
+const RECORD_LS_KEYS = {
+  '#record-session':        'nutmeg.record_session.parlay',
+  '#single-record-session': 'nutmeg.record_session.single',
+  '#pool-record-session':   'nutmeg.record_session.pool',
+};
+function initRecordSessionPersistence() {
+  for (const [sel, key] of Object.entries(RECORD_LS_KEYS)) {
+    const el = $(sel);
+    if (!el) continue;
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored === '1') el.checked = true;
+      else if (stored === '0') el.checked = false;
+      el.addEventListener('change', () => {
+        try { localStorage.setItem(key, el.checked ? '1' : '0'); }
+        catch (_) { /* private mode → just keep the in-memory state */ }
+      });
+    } catch (_) { /* private mode → init skipped, default unchecked stays */ }
+  }
+}
+
 // --- Init ---
 loadHealth();
 loadRules();  // pre-fetch so the hint banner shows live values
 $('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 $('#single-fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 $('#pool-fixtures-json').value = JSON.stringify(POOL_SAMPLE, null, 2);
+initRecordSessionPersistence();
 setInterval(loadHealth, 30_000);
 </script>
 

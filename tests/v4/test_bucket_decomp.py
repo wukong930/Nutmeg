@@ -20,6 +20,7 @@ from nutmeg.v4.eval.bucket_decomp import (
     bucket_breakdown_df,
     compare_two_models,
     format_audit_card,
+    format_multi_cutoff_audit_card,
 )
 from nutmeg.v4.eval.metrics import log_loss
 
@@ -338,3 +339,112 @@ class TestV9W5RegressionShape:
         # Card has multiple non-empty lines
         non_empty_lines = [ln for ln in card.split("\n") if ln.strip()]
         assert len(non_empty_lines) > 10
+
+
+# post-v9 P1#9 — multi-cutoff verdict closes V9 retrospective W5 self-criticism
+
+class TestFormatMultiCutoffAuditCard:
+    def _build_per_cutoff(self, n_cutoffs, seed_base=100, n=200):
+        """Helper: build per_cutoff list with synthetic data."""
+        out = []
+        for i in range(n_cutoffs):
+            rng = np.random.default_rng(seed=seed_base + i)
+            probs_a = rng.dirichlet([2.0, 2.0, 2.0], size=n)
+            probs_b = rng.dirichlet([1.0, 1.0, 1.0], size=n)
+            y = rng.integers(0, 3, size=n)
+            out.append({
+                "cutoff": f"202{i+2}-08-01",
+                "probs_a": probs_a, "probs_b": probs_b, "y": y,
+            })
+        return out
+
+    def test_requires_at_least_2_cutoffs(self):
+        per_cutoff = self._build_per_cutoff(1)
+        with pytest.raises(ValueError, match="≥ 2 cutoffs"):
+            format_multi_cutoff_audit_card("A", "B", per_cutoff)
+
+    def test_card_contains_expected_sections(self):
+        per_cutoff = self._build_per_cutoff(3)
+        card = format_multi_cutoff_audit_card("Pin", "Cat", per_cutoff)
+        assert "Multi-cutoff" in card
+        assert "Pooled log-loss per cutoff" in card
+        assert "Per-cutoff dominant bucket" in card
+        assert "Cross-cutoff stability" in card
+        assert "Verdict" in card
+
+    def test_default_threshold_is_two_thirds_rounded_up(self):
+        # 3 cutoffs → threshold = ceil(2/3 * 3) = 2 (2*3+2)//3 = 8//3 = 2 ✓
+        # 5 cutoffs → threshold = (2*5+2)//3 = 12//3 = 4
+        # Just verify the card mentions the threshold
+        per_cutoff = self._build_per_cutoff(3)
+        card = format_multi_cutoff_audit_card("A", "B", per_cutoff)
+        assert "2/3 cutoffs" in card
+
+    def test_stable_verdict_when_same_bin_dominates_all_cutoffs(self):
+        """Construct probs where the same bin dominates the gap on
+        all 3 cutoffs with Δ > 0.001 each → 🎯 stable."""
+        # Use rigged probs where the (0.6, 0.8] bucket is consistently
+        # the worst gap. Easiest: A is sharp + correct at high p, B is
+        # sharp + wrong at high p, label always = 0.
+        per_cutoff = []
+        for i in range(3):
+            n = 300
+            y = np.zeros(n, dtype=int)
+            probs_a = np.tile([0.7, 0.2, 0.1], (n, 1))   # A confident + right
+            # B is also at 0.7 but wrong on half — same bucket but worse ll
+            probs_b = np.tile([0.7, 0.2, 0.1], (n, 1))
+            probs_b[:n//2] = [0.05, 0.5, 0.45]            # B wrong on half
+            per_cutoff.append({
+                "cutoff": f"202{i+2}-08-01",
+                "probs_a": probs_a, "probs_b": probs_b, "y": y,
+            })
+        card = format_multi_cutoff_audit_card("A", "B", per_cutoff)
+        # The dominant-bin recurrence should trigger one of the
+        # "stable" or "🟡 small gap" verdicts (NOT non-stationary)
+        assert ("Stable concentrated" in card) or ("Same bin recurs" in card)
+
+    def test_nonstationary_verdict_when_dominant_bin_varies(self):
+        """If the dominant bin is different on each cutoff →
+        ❌ non-stationary."""
+        # 3 cutoffs with different rigged dominant buckets:
+        # cutoff 0: all p_true in bin (0.2, 0.4]
+        # cutoff 1: all p_true in bin (0.4, 0.6]
+        # cutoff 2: all p_true in bin (0.6, 0.8]
+        per_cutoff = []
+        configs = [
+            (0.30, 0.05),   # → bin (0.2, 0.4]
+            (0.50, 0.05),   # → bin (0.4, 0.6]
+            (0.70, 0.05),   # → bin (0.6, 0.8]
+        ]
+        for i, (p_a, gap) in enumerate(configs):
+            n = 200
+            y = np.zeros(n, dtype=int)
+            probs_a = np.tile([p_a, (1 - p_a) / 2, (1 - p_a) / 2], (n, 1))
+            # B systematically worse at the same bucket
+            p_b = p_a - gap
+            probs_b = np.tile([p_b, (1 - p_b) / 2, (1 - p_b) / 2], (n, 1))
+            per_cutoff.append({
+                "cutoff": f"202{i+2}-08-01",
+                "probs_a": probs_a, "probs_b": probs_b, "y": y,
+            })
+        card = format_multi_cutoff_audit_card("A", "B", per_cutoff)
+        assert "Non-stationary" in card or "non-stationary" in card
+        # And the verdict should NOT promise a calibration fix
+        assert "Stable concentrated" not in card
+
+    def test_custom_min_dominant_bin_count(self):
+        """Strict threshold should make 'stable' harder to achieve."""
+        per_cutoff = self._build_per_cutoff(3)
+        # Force all 3 cutoffs to match
+        card_loose = format_multi_cutoff_audit_card(
+            "A", "B", per_cutoff, min_dominant_bin_count=1
+        )
+        card_strict = format_multi_cutoff_audit_card(
+            "A", "B", per_cutoff, min_dominant_bin_count=3
+        )
+        # Both should produce valid cards (specific verdict depends on data)
+        assert "Verdict" in card_loose
+        assert "Verdict" in card_strict
+        # The strict threshold should be reflected in the text
+        assert "≥ 3/3" in card_strict
+        assert "≥ 1/3" in card_loose
