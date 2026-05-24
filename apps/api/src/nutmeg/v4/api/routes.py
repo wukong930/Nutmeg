@@ -19,7 +19,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from nutmeg.v4.api.schemas import (
     FixtureOddsInput,
@@ -157,6 +157,114 @@ def dashboard() -> HTMLResponse:
     if not html_path.exists():
         raise HTTPException(status_code=500, detail="dashboard.html not bundled with package")
     return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+
+
+# ---------- /v4/manifest.json + /v4/sw.js + /v4/icon.svg (P1#14 PWA) ----
+
+@router.get("/manifest.json", include_in_schema=False)
+def manifest() -> Response:
+    """post-v9 P1#14: PWA manifest so the dashboard can be installed
+    as a standalone web app on mobile (Android Chrome / iOS Safari
+    "Add to Home Screen"). Minimal: name, icons, theme color,
+    display mode, start URL."""
+    import json as _json
+    body = {
+        "name": "Nutmeg Football Betting Helper",
+        "short_name": "Nutmeg",
+        "description": "China sports lottery football betting recommendations",
+        "start_url": "/api/v4/dashboard",
+        "scope": "/api/v4/",
+        "display": "standalone",
+        "orientation": "portrait-primary",
+        "background_color": "#f9fafb",
+        "theme_color": "#4f46e5",
+        "icons": [
+            {"src": "/api/v4/icon.svg",
+             "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
+        ],
+        "lang": "zh-CN",
+        "categories": ["sports", "finance"],
+    }
+    return Response(
+        content=_json.dumps(body, ensure_ascii=False, indent=2),
+        media_type="application/manifest+json",
+    )
+
+
+@router.get("/icon.svg", include_in_schema=False)
+def app_icon() -> Response:
+    """SVG app icon (works at any size, low byte count, no PNG generation)."""
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">'
+        '<rect width="192" height="192" rx="38" fill="#4f46e5"/>'
+        # Soccer ball stylization: white circle + dark pentagon hint
+        '<circle cx="96" cy="96" r="56" fill="#ffffff"/>'
+        '<polygon points="96,58 122,75 112,108 80,108 70,75" fill="#1f2937"/>'
+        # "N" wordmark for Nutmeg, lower-right
+        '<text x="96" y="172" text-anchor="middle" '
+        'font-family="-apple-system,BlinkMacSystemFont,sans-serif" '
+        'font-size="20" font-weight="700" fill="#ffffff">Nutmeg</text>'
+        '</svg>'
+    )
+    return Response(content=svg, media_type="image/svg+xml")
+
+
+@router.get("/sw.js", include_in_schema=False)
+def service_worker() -> Response:
+    """post-v9 P1#14: minimal service worker.
+
+    Strategy: cache-first for the dashboard shell + manifest + icon,
+    network-first (with cache fallback) for everything else. This
+    gives offline-launch capability for the dashboard UI; API endpoints
+    will still fail offline (intentional — predictions need fresh data).
+
+    Versioned cache name forces refresh when dashboard.html ships an
+    update; bump CACHE_VERSION below when shell-cached files change.
+    """
+    sw_js = """
+const CACHE_VERSION = 'nutmeg-v1';
+const SHELL_URLS = [
+  '/api/v4/dashboard',
+  '/api/v4/manifest.json',
+  '/api/v4/icon.svg',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_VERSION).then((cache) => cache.addAll(SHELL_URLS))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(
+      keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k))
+    ))
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  // Cache-first for shell URLs
+  if (SHELL_URLS.some((u) => url.pathname === u || url.pathname.endsWith(u))) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => cached || fetch(event.request).then((resp) => {
+        const respClone = resp.clone();
+        caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, respClone));
+        return resp;
+      }).catch(() => cached))
+    );
+    return;
+  }
+  // Network-first for everything else (API calls etc.)
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
+  );
+});
+""".lstrip()
+    return Response(content=sw_js, media_type="application/javascript")
 
 
 # ---------- /v4/rules (V6 W10) -------------------------------------------

@@ -8,6 +8,12 @@
      CSS media queries and the responsive sm:/md:/lg: Tailwind breakpoints. -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nutmeg V4 Dashboard</title>
+<!-- post-v9 P1#14: PWA shell. Manifest enables Add-to-Home-Screen on
+     Android Chrome / iOS Safari; theme-color paints the address bar. -->
+<link rel="manifest" href="/api/v4/manifest.json">
+<meta name="theme-color" content="#4f46e5">
+<link rel="icon" type="image/svg+xml" href="/api/v4/icon.svg">
+<link rel="apple-touch-icon" href="/api/v4/icon.svg">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -34,11 +40,17 @@
        doesn't compete with the title for narrow-screen real estate. -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
     <div>
-      <h1 class="text-xl sm:text-2xl font-bold">Nutmeg · 竞彩足球助手</h1>
-      <p class="text-xs sm:text-sm text-gray-500">中国体彩 · 胜平负 + 让球胜平负 · 单关 / 串关 / 复式 全玩法推荐</p>
+      <h1 class="text-xl sm:text-2xl font-bold" data-i18n="app_title">Nutmeg · 竞彩足球助手</h1>
+      <p class="text-xs sm:text-sm text-gray-500" data-i18n="app_subtitle">中国体彩 · 胜平负 + 让球胜平负 · 单关 / 串关 / 复式 全玩法推荐</p>
     </div>
-    <div id="health-pill" class="text-sm">
-      <span class="badge-warn">checking ...</span>
+    <div class="flex items-center gap-2 self-start sm:self-auto">
+      <!-- P1#14: language toggle. Label shows the TARGET locale you'll switch to. -->
+      <button id="lang-toggle" type="button"
+              aria-label="Switch language"
+              class="px-2 py-1 text-sm border rounded bg-white hover:bg-gray-50 font-medium">EN</button>
+      <div id="health-pill" class="text-sm">
+        <span class="badge-warn" data-i18n="health_checking">checking ...</span>
+      </div>
     </div>
   </div>
 
@@ -48,47 +60,50 @@
        The whitespace-nowrap on each button prevents Chinese labels from
        breaking mid-character. -->
   <div class="border-b border-gray-200 mb-6">
-    <nav role="tablist" aria-label="主功能选项卡"
+    <nav role="tablist" data-i18n-attr="aria-label:tablist_label" aria-label="主功能选项卡"
          class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px">
-      <button data-tab="single"    role="tab" aria-controls="tab-single"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">① 单关</button>
-      <button data-tab="recommend" role="tab" aria-controls="tab-recommend" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
-      <button data-tab="pool"      role="tab" aria-controls="tab-pool"      class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
-      <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
-      <button data-tab="roi"       role="tab" aria-controls="tab-roi"       class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
-      <button data-tab="sessions"  role="tab" aria-controls="tab-sessions"  class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
-      <button data-tab="rules"     role="tab" aria-controls="tab-rules"     class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
+      <button data-tab="single"    role="tab" aria-controls="tab-single"    data-i18n="tab_single"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">① 单关</button>
+      <button data-tab="recommend" role="tab" aria-controls="tab-recommend" data-i18n="tab_parlay"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
+      <button data-tab="pool"      role="tab" aria-controls="tab-pool"      data-i18n="tab_pool"     class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
+      <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  data-i18n="tab_outcomes" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
+      <button data-tab="roi"       role="tab" aria-controls="tab-roi"       data-i18n="tab_roi"      class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
+      <button data-tab="sessions"  role="tab" aria-controls="tab-sessions"  data-i18n="tab_sessions" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
+      <button data-tab="rules"     role="tab" aria-controls="tab-rules"     data-i18n="tab_rules"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
     </nav>
   </div>
 
   <!-- Tab: Single (单关) — V8 W6 -->
   <div id="tab-single" role="tabpanel" aria-labelledby="tab-single" class="tab-panel">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-3">单关推荐</h2>
-      <p class="text-sm text-gray-500 mb-3">单场比赛, 单注最低 ¥2; 系统从胜平负 + 让球胜平负 6 个候选里挑出 EV/单位最大的 1-2 注。</p>
+      <h2 class="font-bold mb-3" data-i18n="h_single_rec">单关推荐</h2>
+      <p class="text-sm text-gray-500 mb-3" data-i18n="sub_single">单场比赛, 单注最低 ¥2; 系统从胜平负 + 让球胜平负 6 个候选里挑出 EV/单位最大的 1-2 注。</p>
       <div class="flex space-x-2 mb-3">
-        <button id="btn-load-sample-single" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
-        <button id="btn-clear-single" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+        <button id="btn-load-sample-single" data-i18n="btn_load_sample" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
+        <button id="btn-clear-single" data-i18n="btn_clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
       </div>
       <textarea id="single-fixtures-json" rows="14"
+        data-i18n-attr="aria-label:aria_single_json"
         aria-label="单关 fixtures JSON 输入"
         spellcheck="false" autocorrect="off" autocapitalize="off"
         class="w-full p-3 border rounded font-mono text-xs sm:text-xs bg-gray-50 min-h-[200px]"></textarea>
       <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
-        <label class="text-sm">预算 ¥
+        <label class="text-sm"><span data-i18n="lbl_bankroll">预算 ¥</span>
           <input id="single-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm" title="每场比赛最多推荐多少注 (默认 1 — 避免同场押两个对立结果)">每场最多
+        <label class="text-sm" title="每场比赛最多推荐多少注 (默认 1 — 避免同场押两个对立结果)"><span data-i18n="lbl_top_per_match">每场最多</span>
           <input id="single-top-per-match" type="number" inputmode="numeric" value="1" min="1" max="3" class="w-16 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm">凯利分数
+        <label class="text-sm"><span data-i18n="lbl_kelly">凯利分数</span>
           <input id="single-kelly-fraction" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm flex items-center" title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
-          <input id="single-record-session" type="checkbox" class="mr-1"> 记录到观测库
+        <label class="text-sm flex items-center"
+               data-i18n-attr="title:title_record_session"
+               title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
+          <input id="single-record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
         </label>
       </div>
       <div class="mt-4">
-        <button id="btn-recommend-single" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+        <button id="btn-recommend-single" data-i18n="btn_recommend_single" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
           生成单关推荐
         </button>
         <span id="single-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
@@ -97,7 +112,7 @@
 
     <div id="single-output" class="hidden">
       <div class="bg-white shadow-sm rounded-lg p-6">
-        <h3 class="font-bold mb-3">推荐票 <span id="single-count" class="text-sm font-normal text-gray-500"></span></h3>
+        <h3 class="font-bold mb-3"><span data-i18n="h_tickets">推荐票</span> <span id="single-count" class="text-sm font-normal text-gray-500"></span></h3>
         <div id="single-list"></div>
         <div id="single-empty" class="hidden text-gray-500 text-sm">
           <strong>无可下注组合 —</strong> 今日所有市场未通过 EV / 命中率门槛 (建议 no-bet)。
@@ -109,32 +124,33 @@
   <!-- Tab: Recommend (串关) -->
   <div id="tab-recommend" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-3">输入今天的比赛与盘口</h2>
-      <p class="text-sm text-gray-500 mb-3">粘贴 JSON 数组（每场一对象，字段见
+      <h2 class="font-bold mb-3" data-i18n="h_parlay_rec">串关推荐</h2>
+      <p class="text-sm text-gray-500 mb-3" data-i18n="sub_single">粘贴 JSON 数组（每场一对象，字段见
         <code class="bg-gray-100 px-1 rounded">FixtureOddsInput</code> schema）。点击下方"使用示例"快速填入演示数据。</p>
       <div class="flex space-x-2 mb-3">
-        <button id="btn-load-sample" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
-        <button id="btn-clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+        <button id="btn-load-sample" data-i18n="btn_load_sample" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
+        <button id="btn-clear" data-i18n="btn_clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
       </div>
       <textarea id="fixtures-json" rows="14"
+        data-i18n-attr="aria-label:aria_parlay_json"
         aria-label="串关 fixtures JSON 输入"
         spellcheck="false" autocorrect="off" autocapitalize="off"
         class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
       <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
-        <label class="text-sm">预算 ¥
+        <label class="text-sm"><span data-i18n="lbl_bankroll">预算 ¥</span>
           <input id="bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm" title="起投 ¥2，建议 2 的倍数">
         </label>
-        <label class="text-sm">最大推荐数
+        <label class="text-sm"><span data-i18n="lbl_top_n">最大推荐数</span>
           <input id="top-n" type="number" inputmode="numeric" value="10" min="1" max="50" class="w-16 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm" title="模型预测命中率下限；默认 5% (与派奖率匹配)">最小命中率
+        <label class="text-sm" title="模型预测命中率下限；默认 5% (与派奖率匹配)"><span data-i18n="lbl_min_hit">最小命中率</span>
           <input id="min-hit" type="number" inputmode="decimal" value="0.05" step="0.01" min="0" max="1" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm" title="凯利推荐金额下限；起投 ¥2 (步长 2)">最小凯利 ¥
+        <label class="text-sm" title="凯利推荐金额下限；起投 ¥2 (步长 2)"><span data-i18n="lbl_min_kelly">最小凯利 ¥</span>
           <input id="min-kelly" type="number" inputmode="numeric" value="2" min="2" step="2" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
         <label class="text-sm flex items-center">
-          <input id="record-session" type="checkbox" class="mr-1"> 记录到观测库
+          <input id="record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
         </label>
       </div>
       <p id="rules-hint" class="mt-2 text-xs text-gray-500">
@@ -143,7 +159,7 @@
         <a href="#" data-tab-link="rules" class="text-indigo-600 hover:underline">详细规则 →</a>
       </p>
       <div class="mt-4">
-        <button id="btn-recommend" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+        <button id="btn-recommend" data-i18n="btn_recommend_parlay" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
           生成推荐
         </button>
         <span id="recommend-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
@@ -153,7 +169,7 @@
     <div id="recommend-output" class="hidden">
       <!-- Single-match predictions -->
       <div class="bg-white shadow-sm rounded-lg p-3 sm:p-6 mb-6">
-        <h3 class="font-bold mb-3">单场预测</h3>
+        <h3 class="font-bold mb-3" data-i18n="h_predictions">单场预测</h3>
         <!-- P1#13: dual-rendering. The 10-col table is fine on desktop
              (md ≥ 768px). On mobile it overflows even with overflow-x-auto.
              We render BOTH targets (table + card list); CSS shows exactly one. -->
@@ -161,9 +177,16 @@
         <div class="overflow-x-auto hidden md:block">
           <table id="predictions-table">
             <thead><tr>
-              <th>比赛</th><th class="num">λ_主</th><th class="num">λ_客</th>
-              <th class="num">P(主)</th><th class="num">P(平)</th><th class="num">P(客)</th>
-              <th class="num">让球</th><th class="num">P(让胜)</th><th class="num">P(让平)</th><th class="num">P(让负)</th>
+              <th data-i18n="th_match">比赛</th>
+              <th class="num" data-i18n="th_lambda_home">λ_主</th>
+              <th class="num" data-i18n="th_lambda_away">λ_客</th>
+              <th class="num" data-i18n="th_p_home">P(主)</th>
+              <th class="num" data-i18n="th_p_draw">P(平)</th>
+              <th class="num" data-i18n="th_p_away">P(客)</th>
+              <th class="num" data-i18n="th_handicap">让球</th>
+              <th class="num" data-i18n="th_p_hc_home">P(让胜)</th>
+              <th class="num" data-i18n="th_p_hc_draw">P(让平)</th>
+              <th class="num" data-i18n="th_p_hc_away">P(让负)</th>
             </tr></thead>
             <tbody></tbody>
           </table>
@@ -173,11 +196,10 @@
       </div>
       <!-- Parlay recommendations -->
       <div class="bg-white shadow-sm rounded-lg p-6">
-        <h3 class="font-bold mb-3">推荐组合 <span id="recs-count" class="text-sm font-normal text-gray-500"></span></h3>
+        <h3 class="font-bold mb-3"><span data-i18n="h_parlay_combos">推荐组合</span> <span id="recs-count" class="text-sm font-normal text-gray-500"></span></h3>
         <div id="recs-list"></div>
         <div id="recs-empty" class="hidden text-gray-500 text-sm">
-          <strong>无 +EV 组合：今日所有市场无值得下注的机会。</strong>
-          系统建议 no-bet（这是健康的——市场赔率太接近真实概率时不下注是正确的）。
+          <strong data-i18n="empty_no_recs">无 +EV 组合：今日所有市场无值得下注的机会。</strong>
         </div>
       </div>
     </div>
@@ -186,39 +208,42 @@
   <!-- Tab: Pool (复式) — V8 W6 -->
   <div id="tab-pool" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-3">复式过关推荐 (M 选 N)</h2>
+      <h2 class="font-bold mb-3" data-i18n="h_pool_rec">复式过关推荐 (M 选 N)</h2>
       <p class="text-sm text-gray-500 mb-3">
         预选 M 场比赛, 每场指定 pick (1x2_H/D/A 或 hc_H/D/A), 系统枚举所有 C(M, N) 张子票,
         独立凯利计算每张 ¥2 起投仓位。最终命中按子票数结算。
       </p>
       <div class="flex space-x-2 mb-3">
-        <button id="btn-load-sample-pool" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (4 场, pick 已填)</button>
-        <button id="btn-clear-pool" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+        <button id="btn-load-sample-pool" data-i18n="btn_load_sample" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (4 场, pick 已填)</button>
+        <button id="btn-clear-pool" data-i18n="btn_clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
       </div>
       <textarea id="pool-fixtures-json" rows="14"
+        data-i18n-attr="aria-label:aria_pool_json"
         aria-label="复式 fixtures JSON 输入"
         spellcheck="false" autocorrect="off" autocapitalize="off"
         class="w-full p-3 border rounded text-xs bg-gray-50"
         placeholder='每场需含 pick 字段 — "1x2_H" / "1x2_D" / "1x2_A" / "hc_H" / "hc_D" / "hc_A"'></textarea>
       <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
-        <label class="text-sm">预算 ¥
+        <label class="text-sm"><span data-i18n="lbl_bankroll">预算 ¥</span>
           <input id="pool-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm" title="每张票串关数 (1-8, 受混合过关 8 串上限)">N (串关数)
+        <label class="text-sm" title="每张票串关数 (1-8, 受混合过关 8 串上限)"><span data-i18n="lbl_pool_n">N (串关数)</span>
           <input id="pool-n" type="number" inputmode="numeric" value="3" min="1" max="8" class="w-16 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm" title="可选: 整个复式池子的总投注上限 ¥; 留空 = 无限制">总预算上限 ¥
+        <label class="text-sm" title="可选: 整个复式池子的总投注上限 ¥; 留空 = 无限制"><span data-i18n="lbl_pool_max_budget">总预算上限 ¥</span>
           <input id="pool-max-budget" type="number" inputmode="numeric" placeholder="无限制" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm">凯利分数
+        <label class="text-sm"><span data-i18n="lbl_kelly">凯利分数</span>
           <input id="pool-kelly-fraction" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
         </label>
-        <label class="text-sm flex items-center" title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
-          <input id="pool-record-session" type="checkbox" class="mr-1"> 记录到观测库
+        <label class="text-sm flex items-center"
+               data-i18n-attr="title:title_record_session"
+               title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
+          <input id="pool-record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
         </label>
       </div>
       <div class="mt-4">
-        <button id="btn-recommend-pool" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+        <button id="btn-recommend-pool" data-i18n="btn_recommend_pool" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
           生成复式推荐
         </button>
         <span id="pool-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
@@ -227,7 +252,7 @@
 
     <div id="pool-output" class="hidden">
       <div class="bg-white shadow-sm rounded-lg p-6">
-        <h3 class="font-bold mb-3">推荐票 <span id="pool-count" class="text-sm font-normal text-gray-500"></span></h3>
+        <h3 class="font-bold mb-3"><span data-i18n="h_tickets">推荐票</span> <span id="pool-count" class="text-sm font-normal text-gray-500"></span></h3>
         <div id="pool-summary" class="text-sm text-gray-600 mb-3"></div>
         <div id="pool-list"></div>
         <div id="pool-empty" class="hidden text-gray-500 text-sm">
@@ -240,7 +265,7 @@
   <!-- Tab: Outcomes -->
   <div id="tab-outcomes" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6">
-      <h2 class="font-bold mb-3">录入比赛结果（自动结算）</h2>
+      <h2 class="font-bold mb-3" data-i18n="h_outcomes">录入比赛结果（自动结算）</h2>
       <p class="text-sm text-gray-500 mb-3">每行一场，格式：
         <code class="bg-gray-100 px-1 rounded">date,league,home_team,away_team,home_goals,away_goals</code>
       </p>
@@ -260,7 +285,7 @@
   <!-- Tab: ROI -->
   <div id="tab-roi" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-3">ROI 总览</h2>
+      <h2 class="font-bold mb-3" data-i18n="h_roi">ROI 总览</h2>
       <div id="roi-headline" class="text-sm text-gray-500">加载中 ...</div>
     </div>
     <div class="grid grid-cols-2 gap-6 mb-6">
@@ -286,7 +311,7 @@
   <!-- Tab: Sessions -->
   <div id="tab-sessions" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6">
-      <h2 class="font-bold mb-3">最近会话</h2>
+      <h2 class="font-bold mb-3" data-i18n="h_sessions">最近会话</h2>
       <div id="sessions-table"></div>
     </div>
   </div>
@@ -294,7 +319,7 @@
   <!-- Tab: Rules (V6 W10) -->
   <div id="tab-rules" role="tabpanel" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-2">中国体彩 · 竞彩足球 规则速查</h2>
+      <h2 class="font-bold mb-2" data-i18n="h_rules">中国体彩 · 竞彩足球 规则速查</h2>
       <p class="text-sm text-gray-500 mb-4">数据来自 <code class="bg-gray-100 px-1 rounded">/api/v4/rules</code>,
         与后端 <code class="bg-gray-100 px-1 rounded">nutmeg.v4.combo.lottery_rules.JINGCAI_DEFAULT</code> 保持同步。
       </p>
@@ -397,6 +422,277 @@ const fmtMoney = (x) => '¥' + Number(x).toFixed(2);
 const fmtPct = (x, d=1) => (Number(x)*100).toFixed(d) + '%';
 const sign = (x) => x > 0 ? 'pos' : (x < 0 ? 'neg' : '');
 
+// =====================================================================
+// P1#14 — i18n framework (zh / en, default zh, localStorage persisted)
+// =====================================================================
+// Design: translate UI chrome only. China-specific lottery terms
+// (单关 / 串关 / 复式 / 派奖率 etc.) are kept in zh because they
+// describe a specific product (中国竞彩) that doesn't have direct
+// English equivalents — those become "Single / Parlay / Pool" in
+// the EN UI, but the rules-tab content stays untranslated since it
+// references concrete China lottery regulations.
+//
+// Markup conventions:
+//   data-i18n="key"         → element.textContent = t(key)
+//   data-i18n-html="key"    → element.innerHTML = t(key)   (use sparingly)
+//   data-i18n-attr="a:k|b:k"→ element.setAttribute(a, t(k)); element.setAttribute(b, t(k))
+//
+// JS code uses t(key) directly for dynamic strings (status messages etc.)
+const I18N = {
+  zh: {
+    // App chrome
+    app_title:        'Nutmeg · 竞彩足球助手',
+    app_subtitle:     '中国体彩 · 胜平负 + 让球胜平负 · 单关 / 串关 / 复式 全玩法推荐',
+    health_checking:  'checking ...',
+    lang_toggle_to:   'EN',  // label shown on the toggle button when currently zh
+
+    // Tabs
+    tab_single:       '① 单关',
+    tab_parlay:       '② 串关',
+    tab_pool:         '③ 复式',
+    tab_outcomes:     '④ 录入结果',
+    tab_roi:          '⑤ ROI 报告',
+    tab_sessions:     '⑥ 会话历史',
+    tab_rules:        '⑦ 规则说明',
+    tablist_label:    '主功能选项卡',
+
+    // Common buttons
+    btn_load_sample:  '使用示例数据 (8 场)',
+    btn_clear:        '清空',
+    btn_recommend_single:'生成单关推荐',
+    btn_recommend_parlay:'生成串关推荐',
+    btn_recommend_pool:'生成复式推荐',
+    btn_submit_outcomes:'提交结果',
+
+    // Common labels
+    lbl_bankroll:     '预算 ¥',
+    lbl_top_per_match:'每场最多',
+    lbl_top_n:        '推荐数',
+    lbl_kelly:        '凯利分数',
+    lbl_min_hit:      '最低命中率',
+    lbl_min_kelly:    '最低 Kelly 投注',
+    lbl_pool_n:       'N (选 N 张)',
+    lbl_pool_max_budget:'最大预算',
+    lbl_record_session:'记录到观测库',
+    title_record_session: '需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库',
+
+    // Page section headings
+    h_single_rec:     '单关推荐',
+    h_parlay_rec:     '串关推荐',
+    h_pool_rec:       '复式推荐',
+    h_outcomes:       '录入比赛结果',
+    h_roi:            'ROI 总览',
+    h_sessions:       '会话历史',
+    h_rules:          '中国体彩 · 竞彩足球 规则速查',
+    h_predictions:    '单场预测',
+    h_parlay_combos:  '推荐组合',
+    h_tickets:        '推荐票',
+
+    // Subheaders / hints
+    sub_single:       '单场比赛, 单注最低 ¥2; 系统从胜平负 + 让球胜平负 6 个候选里挑出 EV/单位最大的 1-2 注。',
+
+    // Status messages
+    status_computing: '计算中 ...',
+    status_submitting:'提交中 ...',
+    status_pool_compute:'枚举 + 计算 ...',
+    status_recorded_req:'已请求录入观测库',
+    status_recorded_db:'已落库 session #',
+    status_not_recorded:'未实际落库 (服务器 NUTMEG_V4_OBSERVATION_DB 未设?)',
+
+    // Error / validation messages
+    err_json_parse:   'JSON 解析失败：',
+    err_fixtures_empty:'需要 fixtures 数组',
+    err_no_content:   '没有内容',
+    err_row_format:   '行格式错误：',
+    err_n_too_big:    'N 大于池子大小',
+
+    // Table headers — predictions
+    th_match:         '比赛',
+    th_lambda_home:   'λ_主',
+    th_lambda_away:   'λ_客',
+    th_p_home:        'P(主)',
+    th_p_draw:        'P(平)',
+    th_p_away:        'P(客)',
+    th_handicap:      '让球',
+    th_p_hc_home:     'P(让胜)',
+    th_p_hc_draw:     'P(让平)',
+    th_p_hc_away:     'P(让负)',
+
+    // Table headers — tickets / pool
+    th_n:             '#',
+    th_market:        '玩法',
+    th_outcome:       '选',
+    th_model_p:       '模型概率',
+    th_odds:          '赔率',
+    th_ev_per_unit:   'EV/单位',
+    th_stake:         '投注',
+    th_expected_return:'预期回报',
+    th_hit_prob:      '命中率',
+    th_combined_odds: '总赔率',
+    th_legs:          '选项',
+    th_total:         '总计',
+
+    // ROI
+    roi_settled:      '已结算',
+    roi_hit_miss:     '命中 / 错失',
+    roi_pl:           '净盈亏',
+    roi_roi:          'ROI',
+
+    // Verdict / empty states
+    empty_no_data:    '无数据',
+    empty_no_sessions:'还没有会话。',
+    empty_no_recs:    '无 +EV 组合：今日所有市场无值得下注的机会。',
+
+    // Disclaimer
+    disclaimer_short: '⚠️ 系统不进行自动投注；推荐仅供参考。',
+    disclaimer_long:  '⚠️ 系统不进行自动投注；推荐仅供参考。请按 ¥2 倍数确认 SP 后下注。',
+
+    // Misc — aria
+    aria_single_json: '单关 fixtures JSON 输入',
+    aria_parlay_json: '串关 fixtures JSON 输入',
+    aria_pool_json:   '复式 fixtures JSON 输入',
+  },
+  en: {
+    app_title:        'Nutmeg · Football Betting Helper',
+    app_subtitle:     'China Sports Lottery · 1X2 + Handicap · Single / Parlay / Pool recommendations',
+    health_checking:  'checking ...',
+    lang_toggle_to:   '中',
+
+    tab_single:       '① Single',
+    tab_parlay:       '② Parlay',
+    tab_pool:         '③ Pool',
+    tab_outcomes:     '④ Outcomes',
+    tab_roi:          '⑤ ROI report',
+    tab_sessions:     '⑥ Sessions',
+    tab_rules:        '⑦ Rules',
+    tablist_label:    'Main feature tabs',
+
+    btn_load_sample:  'Load sample data (8 fixtures)',
+    btn_clear:        'Clear',
+    btn_recommend_single:'Generate single bets',
+    btn_recommend_parlay:'Generate parlay',
+    btn_recommend_pool:'Generate pool',
+    btn_submit_outcomes:'Submit outcomes',
+
+    lbl_bankroll:     'Bankroll ¥',
+    lbl_top_per_match:'Max per match',
+    lbl_top_n:        'Top N',
+    lbl_kelly:        'Kelly fraction',
+    lbl_min_hit:      'Min hit probability',
+    lbl_min_kelly:    'Min Kelly stake',
+    lbl_pool_n:       'N (pick N tickets)',
+    lbl_pool_max_budget:'Max budget',
+    lbl_record_session:'Record to observation DB',
+    title_record_session: 'Server-side recording requires NUTMEG_V4_OBSERVATION_DB env var',
+
+    h_single_rec:     'Single-bet recommendations',
+    h_parlay_rec:     'Parlay recommendations',
+    h_pool_rec:       'Pool recommendations',
+    h_outcomes:       'Enter match outcomes',
+    h_roi:            'ROI overview',
+    h_sessions:       'Session history',
+    h_rules:          'China Sports Lottery · Football betting rules',
+    h_predictions:    'Per-match predictions',
+    h_parlay_combos:  'Recommended combinations',
+    h_tickets:        'Tickets',
+
+    sub_single:       'One match per ticket, ¥2 min stake; system picks 1-2 best EV bets per match from 6 candidates (1X2 + Handicap).',
+
+    status_computing: 'computing ...',
+    status_submitting:'submitting ...',
+    status_pool_compute:'enumerating + computing ...',
+    status_recorded_req:'requested DB recording',
+    status_recorded_db:'recorded as session #',
+    status_not_recorded:'not actually recorded (server NUTMEG_V4_OBSERVATION_DB unset?)',
+
+    err_json_parse:   'JSON parse error: ',
+    err_fixtures_empty:'fixtures array required',
+    err_no_content:   'no content',
+    err_row_format:   'row format error: ',
+    err_n_too_big:    'N exceeds pool size',
+
+    th_match:         'Match',
+    th_lambda_home:   'λ_home',
+    th_lambda_away:   'λ_away',
+    th_p_home:        'P(H)',
+    th_p_draw:        'P(D)',
+    th_p_away:        'P(A)',
+    th_handicap:      'Handicap',
+    th_p_hc_home:     'P(hc-H)',
+    th_p_hc_draw:     'P(hc-D)',
+    th_p_hc_away:     'P(hc-A)',
+
+    th_n:             '#',
+    th_market:        'Market',
+    th_outcome:       'Pick',
+    th_model_p:       'Model P',
+    th_odds:          'Odds',
+    th_ev_per_unit:   'EV/unit',
+    th_stake:         'Stake',
+    th_expected_return:'Expected',
+    th_hit_prob:      'Hit P',
+    th_combined_odds: 'Combined odds',
+    th_legs:          'Legs',
+    th_total:         'Total',
+
+    roi_settled:      'Settled',
+    roi_hit_miss:     'Hits / misses',
+    roi_pl:           'Net P/L',
+    roi_roi:          'ROI',
+
+    empty_no_data:    'no data',
+    empty_no_sessions:'no sessions yet.',
+    empty_no_recs:    'No +EV combinations: nothing worth betting in today\'s markets.',
+
+    disclaimer_short: '⚠️ This system never auto-places bets; recommendations are advisory only.',
+    disclaimer_long:  '⚠️ This system never auto-places bets; recommendations are advisory only. Confirm SP at ¥2 multiples before placing.',
+
+    aria_single_json: 'Single fixtures JSON input',
+    aria_parlay_json: 'Parlay fixtures JSON input',
+    aria_pool_json:   'Pool fixtures JSON input',
+  },
+};
+
+let _LOCALE = 'zh';
+function t(key) {
+  return (I18N[_LOCALE] && I18N[_LOCALE][key]) || I18N.zh[key] || key;
+}
+function applyI18n() {
+  // textContent
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  // attrs (data-i18n-attr="placeholder:key1|title:key2")
+  document.querySelectorAll('[data-i18n-attr]').forEach(el => {
+    el.dataset.i18nAttr.split('|').forEach(pair => {
+      const [attr, key] = pair.split(':');
+      if (attr && key) el.setAttribute(attr, t(key));
+    });
+  });
+  // <html lang=...>
+  document.documentElement.setAttribute('lang', _LOCALE === 'en' ? 'en' : 'zh-CN');
+  // Toggle button label reflects what you'll SWITCH TO
+  const toggleBtn = $('#lang-toggle');
+  if (toggleBtn) toggleBtn.textContent = t('lang_toggle_to');
+}
+function setLocale(loc) {
+  if (loc !== 'zh' && loc !== 'en') return;
+  _LOCALE = loc;
+  try { localStorage.setItem('nutmeg.locale', loc); } catch (_) {}
+  applyI18n();
+}
+function initLocale() {
+  let stored = null;
+  try { stored = localStorage.getItem('nutmeg.locale'); } catch (_) {}
+  // Use stored preference; else detect from browser; else zh
+  if (stored === 'zh' || stored === 'en') {
+    _LOCALE = stored;
+  } else if (typeof navigator !== 'undefined' && navigator.language && navigator.language.toLowerCase().startsWith('en')) {
+    _LOCALE = 'en';
+  }
+  applyI18n();
+}
+
 // P1#13: setStatus — visual styling for status messages instead of just
 // emoji + plain text. error → red banner, loading → spinner + dim text,
 // success → plain text. Caller passes the message WITHOUT the emoji prefix;
@@ -498,7 +794,7 @@ $('#btn-recommend').addEventListener('click', async () => {
     $('#recommend-status').textContent = '❌ 需要 fixtures 数组';
     return;
   }
-  setStatus('#recommend-status', 'loading', '计算中 ...');
+  setStatus('#recommend-status', 'loading', t('status_computing'));
   const recordChecked = $('#record-session').checked;
   // P1#8: snapshot the latest session id BEFORE the POST so we can detect
   // whether the request actually advanced it (real write vs env-disabled).
@@ -525,7 +821,7 @@ $('#btn-recommend').addEventListener('click', async () => {
     const body = await res.json();
     renderRecommendations(body);
     const recordedNote = recordChecked
-      ? ' · 📝 已请求录入观测库'
+      ? ' · 📝 ' + t('status_recorded_req')
       : '';
     $('#recommend-status').textContent =
       `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 条推荐  (模型截止 ${body.model.training_cutoff})${recordedNote}`;
@@ -644,7 +940,7 @@ $('#btn-submit-outcomes').addEventListener('click', async () => {
       away_goals: Number(parts[5]),
     });
   }
-  setStatus('#outcomes-status', 'loading', '提交中 ...');
+  setStatus('#outcomes-status', 'loading', t('status_submitting'));
   try {
     const res = await fetch(API + '/observation/outcomes', {
       method: 'POST',
@@ -792,7 +1088,7 @@ $('#btn-recommend-single').addEventListener('click', async () => {
     $('#single-status').textContent = '❌ 需要 fixtures 数组';
     return;
   }
-  setStatus('#single-status', 'loading', '计算中 ...');
+  setStatus('#single-status', 'loading', t('status_computing'));
   const recordCheckedSingle = $('#single-record-session').checked;
   const beforeIdSingle = recordCheckedSingle ? await getLatestSessionId() : null;
   const req = {
@@ -815,7 +1111,7 @@ $('#btn-recommend-single').addEventListener('click', async () => {
     const body = await res.json();
     renderSingleRecommendations(body);
     const recordedNote = recordCheckedSingle
-      ? ' · 📝 已请求录入观测库'
+      ? ' · 📝 ' + t('status_recorded_req')
       : '';
     $('#single-status').textContent =
       `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 注推荐 (模型截止 ${body.model.training_cutoff})${recordedNote}`;
@@ -920,7 +1216,7 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
     $('#pool-status').textContent = `❌ N=${n} 大于池子大小 (M=${fixtures.length})`;
     return;
   }
-  setStatus('#pool-status', 'loading', '枚举 + 计算 ...');
+  setStatus('#pool-status', 'loading', t('status_pool_compute'));
   const maxBudgetRaw = $('#pool-max-budget').value.trim();
   const recordCheckedPool = $('#pool-record-session').checked;
   const beforeIdPool = recordCheckedPool ? await getLatestSessionId() : null;
@@ -944,7 +1240,7 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
     const body = await res.json();
     renderPoolRecommendations(body);
     const recordedNote = recordCheckedPool
-      ? ' · 📝 已请求录入观测库'
+      ? ' · 📝 ' + t('status_recorded_req')
       : '';
     $('#pool-status').textContent =
       `✓ ${body.m} 选 ${body.n} = ${body.n_combinations} 张候选, ${body.n_selected} 张选中${recordedNote}`;
@@ -1027,9 +1323,9 @@ async function verifyRecordedAndAppend(statusSel, recordChecked, beforeId) {
   const el = $(statusSel);
   const advanced = (afterId !== null) && (beforeId === null || afterId > beforeId);
   if (advanced) {
-    el.textContent += ` · ✅ 已落库 session #${afterId}`;
+    el.textContent += ` · ✅ ${t('status_recorded_db')}${afterId}`;
   } else {
-    el.textContent += ' · ⚠️ 未实际落库 (服务器 NUTMEG_V4_OBSERVATION_DB 未设?)';
+    el.textContent += ` · ⚠️ ${t('status_not_recorded')}`;
   }
 }
 
@@ -1065,6 +1361,20 @@ $('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 $('#single-fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 $('#pool-fixtures-json').value = JSON.stringify(POOL_SAMPLE, null, 2);
 initRecordSessionPersistence();
+// P1#14: i18n init + language toggle wiring
+initLocale();
+$('#lang-toggle').addEventListener('click', () => {
+  setLocale(_LOCALE === 'zh' ? 'en' : 'zh');
+});
+// P1#14: register service worker for PWA shell. Scoped to /api/v4/ so
+// the worker only intercepts requests within the dashboard's path.
+if ('serviceWorker' in navigator) {
+  // Defer registration so it doesn't compete with first-paint
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/api/v4/sw.js', { scope: '/api/v4/' })
+      .catch((err) => { /* offline support is non-critical; ignore errors */ });
+  });
+}
 setInterval(loadHealth, 30_000);
 </script>
 

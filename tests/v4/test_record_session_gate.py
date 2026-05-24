@@ -266,8 +266,14 @@ class TestDashboardWiring:
         assert html.count("record_session:") >= 3
 
     def test_visible_feedback_when_checked(self, html):
-        # "已请求录入观测库" appears in 3 success branches
-        assert html.count("已请求录入观测库") >= 3
+        # post-v9 P1#14: the literal string moved to the I18N dict.
+        # 3 JS call sites now use t('status_recorded_req'). Verify:
+        # (a) the i18n key is referenced 3 times (one per success branch)
+        # (b) the literal still appears at least once (in the zh dictionary)
+        assert html.count("t('status_recorded_req')") >= 3, \
+            "3 success branches should call t('status_recorded_req')"
+        assert "已请求录入观测库" in html, \
+            "zh dictionary should still contain the original literal"
 
     # post-v9 P1#7: localStorage persistence across page reloads --------
 
