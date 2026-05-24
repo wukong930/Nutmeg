@@ -94,7 +94,7 @@ immediately use to place better bets.
 - Ablation found **7 of 9 W2 features fail** on real EPL data
 - One feature (cumulative season injuries) initially showed −0.0105 improvement — investigation revealed **major data leakage**: /injuries returns the ENTIRE season including future events. After strict `< match_date` filtering, the "improvement" reversed to +0.0031 regression
 - Salvage: 30-day rolling window of unique injured player IDs (`recent_n_injuries`) survived leak controls with real −0.0038 log-loss on EPL 1-fold
-- See [v6_w5_lineup_ablation.md](v6_w5_lineup_ablation.md)
+- See [v6_w5_lineup_ablation.md](archive/v6/v6_w5_lineup_ablation.md)
 - Tag: `v6.w5`
 
 ### W6 — Multi-fold lineup validation ✅
@@ -102,7 +102,7 @@ immediately use to place better bets.
 - 4-cutoff × 2-league ablation methodology (echoing the V5 multi-season pattern that caught W5/W6/W9 false-positives)
 - `recent_n_injuries` beats baseline 3/4 folds with mean −0.0020 log-loss
 - Wired into `feature_columns_with_lineups()` (39 base cols + 2 validated lineup cols)
-- See [v6_w6_lineup_validation.md](v6_w6_lineup_validation.md)
+- See [v6_w6_lineup_validation.md](archive/v6/v6_w6_lineup_validation.md)
 - Tag: `v6.w6`
 
 ### W7 — Lineup-aware production artifact (opt-in) ✅
@@ -111,7 +111,7 @@ immediately use to place better bets.
 - `build_features_for_fixtures` auto-runs lineup transform when artifact is lineup-aware (graceful zero-injury default if no live lookup passed)
 - A/B demo shows expected λ shifts: lineup-aware predicts slightly more parity (lower home λ, higher away λ on most matches)
 - Default stays lineup-free until live ROI confirms backtest direction
-- See [v6_w7_lineup_production.md](v6_w7_lineup_production.md)
+- See [v6_w7_lineup_production.md](archive/v6/v6_w7_lineup_production.md)
 - Tag: `v6.w7`
 
 ### W8 — Live observation + A/B cron ✅
@@ -119,7 +119,7 @@ immediately use to place better bets.
 - `.github/workflows/daily-recommend.yml` — 06:00 UTC GH Actions heartbeat; uses `NUTMEG_API_FOOTBALL_KEY` secret; uploads daily summary as 14-day artifact
 - `nutmeg.v4.observation.ab_report` — slices settlements by `json_extract(metadata_json, '$.model.with_lineups')`
 - `nutmeg-ab-report --weeks 4` — markdown comparison card
-- See [v6_w8_observation_onboarding.md](v6_w8_observation_onboarding.md)
+- See [v6_w8_observation_onboarding.md](archive/v6/v6_w8_observation_onboarding.md)
 - Tag: `v6.w8`
 
 ### W9 — `nutmeg-rec` interactive CLI + 单关 recommender ✅
@@ -128,7 +128,7 @@ immediately use to place better bets.
 - Chinese-localized prompts ("请选择投注玩法: [1] 单关 [2] 串关 [3] 复式")
 - Same lottery-rule pipeline as 串关/复式 (¥2 / ¥20k / 5% EV)
 - `top_per_match=1` prevents same-fixture H + A double-bet
-- See [v6_w9_user_flow.md](v6_w9_user_flow.md)
+- See [v6_w9_user_flow.md](archive/v6/v6_w9_user_flow.md)
 - Tag: `v6.w9`
 
 ### W10 — Chinese dashboard + 规则说明 tab ✅
@@ -137,7 +137,7 @@ immediately use to place better bets.
 - Top-of-page `rules-hint` banner with 4 most-important constants
 - "of bankroll" residual English → "占预算 X%"
 - Bankroll + min-kelly inputs snap to ¥2 (`step="2"`)
-- See [v6_w10_chinese_dashboard.md](v6_w10_chinese_dashboard.md)
+- See [v6_w10_chinese_dashboard.md](archive/v6/v6_w10_chinese_dashboard.md)
 - Tag: `v6.w10`
 
 ### W11 — Cup + national-team registry ✅
@@ -145,7 +145,7 @@ immediately use to place better bets.
 - `API_FOOTBALL_LEAGUE_IDS` merges domestic + cup IDs — `league_id("UCL")` returns 2 with zero call-site changes
 - `nutmeg.v4.features.cup_features` — 5 side-channel cols (`is_cup_match` / `is_knockout` / `is_two_legged` / `is_national_team_match` / `competition_type_id`) + `lookup_cup_team_pair` cross-league team_state walk
 - All 5 emit 0 on existing training data → shipped artifact's predictions unchanged
-- See [v6_w11_cup_data.md](v6_w11_cup_data.md)
+- See [v6_w11_cup_data.md](archive/v6/v6_w11_cup_data.md)
 - Tag: `v6.w11`
 
 ### W12 — Ship ✅

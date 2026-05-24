@@ -125,7 +125,7 @@ Documented in detail so future iterations don't re-derive them.
   what's left is noise the GBM overfits on
 - **Status**: Module `nutmeg.v4.features.market_dynamics` kept as dormant
   framework; GBM input list does NOT include drift columns
-- See [v5_w5_ablation.md](v5_w5_ablation.md)
+- See [v5_w5_ablation.md](archive/v5/v5_w5_ablation.md)
 
 ### W6 — LogReg ensemble stacker
 - **Tried**: LightGBM + XGBoost + CatBoost outputs → 9-dim logits → LogReg
@@ -134,7 +134,7 @@ Documented in detail so future iterations don't re-derive them.
   9-dim LogReg on ~500-1000 val rows overfits
 - **Status**: `nutmeg.v4.model.stacker` kept; `WalkForwardConfig.with_ensemble`
   flag wires it in but defaults False
-- See [v5_w6_ablation.md](v5_w6_ablation.md)
+- See [v5_w6_ablation.md](archive/v5/v5_w6_ablation.md)
 
 ### W9 — Per-league temperature
 - **Tried**: per-league T fit (instead of one global T)
@@ -145,7 +145,7 @@ Documented in detail so future iterations don't re-derive them.
 - **Status**: `nutmeg.v4.calibration.per_league` kept; walk_forward emits
   `gbm_dc_pl_temp` diagnostic row so the next iteration can spot when val
   windows have grown enough to enable
-- See [v5_w9_per_league_temperature.md](v5_w9_per_league_temperature.md)
+- See [v5_w9_per_league_temperature.md](archive/v5/v5_w9_per_league_temperature.md)
 
 ### Shared pattern
 

@@ -75,7 +75,7 @@ wait for real numbers than rush a verdict on incomplete data.
 - `nutmeg-canonical-report-cup` diagnostic CLI — scans cup parquets,
   reports unmatched names so user can extend the alias map
 - 24 new tests
-- See [v8_w1_team_canonical_global.md](v8_w1_team_canonical_global.md)
+- See [v8_w1_team_canonical_global.md](archive/v8/v8_w1_team_canonical_global.md)
 
 #### W2 — Cup row UNION + `--with-cup-data` ✅ `v8.w2`
 - `nutmeg.v4.data.cup_training.build_cup_training_rows` — cup_history
@@ -87,7 +87,7 @@ wait for real numbers than rush a verdict on incomplete data.
 - `nutmeg-train --with-cup-data` flag (independent of W7's
   `--with-cup-features` — data vs features)
 - 20 new tests
-- See [v8_w2_cup_data_union.md](v8_w2_cup_data_union.md)
+- See [v8_w2_cup_data_union.md](archive/v8/v8_w2_cup_data_union.md)
 
 #### W3 — Cross-league Elo/form seeding + ablation runner ✅ `v8.w3`
 - `nutmeg.v4.features.cross_league_state` — `seed_elo_value` /
@@ -100,7 +100,7 @@ wait for real numbers than rush a verdict on incomplete data.
   (baseline / cup_data / cup_features / cup_full) + automatic
   ship-gate verdict (≥ 3/4 folds improve ≥ −0.001 log-loss)
 - 23 new tests
-- See [v8_w3_cross_league_seeding_ablation.md](v8_w3_cross_league_seeding_ablation.md)
+- See [v8_w3_cross_league_seeding_ablation.md](archive/v8/v8_w3_cross_league_seeding_ablation.md)
 
 ### Track B decision — data-gated
 
@@ -138,7 +138,7 @@ verdict per V6 W8 decision matrix:
 - Dashboard restructure: 7 tabs (was 5); ① 单关 = new default landing
 - Per-tab sample data buttons, bankroll / Kelly / mode-specific inputs
 - 17 new tests
-- See [v8_w6_dashboard_single_pool.md](v8_w6_dashboard_single_pool.md)
+- See [v8_w6_dashboard_single_pool.md](archive/v8/v8_w6_dashboard_single_pool.md)
 
 #### W7 — National-team Elo ✅ `v8.w7`
 - `nutmeg.v4.data.national_team_elo` — mirror of per-club `clubelo.py`
@@ -156,7 +156,7 @@ verdict per V6 W8 decision matrix:
 - 31 new tests
 - Model integration (build_elo_features calling lookup_nation_elo for
   national_team_cup rows) deferred to V9
-- See [v8_w7_national_team_elo.md](v8_w7_national_team_elo.md)
+- See [v8_w7_national_team_elo.md](archive/v8/v8_w7_national_team_elo.md)
 
 #### W8 — V8 ship ✅
 - This document

@@ -28,14 +28,14 @@ V5 是在 V4（GBM-λ + Dixon-Coles + Temperature scaling）基础上的**演进
 | W2 | 激进瘦身 | 删除 legacy 280+ 文件 | 文件数 ≤50；V4 测试 100% 绿；log-loss = 0.9987 ± 1e-4 |
 | W3 | 外部数据 ingest 铺底 | understat / clubelo / OddsPortal 入库 | 英超≥95%、J1=0%（接受） |
 | W4 ✅ | xG-lite + clubelo 特征 | `features/{xg_lite,clubelo_features}.py` + pipeline 集成 | **达成：24/25 log-loss 0.9987 → 0.9971（−0.0016）**；多季稳定改善 |
-| W5 ⚠️ | 市场动态 ablation | `features/market_dynamics.py` 框架就绪但 dormant | **负面结果**：drift 特征在 3 季验证中无法稳定降 log-loss；见 [v5_w5_ablation.md](v5_w5_ablation.md) |
-| W6 ✅ (mixed) | Ensemble ablation | xgb+cat+stacker 全部接入 walk_forward；`--with-ensemble` 比较 | **stacker 失败但 CatBoost 单模型胜出**（平均 -0.0033 vs LightGBM，三季全胜），见 [v5_w6_ablation.md](v5_w6_ablation.md)。W7 迁 prod 用 CatBoost。|
+| W5 ⚠️ | 市场动态 ablation | `features/market_dynamics.py` 框架就绪但 dormant | **负面结果**：drift 特征在 3 季验证中无法稳定降 log-loss；见 [v5_w5_ablation.md](archive/v5/v5_w5_ablation.md) |
+| W6 ✅ (mixed) | Ensemble ablation | xgb+cat+stacker 全部接入 walk_forward；`--with-ensemble` 比较 | **stacker 失败但 CatBoost 单模型胜出**（平均 -0.0033 vs LightGBM，三季全胜），见 [v5_w6_ablation.md](archive/v5/v5_w6_ablation.md)。W7 迁 prod 用 CatBoost。|
 | W7 ✅ | CatBoost prod 迁移 | `--model cat`、artifact 多后端、e2e 测试 | CatBoost 可作 prod 选项（W6 已证 -0.0033 多季稳定改善）；默认暂留 lgb 给 W8 观察期 |
 | W7+ | Bayesian 分层（推迟） | MAP per-league offset | 推迟到 W9 — 先做 W8 实战 |
-| W8 ✅ | 实战观察循环 | schema v2 (snapshot_phase + model_type)、`nutmeg-recommend --snapshot-phase`、`nutmeg-live-vs-backtest` CLI + 15 单元测试 | 见 [v5_w8_observation_loop.md](v5_w8_observation_loop.md)。CLI 跑通 demo DB，exit code 2 hooks 加好 |
-| W9 ⚠️ | Per-league temperature ablation | 模块就绪 + 9 单测 + walk_forward 集成；但 90 天 val 太小 → 过拟合，log-loss 3/3 季变差 | 见 [v5_w9_per_league_temperature.md](v5_w9_per_league_temperature.md)。框架保留，待 val 窗 ≥800/league 再启用 |
-| W10 ✅ | 实验追踪自动化 | `experiment_tracker.py` + `nutmeg-bench --track` + `nutmeg-experiment-diff` CLI + GH Actions 周日 cron `.github/workflows/weekly-bench.yml` | 见 [v5_w10_experiment_tracking.md](v5_w10_experiment_tracking.md) |
-| W11 ✅ | API 整合 | `POST /api/v4/predictions/upcoming` 轻量端点；`GET /api/v4/observation/live-vs-backtest`；ModelInfo + Health 加 `model_type`；RecommendRequest 加 `snapshot_phase` | 见 [v5_w11_api_consolidation.md](v5_w11_api_consolidation.md)。v1 路由 W2 已删 |
+| W8 ✅ | 实战观察循环 | schema v2 (snapshot_phase + model_type)、`nutmeg-recommend --snapshot-phase`、`nutmeg-live-vs-backtest` CLI + 15 单元测试 | 见 [v5_w8_observation_loop.md](archive/v5/v5_w8_observation_loop.md)。CLI 跑通 demo DB，exit code 2 hooks 加好 |
+| W9 ⚠️ | Per-league temperature ablation | 模块就绪 + 9 单测 + walk_forward 集成；但 90 天 val 太小 → 过拟合，log-loss 3/3 季变差 | 见 [v5_w9_per_league_temperature.md](archive/v5/v5_w9_per_league_temperature.md)。框架保留，待 val 窗 ≥800/league 再启用 |
+| W10 ✅ | 实验追踪自动化 | `experiment_tracker.py` + `nutmeg-bench --track` + `nutmeg-experiment-diff` CLI + GH Actions 周日 cron `.github/workflows/weekly-bench.yml` | 见 [v5_w10_experiment_tracking.md](archive/v5/v5_w10_experiment_tracking.md) |
+| W11 ✅ | API 整合 | `POST /api/v4/predictions/upcoming` 轻量端点；`GET /api/v4/observation/live-vs-backtest`；ModelInfo + Health 加 `model_type`；RecommendRequest 加 `snapshot_phase` | 见 [v5_w11_api_consolidation.md](archive/v5/v5_w11_api_consolidation.md)。v1 路由 W2 已删 |
 | W12 ✅ | V5 收尾 | CatBoost 切默认；`docs/V5_HANDOFF.md` + `docs/v5_w12_paid_data_decision.md` + `docs/V6_ROADMAP_DRAFT.md`；最终 cards；`v5.0-shipped` 里程碑 tag。付费数据延后到 V6（W8 cron 还没攒够 4 周数据） | V5 完成 |
 
 **回退点**：每周一个 git tag `v5.w<n>`，恶化时 `git reset --hard v5.w<n-1>` 重做。

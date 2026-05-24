@@ -76,7 +76,7 @@ been another V8 W4-style data-block writeup, low marginal value)._
 - Tightens post-V8 P1#5 (which had env-only auto-record — too coarse
   for daily-cron + manual-test workflows sharing one server)
 - 20 new tests
-- See [v9_w3_recorder_checkbox.md](v9_w3_recorder_checkbox.md)
+- See [v9_w3_recorder_checkbox.md](archive/v9/v9_w3_recorder_checkbox.md)
 
 ### W4 — CI fixture cache (lineup-path end-to-end) ✅ `v9.w4`
 
@@ -89,7 +89,7 @@ been another V8 W4-style data-block writeup, low marginal value)._
   all flagged. Cup half stays open until Path A (V9 W1) accumulates
   ~250 cup_odds rows (~9 months)
 - 12 new tests
-- See [v9_w4_ci_fixture_cache.md](v9_w4_ci_fixture_cache.md)
+- See [v9_w4_ci_fixture_cache.md](archive/v9/v9_w4_ci_fixture_cache.md)
 
 ### W5 — ECE-vs-log-loss per-bucket Brier audit ✅ `v9.w5`
 
@@ -106,8 +106,8 @@ listed; none acted.
   `(0.6, 0.8]` contributes +0.0082 (more than total +0.0056 gap).
   CatBoost places 619 rows there vs Pinnacle's 542
 - 21 new tests
-- See [v9_w5_ece_audit_writeup.md](v9_w5_ece_audit_writeup.md) +
-  [v9_w5_ece_audit.md](v9_w5_ece_audit.md) (data)
+- See [v9_w5_ece_audit_writeup.md](archive/v9/v9_w5_ece_audit_writeup.md) +
+  [v9_w5_ece_audit.md](archive/v9/v9_w5_ece_audit.md) (data)
 
 ### W6 — Calibration fix attempt — ❌ NEGATIVE ✅ `v9.w6`
 
@@ -126,8 +126,8 @@ listed; none acted.
 - ECE-vs-log-loss mystery (3 retrospectives' backlog) **PERMANENTLY
   CLOSED**
 - 11 new tests
-- See [v9_w6_calibration_negative.md](v9_w6_calibration_negative.md) +
-  [v9_w6_calibration_ablation.md](v9_w6_calibration_ablation.md)
+- See [v9_w6_calibration_negative.md](archive/v9/v9_w6_calibration_negative.md) +
+  [v9_w6_calibration_ablation.md](archive/v9/v9_w6_calibration_ablation.md)
 
 ## 5. Numbers (V8 → V9)
 

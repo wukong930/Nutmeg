@@ -72,7 +72,7 @@ Estimated 1-2 days.
 Shipped. 20 new tests (759/759 V4 suite). 4-year V5 W11-era no-op
 finally plumbed through. Two-gate design (env + request flag) added.
 串关 endpoint now records for the first time. 单关 + 复式 tabs gained
-checkboxes. See [v9_w3_recorder_checkbox.md](v9_w3_recorder_checkbox.md).
+checkboxes. See [v9_w3_recorder_checkbox.md](archive/v9/v9_w3_recorder_checkbox.md).
 
 ### V9 W4 — CI fixture cache (Track E) ✅
 
@@ -83,7 +83,7 @@ runs `build_lineup_lookup_from_cache` → `build_recent_injury_lookup`
 the lineup half of the 3-retrospective backlog item. Cup half stays
 open until V9 W1 Path A accumulates ~250 cup_odds rows (~9 months).
 12 new tests (771/771 V4 suite). See
-[v9_w4_ci_fixture_cache.md](v9_w4_ci_fixture_cache.md).
+[v9_w4_ci_fixture_cache.md](archive/v9/v9_w4_ci_fixture_cache.md).
 
 ### V9 W5 — ECE-vs-log-loss per-bucket Brier audit (Track E) ✅
 
@@ -95,8 +95,8 @@ total gap, while two other buckets are negative. CatBoost places 619
 rows at 0.6-0.8 vs Pinnacle's 542 → either over-confidence (fixable
 in W6 via per-bucket isotonic) or genuine signal Pinnacle's market
 prior dampens (structural, not fixable). W6 will test which. See
-[v9_w5_ece_audit.md](v9_w5_ece_audit.md) (data) +
-[v9_w5_ece_audit_writeup.md](v9_w5_ece_audit_writeup.md) (analysis).
+[v9_w5_ece_audit.md](archive/v9/v9_w5_ece_audit.md) (data) +
+[v9_w5_ece_audit_writeup.md](archive/v9/v9_w5_ece_audit_writeup.md) (analysis).
 
 ### V9 W6 — Calibration fix attempt — ❌ NEGATIVE result, ECE backlog CLOSED ✅
 
@@ -111,8 +111,8 @@ and per-class isotonic over-fits on the 90-day val window. Verdict:
 prices what CatBoost picks up as confidence. **No production change
 ships.** 6th project negative result. ECE-vs-log-loss mystery (3
 retrospectives' backlog) **permanently closed**. See
-[v9_w6_calibration_negative.md](v9_w6_calibration_negative.md) +
-[v9_w6_calibration_ablation.md](v9_w6_calibration_ablation.md).
+[v9_w6_calibration_negative.md](archive/v9/v9_w6_calibration_negative.md) +
+[v9_w6_calibration_ablation.md](archive/v9/v9_w6_calibration_ablation.md).
 
 ### V9 ship — closeout ✅
 

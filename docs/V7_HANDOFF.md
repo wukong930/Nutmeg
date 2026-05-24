@@ -73,7 +73,7 @@ V7 made the data-gathering machinery instead.
   ingest in-process, writes temp CSV
 - GH Actions daily cron extended: uploads `_daily_odds_<date>.csv`
 - 22 new tests
-- See [v7_w1_live_odds_ingest.md](v7_w1_live_odds_ingest.md)
+- See [v7_w1_live_odds_ingest.md](archive/v7/v7_w1_live_odds_ingest.md)
 
 #### W2 — `nutmeg-auto-settle` ✅ `v7.w2`
 - `nutmeg-auto-settle`: walks leagues × past N days `/fixtures`,
@@ -83,7 +83,7 @@ V7 made the data-gathering machinery instead.
 - **Local-cron tool by design** — observation DB is user-local; GH
   Actions can't write to it
 - 30 new tests
-- See [v7_w2_auto_settle.md](v7_w2_auto_settle.md)
+- See [v7_w2_auto_settle.md](archive/v7/v7_w2_auto_settle.md)
 
 #### W3 — `nutmeg-weekly-report` (Track C closeout) ✅ `v7.w3`
 - `nutmeg-weekly-report`: bundles `roi-report` + `ab-report` +
@@ -92,7 +92,7 @@ V7 made the data-gathering machinery instead.
   tolerance — single hook for cron alerting
 - ISO-week tag matches V5 W10 naming
 - 10 new tests
-- See [v7_w3_weekly_report.md](v7_w3_weekly_report.md)
+- See [v7_w3_weekly_report.md](archive/v7/v7_w3_weekly_report.md)
 
 ### Track B
 
@@ -106,7 +106,7 @@ V7 made the data-gathering machinery instead.
   10-col schema (date, league, teams, goals, status, round_label,
   api_football_id, season)
 - 29 new tests
-- See [v7_w6_cup_history_ingest.md](v7_w6_cup_history_ingest.md)
+- See [v7_w6_cup_history_ingest.md](archive/v7/v7_w6_cup_history_ingest.md)
 
 #### W7 — `feature_columns_with_cup()` + pipeline wiring ✅ `v7.w7`
 - `feature_columns_with_cup(include_lineups=False/True)` — cup wiring
@@ -121,7 +121,7 @@ V7 made the data-gathering machinery instead.
   - `--with-cup-features` → 44 cols
   - both → 46 cols
 - 17 new tests
-- See [v7_w7_cup_features_pipeline.md](v7_w7_cup_features_pipeline.md)
+- See [v7_w7_cup_features_pipeline.md](archive/v7/v7_w7_cup_features_pipeline.md)
 
 #### W8 — Cup historical odds backfill ✅ `v7.w8`
 - `data.cup_odds` module mirroring W6: `normalize_odds_envelope`,
@@ -132,7 +132,7 @@ V7 made the data-gathering machinery instead.
   + O/U
 - Budget: ~1320 calls for UCL+UEL × 4 seasons
 - 22 new tests
-- See [v7_w8_cup_odds_ingest.md](v7_w8_cup_odds_ingest.md)
+- See [v7_w8_cup_odds_ingest.md](archive/v7/v7_w8_cup_odds_ingest.md)
 
 ### Track A — pending
 

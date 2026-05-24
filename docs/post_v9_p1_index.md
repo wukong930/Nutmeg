@@ -46,6 +46,7 @@ P1#26  GH Actions Playwright CI  (P1#15 work now runs in CI)     QA
 P1#27  V10_HANDOFF_TEMPLATE.md   (companion to P1#25 placeholder) DOCS
 P1#28  silence stale GH cron     (drop schedule on 2 workflows)  OPS
 P1#29  weekly_bench autostash    (race condition fix; cards now ship) OPS
+P1#30  docs/ archival            (64 root files → 38; archive/<vN>/) DOCS
 ```
 
 **Net change**: V10 has both data-gated triggers resolved (one ship,
@@ -348,6 +349,34 @@ to actually ship from this cron).
 
 Future Sunday 02:00 UTC runs will continue producing weekly cards;
 docs/weekly/ will accumulate one cohort per week going forward.
+
+#### P1#30 — `docs/` archival (64 → 38 root files)
+After 22 patches in the post-v9 P1 chain, `docs/` had grown to 64
+root files. Per-week writeups from V5-V9 (32 files total) were
+still at root despite being shipped history — making it harder
+to find the actively-referenced HANDOFFs, ROADMAPs, retrospectives,
+and current P1 docs.
+
+Moved per-week writeups to `docs/archive/v<N>/`:
+- v5/ — 7 files (W5-W11)
+- v6/ — 7 files (W5-W11; W12 retro stays at root)
+- v7/ — 6 files (W1-W3, W6-W8; retro stays at root)
+- v8/ — 6 files (W1-W4, W6-W7; retro stays at root)
+- v9/ — 6 files (W3-W6; retro stays at root)
+
+Used `git mv` everywhere → `git log --follow` still shows pre-move
+history per file.
+
+Patched 47 link references across V5-V9 HANDOFF/ROADMAP files
+to use new `archive/v<N>/` paths via sed loop.
+
+Added `docs/archive/README.md` documenting:
+- What lives where + count
+- What stays at root and why
+- Linking conventions for citing archived docs from root vs other archives
+- When to archive (V<N+2>_ROADMAP draft date)
+
+Root file count: 64 → 38 (~46% drop). Active references untouched.
 
 ---
 
