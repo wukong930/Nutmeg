@@ -121,10 +121,13 @@ ENV_PREFIX="cd $REPO_ROOT && set -a && source .env && set +a"
 echo "Installing 3 launchd jobs into $PLIST_DIR ..."
 
 # Job 1: daily odds ingest (14:00 daily)
-# Pulls today's odds for the standard leagues + UCL/UEL (Path A accumulation).
+# Pulls today's odds for the 5 main domestic leagues.
+# post-v9 P1#20: UCL+UEL removed — cup ablation answered negatively
+# (see docs/post_v9_p1_20_cup_ablation_negative.md), forward
+# accumulation no longer serves any open question. Save ~10 API calls/day.
 install_job "com.nutmeg.daily_odds" \
   14 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,UCL,UEL"
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1"
 
 # Job 2: daily recommend + record (15:00 daily)
 # Generates recommendations using both default + lineup-aware models,

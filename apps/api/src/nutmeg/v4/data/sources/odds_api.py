@@ -81,13 +81,88 @@ DEFAULT_CACHE_DIR = Path("data/external/odds_api")
 # Sport key mapping: V4 canonical cup code → Odds API sport key.
 # Extend here when adding more competitions.
 SPORT_KEYS: dict[str, str] = {
+    # Cup / international (P1#20)
     "UCL":  "soccer_uefa_champs_league",
     "UEL":  "soccer_uefa_europa_league",
     "UECL": "soccer_uefa_europa_conference_league",
     "WC":   "soccer_fifa_world_cup",
     "EURO": "soccer_uefa_european_championship",
+    # Top-5 European domestic leagues (P1#21 cross-source backtest)
+    "EPL":            "soccer_epl",
+    "ESP_LA_LIGA":    "soccer_spain_la_liga",
+    "ITA_SERIE_A":    "soccer_italy_serie_a",
+    "GER_BUNDESLIGA": "soccer_germany_bundesliga",
+    "FRA_LIGUE_1":    "soccer_france_ligue_one",
     # Add more as needed: FA Cup, Copa del Rey etc.
 }
+
+
+def build_psc_lookup_for_date_range(
+    sport_key: str,
+    start_date: str,   # YYYY-MM-DD
+    end_date: str,     # YYYY-MM-DD
+    *,
+    snapshot_hour_utc: int = 23,
+    refresh: bool = False,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    strict_bookmaker: str | None = None,
+) -> dict[tuple[str, str, str], dict[str, float]]:
+    """post-v9 P1#21: build a {(date, home, away) → psc_*} lookup by
+    walking historical snapshots over a date range.
+
+    Used by roi_backtest --odds-source odds_api to substitute Odds API
+    closing odds for the football-data.co.uk Pinnacle closing odds the
+    backtest defaults to.
+
+    One snapshot per day at `snapshot_hour_utc` UTC. Each snapshot
+    returns ALL fixtures around that time across the sport, so the
+    quota cost is 10 × n_days, not 10 × n_fixtures.
+
+    Pass ``strict_bookmaker="pinnacle"`` to skip fixtures where Pinnacle
+    closing odds aren't available — required for apples-to-apples cross-
+    source comparison with football-data.co.uk PSC (which is also
+    Pinnacle CL). Without strict mode, the function silently falls back
+    to softer books (marathonbet/unibet/etc.), inflating implied ROI.
+
+    Returns dict keyed by (commence_date, home_team, away_team) where
+    home/away are the Odds API spellings (caller may need alias mapping).
+    """
+    from datetime import date as _date, timedelta
+
+    out: dict[tuple[str, str, str], dict[str, float]] = {}
+    cur = _date.fromisoformat(start_date)
+    end = _date.fromisoformat(end_date)
+    while cur <= end:
+        snap_iso = f"{cur.isoformat()}T{snapshot_hour_utc:02d}:00:00Z"
+        try:
+            envelope = fetch_historical_snapshot(
+                sport_key, snap_iso, refresh=refresh, cache_dir=cache_dir,
+            )
+        except OddsApiError as e:
+            # Off-season days return empty snapshots; just skip
+            log.debug("no snapshot %s: %s", snap_iso, e)
+            cur += timedelta(days=1)
+            continue
+        for fx in envelope.get("data", []):
+            parsed = parse_fixture_to_h2h(fx, strict_key=strict_bookmaker)
+            if not parsed:
+                continue
+            key = (
+                parsed["commence_time"][:10],
+                parsed["home_team"],
+                parsed["away_team"],
+            )
+            # First write wins (snapshot is taken AFTER match — closing
+            # state); duplicate keys across snapshots get same odds since
+            # one fixture commences once.
+            out.setdefault(key, {
+                "psc_home": parsed["psc_home"],
+                "psc_draw": parsed["psc_draw"],
+                "psc_away": parsed["psc_away"],
+                "bookmaker": parsed.get("bookmaker"),
+            })
+        cur += timedelta(days=1)
+    return out
 
 
 # Pinnacle isn't always in The Odds API's free regions; the Sharp-book
@@ -239,13 +314,26 @@ def fetch_historical_snapshot(
 
 def _select_bookmaker_h2h(
     bookmakers: list[dict[str, Any]],
+    *,
+    strict_key: str | None = None,
 ) -> tuple[str | None, dict[str, float] | None]:
     """Walk PREFERRED_BOOKMAKERS in order, return the first that has an
     h2h market. Returns (bookmaker_key, {H: price, D: price, A: price}).
 
-    Falls back to the first bookmaker in the list if no preferred match.
+    If ``strict_key`` is provided (e.g. "pinnacle"), ONLY that
+    bookmaker is acceptable — return None if it's missing. This is
+    used by cross-source backtests to ensure apples-to-apples Pinnacle
+    CL pricing (otherwise softer-book fallback inflates ROI).
+
+    Falls back to the first bookmaker in the list if no preferred match
+    (only when strict_key is None).
     """
     by_key = {b.get("key", "").lower(): b for b in bookmakers}
+    if strict_key:
+        if strict_key in by_key:
+            h2h = _extract_h2h(by_key[strict_key])
+            return (strict_key, h2h) if h2h else (None, None)
+        return None, None
     for pref in PREFERRED_BOOKMAKERS:
         if pref in by_key:
             book = by_key[pref]
@@ -287,6 +375,8 @@ def _extract_h2h(bookmaker: dict[str, Any]) -> dict[str, float] | None:
 
 def parse_fixture_to_h2h(
     fixture: dict[str, Any],
+    *,
+    strict_key: str | None = None,
 ) -> dict[str, Any] | None:
     """Take one Odds API fixture object, return a normalized dict:
 
@@ -299,6 +389,10 @@ def parse_fixture_to_h2h(
         }
 
     Returns None if no usable h2h market across the bookmakers.
+
+    Pass ``strict_key="pinnacle"`` to require Pinnacle Closing Line and
+    skip fixtures where Pinnacle isn't quoted (used by cross-source
+    backtest for apples-to-apples PSC comparison).
     """
     home = fixture.get("home_team")
     away = fixture.get("away_team")
@@ -309,7 +403,7 @@ def parse_fixture_to_h2h(
     if not bms:
         return None
 
-    bm_key, h2h = _select_bookmaker_h2h(bms)
+    bm_key, h2h = _select_bookmaker_h2h(bms, strict_key=strict_key)
     if not h2h:
         return None
     teams_prices = h2h["teams"]
@@ -356,4 +450,5 @@ __all__ = [
     "fetch_current_odds",
     "fetch_historical_snapshot",
     "parse_fixture_to_h2h",
+    "build_psc_lookup_for_date_range",
 ]

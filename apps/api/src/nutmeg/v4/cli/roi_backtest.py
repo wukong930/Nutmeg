@@ -58,13 +58,28 @@ DEFAULT_ARTIFACT = "data/v4_model_cat"
 LINEUP_ARTIFACT = "data/v4_model_cat_lineups"
 
 
-def _row_to_fixture(row: pd.Series) -> dict | None:
+def _row_to_fixture(
+    row: pd.Series,
+    *,
+    odds_override: dict | None = None,
+) -> dict | None:
     """Convert one historical-CSV row into a fixtures-frame row the
     recommend pipeline can consume. Returns None if missing required
-    odds (psc_*)."""
+    odds (psc_*).
+
+    post-v9 P1#21: when ``odds_override`` is provided, REPLACE the
+    CSV's psc_home/draw/away with the override (used by --odds-source
+    odds_api to inject The Odds API's closing line instead of the
+    football-data.co.uk Pinnacle line). The override dict has keys
+    psc_home/psc_draw/psc_away; missing keys leave the CSV's value.
+    """
     psh = row.get("psc_home")
     psd = row.get("psc_draw")
     psa = row.get("psc_away")
+    if odds_override:
+        psh = odds_override.get("psc_home", psh)
+        psd = odds_override.get("psc_draw", psd)
+        psa = odds_override.get("psc_away", psa)
     if pd.isna(psh) or pd.isna(psd) or pd.isna(psa):
         return None
     # Forward every non-NaN column from the historical CSV. The recommend
@@ -79,6 +94,11 @@ def _row_to_fixture(row: pd.Series) -> dict | None:
             fixture[col] = v
     # Normalize date to string
     fixture["date"] = pd.Timestamp(row["date"]).strftime("%Y-%m-%d")
+    # Apply override AFTER bulk copy so override wins
+    if odds_override:
+        fixture["psc_home"] = float(psh)
+        fixture["psc_draw"] = float(psd)
+        fixture["psc_away"] = float(psa)
     # Synthesize odds_1x2_H/D/A from Pinnacle closing (psc_*) so the
     # production recommend filter (_row_to_match_input) accepts the row.
     # Production cron has `odds_1x2_*` from API-Football's /odds endpoint;
@@ -177,10 +197,19 @@ def _replay_one_day(
     artifact,
     artifact_name: str,
     bankroll: float,
-) -> int:
+    *,
+    odds_lookup: dict[tuple[str, str, str], dict] | None = None,
+    odds_lookup_team_alias: dict[str, str] | None = None,
+) -> tuple[int, int]:
     """Replay one date through one model. Records 1 session into the DB.
 
-    Returns the number of recommendations generated (0 if no eligible fixtures)."""
+    Returns (n_recommendations, n_fixtures_used).
+
+    post-v9 P1#21: ``odds_lookup`` is the {(date, home, away) → psc_*}
+    dict from build_psc_lookup_for_date_range. Used when --odds-source
+    odds_api is set. ``odds_lookup_team_alias`` maps cup_history team
+    names → Odds API names (for alignment).
+    """
     from nutmeg.v4.combo.recommend import recommend_combinations
     from nutmeg.v4.combo.selections import MatchInput
     from nutmeg.v4.model.persist import build_features_for_fixtures, predict_lambdas
@@ -190,11 +219,35 @@ def _replay_one_day(
     # Build fixtures frame
     fixture_rows = []
     for _, row in day_matches.iterrows():
-        fx = _row_to_fixture(row)
+        override = None
+        if odds_lookup is not None:
+            # Map (date, home, away) into the lookup. We try both the
+            # raw CSV team names and any alias mappings.
+            date_str = pd.Timestamp(row["date"]).strftime("%Y-%m-%d")
+            home = row["home_team"]
+            away = row["away_team"]
+            # Try alias variants in both directions
+            candidates = [(home, away)]
+            if odds_lookup_team_alias:
+                ah = odds_lookup_team_alias.get(home, home)
+                aa = odds_lookup_team_alias.get(away, away)
+                if (ah, aa) != (home, away):
+                    candidates.append((ah, aa))
+            for h, a in candidates:
+                if (date_str, h, a) in odds_lookup:
+                    override = odds_lookup[(date_str, h, a)]
+                    break
+            if override is None:
+                # No Odds API price for this fixture — skip when in
+                # odds_api-source mode (don't silently fall back to
+                # football-data's psc_*; that would mix sources and
+                # invalidate the comparison).
+                continue
+        fx = _row_to_fixture(row, odds_override=override)
         if fx:
             fixture_rows.append(fx)
     if not fixture_rows:
-        return 0
+        return 0, 0
     fixtures = pd.DataFrame(fixture_rows)
 
     # Build features + predict
@@ -209,7 +262,7 @@ def _replay_one_day(
         if mi:
             inputs.append(mi)
     if not inputs:
-        return 0
+        return 0, len(fixtures)
 
     recs = recommend_combinations(
         inputs,
@@ -235,7 +288,7 @@ def _replay_one_day(
     # NOTE: recorder reads model_type from response["model"]["model_type"]
     # which _build_response_dict already populates. No extra kwarg needed.
     record_session(db_path, request=request_dict, response=response)
-    return len(recs)
+    return len(recs), len(fixtures)
 
 
 def _settle_outcomes(db_path: Path, all_matches: pd.DataFrame) -> dict:
@@ -304,6 +357,26 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--lineup-only", action="store_true",
         help="Skip the default arm (useful if lineup artifact missing — falls back to default-only)",
+    )
+    # post-v9 P1#21: cross-source backtest validation
+    p.add_argument(
+        "--odds-source", choices=("football_data", "odds_api"),
+        default="football_data",
+        help="Which source to use for backtest odds. 'football_data' "
+             "(default) uses the psc_* columns from the historical CSV "
+             "(Pinnacle CL). 'odds_api' fetches from The Odds API for "
+             "the date range and overrides psc_* — used to validate "
+             "that P1#18 ship decision isn't an artifact of one data source.",
+    )
+    p.add_argument(
+        "--strict-bookmaker", default="",
+        help="(odds_api source only) Require a specific bookmaker key "
+             "(e.g. 'pinnacle') — fixtures without that book are SKIPPED. "
+             "Default empty = fall back through PREFERRED_BOOKMAKERS. "
+             "Use 'pinnacle' for apples-to-apples comparison with "
+             "football_data PSC (which is also Pinnacle Closing Line); "
+             "without it, softer-book fallback inflates implied ROI by "
+             "10-100pp on small samples.",
     )
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
@@ -388,31 +461,92 @@ def main(argv: list[str] | None = None) -> int:
         log.error("No matches in date range; nothing to replay")
         return 1
 
+    # post-v9 P1#21: optionally build Odds API lookup for cross-source validation
+    odds_lookup: dict[tuple[str, str, str], dict] | None = None
+    odds_lookup_team_alias: dict[str, str] | None = None
+    if args.odds_source == "odds_api":
+        from nutmeg.v4.data.sources.odds_api import (
+            SPORT_KEYS as _ODDS_SPORT_KEYS,
+            build_psc_lookup_for_date_range,
+        )
+        # Build merged lookup across all requested leagues
+        log.info("Building Odds API closing-line lookup (10 quota per snapshot day)...")
+        odds_lookup = {}
+        for league in leagues:
+            sport_key = _ODDS_SPORT_KEYS.get(league)
+            if not sport_key:
+                log.warning("no Odds API sport_key for %s — skipping in cross-source mode", league)
+                continue
+            log.info("  fetching %s (sport_key=%s) %s → %s ...", league, sport_key, start.date(), end.date())
+            try:
+                lookup_one = build_psc_lookup_for_date_range(
+                    sport_key, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"),
+                    strict_bookmaker=(args.strict_bookmaker or None),
+                )
+            except Exception as e:
+                log.error("  failed for %s: %s — skipping", league, e)
+                continue
+            log.info("    → %d fixtures cached in lookup", len(lookup_one))
+            odds_lookup.update(lookup_one)
+        log.info(
+            "Odds API lookup total: %d fixtures (strict_bookmaker=%s)",
+            len(odds_lookup), args.strict_bookmaker or "<fallback chain>",
+        )
+        # Light team alias map: football-data spellings → Odds API spellings.
+        # Extend if join rate is low. Most domestic-league teams match natively.
+        odds_lookup_team_alias = {
+            "Bayern Munich":  "Bayern München",
+            "Wolves":         "Wolverhampton Wanderers",
+            "Brighton":       "Brighton and Hove Albion",
+            "Newcastle":      "Newcastle United",
+            "West Ham":       "West Ham United",
+            "Tottenham":      "Tottenham Hotspur",
+            "Inter":          "Inter Milan",
+            "Atletico Madrid":"Atlético Madrid",
+            "Paris SG":       "Paris Saint Germain",
+            "Lyon":           "Olympique Lyonnais",
+            "Marseille":      "Olympique Marseille",
+            "Nice":           "OGC Nice",
+        }
+
     # Group by date and replay
     sub["date_str"] = sub["date"].dt.strftime("%Y-%m-%d")
     n_sessions = {"default": 0, "lineup_aware": 0}
     n_recs = {"default": 0, "lineup_aware": 0}
+    n_fixtures_used = {"default": 0, "lineup_aware": 0}
     for day_str, day_matches in sub.groupby("date_str", sort=True):
         day = pd.Timestamp(day_str)
         # Default arm
         try:
-            n = _replay_one_day(out_db, day, day_matches, default_art, "default", args.bankroll)
+            n, nf = _replay_one_day(
+                out_db, day, day_matches, default_art, "default", args.bankroll,
+                odds_lookup=odds_lookup,
+                odds_lookup_team_alias=odds_lookup_team_alias,
+            )
             n_sessions["default"] += 1
             n_recs["default"] += n
+            n_fixtures_used["default"] += nf
         except Exception as e:
             log.error("  default arm failed for %s: %s", day_str, e)
         # Lineup arm (if available)
         if use_lineup and lineup_art is not None:
             try:
-                n = _replay_one_day(out_db, day, day_matches, lineup_art, "lineup_aware", args.bankroll)
+                n, nf = _replay_one_day(
+                    out_db, day, day_matches, lineup_art, "lineup_aware", args.bankroll,
+                    odds_lookup=odds_lookup,
+                    odds_lookup_team_alias=odds_lookup_team_alias,
+                )
                 n_sessions["lineup_aware"] += 1
                 n_recs["lineup_aware"] += n
+                n_fixtures_used["lineup_aware"] += nf
             except Exception as e:
                 log.error("  lineup arm failed for %s: %s", day_str, e)
         if (n_sessions["default"]) % 10 == 0:
             log.info(
-                "  progress: %s, %d days, default=%d recs, lineup=%d recs",
-                day_str, n_sessions["default"], n_recs["default"], n_recs["lineup_aware"],
+                "  progress: %s, %d days, default=%d recs (%d fixtures), lineup=%d recs (%d fixtures)",
+                day_str, n_sessions["default"],
+                n_recs["default"], n_fixtures_used["default"],
+                n_recs["lineup_aware"], n_fixtures_used["lineup_aware"],
             )
 
     log.info(
