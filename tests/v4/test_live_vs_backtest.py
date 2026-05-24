@@ -4,9 +4,8 @@ databases.
 """
 from __future__ import annotations
 
-import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -19,7 +18,6 @@ from nutmeg.v4.observation.store import (
     insert_settlement,
     open_db,
 )
-
 
 # ---- schema migration ----------------------------------------------------
 
@@ -152,13 +150,14 @@ class TestInsertSessionPhases:
             assert row["model_type"] == "catboost"
 
     def test_invalid_phase_rejected(self, tmp_path: Path) -> None:
-        with open_db(tmp_path / "obs.db") as conn:
-            with pytest.raises(ValueError, match="snapshot_phase must"):
-                insert_session(
-                    conn, bankroll=1000.0, model_cutoff=None, model_trained_at=None,
-                    n_fixtures=1, n_recommendations=0, request={}, metadata={},
-                    snapshot_phase="bogus",
-                )
+        with open_db(tmp_path / "obs.db") as conn, pytest.raises(
+            ValueError, match="snapshot_phase must"
+        ):
+            insert_session(
+                conn, bankroll=1000.0, model_cutoff=None, model_trained_at=None,
+                n_fixtures=1, n_recommendations=0, request={}, metadata={},
+                snapshot_phase="bogus",
+            )
 
 
 # ---- live_vs_backtest core logic -----------------------------------------
@@ -168,14 +167,14 @@ def seed_obs_db(tmp_path: Path):
     """Populate a fresh observation DB with a handful of settlements at
     different snapshot phases for slice tests."""
     db = tmp_path / "obs.db"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     with open_db(db) as conn:
         # Manually insert sessions with crafted created_at so windowing works
-        for i, (days_ago, phase) in enumerate([
+        for days_ago, phase in [
             (1, "closing"), (3, "closing"), (5, "pre_close"),
             (14, "closing"), (30, "closing"),  # 30-day-old should fall outside 2-week window
-        ]):
+        ]:
             ts = (now - timedelta(days=days_ago)).isoformat()
             conn.execute(
                 """INSERT INTO recommendation_sessions
@@ -203,6 +202,59 @@ def seed_obs_db(tmp_path: Path):
                     actual_payout=payout, profit_loss=payout - stake,
                 )
     return db
+
+
+def _insert_settled_session(
+    conn,
+    *,
+    with_lineups: bool | None,
+    hit: int,
+    stake: float,
+    payout: float,
+    hit_probability: float = 0.4,
+) -> int:
+    metadata = {}
+    if with_lineups is not None:
+        metadata = {"model": {"with_lineups": with_lineups}}
+    sid = insert_session(
+        conn,
+        bankroll=1000.0,
+        model_cutoff="2024-08-01",
+        model_trained_at="2024-08-01T00:00:00+00:00",
+        n_fixtures=2,
+        n_recommendations=1,
+        request={},
+        metadata=metadata,
+        model_type="catboost",
+    )
+    rid = insert_parlay_recommendation(
+        conn,
+        sid,
+        rank=1,
+        k_legs=2,
+        is_compound=False,
+        stake_units=1,
+        kelly_stake=stake,
+        expected_return=payout - stake,
+        hit_probability=hit_probability,
+        ev_per_unit=0.05,
+        log_growth=0.001,
+        legs=[],
+    )
+    insert_settlement(
+        conn,
+        rec_id=rid,
+        hit=hit,
+        stake=stake,
+        actual_payout=payout,
+        profit_loss=payout - stake,
+    )
+    created_at = (datetime.now(UTC) - timedelta(days=1)).isoformat(timespec="seconds")
+    conn.execute(
+        "UPDATE recommendation_sessions SET created_at=? WHERE session_id=?",
+        (created_at, sid),
+    )
+    return sid
 
 
 class TestSliceLiveSettled:
@@ -237,6 +289,46 @@ class TestSliceLiveSettled:
         assert live.roi == pytest.approx(0.25)
         assert live.actual_hit_rate == pytest.approx(0.5)
 
+    def test_filters_by_model_arm(self, tmp_path: Path) -> None:
+        db = tmp_path / "obs.db"
+        with open_db(db) as conn:
+            _insert_settled_session(
+                conn, with_lineups=True, hit=1, stake=100.0, payout=250.0
+            )
+            _insert_settled_session(
+                conn, with_lineups=False, hit=0, stake=100.0, payout=0.0
+            )
+            _insert_settled_session(
+                conn, with_lineups=None, hit=0, stake=100.0, payout=0.0
+            )
+
+            start, end = lvb._window_bounds(weeks=2)
+            all_live = lvb.slice_live_settled(
+                conn, start_iso=start, end_iso=end, model_arm="all"
+            )
+            aware = lvb.slice_live_settled(
+                conn, start_iso=start, end_iso=end, model_arm="lineup_aware"
+            )
+            free = lvb.slice_live_settled(
+                conn, start_iso=start, end_iso=end, model_arm="lineup_free"
+            )
+
+        assert all_live.n_settled == 3
+        assert aware.n_sessions == 1
+        assert aware.n_settled == 1
+        assert aware.actual_hit_rate == pytest.approx(1.0)
+        assert aware.roi == pytest.approx(1.5)
+        assert free.n_sessions == 2
+        assert free.n_settled == 2
+        assert free.actual_hit_rate == pytest.approx(0.0)
+
+    def test_invalid_model_arm_rejected(self, seed_obs_db: Path) -> None:
+        start, end = lvb._window_bounds(weeks=2)
+        with open_db(seed_obs_db) as conn, pytest.raises(ValueError, match="model_arm must"):
+            lvb.slice_live_settled(
+                conn, start_iso=start, end_iso=end, model_arm="unknown"
+            )
+
 
 class TestBacktestSliceFromPooled:
     def test_extracts_gbm_temp(self) -> None:
@@ -255,6 +347,34 @@ class TestBacktestSliceFromPooled:
 
     def test_none_when_no_gbm(self) -> None:
         assert lvb.backtest_slice_from_pooled({"test_n_full": 100}, cutoff="x") is None
+
+
+class TestRoiBacktestSliceFromDb:
+    def test_extracts_lineup_aware_reference(self, tmp_path: Path) -> None:
+        db = tmp_path / "roi_backtest.db"
+        with open_db(db) as conn:
+            _insert_settled_session(
+                conn, with_lineups=True, hit=1, stake=100.0, payout=225.0,
+                hit_probability=0.35,
+            )
+            _insert_settled_session(
+                conn, with_lineups=False, hit=0, stake=100.0, payout=0.0,
+                hit_probability=0.30,
+            )
+
+        ref = lvb.roi_backtest_slice_from_db(db, arm="lineup_aware")
+        assert ref.source == "roi_backtest"
+        assert ref.label == "lineup-aware ROI backtest"
+        assert ref.n_sessions == 1
+        assert ref.n_settled == 1
+        assert ref.roi == pytest.approx(1.25)
+        assert ref.hit_rate == pytest.approx(1.0)
+        assert ref.avg_hit_p_predicted == pytest.approx(0.35)
+        assert ref.log_loss is None
+
+    def test_missing_db_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError, match="ROI backtest DB not found"):
+            lvb.roi_backtest_slice_from_db(tmp_path / "missing.db")
 
 
 class TestComputeGap:
@@ -292,6 +412,49 @@ class TestComputeGap:
         assert report.over_tolerance is False
         assert report.hit_rate_gap_pp is None
 
+    def test_roi_reference_gap_uses_roi_and_hit_rate(self) -> None:
+        backtest = lvb.BacktestSlice(
+            cutoff="roi-backtest",
+            test_n_full=100,
+            test_n_gbm=100,
+            log_loss=None,
+            hit_rate=0.50,
+            ece=None,
+            source="roi_backtest",
+            label="lineup-aware ROI backtest",
+            n_sessions=20,
+            n_settled=100,
+            roi=0.14,
+        )
+        report = lvb.compute_gap(self._live(0.52), backtest)
+        assert report.hit_rate_gap_pp == pytest.approx(2.0)
+        assert report.roi_gap_pp == pytest.approx(6.0)
+        assert report.over_tolerance is True
+
+    def test_no_live_samples_does_not_alert(self) -> None:
+        live = lvb.LiveSlice(
+            n_sessions=0, n_settled=0, n_hit=0, n_partial=0, n_miss=0,
+            total_stake=0.0, total_payout=0.0, profit_loss=0.0, roi=0.0,
+            avg_hit_p_predicted=0.0, actual_hit_rate=0.0,
+        )
+        backtest = lvb.BacktestSlice(
+            cutoff="roi-backtest",
+            test_n_full=100,
+            test_n_gbm=100,
+            log_loss=None,
+            hit_rate=0.50,
+            ece=None,
+            source="roi_backtest",
+            label="lineup-aware ROI backtest",
+            n_sessions=20,
+            n_settled=100,
+            roi=0.14,
+        )
+        report = lvb.compute_gap(live, backtest)
+        assert report.hit_rate_gap_pp is None
+        assert report.roi_gap_pp is None
+        assert report.over_tolerance is False
+
 
 class TestFormatReport:
     def test_contains_expected_sections(self, seed_obs_db: Path) -> None:
@@ -311,3 +474,32 @@ class TestFormatReport:
         assert "## Live (real-bet) slice" in out
         assert "## Backtest slice" in out
         assert "## Gap" in out
+
+    def test_roi_backtest_reference_format(self, tmp_path: Path) -> None:
+        live_db = tmp_path / "live.db"
+        ref_db = tmp_path / "roi_backtest.db"
+        with open_db(live_db) as conn:
+            _insert_settled_session(
+                conn, with_lineups=True, hit=1, stake=100.0, payout=220.0,
+                hit_probability=0.45,
+            )
+        with open_db(ref_db) as conn:
+            _insert_settled_session(
+                conn, with_lineups=True, hit=1, stake=100.0, payout=210.0,
+                hit_probability=0.40,
+            )
+
+        report = lvb.run(
+            str(live_db),
+            weeks=2,
+            backtest_pooled=None,
+            backtest_cutoff=None,
+            live_model_arm="lineup_aware",
+            roi_backtest_db=ref_db,
+            roi_backtest_arm="lineup_aware",
+        )
+        out = lvb.format_report(report, weeks=2, as_of_iso="2025-01-15 10:00 UTC")
+        assert report.backtest is not None
+        assert report.backtest.source == "roi_backtest"
+        assert "historical ROI replay" in out
+        assert "ROI gap (live - backtest)" in out

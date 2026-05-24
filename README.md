@@ -8,21 +8,20 @@ J1, and the UEFA cups, then surfaces those into single-match predictions and
 **Important:** Nutmeg does not implement automated betting, wallets, payments, or
 profit-certainty claims. Outputs are probabilities and educational recommendations.
 
-## Current State (V5 in progress)
+## Current State (post-V9 maintenance)
 
 | | Status |
 |---|---|
-| Production model | V4: GBM-λ (LightGBM Poisson) + Dixon-Coles score grid + Temperature scaling |
-| Validated log-loss (24/25 test) | **0.9987** vs Pinnacle closing **0.9904** (Δ +0.0083) |
-| Signal capture rate | **92.3%** (vs uniform→Pinnacle gap) |
-| Multi-season stability | 22/23 + 23/24 + 24/25 all show Δ +0.008–0.009 |
-| Tests | 112/112 V4 unit + integration |
+| Production model | post-V9 P1#18: lineup-aware CatBoost artifact (`data/v4_model_cat_lineups`) is the CLI/local-server default |
+| Latest model verdict | P1#17/P1#18 historical ROI replay: lineup-aware **+1.40% ROI** vs lineup-free **-19.08% ROI** over 35 weeks |
+| Current validation work | P1#19: live lineup-aware ROI vs historical ROI-backtest gate |
+| Tests | V4 unit/integration/E2E suite maintained under `tests/v4/` |
 | Frontend | Single-page V4 dashboard at `/api/v4/dashboard` (no Node build) |
 
-V5 is the active development line: data extension (free xG / market dynamics),
-ensemble (XGBoost + CatBoost + LogReg stacker), Bayesian hierarchical for
-small-sample leagues, observation loop, and aggressive code thinning. See
-[docs/V5_ROADMAP.md](docs/V5_ROADMAP.md) for the 12-week plan.
+V9 has shipped; current work is the post-V9 P1 maintenance chain. Start with
+[docs/post_v9_p1_18_ship_lineup_aware.md](docs/post_v9_p1_18_ship_lineup_aware.md)
+and [docs/post_v9_p1_19_live_roi_backtest_gate.md](docs/post_v9_p1_19_live_roi_backtest_gate.md)
+for the current production/default-model context.
 
 ## Quick Start
 
@@ -36,8 +35,8 @@ PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.bench
 # Run V4 tests
 PYTHONPATH=apps/api/src .venv/bin/python -m pytest tests/v4/
 
-# Start the API + dashboard
-NUTMEG_V4_ARTIFACT_PATH=data/v4_model .venv/bin/python -m nutmeg.main
+# Start the API + dashboard with the post-V9 lineup-aware default
+./scripts/run_local_server.sh
 # then open http://localhost:8000/api/v4/dashboard
 ```
 
@@ -59,10 +58,11 @@ apps/api/src/nutmeg/
     cli/             # bench / train / recommend / record-outcome / roi-report
 configs/competitions/  # league metadata
 data/historical_sources/   # football-data.co.uk CSV (27k matches, 13 leagues)
-data/v4_model/             # serialized V4 booster + team state + temperature
+data/v4_model_cat_lineups/ # post-V9 P1#18 default artifact
 docs/
-  V4_HANDOFF.md         # V4 design + Phase A–D notes
-  V5_ROADMAP.md         # active 12-week plan
+  V9_HANDOFF.md         # V9 ship state
+  post_v9_p1_18_ship_lineup_aware.md
+  post_v9_p1_19_live_roi_backtest_gate.md
   v4_baseline_card.md   # current benchmark numbers
   v4_multi_season_card.md
   legacy/               # archived V2/V3 docs

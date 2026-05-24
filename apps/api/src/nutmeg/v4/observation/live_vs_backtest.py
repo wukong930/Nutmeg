@@ -21,13 +21,12 @@ Usage:
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
-from nutmeg.v4.observation.roi import compute_headline
 from nutmeg.v4.observation.store import open_db
-
 
 # A live-vs-backtest ROI gap above this many percentage points is flagged.
 # Empirical: V4 backtest ROI variance over 4-week windows is ~1-3pp; a 5pp
@@ -54,14 +53,20 @@ class LiveSlice:
 
 @dataclass
 class BacktestSlice:
-    """ROI / hit-rate snapshot from a walk-forward backtest summary dict."""
+    """Reference snapshot from either walk-forward or ROI replay backtests."""
 
     cutoff: str
     test_n_full: int
     test_n_gbm: int
-    log_loss: float
+    log_loss: float | None
     hit_rate: float
-    ece: float
+    ece: float | None
+    source: str = "walk_forward"
+    label: str = "walk-forward"
+    n_sessions: int = 0
+    n_settled: int = 0
+    roi: float | None = None
+    avg_hit_p_predicted: float | None = None
 
 
 @dataclass
@@ -75,7 +80,7 @@ class GapReport:
 
 def _window_bounds(weeks: int, as_of: datetime | None = None) -> tuple[str, str]:
     """Return (start_iso, end_iso) covering the most recent ``weeks`` weeks."""
-    end = (as_of or datetime.now(timezone.utc)).replace(microsecond=0)
+    end = (as_of or datetime.now(UTC)).replace(microsecond=0)
     start = end - timedelta(weeks=weeks)
     return start.isoformat(), end.isoformat()
 
@@ -86,6 +91,7 @@ def slice_live_settled(
     start_iso: str,
     end_iso: str,
     snapshot_phase: str | None = None,
+    model_arm: str | None = None,
 ) -> LiveSlice:
     """Compute headline ROI for settlements whose session was created in window."""
     base_sql = """
@@ -100,6 +106,19 @@ def slice_live_settled(
     if snapshot_phase is not None:
         base_sql += " AND r.snapshot_phase = ?"
         params.append(snapshot_phase)
+    if model_arm in (None, "all"):
+        pass
+    elif model_arm == "lineup_aware":
+        base_sql += " AND json_extract(r.metadata_json, '$.model.with_lineups') = 1"
+    elif model_arm == "lineup_free":
+        base_sql += (
+            " AND (json_extract(r.metadata_json, '$.model.with_lineups') IS NULL"
+            " OR json_extract(r.metadata_json, '$.model.with_lineups') = 0)"
+        )
+    else:
+        raise ValueError(
+            "model_arm must be one of None, 'all', 'lineup_aware', 'lineup_free'"
+        )
     rows = list(conn.execute(base_sql, params).fetchall())
 
     n_settled = len(rows)
@@ -116,7 +135,16 @@ def slice_live_settled(
     sess = conn.execute(
         "SELECT COUNT(*) AS c FROM recommendation_sessions "
         "WHERE created_at >= ? AND created_at < ?"
-        + (" AND snapshot_phase = ?" if snapshot_phase is not None else ""),
+        + (" AND snapshot_phase = ?" if snapshot_phase is not None else "")
+        + (
+            " AND json_extract(metadata_json, '$.model.with_lineups') = 1"
+            if model_arm == "lineup_aware" else ""
+        )
+        + (
+            " AND (json_extract(metadata_json, '$.model.with_lineups') IS NULL"
+            " OR json_extract(metadata_json, '$.model.with_lineups') = 0)"
+            if model_arm == "lineup_free" else ""
+        ),
         params,
     ).fetchone()
     n_sessions = int(sess["c"]) if sess else 0
@@ -136,7 +164,7 @@ def slice_live_settled(
     )
 
 
-def backtest_slice_from_pooled(pooled: dict, cutoff: str) -> BacktestSlice | None:
+def backtest_slice_from_pooled(pooled: dict[str, Any], cutoff: str) -> BacktestSlice | None:
     """Build a BacktestSlice from the dict returned by walk_forward.run_walk_forward.
 
     Returns None when the relevant GBM-eligible numbers are not in the pool
@@ -152,6 +180,47 @@ def backtest_slice_from_pooled(pooled: dict, cutoff: str) -> BacktestSlice | Non
         log_loss=float(gbm_t["log_loss"]),
         hit_rate=float(gbm_t["hit_rate"]),
         ece=float(gbm_t["ece"]),
+        source="walk_forward",
+        label="walk-forward",
+    )
+
+
+def roi_backtest_slice_from_db(db_path: str | Path, *, arm: str = "lineup_aware") -> BacktestSlice:
+    """Build a reference slice from a DB produced by ``nutmeg-roi-backtest``.
+
+    P1#19: after P1#18 flipped production to lineup-aware, the most useful
+    reference is no longer only walk-forward hit-rate. We need the historical
+    recommendation replay's ROI + hit-rate, sliced to the same model arm.
+    """
+    from nutmeg.v4.observation.ab_report import slice_lineup_aware, slice_lineup_free
+
+    p = Path(db_path)
+    if not p.exists():
+        raise FileNotFoundError(f"ROI backtest DB not found: {p}")
+
+    with open_db(p) as conn:
+        if arm == "lineup_aware":
+            ref = slice_lineup_aware(conn)
+            label = "lineup-aware ROI backtest"
+        elif arm in ("lineup_free", "default"):
+            ref = slice_lineup_free(conn)
+            label = "lineup-free ROI backtest"
+        else:
+            raise ValueError("arm must be one of 'lineup_aware', 'lineup_free', 'default'")
+
+    return BacktestSlice(
+        cutoff="roi-backtest",
+        test_n_full=ref.n_settled,
+        test_n_gbm=ref.n_settled,
+        log_loss=None,
+        hit_rate=ref.actual_hit_rate,
+        ece=None,
+        source="roi_backtest",
+        label=label,
+        n_sessions=ref.n_sessions,
+        n_settled=ref.n_settled,
+        roi=ref.roi,
+        avg_hit_p_predicted=ref.avg_hit_p_predicted,
     )
 
 
@@ -160,16 +229,24 @@ def compute_gap(live: LiveSlice, backtest: BacktestSlice | None) -> GapReport:
     if backtest is None:
         return GapReport(live=live, backtest=None, roi_gap_pp=None,
                          hit_rate_gap_pp=None, over_tolerance=False)
+    if live.n_settled == 0 or (backtest.source == "roi_backtest" and backtest.n_settled == 0):
+        return GapReport(live=live, backtest=backtest, roi_gap_pp=None,
+                         hit_rate_gap_pp=None, over_tolerance=False)
     # Backtest doesn't have ROI (it has log-loss/hit-rate). The closest analog
     # is hit-rate, so we compare both: hit-rate gap directly, ROI gap inferred.
     hit_rate_gap_pp = (live.actual_hit_rate - backtest.hit_rate) * 100.0
-    # ROI is harder — backtests give probabilities, not ROI; for now we report
-    # hit_rate gap as the primary alert signal and live ROI separately.
+    roi_gap_pp = (
+        (live.roi - backtest.roi) * 100.0
+        if backtest.roi is not None
+        else None
+    )
     over_tol = abs(hit_rate_gap_pp) > LIVE_BACKTEST_TOLERANCE_PCT_POINTS
+    if roi_gap_pp is not None:
+        over_tol = over_tol or abs(roi_gap_pp) > LIVE_BACKTEST_TOLERANCE_PCT_POINTS
     return GapReport(
         live=live,
         backtest=backtest,
-        roi_gap_pp=None,  # Not directly comparable without a backtest-stake model
+        roi_gap_pp=roi_gap_pp,
         hit_rate_gap_pp=hit_rate_gap_pp,
         over_tolerance=over_tol,
     )
@@ -203,16 +280,41 @@ def format_report(report: GapReport, *, weeks: int, as_of_iso: str) -> str:
         lines.append("")
     else:
         B = report.backtest
-        lines.append("## Backtest slice (walk-forward on training data)")
+        if B.source == "roi_backtest":
+            lines.append("## Backtest slice (historical ROI replay)")
+        else:
+            lines.append("## Backtest slice (walk-forward on training data)")
         lines.append("")
-        lines.append(f"- Cutoff: **{B.cutoff}** (test pool n={B.test_n_gbm})")
-        lines.append(f"- log-loss: **{B.log_loss:.4f}**, hit-rate: **{B.hit_rate*100:.2f}%**, "
-                     f"ECE: **{B.ece:.4f}**")
+        lines.append(f"- Reference: **{B.label}**")
+        if B.source == "roi_backtest":
+            lines.append(
+                f"- Sessions: **{B.n_sessions}**, "
+                f"settled recommendations: **{B.n_settled}**"
+            )
+            if B.roi is not None:
+                lines.append(f"- ROI: **{B.roi*100:+.2f}%**")
+            if B.avg_hit_p_predicted is not None:
+                lines.append(
+                    f"- Hit-rate: predicted **{B.avg_hit_p_predicted*100:.2f}%**, "
+                    f"actual **{B.hit_rate*100:.2f}%**"
+                )
+            else:
+                lines.append(f"- Hit-rate: **{B.hit_rate*100:.2f}%**")
+        else:
+            lines.append(f"- Cutoff: **{B.cutoff}** (test pool n={B.test_n_gbm})")
+            log_loss = "n/a" if B.log_loss is None else f"{B.log_loss:.4f}"
+            ece = "n/a" if B.ece is None else f"{B.ece:.4f}"
+            lines.append(
+                f"- log-loss: **{log_loss}**, hit-rate: **{B.hit_rate*100:.2f}%**, "
+                f"ECE: **{ece}**"
+            )
         lines.append("")
         lines.append("## Gap")
         lines.append("")
+        if report.roi_gap_pp is not None:
+            lines.append(f"- ROI gap (live - backtest): **{report.roi_gap_pp:+.2f} pp**")
         if report.hit_rate_gap_pp is not None:
-            lines.append(f"- Hit-rate gap (live − backtest): **{report.hit_rate_gap_pp:+.2f} pp**")
+            lines.append(f"- Hit-rate gap (live - backtest): **{report.hit_rate_gap_pp:+.2f} pp**")
         lines.append(f"- Tolerance: ±{LIVE_BACKTEST_TOLERANCE_PCT_POINTS:.1f} pp")
         if report.over_tolerance:
             lines.append("- **⚠️ OVER TOLERANCE** — investigate (leakage? lucky variance? "
@@ -223,9 +325,9 @@ def format_report(report: GapReport, *, weeks: int, as_of_iso: str) -> str:
 
     lines.append("## Notes")
     lines.append("")
-    lines.append("- This compares **hit-rate** (the directly observable quantity) between "
-                 "real settlements and what the backtest predicted on the test split. "
-                 "ROI requires a stake model that the backtest doesn't run.")
+    lines.append("- Walk-forward references compare hit-rate only; ROI-replay references "
+                 "compare both ROI and hit-rate because they run the recommendation "
+                 "stake model end-to-end.")
     lines.append("- A 1-3 pp gap is normal sampling noise for 4-week windows. ")
     lines.append("- See `docs/v5_w8_observation_loop.md` for the full observation pipeline.")
     return "\n".join(lines)
@@ -235,10 +337,13 @@ def run(
     db_path: str,
     *,
     weeks: int,
-    backtest_pooled: dict | None,
+    backtest_pooled: dict[str, Any] | None,
     backtest_cutoff: str | None,
     snapshot_phase: str | None = None,
     as_of: datetime | None = None,
+    live_model_arm: str | None = None,
+    roi_backtest_db: str | Path | None = None,
+    roi_backtest_arm: str = "lineup_aware",
 ) -> GapReport:
     """End-to-end helper. Loads live slice from db, pairs with backtest dict
     (typically the ``pooled`` field of a walk_forward result), and returns
@@ -247,13 +352,19 @@ def run(
     start_iso, end_iso = _window_bounds(weeks, as_of=as_of)
     with open_db(db_path) as conn:
         live = slice_live_settled(
-            conn, start_iso=start_iso, end_iso=end_iso, snapshot_phase=snapshot_phase
+            conn,
+            start_iso=start_iso,
+            end_iso=end_iso,
+            snapshot_phase=snapshot_phase,
+            model_arm=live_model_arm,
         )
-    backtest = (
-        backtest_slice_from_pooled(backtest_pooled, backtest_cutoff or "")
-        if backtest_pooled is not None
-        else None
-    )
+    backtest: BacktestSlice | None
+    if roi_backtest_db is not None:
+        backtest = roi_backtest_slice_from_db(roi_backtest_db, arm=roi_backtest_arm)
+    elif backtest_pooled is not None:
+        backtest = backtest_slice_from_pooled(backtest_pooled, backtest_cutoff or "")
+    else:
+        backtest = None
     return compute_gap(live, backtest)
 
 
@@ -264,6 +375,7 @@ __all__ = [
     "GapReport",
     "slice_live_settled",
     "backtest_slice_from_pooled",
+    "roi_backtest_slice_from_db",
     "compute_gap",
     "format_report",
     "run",

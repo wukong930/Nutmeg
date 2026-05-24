@@ -1,11 +1,11 @@
 """Tests for /v4/observation/* endpoints."""
+import datetime as dt
 import os
 from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -37,10 +37,18 @@ def populated_db_client(tmp_path):
         "model": {"training_cutoff": "2025-06-01", "trained_at_utc": "2026-05-22T09:00:00+00:00"},
         "bankroll": 1000.0, "n_fixtures": 2, "n_recommendations": 2,
         "single_match_predictions": [
-            {"date": "2025-08-17", "league": "EPL", "home_team": "Arsenal", "away_team": "Liverpool",
-             "lambda_home": 1.5, "lambda_away": 1.0, "p_home_1x2": 0.50, "p_draw_1x2": 0.25, "p_away_1x2": 0.25},
-            {"date": "2025-08-17", "league": "ITA_SERIE_A", "home_team": "Inter", "away_team": "Roma",
-             "lambda_home": 1.4, "lambda_away": 1.1, "p_home_1x2": 0.45, "p_draw_1x2": 0.28, "p_away_1x2": 0.27},
+            {
+                "date": "2025-08-17", "league": "EPL",
+                "home_team": "Arsenal", "away_team": "Liverpool",
+                "lambda_home": 1.5, "lambda_away": 1.0,
+                "p_home_1x2": 0.50, "p_draw_1x2": 0.25, "p_away_1x2": 0.25,
+            },
+            {
+                "date": "2025-08-17", "league": "ITA_SERIE_A",
+                "home_team": "Inter", "away_team": "Roma",
+                "lambda_home": 1.4, "lambda_away": 1.1,
+                "p_home_1x2": 0.45, "p_draw_1x2": 0.28, "p_away_1x2": 0.27,
+            },
         ],
         "recommendations": [
             {"rank": 1, "k_legs": 2, "is_compound": False, "stake_units": 1,
@@ -65,6 +73,13 @@ def populated_db_client(tmp_path):
     }
     record_session(db, request={}, response=resp)
     with open_db(db) as conn:
+        created_at = (dt.datetime.now(dt.UTC) - dt.timedelta(days=1)).isoformat(
+            timespec="seconds"
+        )
+        conn.execute(
+            "UPDATE recommendation_sessions SET created_at=?",
+            (created_at,),
+        )
         upsert_outcome(conn, match_date="2025-08-17", league="EPL",
                         home_team="Arsenal", away_team="Liverpool",
                         home_goals=2, away_goals=0)
@@ -297,6 +312,20 @@ class TestLiveVsBacktestEndpoint:
         # The populated_db_client fixture used default 'closing' phase, so a
         # pre_close filter should see zero
         assert body["snapshot_phase"] == "pre_close"
+        assert body["live"]["n_settled"] == 0
+
+    def test_model_arm_filter(self, populated_db_client):
+        client, _ = populated_db_client
+        body = client.get(
+            "/api/v4/observation/live-vs-backtest?weeks=4&model_arm=lineup_free"
+        ).json()
+        assert body["model_arm"] == "lineup_free"
+        assert body["live"]["n_settled"] == 2
+
+        body = client.get(
+            "/api/v4/observation/live-vs-backtest?weeks=4&model_arm=lineup_aware"
+        ).json()
+        assert body["model_arm"] == "lineup_aware"
         assert body["live"]["n_settled"] == 0
 
     def test_within_tolerance_by_default(self, populated_db_client):

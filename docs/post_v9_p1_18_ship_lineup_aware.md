@@ -113,6 +113,12 @@ P1#19 retrospective; possibly revert default while investigating
 backtest-vs-live gap (likely a market-price discrepancy: SP odds
 not = Pinnacle closing the bot sees in the historical CSVs).
 
+Post-P1#19 note: the direct gate now exists. Use
+`nutmeg-live-vs-backtest --live-model-arm lineup_aware --roi-backtest-db
+data/v4_observation_backtest.db --roi-backtest-arm lineup_aware` to compare
+live lineup-aware results against the P1#17 ROI replay DB. See
+[post_v9_p1_19_live_roi_backtest_gate.md](post_v9_p1_19_live_roi_backtest_gate.md).
+
 ## Files touched in P1#18
 
 ```

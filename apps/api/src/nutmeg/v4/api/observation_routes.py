@@ -5,11 +5,10 @@ observation DB is optional (a deployment may run without it).
 """
 from __future__ import annotations
 
-import json
 import os
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, HTTPException, status
 from pydantic import BaseModel, Field
@@ -31,7 +30,6 @@ from nutmeg.v4.observation.roi import (
     group_by_league,
     weekly_pl,
 )
-
 
 router = APIRouter(prefix="/v4/observation", tags=["v4-observation"])
 
@@ -80,7 +78,7 @@ class ROIByKLegs(BaseModel):
     stake: float
     payout: float
     pl: float
-    avg_hit_p: Optional[float] = None
+    avg_hit_p: float | None = None
 
 
 class ROIByLeague(BaseModel):
@@ -125,7 +123,7 @@ class SessionSummary(BaseModel):
     bankroll: float
     n_fixtures: int
     n_recommendations: int
-    model_cutoff: Optional[str] = None
+    model_cutoff: str | None = None
 
 
 class SessionsResponse(BaseModel):
@@ -139,7 +137,7 @@ class LatestSessionResponse(BaseModel):
     DB is empty or doesn't exist — that's the only valid `recorded=False`
     signal. Don't conflate with 'env disabled' (caller already knows env)."""
     recorded: bool
-    session: Optional[SessionSummary] = None
+    session: SessionSummary | None = None
 
 
 class OutcomeInput(BaseModel):
@@ -157,7 +155,7 @@ class OutcomesBatchRequest(BaseModel):
 
 class OutcomesBatchResponse(BaseModel):
     n_recorded: int
-    settle_counts: dict
+    settle_counts: dict[str, Any]
 
 
 # ----- Endpoints ---------------------------------------------------------
@@ -208,12 +206,15 @@ def roi(n_bins: int = 5) -> ROIResponse:
             avg_hit_p_predicted=h.avg_hit_p_predicted,
             actual_hit_rate=h.actual_hit_rate,
         ),
-        by_k_legs=[ROIByKLegs(**{
-            "k_legs": int(r["k_legs"]), "n": int(r["n"]),
-            "n_hit": int(r["n_hit"] or 0), "stake": float(r["stake"]),
-            "payout": float(r["payout"]), "pl": float(r["pl"]),
-            "avg_hit_p": float(r["avg_hit_p"]) if r["avg_hit_p"] is not None else None,
-        }) for r in by_k],
+        by_k_legs=[
+            ROIByKLegs(
+                k_legs=int(r["k_legs"]), n=int(r["n"]),
+                n_hit=int(r["n_hit"] or 0), stake=float(r["stake"]),
+                payout=float(r["payout"]), pl=float(r["pl"]),
+                avg_hit_p=float(r["avg_hit_p"]) if r["avg_hit_p"] is not None else None,
+            )
+            for r in by_k
+        ],
         by_league=[ROIByLeague(**r) for r in by_lg],
         calibration=[ROICalibrationBucket(**r) for r in cal],
         weekly=[ROIWeeklyEntry(**r) for r in weekly],
@@ -266,7 +267,7 @@ def latest_session() -> LatestSessionResponse:
 
 
 @router.post("/outcomes", response_model=OutcomesBatchResponse)
-def post_outcomes(req: OutcomesBatchRequest = Body(...)) -> OutcomesBatchResponse:
+def post_outcomes(req: Annotated[OutcomesBatchRequest, Body(...)]) -> OutcomesBatchResponse:
     db = _db_path()
     n = 0
     with open_db(db) as conn:
@@ -298,12 +299,14 @@ class LiveVsBacktestResponse(BaseModel):
     """
 
     weeks: int
-    snapshot_phase: Optional[str] = None
+    snapshot_phase: str | None = None
+    model_arm: str | None = None
     tolerance_pp: float
     over_tolerance: bool
-    live: dict
-    backtest: Optional[dict] = None
-    hit_rate_gap_pp: Optional[float] = None
+    live: dict[str, Any]
+    backtest: dict[str, Any] | None = None
+    roi_gap_pp: float | None = None
+    hit_rate_gap_pp: float | None = None
 
 
 @router.get(
@@ -312,7 +315,9 @@ class LiveVsBacktestResponse(BaseModel):
     summary="Live ROI / hit-rate vs (optional) backtest reference, last N weeks",
 )
 def live_vs_backtest_route(
-    weeks: int = 4, snapshot_phase: Optional[str] = None
+    weeks: int = 4,
+    snapshot_phase: str | None = None,
+    model_arm: Literal["all", "lineup_aware", "lineup_free"] | None = None,
 ) -> LiveVsBacktestResponse:
     """GET-only endpoint (read live DB; no backtest run inline).
 
@@ -326,8 +331,7 @@ def live_vs_backtest_route(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"observation DB not found at {db}",
         )
-    from datetime import datetime, timedelta, timezone
-    end = datetime.now(timezone.utc).replace(microsecond=0)
+    end = datetime.now(UTC).replace(microsecond=0)
     start = end - timedelta(weeks=weeks)
     with open_db(db) as conn:
         live = slice_live_settled(
@@ -335,11 +339,13 @@ def live_vs_backtest_route(
             start_iso=start.isoformat(),
             end_iso=end.isoformat(),
             snapshot_phase=snapshot_phase,
+            model_arm=model_arm,
         )
     report = compute_gap(live, None)  # no backtest from HTTP
     return LiveVsBacktestResponse(
         weeks=weeks,
         snapshot_phase=snapshot_phase,
+        model_arm=model_arm,
         tolerance_pp=LIVE_BACKTEST_TOLERANCE_PCT_POINTS,
         over_tolerance=report.over_tolerance,
         live={
@@ -356,5 +362,6 @@ def live_vs_backtest_route(
             "actual_hit_rate": live.actual_hit_rate,
         },
         backtest=None,
+        roi_gap_pp=report.roi_gap_pp,
         hit_rate_gap_pp=report.hit_rate_gap_pp,
     )
