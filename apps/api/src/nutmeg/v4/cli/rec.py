@@ -256,9 +256,10 @@ def _run_single(args, reader: Callable[[str], str]) -> str:
         default=1000.0,
         reader=reader,
     )
+    # post-v9 P1#18: flipped to lineup-aware (see docs/post_v9_p1_18_ship_lineup_aware.md)
     model_path = args.model or _prompt(
         "请输入模型路径",
-        default="data/v4_model_cat",
+        default="data/v4_model_cat_lineups",
         reader=reader,
     )
 
@@ -295,7 +296,7 @@ def _run_parlay(args, reader: Callable[[str], str]) -> str:
     )
     model_path = args.model or _prompt(
         "请输入模型路径",
-        default="data/v4_model_cat",
+        default="data/v4_model_cat_lineups",   # post-v9 P1#18
         reader=reader,
     )
     k_min = args.k_min if args.k_min is not None else _prompt_int(
@@ -352,7 +353,7 @@ def _run_pool(args, reader: Callable[[str], str]) -> str:
     )
     model_path = args.model or _prompt(
         "请输入模型路径",
-        default="data/v4_model_cat",
+        default="data/v4_model_cat_lineups",   # post-v9 P1#18
         reader=reader,
     )
     fixtures = _read_pool_fixtures(fixtures_path)

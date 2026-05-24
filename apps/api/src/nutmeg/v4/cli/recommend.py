@@ -223,7 +223,13 @@ def _format_json(fixtures, lambdas, recs, bankroll, artifact_meta):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="V4 daily recommendation CLI")
     parser.add_argument("--fixtures", required=True, help="Today's fixture CSV")
-    parser.add_argument("--model", default="data/v4_model", help="Trained artifact directory")
+    # post-v9 P1#18: default flipped from V5 W12 CatBoost ('data/v4_model')
+    # to V6 W7 lineup-aware CatBoost. Decision rationale: 3-chunk 24/25
+    # backtest (Sep-Nov / Dec-Feb / Mar-May) shows lineup-aware leads
+    # default by +16/+25/+46pp ROI consistently (all 3 chunks). Default
+    # actually LOSES money in all 3 sub-periods (-2.6/-28.5/-16.8% ROI)
+    # while lineup-aware is mean-positive. See docs/post_v9_p1_18_ship_lineup_aware.md.
+    parser.add_argument("--model", default="data/v4_model_cat_lineups", help="Trained artifact directory")
     parser.add_argument("--bankroll", type=float, default=1000.0)
     parser.add_argument("--top-n", type=int, default=10)
     parser.add_argument("--min-hit-probability", type=float, default=0.05)

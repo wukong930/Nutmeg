@@ -35,6 +35,10 @@ fi
 
 # Default the observation DB if not in .env
 export NUTMEG_V4_OBSERVATION_DB="${NUTMEG_V4_OBSERVATION_DB:-$REPO_ROOT/data/v4_observation.db}"
+# post-v9 P1#18: default to lineup-aware artifact (V6 W7) — proven
+# +20.48pp ROI advantage over V5 W12 default on 35-week, 3-chunk
+# stable backtest. Can override via .env if you want to A/B locally.
+export NUTMEG_V4_ARTIFACT_PATH="${NUTMEG_V4_ARTIFACT_PATH:-$REPO_ROOT/data/v4_model_cat_lineups}"
 export PYTHONPATH="$REPO_ROOT/apps/api/src"
 
 echo "Starting Nutmeg API on http://$HOST:$PORT (Ctrl-C to stop)"
