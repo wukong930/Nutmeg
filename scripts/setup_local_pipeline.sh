@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# post-v9 P1#16 — one-shot install of the local Nutmeg data pipeline (macOS).
+#
+# Installs 3 launchd jobs into ~/Library/LaunchAgents:
+#   1. com.nutmeg.daily_odds        14:00 daily — fetch today's odds
+#   2. com.nutmeg.daily_recommend   15:00 daily — generate recommendations + record session
+#   3. com.nutmeg.weekly_settle     Sunday 02:00 — settle past-week outcomes + write ROI report
+#
+# All 3 read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
+# (no plaintext key in plists). Logs go to logs/launchd/.
+#
+# Usage:   ./scripts/setup_local_pipeline.sh
+# Re-run:  safe to re-run; bootout + bootstrap each job before installing
+# Undo:    ./scripts/teardown_local_pipeline.sh
+#
+# Why launchd not crontab? macOS prefers launchd: (a) survives reboots
+# automatically, (b) handles missed runs (RunAtLoad), (c) GUI-inspectable
+# via Console.app, (d) per-job log files, (e) no fragile crontab format.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+PLATFORM="$(uname -s)"
+if [[ "$PLATFORM" != "Darwin" ]]; then
+  echo "ERROR: this script only supports macOS (uname=$PLATFORM)" >&2
+  echo "  For Linux: write a systemd unit or use crontab manually." >&2
+  exit 1
+fi
+
+# Resolve absolute paths (launchd needs them; relative paths don't work)
+VENV_PY="$REPO_ROOT/.venv/bin/python"
+LOG_DIR="$REPO_ROOT/logs/launchd"
+DB_PATH="$REPO_ROOT/data/v4_observation.db"
+PLIST_DIR="$HOME/Library/LaunchAgents"
+
+if [[ ! -x "$VENV_PY" ]]; then
+  echo "ERROR: $VENV_PY not found or not executable" >&2
+  echo "  Set up the venv first (uv pip install -e .)" >&2
+  exit 1
+fi
+if [[ ! -f .env ]]; then
+  echo "ERROR: .env not found at $REPO_ROOT/.env" >&2
+  echo "  Create it with NUTMEG_API_FOOTBALL_KEY=<your-key>" >&2
+  exit 1
+fi
+
+mkdir -p "$LOG_DIR" "$PLIST_DIR"
+
+# Helper: write a single plist atomically + bootstrap it
+install_job() {
+  local label="$1"
+  local hour="$2"
+  local minute="$3"
+  local weekday="$4"   # 0-6 (0=Sun); empty for "every day"
+  local script="$5"
+
+  local plist="$PLIST_DIR/$label.plist"
+  local out_log="$LOG_DIR/$label.out.log"
+  local err_log="$LOG_DIR/$label.err.log"
+
+  local calendar_xml="<key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>$hour</integer>
+        <key>Minute</key><integer>$minute</integer>"
+  if [[ -n "$weekday" ]]; then
+    calendar_xml="$calendar_xml
+        <key>Weekday</key><integer>$weekday</integer>"
+  fi
+  calendar_xml="$calendar_xml
+    </dict>"
+
+  cat > "$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$label</string>
+    <key>WorkingDirectory</key>
+    <string>$REPO_ROOT</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>$script</string>
+    </array>
+    $calendar_xml
+    <key>StandardOutPath</key>
+    <string>$out_log</string>
+    <key>StandardErrorPath</key>
+    <string>$err_log</string>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>PYTHONPATH</key>
+        <string>$REPO_ROOT/apps/api/src</string>
+    </dict>
+</dict>
+</plist>
+EOF
+
+  # Bootstrap (idempotent — bootout first if loaded)
+  launchctl bootout "gui/$UID/$label" 2>/dev/null || true
+  if launchctl bootstrap "gui/$UID" "$plist" 2>/dev/null; then
+    printf "  ✓ installed %s (runs %02d:%02d%s)\n" "$label" "$hour" "$minute" \
+      "$([[ -n "$weekday" ]] && echo " weekday=$weekday" || echo " daily")"
+  else
+    printf "  ✗ failed to bootstrap %s\n" "$label" >&2
+    exit 1
+  fi
+}
+
+# Common shell prefix for all jobs: cd + source .env so NUTMEG_API_FOOTBALL_KEY is set
+ENV_PREFIX="cd $REPO_ROOT && set -a && source .env && set +a"
+
+echo "Installing 3 launchd jobs into $PLIST_DIR ..."
+
+# Job 1: daily odds ingest (14:00 daily)
+# Pulls today's odds for the standard leagues + UCL/UEL (Path A accumulation).
+install_job "com.nutmeg.daily_odds" \
+  14 0 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,UCL,UEL"
+
+# Job 2: daily recommend + record (15:00 daily)
+# Generates recommendations using both default + lineup-aware models,
+# records each session into the observation DB. This is what populates
+# the data we need for the 4-week lineup ROI verdict.
+install_job "com.nutmeg.daily_recommend" \
+  15 0 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.recommend --auto-fetch --leagues EPL,ESP_LA_LIGA --record-to $DB_PATH"
+
+# Job 3: weekly settle (Sunday 02:00)
+# Pulls past-week match results, settles open recommendations,
+# refreshes the ROI report file.
+install_job "com.nutmeg.weekly_settle" \
+  2 0 0 \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true"
+
+echo ""
+echo "✓ Done. Jobs are loaded. Logs:"
+echo "    $LOG_DIR/com.nutmeg.daily_odds.{out,err}.log"
+echo "    $LOG_DIR/com.nutmeg.daily_recommend.{out,err}.log"
+echo "    $LOG_DIR/com.nutmeg.weekly_settle.{out,err}.log"
+echo ""
+echo "Next:"
+echo "  • Verify with: ./scripts/health_check.sh"
+echo "  • Inspect jobs: launchctl list | grep com.nutmeg"
+echo "  • Wait until 14:00 / 15:00 / Sunday 02:00 for next run"
+echo "  • Uninstall: ./scripts/teardown_local_pipeline.sh"
