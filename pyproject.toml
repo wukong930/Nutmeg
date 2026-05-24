@@ -76,6 +76,7 @@ nutmeg-cup-ablation = "nutmeg.v4.cli.cup_ablation:main"
 nutmeg-ingest-national-elo = "nutmeg.v4.cli.ingest_national_elo:main"
 nutmeg-ece-audit = "nutmeg.v4.cli.ece_audit:main"
 nutmeg-cat-calibration-ablation = "nutmeg.v4.cli.cat_calibration_ablation:main"
+nutmeg-roi-backtest = "nutmeg.v4.cli.roi_backtest:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
