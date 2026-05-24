@@ -1,8 +1,15 @@
-# post-v9 P1 patch chain — index (#6 → #21)
+# post-v9 P1 patch chain — index (#6 → #30) — **CLOSED at V10 launch**
 
-_Generated 2026-05-24. 16 patches landed (some bundled into a single
-commit). This is the master index — read here, drill into the per-
-patch docs only when needed._
+_Generated 2026-05-24, closed 2026-05-25 when V10 launched. 25 patches
+landed (some bundled into a single commit). This is the master index —
+read here, drill into the per-patch docs only when needed._
+
+**Status (2026-05-25)**: This chain is **CLOSED**. All P1 work
+between V9 ship and V10 W0 is recorded below. Forward work now
+tracks against [V10_ROADMAP.md](V10_ROADMAP.md) week markers (W1,
+W2, W3, W4), not P1 numbers. V10 launched on triggers #3 (UX
+gap), #4 (cross-source caveat needs live validation), and #6
+(2026 WC starts 2026-06-11). See [V10_HANDOFF.md](V10_HANDOFF.md).
 
 ## Why a "P1 patch chain" exists
 
