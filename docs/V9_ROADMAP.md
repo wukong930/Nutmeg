@@ -85,23 +85,18 @@ open until V9 W1 Path A accumulates ~250 cup_odds rows (~9 months).
 12 new tests (771/771 V4 suite). See
 [v9_w4_ci_fixture_cache.md](v9_w4_ci_fixture_cache.md).
 
-### V9 W5 — ECE-vs-log-loss per-bucket Brier audit (Track E)
+### V9 W5 — ECE-vs-log-loss per-bucket Brier audit (Track E) ✅
 
-The mystery V5 W12 first noted: CatBoost's ECE (0.0120) is BETTER than
-Pinnacle's (0.0123), but log-loss is 0.0056 worse. Three retrospectives
-listed it; none acted. V9 W5 does it:
-
-1. Split test predictions by predicted-probability buckets (5 bins)
-2. Compute per-bucket Brier + log-loss; compare to Pinnacle bucketed
-   the same way
-3. Identify which buckets contribute the excess log-loss
-4. Two possible outcomes:
-   - Found a fixable bucket (e.g. high-confidence draws over-predicted)
-     → cheap calibration tweak in V9 W6
-   - Found nothing actionable (uniform spread across buckets) →
-     document + remove from backlog forever
-
-Estimated 1-2 days investigation + maybe 1 day fix.
+Shipped. New `bucket_decomp` module + `nutmeg-ece-audit` CLI + 21
+tests (792/792 V4 suite). Audit on V5 W12 baseline cutoff `2024-08-01`
+(n=4,331 GBM-aligned rows) returned **🎯 concentrated bucket found**:
+the `(0.6, 0.8]` p(true) bucket contributes `+0.0082` to the `+0.0056`
+total gap, while two other buckets are negative. CatBoost places 619
+rows at 0.6-0.8 vs Pinnacle's 542 → either over-confidence (fixable
+in W6 via per-bucket isotonic) or genuine signal Pinnacle's market
+prior dampens (structural, not fixable). W6 will test which. See
+[v9_w5_ece_audit.md](v9_w5_ece_audit.md) (data) +
+[v9_w5_ece_audit_writeup.md](v9_w5_ece_audit_writeup.md) (analysis).
 
 ### V9 W6 — Conditional: calibration fix if W5 found something
 

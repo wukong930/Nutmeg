@@ -341,9 +341,27 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         pooled["ensemble"] = summary(pooled_ens, pooled_y_gbm) if len(pooled_ens) > 0 else None
         pooled["ensemble_temp"] = summary(pooled_ens_t, pooled_y_gbm) if len(pooled_ens_t) > 0 else None
 
+    # V9 W5: raw pooled arrays for downstream decomposition analysis
+    # (per-bucket Brier audit etc). Production callers ignore this; the
+    # audit CLI reads it directly. Arrays are aligned with pooled_y_gbm
+    # for everything except `pinnacle` which uses pooled_y_full.
+    pooled_arrays = {
+        "y_full":           pooled_y_full,
+        "y_gbm":            pooled_y_gbm,
+        "pinnacle":         pooled_pin,
+        "pinnacle_gbm":     pinnacle_gbm if len(pooled_y_gbm) > 0 else np.empty((0, 3)),
+        "gbm_dc":           pooled_gbm,
+        "gbm_dc_temp":      pooled_gbm_t,
+        "cat_dc":           pooled_cat,
+        "xgb_dc":           pooled_xgb,
+        "ensemble":         pooled_ens,
+        "ensemble_temp":    pooled_ens_t,
+    }
+
     return {
         "per_league": per_league,
         "pooled": pooled,
+        "pooled_arrays": pooled_arrays,
         "calibrators": {
             "mle_T": cal_mle.T if cal_mle else None,
             "gbm_T": cal_gbm.T if cal_gbm else None,

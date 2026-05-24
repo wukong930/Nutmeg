@@ -69,6 +69,7 @@ nutmeg-ingest-cup-odds = "nutmeg.v4.cli.ingest_cup_odds:main"
 nutmeg-canonical-report-cup = "nutmeg.v4.cli.canonical_report_cup:main"
 nutmeg-cup-ablation = "nutmeg.v4.cli.cup_ablation:main"
 nutmeg-ingest-national-elo = "nutmeg.v4.cli.ingest_national_elo:main"
+nutmeg-ece-audit = "nutmeg.v4.cli.ece_audit:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
