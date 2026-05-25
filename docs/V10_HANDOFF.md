@@ -1,6 +1,6 @@
 # Nutmeg V10 Handoff
 
-_Last updated: 2026-05-25 (V10 W0 — launched)._
+_Last updated: 2026-05-25 (V10 W2 shipped — Layer A auto-T calibration end-to-end + WC tab live)._
 
 Single source of truth for V10 — the 4-week dual-track version
 that opened on 3 simultaneous triggers and a hard external deadline
@@ -32,8 +32,8 @@ W0 closeout: rename V10_ROADMAP_DRAFT → V10_ROADMAP, V10_HANDOFF_TEMPLATE
 
 | Track | Theme | V10 status |
 |---|---|---|
-| **A** | UX rework + Layer A auto-T calibration | 🔄 W1 in progress |
-| **B** | WC sprint (data + model + dashboard) | 🔄 W1 Day 1 starting |
+| **A** | UX rework + Layer A auto-T calibration | ✅ W2 shipped — Layer A end-to-end (propose / deploy / serve / auto-rollback) |
+| **B** | WC sprint (data + model + dashboard) | ✅ W1 shipped — model + dashboard tab live; W3 dry-run pending |
 | **D** | Product polish (carried from V9) | Subsumed into Track A |
 | **E** | Cleanup + tech debt | post-v9 P1 chain (closed at P1#30) |
 
@@ -68,13 +68,18 @@ W0 closeout: rename V10_ROADMAP_DRAFT → V10_ROADMAP, V10_HANDOFF_TEMPLATE
 
 Target ship: `v10.w1`, 2026-05-31.
 
-### W2 — Build
+### W2 — Build ✅ (shipped 2026-05-25, ahead of 2026-06-07 target)
 
-**Track A**: `nutmeg.v4.observation.auto_calibration` module + cron + tests
+**Track A — Layer A auto-T calibration end-to-end** (5 days, 67 tests, ~1500 lines):
+  - Day 1: `nutmeg.v4.observation.auto_calibration` core (post-T scaling, holdout fit, bootstrap p-value, journal table)
+  - Day 2: `nutmeg-auto-calibration` CLI (propose / deploy / rollback actions + markdown report)
+  - Day 3: Artifact-side `live_T_correction.json` + serving wiring across 5 endpoints (mtime-cached)
+  - Day 4: Auto-rollback safety net + `com.nutmeg.weekly_calibration_check` launchd (Mon 03:00)
+  - Day 5: End-to-end integration tests + lifecycle journal audit
 
-**Track B**: `nutmeg.v4.model.national_team_predict` module + walk-forward validation
+**Track B**: W2 work folded into W1 ship — `national_team_predict` module + walk-forward shipped Day 3 of W1.
 
-Target ship: `v10.w2`, 2026-06-07.
+See [v10_w2_ship_note.md](v10_w2_ship_note.md) for full W2 inventory.
 
 ### W3 — Integrate
 
@@ -92,16 +97,16 @@ Target ship: `v10.0-shipped`, 2026-06-21.
 
 ## 5. Numbers (V9 → V10 W0)
 
-| Metric | V9 ship | V10 W0 | V10 target |
-|---|---:|---:|---:|
-| V4 tests passing | 803 | ~850 (from P1 chain) | 880+ |
-| CLIs in pyproject | 25 | ~29 (P1#17 + P1#23 + nutmeg-roi-backtest + nutmeg-live-vs-backtest enhancements) | 30-31 |
-| Dashboard tabs | 7 | 7 | 8 (+ WC) |
-| Launchd jobs | 4 | 4 (after P1#24) | 5 (+ weekly_calibration_check) |
-| GH workflows | 5 | 5 | 5 |
-| Lineup ROI verdict | shipped w/ caveat | unchanged | Track A auto-T validates over W4 |
-| Production model retraining count | 0 | 0 | 0 (Layer A is T-only) |
-| Documented negative results | 6 | 6 | 6 or 7 (only if WC model walk-forward fails) |
+| Metric | V9 ship | V10 W0 | V10 W2 | V10 target |
+|---|---:|---:|---:|---:|
+| V4 tests passing | 803 | ~850 (from P1 chain) | 1065 (non-Playwright) | 880+ ✅ |
+| CLIs in pyproject | 25 | ~29 | 31 (+ wc-predict + auto-calibration) | 30-31 ✅ |
+| Dashboard tabs | 7 | 7 | 9 (+ 今日推荐 + WC) | 8 ✅ exceeded |
+| Launchd jobs | 4 | 4 (after P1#24) | 5 (+ weekly_calibration_check) | 5 ✅ |
+| GH workflows | 5 | 5 | 5 | 5 ✅ |
+| Lineup ROI verdict | shipped w/ caveat | unchanged | Track A auto-T live | Track A auto-T validates over W4 |
+| Production model retraining count | 0 | 0 | 0 | 0 (Layer A is T-only) ✅ |
+| Documented negative results | 6 | 6 | 6 | 6 or 7 (only if WC model walk-forward fails) |
 
 ## 6. V10 W0 — what changed in this commit
 
