@@ -50,10 +50,10 @@ class TestDictShape:
             assert v.strip() == v
 
     def test_dict_size_floor(self):
-        """We promised top-5 leagues × ~20 teams = ≥ 90 entries."""
+        """V11 P1-FE#7: 14 leagues × ~20 teams (+ aliases) ⇒ ≥ 300 entries."""
         from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
-        assert len(TEAM_NAME_ZH) >= 90, (
-            f"only {len(TEAM_NAME_ZH)} entries — top-5 leagues need ~90+"
+        assert len(TEAM_NAME_ZH) >= 300, (
+            f"only {len(TEAM_NAME_ZH)} entries — 14 leagues need ~300+"
         )
 
     def test_all_values_are_chinese(self):
@@ -67,28 +67,55 @@ class TestDictShape:
 # ---------- per-league coverage -----------------------------------------
 
 class TestCoverageByLeague:
-    def test_top5_leagues_all_present(self):
+    def test_all_14_leagues_present(self):
+        """V11 P1-FE#7: every trained league has a coverage entry."""
         from nutmeg.v4.data.team_name_zh import coverage_by_league
         cov = coverage_by_league()
-        for league in ("EPL", "ESP_LA_LIGA", "ITA_SERIE_A",
-                       "GER_BUNDESLIGA", "FRA_LIGUE_1", "TOTAL"):
+        expected = (
+            # P1-FE#2 top-5
+            "EPL", "ESP_LA_LIGA", "ITA_SERIE_A",
+            "GER_BUNDESLIGA", "FRA_LIGUE_1",
+            # P1-FE#7 the rest
+            "ENG_CHAMPIONSHIP", "ESP_SEGUNDA_DIVISION", "ITA_SERIE_B",
+            "GER_2_BUNDESLIGA", "FRA_LIGUE_2",
+            "NED_EREDIVISIE", "PRT_PRIMEIRA_LIGA",
+            "BEL_PRO_LEAGUE", "JPN_J1",
+            "TOTAL",
+        )
+        for league in expected:
             assert league in cov, f"missing {league} from coverage report"
 
-    def test_each_league_has_18_plus_teams(self):
+    def test_each_league_has_16_plus_teams(self):
+        """Smallest top-flight in scope is 比甲 = 16; everything else ≥ 18."""
         from nutmeg.v4.data.team_name_zh import coverage_by_league
         cov = coverage_by_league()
-        # Bundesliga + Ligue 1 are 18-team leagues; others 20.
-        # We allow variant aliases which can push some entries higher.
-        for league in ("EPL", "ESP_LA_LIGA", "ITA_SERIE_A",
-                       "GER_BUNDESLIGA", "FRA_LIGUE_1"):
-            assert cov[league] >= 18, f"{league} has only {cov[league]} entries"
+        # We allow variant aliases (e.g. PSG ↔ Paris SG) which often push
+        # entries higher than the strict roster size.
+        for league in (
+            "EPL", "ESP_LA_LIGA", "ITA_SERIE_A",
+            "GER_BUNDESLIGA", "FRA_LIGUE_1",
+            "ENG_CHAMPIONSHIP", "ESP_SEGUNDA_DIVISION", "ITA_SERIE_B",
+            "GER_2_BUNDESLIGA", "FRA_LIGUE_2",
+            "NED_EREDIVISIE", "PRT_PRIMEIRA_LIGA",
+            "BEL_PRO_LEAGUE", "JPN_J1",
+        ):
+            assert cov[league] >= 16, f"{league} has only {cov[league]} entries"
 
-    def test_total_matches_sum(self):
+    def test_total_at_most_equals_sum(self):
+        """TOTAL ≤ league_sum: a canonical name shared across leagues
+        (e.g. Köln promoted/relegated between Bundesliga + 2.Bundesliga)
+        contributes only once to TEAM_NAME_ZH but counts twice in the
+        per-league dicts. We assert TOTAL is at most the sum, never more."""
         from nutmeg.v4.data.team_name_zh import coverage_by_league
         cov = coverage_by_league()
         league_sum = sum(v for k, v in cov.items() if k != "TOTAL")
-        assert cov["TOTAL"] == league_sum, (
-            f"TOTAL ({cov['TOTAL']}) ≠ league sum ({league_sum})"
+        assert cov["TOTAL"] <= league_sum, (
+            f"TOTAL ({cov['TOTAL']}) > league sum ({league_sum}) — impossible"
+        )
+        # And the gap shouldn't be more than ~10 (a few legit cross-league
+        # canonical-name duplicates from promotion/relegation).
+        assert (league_sum - cov["TOTAL"]) <= 10, (
+            f"TOTAL trails sum by {league_sum - cov['TOTAL']} — too many duplicates"
         )
 
 
@@ -152,6 +179,69 @@ class TestPerLeagueSmokeTest:
         from nutmeg.v4.data.team_name_zh import lookup_zh
         assert lookup_zh("Marseille") == "马赛"
         assert lookup_zh("Monaco") == "摩纳哥"
+
+
+class TestP1FE7NewLeagues:
+    """V11 P1-FE#7 — one canonical pick per newly-added league."""
+
+    def test_championship_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Leeds") == "利兹联"
+        assert lookup_zh("Burnley") == "伯恩利"
+
+    def test_segunda_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Levante") == "莱万特"
+        assert lookup_zh("Elche") == "埃尔切"
+
+    def test_serie_b_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Sassuolo") == "萨索洛"
+        assert lookup_zh("Palermo") == "巴勒莫"
+
+    def test_2_bundesliga_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Hamburg") == "汉堡"
+        assert lookup_zh("Schalke 04") == "沙尔克 04"
+
+    def test_ligue_2_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Lorient") == "洛里昂"
+        assert lookup_zh("Metz") == "梅斯"
+
+    def test_eredivisie_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Ajax") == "阿贾克斯"
+        assert lookup_zh("PSV") == "埃因霍温"
+        assert lookup_zh("Feyenoord") == "费耶诺德"
+
+    def test_primeira_liga_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Porto") == "波尔图"
+        assert lookup_zh("Benfica") == "本菲卡"
+        assert lookup_zh("Sporting CP") == "葡萄牙体育"
+
+    def test_bel_pro_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Club Brugge") == "布鲁日"
+        assert lookup_zh("Anderlecht") == "安德莱赫特"
+
+    def test_j1_pick(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Vissel Kobe") == "神户胜利船"
+        assert lookup_zh("Kawasaki Frontale") == "川崎前锋"
+        assert lookup_zh("Urawa Red Diamonds") == "浦和红钻"
+
+    def test_alias_variants_resolve(self):
+        """V11 P1-FE#7: a few common spelling variants from the
+        team_canonical alias map should also resolve."""
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        # English ↔ German form
+        assert lookup_zh("Cologne") == lookup_zh("Koln") == "科隆"
+        # Different short forms
+        assert lookup_zh("Hamburger SV") == lookup_zh("Hamburg") == "汉堡"
+        # Initials ↔ full
+        assert lookup_zh("PSV") == lookup_zh("PSV Eindhoven") == "埃因霍温"
 
 
 # ---------- /api/v4/team-name-zh endpoint --------------------------------
