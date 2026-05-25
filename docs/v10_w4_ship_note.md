@@ -140,15 +140,20 @@ Exit codes: 0 ready / 1 failed / 2 warnings-only.
 
 ## Test status
 
-Pre-W4: 1074/1074 (W3 baseline)
-**After W4: 1108/1108 V4 non-Playwright pass** (+30 from W4 + 4
-Playwright still green = 1112 total).
+Pre-W4 (after W3): 1057 non-Playwright + 17 Playwright = 1074
+**After W4: 1095/1095 V4 non-Playwright pass** (+30 from W4 + 9
+Playwright still green = 1104 total).
 
 | Test file | Count |
 |---|---:|
 | `test_wc_log.py` (W4 Day 1) | 13 |
 | `test_wc_settle_report.py` (W4 Day 2) | 17 |
 | **W4 total** | **30** |
+
+(The "1108/1108" claim in an earlier draft of this ship note was
+off-by-13; the correct authoritative count from
+`pytest tests/v4/ --ignore=tests/v4/test_e2e_playwright.py` is **1095**.
+Closeout audit reconciled.)
 
 ---
 

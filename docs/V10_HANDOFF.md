@@ -109,7 +109,7 @@ W4 = pre-WC infrastructure so the tournament window runs autonomously:
     + V10 retrospective skeleton
 
 7 launchd jobs total now (3 daily + 4 weekly + 2 WC daily).
-**1108/1108 V4 non-Playwright tests pass** (+30 from W4).
+**1095/1095 V4 non-Playwright tests pass** (1104/1104 including Playwright).
 
 Remaining work (2026-06-11 → 2026-06-21):
 - Daily monitor cron output (`docs/wc/wc_report_*.md`)
@@ -123,17 +123,22 @@ and [v10_retrospective.md](v10_retrospective.md) for the skeleton.
 
 ## 5. Numbers (V9 → V10 W0)
 
-| Metric | V9 ship | V10 W0 | V10 W2 | V10 W3 | V10 target |
-|---|---:|---:|---:|---:|---:|
-| V4 tests passing | 803 | ~850 (from P1 chain) | 1065 (non-Playwright) | **1074 (incl Playwright)** | 880+ ✅ |
-| CLIs in pyproject | 25 | ~29 | 31 (+ wc-predict + auto-calibration) | 31 | 30-31 ✅ |
-| Dashboard tabs | 7 | 7 | 9 (+ 今日推荐 + WC) | 9 | 8 ✅ exceeded |
-| Launchd jobs | 4 | 4 (after P1#24) | 5 (+ weekly_calibration_check) | 5 | 5 ✅ |
-| GH workflows | 5 | 5 | 5 | 5 | 5 ✅ |
-| Lineup ROI verdict | shipped w/ caveat | unchanged | Track A auto-T live | unchanged | Track A auto-T validates over W4 |
-| Production model retraining count | 0 | 0 | 0 | 0 | 0 (Layer A is T-only) ✅ |
-| Documented negative results | 6 | 6 | 6 | 6 | 6 or 7 (only if WC model walk-forward fails) |
-| WCAG AA violations | 1 (aria-required-children) | 1 | 1 | **0** | 0 ✅ |
+| Metric | V9 ship | V10 W0 | V10 W2 | V10 W3 | V10 W4 | V10 target |
+|---|---:|---:|---:|---:|---:|---:|
+| V4 tests passing (non-Playwright) | 803 | ~850 (from P1 chain) | 1065 | 1057 | **1095** | 880+ ✅ |
+| V4 tests passing (incl Playwright) | n/a | n/a | n/a | **1074** | **1104** | 880+ ✅ |
+| CLIs in pyproject | 25 | ~29 | 30 (+ wc-predict + auto-calibration) | 30 | **31** (+ wc-settle + wc-report; reconciled count) | 30-31 ✅ |
+| Dashboard tabs | 7 | 7 | 9 (+ 今日推荐 + WC) | 9 | 9 | 8 ✅ exceeded |
+| Launchd jobs | 4 | 4 (after P1#24) | 5 (+ weekly_calibration_check) | 5 | **7** (+ daily_wc_predict + daily_wc_settle) | 5 ✅ exceeded |
+| GH workflows | 5 | 5 | 5 | 5 | 5 | 5 ✅ |
+| Lineup ROI verdict | shipped w/ caveat | unchanged | Track A auto-T live | unchanged | unchanged | Track A auto-T validates over WC window |
+| Production model retraining count | 0 | 0 | 0 | 0 | 0 | 0 (Layer A is T-only) ✅ |
+| Documented negative results | 6 | 6 | 6 | 6 | 6 | 6 or 7 (only if WC model walk-forward fails) |
+| WCAG AA violations | 1 (aria-required-children) | 1 | 1 | **0** | 0 | 0 ✅ |
+
+(Note: the "31 → 31 → 31" CLI sequence at W2/W3 stated by some ship
+notes was off-by-2; pre-W4 total was 29, W4 brought it to 31. The
+table above reconciles.)
 
 ## 6. V10 W0 — what changed in this commit
 
