@@ -328,6 +328,75 @@
   .tl-c6 { background: #713f12; color: #f5f7fa; border-color: #713f12; }  /* amber-dark */
   .tl-c7 { background: #334155; color: #f5f7fa; border-color: #334155; }  /* slate */
 
+  /* ── 推荐追溯 outcome chips (V11 P1-FE#3) ────────────────────────── */
+  /*
+   * Per design doc: ✓ 命中 uses soft green tint + thin gold edge (premium
+   * win signal); ✗ 未命中 stays neutral gray (no red — failure mode
+   * shouldn't be alarming); ⌛ 待结算 is gray + animated dot.
+   */
+  .chip-outcome {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface-2);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .chip-outcome-hit {
+    background: rgba(34, 197, 94, 0.08);      /* soft green tint */
+    border-color: var(--accent-gold);          /* thin gold edge */
+    color: var(--accent-green);
+  }
+  .chip-outcome-miss {
+    background: var(--bg-surface-2);
+    color: var(--text-muted);
+    border-color: var(--border-subtle);
+  }
+  .chip-outcome-partial {
+    background: rgba(212, 165, 116, 0.10);
+    color: var(--accent-gold);
+    border-color: var(--accent-gold);
+  }
+  .chip-outcome-pending {
+    background: var(--bg-surface-2);
+    color: var(--text-muted);
+    border-color: var(--border-subtle);
+  }
+  .chip-outcome-pending::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    margin-right: 4px;
+    animation: chip-pending-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes chip-pending-pulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1.0; }
+  }
+  /* Date-range filter buttons (segmented control) */
+  .history-range-btn {
+    background: var(--bg-surface-1);
+    border-color: var(--border-subtle);
+    color: var(--text-secondary);
+    transition: all 150ms ease;
+  }
+  .history-range-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-gold);
+  }
+  .history-range-btn.active {
+    background: var(--accent-gold);
+    color: var(--bg-page);
+    border-color: var(--accent-gold);
+  }
+
   /* ── Theme toggle button ───────────────────────────────────────────── */
   #theme-toggle {
     background: var(--bg-surface-1);
@@ -418,6 +487,8 @@
       <button data-tab="single"    role="tab" aria-controls="tab-single"    aria-selected="false" data-i18n="tab_single" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">① 单关</button>
       <button data-tab="recommend" role="tab" aria-controls="tab-recommend" aria-selected="false" data-i18n="tab_parlay" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">② 串关</button>
       <button data-tab="pool"      role="tab" aria-controls="tab-pool"      aria-selected="false" data-i18n="tab_pool"   class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">③ 复式</button>
+      <!-- V11 P1-FE#3 — 推荐追溯: timeline of past recs + outcomes. -->
+      <button data-tab="history"   role="tab" aria-controls="tab-history"   aria-selected="false" data-i18n="tab_history" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">📜 推荐追溯</button>
     </nav>
   </div>
 
@@ -767,6 +838,60 @@
     </div>
   </div>
 
+  <!-- Tab: 推荐追溯 (V11 P1-FE#3) — timeline of past recommendations
+       with outcome labels (✓ 命中 / ✗ 未命中 / ⌛ 待结算). -->
+  <div id="tab-history" role="tabpanel" aria-labelledby="tab-history" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-bold" data-i18n="h_history_title">推荐追溯</h2>
+          <p class="text-sm text-gray-500" data-i18n="sub_history">
+            查看过去的推荐 + 是否命中 · 时间倒序
+          </p>
+        </div>
+        <div class="flex items-center gap-1" role="group" aria-label="时间窗口">
+          <button data-history-range="7"  class="history-range-btn px-3 py-1 text-xs rounded border" data-i18n="history_range_7d">最近 7 天</button>
+          <button data-history-range="30" class="history-range-btn px-3 py-1 text-xs rounded border active" data-i18n="history_range_30d">最近 30 天</button>
+          <button data-history-range="365" class="history-range-btn px-3 py-1 text-xs rounded border" data-i18n="history_range_all">全部</button>
+        </div>
+      </div>
+      <div id="history-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
+    </div>
+
+    <!-- Stats card at top -->
+    <div id="history-stats" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <div class="grid grid-cols-3 sm:grid-cols-4 gap-4 text-center">
+        <div>
+          <div class="text-xs text-gray-500" data-i18n="metric_history_total">推荐总数</div>
+          <div class="text-2xl font-semibold" id="history-n-total">—</div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500" data-i18n="metric_history_hit">命中</div>
+          <div class="text-2xl font-semibold text-pos" id="history-n-hit">—</div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500" data-i18n="metric_history_pending">待结算</div>
+          <div class="text-2xl font-semibold text-muted" id="history-n-pending">—</div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500" data-i18n="metric_history_hit_rate">命中率</div>
+          <div class="text-2xl font-semibold" id="history-hit-rate">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline (descending) -->
+    <div id="history-timeline" class="space-y-6"></div>
+
+    <!-- Empty state -->
+    <div id="history-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center">
+      <p class="text-gray-600" data-i18n="history_empty_main"><strong>暂无推荐记录</strong></p>
+      <p class="text-sm text-gray-500 mt-2" data-i18n="history_empty_sub">
+        在 今日推荐 / 单关 / 复式 tab 勾选 "记录到观测库" 选项, 推荐会自动出现在这里。
+      </p>
+    </div>
+  </div>
+
 
 </div>
 
@@ -911,6 +1036,24 @@ const I18N = {
     risk_balanced:       '中',
     risk_aggressive:     '激进',
     h_today_pool:        '③ 复式推荐',
+    // V11 P1-FE#3 — 推荐追溯
+    tab_history:         '📜 推荐追溯',
+    h_history_title:     '推荐追溯',
+    sub_history:         '查看过去的推荐 + 是否命中 · 时间倒序',
+    history_range_7d:    '最近 7 天',
+    history_range_30d:   '最近 30 天',
+    history_range_all:   '全部',
+    metric_history_total:'推荐总数',
+    metric_history_hit:  '命中',
+    metric_history_pending:'待结算',
+    metric_history_hit_rate:'命中率',
+    history_empty_main:  '暂无推荐记录',
+    history_empty_sub:   '在 今日推荐 / 单关 / 复式 tab 勾选 "记录到观测库" 选项, 推荐会自动出现在这里。',
+    history_loading:     '加载中…',
+    history_outcome_hit: '✓ 命中',
+    history_outcome_miss:'✗ 未命中',
+    history_outcome_partial:'◐ 部分',
+    history_outcome_pending:'⌛ 待结算',
 
     // Page section headings
     h_single_rec:     '单关推荐',
@@ -1056,6 +1199,24 @@ const I18N = {
     risk_balanced:       'Balanced',
     risk_aggressive:     'Aggressive',
     h_today_pool:        '③ Pool bets',
+    // V11 P1-FE#3 — Recommendations history
+    tab_history:         '📜 History',
+    h_history_title:     'Recommendation history',
+    sub_history:         'Past recommendations + outcomes · most recent first',
+    history_range_7d:    'Last 7 days',
+    history_range_30d:   'Last 30 days',
+    history_range_all:   'All time',
+    metric_history_total:'Total recs',
+    metric_history_hit:  'Hits',
+    metric_history_pending:'Pending',
+    metric_history_hit_rate:'Hit rate',
+    history_empty_main:  'No recommendations yet',
+    history_empty_sub:   'Check "Record to observation DB" on the Today / Single / Pool tabs and recommendations will appear here.',
+    history_loading:     'Loading…',
+    history_outcome_hit: '✓ Hit',
+    history_outcome_miss:'✗ Miss',
+    history_outcome_partial:'◐ Partial',
+    history_outcome_pending:'⌛ Pending',
 
     h_single_rec:     'Single-bet recommendations',
     h_parlay_rec:     'Parlay recommendations',
@@ -1268,6 +1429,8 @@ function switchTab(name) {
   const panel = $('#tab-' + name);
   if (panel) panel.classList.remove('hidden');
   if (name === 'wc') loadWcPredictions();
+  // V11 P1-FE#3 — auto-load history on tab open (no manual refresh needed).
+  if (name === 'history' && typeof loadHistory === 'function') loadHistory();
 }
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -2084,6 +2247,134 @@ async function loadWcPredictions() {
 $('#wc-refresh').addEventListener('click', loadWcPredictions);
 $('#wc-date').addEventListener('change', loadWcPredictions);
 $('#wc-fetch-odds').addEventListener('change', loadWcPredictions);
+
+// =====================================================================
+// V11 P1-FE#3 — 推荐追溯 tab loader + renderer
+// =====================================================================
+// Calls GET /v4/observation/recommendations-history?days=N
+// Renders date-grouped cards with outcome chips (✓ 命中 / ✗ 未命中 / ⌛ 待结算).
+// Re-uses zhTeam + teamLogo from P1-FE#2 for visual consistency.
+
+let _historyDays = 30;  // default range matches the .active button below
+
+function _outcomeChip(outcome) {
+  // outcome ∈ {hit, miss, partial, pending} from the endpoint
+  const map = {
+    hit:     { cls: 'chip-outcome-hit',     key: 'history_outcome_hit',     fallback: '✓ 命中' },
+    miss:    { cls: 'chip-outcome-miss',    key: 'history_outcome_miss',    fallback: '✗ 未命中' },
+    partial: { cls: 'chip-outcome-partial', key: 'history_outcome_partial', fallback: '◐ 部分' },
+    pending: { cls: 'chip-outcome-pending', key: 'history_outcome_pending', fallback: '⌛ 待结算' },
+  };
+  const cfg = map[outcome] || map.pending;
+  const label = (typeof t === 'function') ? t(cfg.key) : cfg.fallback;
+  return `<span class="chip-outcome ${cfg.cls}">${label}</span>`;
+}
+
+function _historyLegsHtml(legs) {
+  if (!legs || legs.length === 0) return '';
+  return legs.map(l => {
+    const home = l.home_team || '';
+    const away = l.away_team || '';
+    const matchHtml = (home && away)
+      ? `<span class="inline-flex items-center gap-1.5 flex-wrap">
+           ${teamLogo(home)}<span>${zhTeam(home)}</span>
+           <span class="text-muted">vs</span>
+           ${teamLogo(away)}<span>${zhTeam(away)}</span>
+         </span>`
+      : (l.match_id || '');
+    const oddsStr = (typeof l.odds === 'number') ? l.odds.toFixed(2) : '—';
+    const outcomeLbl = l.outcome ? outcomeLabel(l.outcome) : '';
+    return `<div class="text-xs flex items-center justify-between gap-2 py-1">
+      <span class="text-secondary truncate">${matchHtml}</span>
+      <span class="badge-ok shrink-0">${outcomeLbl} @ <span class="num-display">${oddsStr}</span></span>
+    </div>`;
+  }).join('');
+}
+
+function _historyRecCard(rec) {
+  const stake = (typeof fmtMoney === 'function') ? fmtMoney(rec.stake_units) : ('¥' + rec.stake_units);
+  const compoundBadge = rec.is_compound ? ' · 复式' : '';
+  return `<div class="card-rec">
+    <div class="flex items-start justify-between gap-3 mb-3">
+      <div>
+        <div class="font-display font-semibold text-base text-primary">
+          ${rec.k_legs} 串 1${compoundBadge}
+        </div>
+        <div class="text-xs text-muted mt-1">命中率 ${(rec.hit_probability * 100).toFixed(0)}% · 投注 <span class="num-display text-primary">${stake}</span></div>
+      </div>
+      ${_outcomeChip(rec.outcome)}
+    </div>
+    <div class="mb-2" style="border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">
+      ${_historyLegsHtml(rec.legs)}
+    </div>
+  </div>`;
+}
+
+function _historyDayBlock(day) {
+  const summary = `${day.n_recommendations} 注 · ` +
+    (day.n_hit > 0 ? `<span class="text-pos">${day.n_hit} 命中</span> · ` : '') +
+    (day.n_pending > 0 ? `<span class="text-muted">${day.n_pending} 待结算</span> · ` : '') +
+    (day.n_miss > 0 ? `<span class="text-muted">${day.n_miss} 未命中</span>` : '');
+  return `<div>
+    <div class="flex items-baseline justify-between mb-2">
+      <h3 class="font-display font-semibold text-base text-primary">${day.date}</h3>
+      <div class="text-xs text-muted">${summary}</div>
+    </div>
+    <div class="space-y-2">
+      ${day.recommendations.map(_historyRecCard).join('')}
+    </div>
+  </div>`;
+}
+
+function renderHistory(body) {
+  // Stats card
+  const stats = body.stats || {};
+  $('#history-stats').classList.remove('hidden');
+  $('#history-n-total').textContent = stats.n_recommendations || 0;
+  $('#history-n-hit').textContent = stats.n_hit || 0;
+  $('#history-n-pending').textContent = stats.n_pending || 0;
+  $('#history-hit-rate').textContent =
+    (stats.hit_rate === null || stats.hit_rate === undefined)
+      ? '—' : (stats.hit_rate * 100).toFixed(0) + '%';
+  // Timeline
+  const timeline = $('#history-timeline');
+  const empty = $('#history-empty');
+  if (!body.days || body.days.length === 0) {
+    timeline.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  timeline.innerHTML = body.days.map(_historyDayBlock).join('');
+}
+
+async function loadHistory() {
+  setStatus('#history-status', 'loading', t('history_loading'));
+  try {
+    const r = await fetch(API + '/observation/recommendations-history?days=' + _historyDays);
+    if (!r.ok) {
+      setStatus('#history-status', 'error', `HTTP ${r.status}`);
+      return;
+    }
+    const body = await r.json();
+    renderHistory(body);
+    const n = body.stats && body.stats.n_recommendations || 0;
+    setStatus('#history-status', 'success',
+      n === 0 ? '' : `共 ${n} 条 (近 ${_historyDays} 天)`);
+  } catch (err) {
+    setStatus('#history-status', 'error', err.message);
+  }
+}
+
+// Range filter buttons — segmented control behaviour
+document.querySelectorAll('.history-range-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _historyDays = parseInt(btn.dataset.historyRange, 10) || 30;
+    document.querySelectorAll('.history-range-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadHistory();
+  });
+});
 // V11 P1-FE#2 — fetch Chinese team name dict, then trigger initial today
 // recommendations load (V10 W1 default landing). Doing it after the fetch
 // means first paint already has Chinese names for known teams.

@@ -268,7 +268,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v6-fe-pool-sliders';
+const CACHE_VERSION = 'nutmeg-v7-fe-history';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',

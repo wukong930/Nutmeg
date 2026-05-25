@@ -266,6 +266,237 @@ def latest_session() -> LatestSessionResponse:
     )
 
 
+# ----- /v4/observation/recommendations-history (V11 P1-FE#3) ----------------
+
+class HistoryLeg(BaseModel):
+    """One leg inside a recommendation. Carries match info + the picked outcome
+    so the frontend can render `home logo vs away logo · 主胜 @ 1.85` without
+    additional lookups."""
+    match_id: str | None = None
+    home_team: str | None = None
+    away_team: str | None = None
+    league: str | None = None
+    match_date: str | None = None
+    market_type: str | None = None
+    outcome: str | None = None
+    odds: float | None = None
+
+
+class HistoryRecommendation(BaseModel):
+    """One row from `parlay_recommendations` joined with optional settlement.
+
+    `outcome` is the user-facing rollup:
+      - "hit"       → settled + hit=1
+      - "miss"      → settled + hit=0
+      - "partial"   → settled + hit=-1 (复式 partial)
+      - "pending"   → no settlement yet
+    """
+    rec_id: int
+    session_id: int
+    rank: int
+    k_legs: int
+    is_compound: bool
+    stake_units: float
+    hit_probability: float
+    ev_per_unit: float
+    legs: list[HistoryLeg]
+    # Derived from settlements
+    outcome: Literal["hit", "miss", "partial", "pending"]
+    profit_loss: float | None = None
+    settled_at: str | None = None
+
+
+class HistoryDayGroup(BaseModel):
+    """Recommendations grouped by their session's CREATED-on date (UTC).
+
+    The created date is what the user remembers ("我昨天下的注"); we don't
+    group by the match's date because cross-day parlays would split awkwardly.
+    """
+    date: str  # ISO YYYY-MM-DD (UTC of session.created_at)
+    n_recommendations: int
+    n_hit: int
+    n_miss: int
+    n_partial: int
+    n_pending: int
+    recommendations: list[HistoryRecommendation]
+
+
+class HistoryStats(BaseModel):
+    """Top-level rollup across the requested window.
+
+    Per design doc: no cumulative ROI (intentional — keeps the user focused
+    on hit-rate vs ROI noise). Profit/loss is exposed only at the per-rec
+    level for transparency."""
+    n_recommendations: int
+    n_hit: int
+    n_miss: int
+    n_partial: int
+    n_pending: int
+    hit_rate: float | None = Field(None, description=
+        "n_hit / (n_hit + n_miss + n_partial). None when nothing settled yet.")
+
+
+class HistoryResponse(BaseModel):
+    days: list[HistoryDayGroup]
+    stats: HistoryStats
+
+
+def _outcome_label(hit: int | None) -> Literal["hit", "miss", "partial", "pending"]:
+    """Map the settlements.hit tinyint to a frontend-friendly label."""
+    if hit is None:
+        return "pending"
+    if hit == 1:
+        return "hit"
+    if hit == 0:
+        return "miss"
+    return "partial"  # -1
+
+
+def _parse_legs_json(raw: str | None) -> list[HistoryLeg]:
+    """Be liberal in what we accept — older rows may have slightly different
+    leg shapes. Return [] on any parse error so the UI never crashes."""
+    if not raw:
+        return []
+    try:
+        import json as _json
+        data = _json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(data, list):
+        return []
+    out: list[HistoryLeg] = []
+    for d in data:
+        if not isinstance(d, dict):
+            continue
+        # parlay_recommendations.legs_json shape (from recorder.py):
+        #   {match_id, market_type, outcome, odds, selections: [...]}
+        # plus optionally home_team/away_team/league/match_date
+        match_id = d.get("match_id")
+        home = d.get("home_team")
+        away = d.get("away_team")
+        # Fall back to parsing match_id "league_home_vs_away" if home/away missing
+        if (not home or not away) and isinstance(match_id, str) and "_vs_" in match_id:
+            stripped = match_id
+            # strip league prefix — the same regex the frontend uses
+            import re as _re
+            stripped = _re.sub(r"^[A-Z_]+_", "", stripped, count=1)
+            parts = stripped.split("_vs_", 1)
+            if len(parts) == 2:
+                home = home or parts[0]
+                away = away or parts[1]
+        out.append(HistoryLeg(
+            match_id=match_id,
+            home_team=home,
+            away_team=away,
+            league=d.get("league"),
+            match_date=d.get("match_date"),
+            market_type=d.get("market_type"),
+            outcome=d.get("outcome"),
+            odds=d.get("odds"),
+        ))
+    return out
+
+
+@router.get(
+    "/recommendations-history",
+    response_model=HistoryResponse,
+    summary="V11 P1-FE#3 — per-day recommendation history with outcomes",
+)
+def recommendations_history(days: int = 30) -> HistoryResponse:
+    """Return the last ``days`` of recommendations grouped by session-created
+    date, with each recommendation tagged ``hit/miss/partial/pending`` based
+    on the settlements table.
+
+    Empty DB → ``{ days: [], stats: <zeros> }`` (never 404 — the UI just
+    shows the empty state). Older sessions outside the window are simply
+    excluded.
+    """
+    if days < 1:
+        days = 1
+    if days > 365:
+        days = 365  # safety cap
+
+    empty_stats = HistoryStats(
+        n_recommendations=0, n_hit=0, n_miss=0, n_partial=0, n_pending=0,
+        hit_rate=None,
+    )
+    if not _db_exists():
+        return HistoryResponse(days=[], stats=empty_stats)
+
+    cutoff_utc = (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
+
+    with open_db(_db_path()) as conn:
+        rows = conn.execute(
+            """
+            SELECT p.rec_id, p.session_id, p.rank, p.k_legs, p.is_compound,
+                   p.stake_units, p.hit_probability, p.ev_per_unit, p.legs_json,
+                   r.created_at AS session_created_at,
+                   s.hit AS s_hit, s.profit_loss AS s_pl, s.settled_at AS s_settled_at
+            FROM parlay_recommendations p
+            JOIN recommendation_sessions r ON p.session_id = r.session_id
+            LEFT JOIN settlements s ON p.rec_id = s.rec_id
+            WHERE r.created_at >= ?
+            ORDER BY r.created_at DESC, p.rank ASC
+            """,
+            (cutoff_utc,),
+        ).fetchall()
+
+    # Group by date (UTC) — derive YYYY-MM-DD from session_created_at
+    groups: dict[str, list[HistoryRecommendation]] = {}
+    counters = {"hit": 0, "miss": 0, "partial": 0, "pending": 0}
+    for row in rows:
+        d = (row["session_created_at"] or "")[:10] or "unknown"
+        hit_raw = row["s_hit"]
+        # In SQLite, LEFT JOIN missing → None; record hit=None means pending
+        outcome = _outcome_label(hit_raw if hit_raw is not None else None)
+        counters[outcome] += 1
+        rec = HistoryRecommendation(
+            rec_id=int(row["rec_id"]),
+            session_id=int(row["session_id"]),
+            rank=int(row["rank"]),
+            k_legs=int(row["k_legs"]),
+            is_compound=bool(row["is_compound"]),
+            stake_units=float(row["stake_units"]),
+            hit_probability=float(row["hit_probability"]),
+            ev_per_unit=float(row["ev_per_unit"]),
+            legs=_parse_legs_json(row["legs_json"]),
+            outcome=outcome,
+            profit_loss=float(row["s_pl"]) if row["s_pl"] is not None else None,
+            settled_at=row["s_settled_at"],
+        )
+        groups.setdefault(d, []).append(rec)
+
+    # Build response — days descending (most recent first; rows already sorted)
+    day_blocks: list[HistoryDayGroup] = []
+    for d, recs in groups.items():
+        per = {"hit": 0, "miss": 0, "partial": 0, "pending": 0}
+        for r in recs:
+            per[r.outcome] += 1
+        day_blocks.append(HistoryDayGroup(
+            date=d,
+            n_recommendations=len(recs),
+            n_hit=per["hit"],
+            n_miss=per["miss"],
+            n_partial=per["partial"],
+            n_pending=per["pending"],
+            recommendations=recs,
+        ))
+    # Already in DESC order from SQL — keep stable
+    day_blocks.sort(key=lambda b: b.date, reverse=True)
+
+    n_settled = counters["hit"] + counters["miss"] + counters["partial"]
+    hit_rate = (counters["hit"] / n_settled) if n_settled > 0 else None
+    stats = HistoryStats(
+        n_recommendations=sum(counters.values()),
+        n_hit=counters["hit"],
+        n_miss=counters["miss"],
+        n_partial=counters["partial"],
+        n_pending=counters["pending"],
+        hit_rate=hit_rate,
+    )
+    return HistoryResponse(days=day_blocks, stats=stats)
+
+
 @router.post("/outcomes", response_model=OutcomesBatchResponse)
 def post_outcomes(req: Annotated[OutcomesBatchRequest, Body(...)]) -> OutcomesBatchResponse:
     db = _db_path()
