@@ -1,6 +1,6 @@
 # Nutmeg V10 Handoff
 
-_Last updated: 2026-05-25 (V10 W2 shipped — Layer A auto-T calibration end-to-end + WC tab live)._
+_Last updated: 2026-05-25 (V10 W3 shipped — full green, WC 2026 dry-run, WCAG fixes; 16 days ahead of target)._
 
 Single source of truth for V10 — the 4-week dual-track version
 that opened on 3 simultaneous triggers and a hard external deadline
@@ -81,13 +81,22 @@ Target ship: `v10.w1`, 2026-05-31.
 
 See [v10_w2_ship_note.md](v10_w2_ship_note.md) for full W2 inventory.
 
-### W3 — Integrate
+### W3 — Integrate ✅ (shipped 2026-05-25, 16 days ahead of 2026-06-10 target)
 
-**Track A**: full regression + docs update
+**Track A — full regression**:
+  - Day 1: dashboard WCAG fix (`#adv-toggle` out of `role="tablist"`)
+    + Playwright tests updated (9 tabs, today as default landing)
+  - Day 2: validated `/api/v4/predictions/wc` matches CLI output
 
-**Track B**: dashboard "WC 预测" tab + endpoint + 2026 dry run
+**Track B — WC 2026 dry-run**:
+  - Day 2: ran `nutmeg-wc-predict` against 72 NS fixtures (opening 5
+    days produced 15 rational predictions; all 244 nations covered)
+  - Reference report committed: `docs/v10_w3_wc_dry_run.md`
 
-Target ship: `v10.w3`, 2026-06-10 (1 day before WC starts).
+**Test status**: **1074/1074 V4 tests passing** (first full green
+since V10 W1; previous 4 Playwright failures now resolved).
+
+See [v10_w3_ship_note.md](v10_w3_ship_note.md) for full W3 inventory.
 
 ### W4 — WC live week + monitoring
 
@@ -97,16 +106,17 @@ Target ship: `v10.0-shipped`, 2026-06-21.
 
 ## 5. Numbers (V9 → V10 W0)
 
-| Metric | V9 ship | V10 W0 | V10 W2 | V10 target |
-|---|---:|---:|---:|---:|
-| V4 tests passing | 803 | ~850 (from P1 chain) | 1065 (non-Playwright) | 880+ ✅ |
-| CLIs in pyproject | 25 | ~29 | 31 (+ wc-predict + auto-calibration) | 30-31 ✅ |
-| Dashboard tabs | 7 | 7 | 9 (+ 今日推荐 + WC) | 8 ✅ exceeded |
-| Launchd jobs | 4 | 4 (after P1#24) | 5 (+ weekly_calibration_check) | 5 ✅ |
-| GH workflows | 5 | 5 | 5 | 5 ✅ |
-| Lineup ROI verdict | shipped w/ caveat | unchanged | Track A auto-T live | Track A auto-T validates over W4 |
-| Production model retraining count | 0 | 0 | 0 | 0 (Layer A is T-only) ✅ |
-| Documented negative results | 6 | 6 | 6 | 6 or 7 (only if WC model walk-forward fails) |
+| Metric | V9 ship | V10 W0 | V10 W2 | V10 W3 | V10 target |
+|---|---:|---:|---:|---:|---:|
+| V4 tests passing | 803 | ~850 (from P1 chain) | 1065 (non-Playwright) | **1074 (incl Playwright)** | 880+ ✅ |
+| CLIs in pyproject | 25 | ~29 | 31 (+ wc-predict + auto-calibration) | 31 | 30-31 ✅ |
+| Dashboard tabs | 7 | 7 | 9 (+ 今日推荐 + WC) | 9 | 8 ✅ exceeded |
+| Launchd jobs | 4 | 4 (after P1#24) | 5 (+ weekly_calibration_check) | 5 | 5 ✅ |
+| GH workflows | 5 | 5 | 5 | 5 | 5 ✅ |
+| Lineup ROI verdict | shipped w/ caveat | unchanged | Track A auto-T live | unchanged | Track A auto-T validates over W4 |
+| Production model retraining count | 0 | 0 | 0 | 0 | 0 (Layer A is T-only) ✅ |
+| Documented negative results | 6 | 6 | 6 | 6 | 6 or 7 (only if WC model walk-forward fails) |
+| WCAG AA violations | 1 (aria-required-children) | 1 | 1 | **0** | 0 ✅ |
 
 ## 6. V10 W0 — what changed in this commit
 

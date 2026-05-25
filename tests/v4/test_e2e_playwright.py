@@ -111,27 +111,32 @@ class TestPageLoadsAndRenders:
         text = h1.text_content().strip()
         assert text   # i18n applied → either Chinese or English title
 
-    def test_all_7_tabs_render(self, page, server):
+    def test_all_9_tabs_render(self, page, server):
+        # V10 W1 added 今日推荐 (default landing) + WC 2026 → 7 → 9 tabs.
+        # Note: 7 of those are .adv-tab (hidden behind 高级 ▾) by default;
+        # this test counts ALL tab buttons regardless of visibility state.
         page.goto(f"{server}/api/v4/dashboard")
         page.wait_for_load_state("networkidle")
         tabs = page.locator("button.tab-btn")
-        assert tabs.count() == 7
+        assert tabs.count() == 9
 
 
 class TestTabSwitching:
     def test_clicking_pool_tab_shows_pool_panel(self, page, server):
         page.goto(f"{server}/api/v4/dashboard")
         page.wait_for_load_state("networkidle")
-        # Initially single tab is active
-        assert page.locator("#tab-single").is_visible()
-        # Click ③ pool
+        # V10 W1: default landing is 今日推荐 (not single)
+        assert page.locator("#tab-today").is_visible()
+        # Expand 高级 ▾ to reveal the 7 legacy tabs (V10 W1 Day 4 fold)
+        page.locator("#adv-toggle").click()
+        # Now click ③ pool
         page.locator("button[data-tab='pool']").click()
-        # Now pool panel is visible, single is hidden
+        # Pool panel visible, today panel hidden
         assert page.locator("#tab-pool").is_visible()
-        assert not page.locator("#tab-single").is_visible()
+        assert not page.locator("#tab-today").is_visible()
         # aria-selected updated
         assert page.locator("button[data-tab='pool']").get_attribute("aria-selected") == "true"
-        assert page.locator("button[data-tab='single']").get_attribute("aria-selected") == "false"
+        assert page.locator("button[data-tab='today']").get_attribute("aria-selected") == "false"
 
 
 class TestI18nToggleRuntime:

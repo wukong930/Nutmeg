@@ -59,9 +59,14 @@
        overflow-x-auto + flex-nowrap keeps a single row + lets user swipe.
        The whitespace-nowrap on each button prevents Chinese labels from
        breaking mid-character. -->
-  <div class="border-b border-gray-200 mb-6">
-    <nav role="tablist" data-i18n-attr="aria-label:tablist_label" aria-label="主功能选项卡"
-         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px">
+  <!-- V10 W3 Day 1 restructure: adv-toggle moved OUT of the role="tablist"
+       to satisfy WCAG's aria-required-children — a tablist may only
+       contain elements with role="tab". The 7 legacy tabs remain inside
+       the tablist as proper tab children but get the `adv-tab` class so
+       they can be individually hidden when the toggle is collapsed. -->
+  <div class="flex items-end gap-2 border-b border-gray-200 mb-6">
+    <nav id="tab-nav" role="tablist" data-i18n-attr="aria-label:tablist_label" aria-label="主功能选项卡"
+         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px flex-1">
       <!-- V10 W1: 今日推荐 is now the default landing tab. Auto-loads
            recommendations on page open; no user input required. -->
       <button data-tab="today"     role="tab" aria-controls="tab-today"     data-i18n="tab_today"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">🎯 今日推荐</button>
@@ -69,31 +74,28 @@
            today's WC fixtures (national-team Elo + LightGBM × Pinnacle blend).
            Visible by default during the WC window; can be hidden post-tournament. -->
       <button data-tab="wc"        role="tab" aria-controls="tab-wc"        data-i18n="tab_wc"       class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">🏆 WC 2026</button>
-      <!-- V10 W1 Day 4: legacy 7 tabs fold under this toggle. Default
-           collapsed → new/casual users see only 今日推荐. Engineers /
-           power users click 高级 ▾ to reveal manual JSON entry, ROI
-           reports, session history, etc. State persisted via localStorage
-           so power users don't re-click every page load. -->
-      <button id="adv-toggle" type="button"
-              data-i18n="btn_advanced_show"
-              aria-expanded="false"
-              aria-controls="adv-tabs"
-              class="whitespace-nowrap px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-b-2 border-transparent">
-        高级 ▾
-      </button>
       <!-- The 7 legacy tabs. Hidden by default (V10 W1 Day 4); revealed
-           by #adv-toggle. Each remains a normal tab button — switchTab()
-           logic unchanged. -->
-      <span id="adv-tabs" class="hidden flex-nowrap items-stretch contents">
-        <button data-tab="single"    role="tab" aria-controls="tab-single"    data-i18n="tab_single"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">① 单关</button>
-        <button data-tab="recommend" role="tab" aria-controls="tab-recommend" data-i18n="tab_parlay"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
-        <button data-tab="pool"      role="tab" aria-controls="tab-pool"      data-i18n="tab_pool"     class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
-        <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  data-i18n="tab_outcomes" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
-        <button data-tab="roi"       role="tab" aria-controls="tab-roi"       data-i18n="tab_roi"      class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
-        <button data-tab="sessions"  role="tab" aria-controls="tab-sessions"  data-i18n="tab_sessions" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
-        <button data-tab="rules"     role="tab" aria-controls="tab-rules"     data-i18n="tab_rules"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
-      </span>
+           by #adv-toggle. Each remains a proper role="tab" child of the
+           tablist nav so WCAG aria-required-children stays clean. The
+           .adv-tab class lets JS hide them as a group. -->
+      <button data-tab="single"    role="tab" aria-controls="tab-single"    data-i18n="tab_single"   class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">① 单关</button>
+      <button data-tab="recommend" role="tab" aria-controls="tab-recommend" data-i18n="tab_parlay"   class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
+      <button data-tab="pool"      role="tab" aria-controls="tab-pool"      data-i18n="tab_pool"     class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
+      <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  data-i18n="tab_outcomes" class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
+      <button data-tab="roi"       role="tab" aria-controls="tab-roi"       data-i18n="tab_roi"      class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
+      <button data-tab="sessions"  role="tab" aria-controls="tab-sessions"  data-i18n="tab_sessions" class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
+      <button data-tab="rules"     role="tab" aria-controls="tab-rules"     data-i18n="tab_rules"    class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
     </nav>
+    <!-- adv-toggle lives OUTSIDE the role="tablist" so it doesn't
+         violate aria-required-children. Still controls the same 7 tabs
+         via aria-controls + click handler. -->
+    <button id="adv-toggle" type="button"
+            data-i18n="btn_advanced_show"
+            aria-expanded="false"
+            aria-controls="tab-nav"
+            class="whitespace-nowrap px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-b-2 border-transparent -mb-px shrink-0">
+      高级 ▾
+    </button>
   </div>
 
   <!-- Tab: Today (V10 W1) — default landing. Auto-fetches today's
@@ -1784,14 +1786,17 @@ $('#wc-fetch-odds').addEventListener('change', loadWcPredictions);
 const ADV_STATE_KEY = 'nutmeg-v10-adv-expanded';
 
 function setAdvancedExpanded(expanded) {
-  const tabs = $('#adv-tabs');
+  // V10 W3 Day 1: the 7 advanced tabs are now individual children of
+  // the role="tablist" nav (not wrapped in a span) for WCAG compliance.
+  // Show/hide them per-button via the .adv-tab class marker.
+  const advTabs = document.querySelectorAll('.adv-tab');
   const btn = $('#adv-toggle');
   if (expanded) {
-    tabs.classList.remove('hidden');
+    advTabs.forEach(t => t.classList.remove('hidden'));
     btn.setAttribute('aria-expanded', 'true');
     btn.textContent = t('btn_advanced_hide');
   } else {
-    tabs.classList.add('hidden');
+    advTabs.forEach(t => t.classList.add('hidden'));
     btn.setAttribute('aria-expanded', 'false');
     btn.textContent = t('btn_advanced_show');
   }
