@@ -65,13 +65,30 @@
       <!-- V10 W1: 今日推荐 is now the default landing tab. Auto-loads
            recommendations on page open; no user input required. -->
       <button data-tab="today"     role="tab" aria-controls="tab-today"     data-i18n="tab_today"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">🎯 今日推荐</button>
-      <button data-tab="single"    role="tab" aria-controls="tab-single"    data-i18n="tab_single"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">① 单关</button>
-      <button data-tab="recommend" role="tab" aria-controls="tab-recommend" data-i18n="tab_parlay"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
-      <button data-tab="pool"      role="tab" aria-controls="tab-pool"      data-i18n="tab_pool"     class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
-      <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  data-i18n="tab_outcomes" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
-      <button data-tab="roi"       role="tab" aria-controls="tab-roi"       data-i18n="tab_roi"      class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
-      <button data-tab="sessions"  role="tab" aria-controls="tab-sessions"  data-i18n="tab_sessions" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
-      <button data-tab="rules"     role="tab" aria-controls="tab-rules"     data-i18n="tab_rules"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
+      <!-- V10 W1 Day 4: legacy 7 tabs fold under this toggle. Default
+           collapsed → new/casual users see only 今日推荐. Engineers /
+           power users click 高级 ▾ to reveal manual JSON entry, ROI
+           reports, session history, etc. State persisted via localStorage
+           so power users don't re-click every page load. -->
+      <button id="adv-toggle" type="button"
+              data-i18n="btn_advanced_show"
+              aria-expanded="false"
+              aria-controls="adv-tabs"
+              class="whitespace-nowrap px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-b-2 border-transparent">
+        高级 ▾
+      </button>
+      <!-- The 7 legacy tabs. Hidden by default (V10 W1 Day 4); revealed
+           by #adv-toggle. Each remains a normal tab button — switchTab()
+           logic unchanged. -->
+      <span id="adv-tabs" class="hidden flex-nowrap items-stretch contents">
+        <button data-tab="single"    role="tab" aria-controls="tab-single"    data-i18n="tab_single"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">① 单关</button>
+        <button data-tab="recommend" role="tab" aria-controls="tab-recommend" data-i18n="tab_parlay"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
+        <button data-tab="pool"      role="tab" aria-controls="tab-pool"      data-i18n="tab_pool"     class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
+        <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  data-i18n="tab_outcomes" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
+        <button data-tab="roi"       role="tab" aria-controls="tab-roi"       data-i18n="tab_roi"      class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
+        <button data-tab="sessions"  role="tab" aria-controls="tab-sessions"  data-i18n="tab_sessions" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
+        <button data-tab="rules"     role="tab" aria-controls="tab-rules"     data-i18n="tab_rules"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
+      </span>
     </nav>
   </div>
 
@@ -548,6 +565,8 @@ const I18N = {
     today_loading:    '正在抓取今日盘口 ...',
     today_no_fixtures: '今日联赛无可下注场次。明天再来。',
     today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
+    btn_advanced_show: '高级 ▾',
+    btn_advanced_hide: '高级 ▴',
 
     // Common buttons
     btn_load_sample:  '使用示例数据 (8 场)',
@@ -675,6 +694,8 @@ const I18N = {
     today_loading:    'Fetching today\'s odds ...',
     today_no_fixtures: 'No fixtures from your leagues today. Check back tomorrow.',
     today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
+    btn_advanced_show: 'Advanced ▾',
+    btn_advanced_hide: 'Advanced ▴',
 
     btn_load_sample:  'Load sample data (8 fixtures)',
     btn_clear:        'Clear',
@@ -1606,6 +1627,56 @@ $('#today-bankroll').addEventListener('input', () => {
 });
 $('#today-refresh').addEventListener('click', loadTodayRecommendations);
 
+// =====================================================================
+// V10 W1 Day 4 — "高级 ▾" toggle for legacy 7 tabs
+// =====================================================================
+// Default state: only 🎯 今日推荐 visible in nav. Engineer-facing
+// tabs (单关/串关/复式/录入/ROI/会话/规则) hidden behind a toggle.
+// State persisted to localStorage so power users don't re-click each
+// page load. A11y: button has aria-expanded + aria-controls.
+const ADV_STATE_KEY = 'nutmeg-v10-adv-expanded';
+
+function setAdvancedExpanded(expanded) {
+  const tabs = $('#adv-tabs');
+  const btn = $('#adv-toggle');
+  if (expanded) {
+    tabs.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+    btn.textContent = t('btn_advanced_hide');
+  } else {
+    tabs.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.textContent = t('btn_advanced_show');
+  }
+  try { localStorage.setItem(ADV_STATE_KEY, expanded ? '1' : '0'); }
+  catch (_) { /* private mode → in-memory only */ }
+}
+
+function initAdvancedToggle() {
+  // Read persisted state (default collapsed)
+  let expanded = false;
+  try {
+    expanded = localStorage.getItem(ADV_STATE_KEY) === '1';
+  } catch (_) { /* ignore */ }
+  setAdvancedExpanded(expanded);
+  $('#adv-toggle').addEventListener('click', () => {
+    const isExpanded = $('#adv-toggle').getAttribute('aria-expanded') === 'true';
+    setAdvancedExpanded(!isExpanded);
+  });
+}
+
+// If user switches to a legacy tab via inline data-tab-link (e.g.,
+// "前往高级模式 →" link in the today empty state), auto-expand
+// the advanced panel so they can see the tab they just switched to.
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('[data-tab-link]');
+  if (!link) return;
+  const target = link.dataset.tabLink;
+  if (target && target !== 'today') {
+    setAdvancedExpanded(true);
+  }
+});
+
 // --- Init ---
 loadHealth();
 loadRules();  // pre-fetch so the hint banner shows live values
@@ -1613,6 +1684,8 @@ $('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 $('#single-fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 $('#pool-fixtures-json').value = JSON.stringify(POOL_SAMPLE, null, 2);
 initRecordSessionPersistence();
+// V10 W1 Day 4: initialize 高级 ▾ toggle (read persisted state)
+initAdvancedToggle();
 // V10 W1: fire today-recommendations on initial load (today tab is default)
 loadTodayRecommendations();
 // P1#14: i18n init + language toggle wiring
