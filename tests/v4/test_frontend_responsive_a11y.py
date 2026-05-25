@@ -148,8 +148,8 @@ class TestAriaSemantics:
         assert html.count('role="tab"') >= 7
 
     def test_tabpanels_have_role(self, html):
-        # All 7 tab panels have role=tabpanel
-        assert html.count('role="tabpanel"') == 7
+        # V10 W1 added 今日推荐 as the default landing tab → 8 panels now
+        assert html.count('role="tabpanel"') == 8
 
     def test_status_spans_have_aria_live(self, html):
         for cid in ('single-status', 'recommend-status', 'pool-status', 'outcomes-status'):

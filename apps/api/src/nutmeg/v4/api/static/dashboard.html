@@ -62,7 +62,10 @@
   <div class="border-b border-gray-200 mb-6">
     <nav role="tablist" data-i18n-attr="aria-label:tablist_label" aria-label="主功能选项卡"
          class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px">
-      <button data-tab="single"    role="tab" aria-controls="tab-single"    data-i18n="tab_single"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">① 单关</button>
+      <!-- V10 W1: 今日推荐 is now the default landing tab. Auto-loads
+           recommendations on page open; no user input required. -->
+      <button data-tab="today"     role="tab" aria-controls="tab-today"     data-i18n="tab_today"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">🎯 今日推荐</button>
+      <button data-tab="single"    role="tab" aria-controls="tab-single"    data-i18n="tab_single"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">① 单关</button>
       <button data-tab="recommend" role="tab" aria-controls="tab-recommend" data-i18n="tab_parlay"   class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
       <button data-tab="pool"      role="tab" aria-controls="tab-pool"      data-i18n="tab_pool"     class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
       <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  data-i18n="tab_outcomes" class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
@@ -72,8 +75,81 @@
     </nav>
   </div>
 
+  <!-- Tab: Today (V10 W1) — default landing. Auto-fetches today's
+       fixtures, runs single + parlay pipelines, renders both as
+       cards. User can adjust budget inline. Pool deferred to W2. -->
+  <div id="tab-today" role="tabpanel" aria-labelledby="tab-today" class="tab-panel">
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-bold" data-i18n="h_today_title">今日推荐</h2>
+          <p class="text-sm text-gray-500" data-i18n="sub_today">
+            自动抓取今日联赛盘口 · 根据预算生成 单关 + 串关 推荐
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-sm whitespace-nowrap">
+            <span data-i18n="lbl_bankroll">预算 ¥</span>
+            <input id="today-bankroll" type="number" inputmode="numeric"
+                   value="1000" min="2" step="50"
+                   class="w-24 px-2 py-1 border rounded text-sm">
+          </label>
+          <button id="today-refresh"
+                  data-i18n="btn_refresh"
+                  class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+            刷新
+          </button>
+        </div>
+      </div>
+      <div id="today-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
+    </div>
+
+    <!-- Summary card -->
+    <div id="today-summary" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+        <div>
+          <div class="text-xs text-gray-500" data-i18n="metric_n_fixtures">今日场次</div>
+          <div class="text-2xl font-semibold" id="today-n-fixtures">—</div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500" data-i18n="metric_n_recs">推荐总数</div>
+          <div class="text-2xl font-semibold" id="today-n-recs">—</div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500" data-i18n="metric_total_stake">推荐总投注</div>
+          <div class="text-2xl font-semibold" id="today-total-stake">—</div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500" data-i18n="metric_weighted_ev">加权 EV</div>
+          <div class="text-2xl font-semibold" id="today-weighted-ev">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 单关 section -->
+    <div id="today-single-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-3"><span data-i18n="h_today_single">① 单关推荐</span> <span id="today-single-count" class="text-sm font-normal text-gray-500"></span></h3>
+      <div id="today-single-list" class="space-y-2"></div>
+    </div>
+
+    <!-- 串关 section -->
+    <div id="today-parlay-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-3"><span data-i18n="h_today_parlay">② 串关推荐</span> <span id="today-parlay-count" class="text-sm font-normal text-gray-500"></span></h3>
+      <div id="today-parlay-list" class="space-y-2"></div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="today-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center">
+      <p class="text-gray-600" data-i18n="today_empty_main"><strong>今日无可下注组合</strong></p>
+      <p class="text-sm text-gray-500 mt-2" data-i18n="today_empty_sub">
+        所有场次的 EV / 命中率均未达推荐门槛 (建议 no-bet)。明天再来 ·
+        或前往 <a href="#" data-tab-link="single" class="text-indigo-600 hover:underline">高级模式 →</a> 手动输入场次。
+      </p>
+    </div>
+  </div>
+
   <!-- Tab: Single (单关) — V8 W6 -->
-  <div id="tab-single" role="tabpanel" aria-labelledby="tab-single" class="tab-panel">
+  <div id="tab-single" role="tabpanel" aria-labelledby="tab-single" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
       <h2 class="font-bold mb-3" data-i18n="h_single_rec">单关推荐</h2>
       <p class="text-sm text-gray-500 mb-3" data-i18n="sub_single">单场比赛, 单注最低 ¥2; 系统从胜平负 + 让球胜平负 6 个候选里挑出 EV/单位最大的 1-2 注。</p>
@@ -447,6 +523,7 @@ const I18N = {
     lang_toggle_to:   'EN',  // label shown on the toggle button when currently zh
 
     // Tabs
+    tab_today:        '🎯 今日推荐',
     tab_single:       '① 单关',
     tab_parlay:       '② 串关',
     tab_pool:         '③ 复式',
@@ -455,6 +532,22 @@ const I18N = {
     tab_sessions:     '⑥ 会话历史',
     tab_rules:        '⑦ 规则说明',
     tablist_label:    '主功能选项卡',
+
+    // V10 W1 Track A: today-recommendations tab
+    h_today_title:    '今日推荐',
+    sub_today:        '自动抓取今日联赛盘口 · 根据预算生成 单关 + 串关 推荐',
+    btn_refresh:      '刷新',
+    metric_n_fixtures:  '今日场次',
+    metric_n_recs:      '推荐总数',
+    metric_total_stake: '推荐总投注',
+    metric_weighted_ev: '加权 EV',
+    h_today_single:   '① 单关推荐',
+    h_today_parlay:   '② 串关推荐',
+    today_empty_main: '今日无可下注组合',
+    today_empty_sub:  '所有场次的 EV / 命中率均未达推荐门槛 (建议 no-bet)。明天再来 · 或前往高级模式手动输入场次。',
+    today_loading:    '正在抓取今日盘口 ...',
+    today_no_fixtures: '今日联赛无可下注场次。明天再来。',
+    today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
 
     // Common buttons
     btn_load_sample:  '使用示例数据 (8 场)',
@@ -558,6 +651,7 @@ const I18N = {
     health_checking:  'checking ...',
     lang_toggle_to:   '中',
 
+    tab_today:        '🎯 Today',
     tab_single:       '① Single',
     tab_parlay:       '② Parlay',
     tab_pool:         '③ Pool',
@@ -566,6 +660,21 @@ const I18N = {
     tab_sessions:     '⑥ Sessions',
     tab_rules:        '⑦ Rules',
     tablist_label:    'Main feature tabs',
+
+    h_today_title:    "Today's picks",
+    sub_today:        'Auto-fetched fixtures · single + parlay recommendations sized to your budget',
+    btn_refresh:      'Refresh',
+    metric_n_fixtures:  'Fixtures today',
+    metric_n_recs:      'Recommendations',
+    metric_total_stake: 'Total stake',
+    metric_weighted_ev: 'Weighted EV',
+    h_today_single:   '① Single bets',
+    h_today_parlay:   '② Parlay bets',
+    today_empty_main: 'No qualifying bets today',
+    today_empty_sub:  "All fixtures fell short of the EV / hit-rate thresholds (recommend: skip today). Check back tomorrow · or use advanced mode to enter fixtures manually.",
+    today_loading:    'Fetching today\'s odds ...',
+    today_no_fixtures: 'No fixtures from your leagues today. Check back tomorrow.',
+    today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
 
     btn_load_sample:  'Load sample data (8 fixtures)',
     btn_clear:        'Clear',
@@ -1354,6 +1463,149 @@ function initRecordSessionPersistence() {
   }
 }
 
+// =====================================================================
+// V10 W1 Track A — Today's recommendations (default landing)
+// =====================================================================
+// Calls POST /v4/today-recommendations on page load with the bankroll
+// value from the input (default ¥1000). Renders single + parlay cards.
+// Bankroll input → debounced re-fetch on change (500ms). User never
+// has to paste JSON or click a "generate" button just to see what's
+// recommended today.
+const TODAY_DEFAULT_LEAGUES = ['EPL', 'ESP_LA_LIGA'];
+let _todayDebounce = null;
+
+function renderTodaySingle(single) {
+  const list = $('#today-single-list');
+  const section = $('#today-single-section');
+  if (!single || !single.tickets || single.tickets.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  $('#today-single-count').textContent =
+    ` · ${single.n_recommendations} 注 · 总停 ${fmtMoney(single.total_stake)}`;
+  // Render each ticket as a compact card
+  list.innerHTML = single.tickets.map(t => {
+    const outcomeLabel = {
+      'H': '主胜', 'D': '平局', 'A': '客胜',
+    }[t.outcome] || t.outcome;
+    const marketLabel = t.market_type === 'handicap_1x2' ? '让球' : '胜平负';
+    const evClass = sign(t.ev_per_unit);
+    return `
+      <div class="border rounded p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div class="text-sm">
+          <div class="font-medium">${t.home_team} vs ${t.away_team}</div>
+          <div class="text-xs text-gray-500">${t.league} · ${t.date}</div>
+        </div>
+        <div class="text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span class="font-medium">${marketLabel} · ${outcomeLabel}</span>
+          <span class="text-gray-600">@${t.odds.toFixed(2)}</span>
+          <span class="text-gray-600">P ${fmtPct(t.probability)}</span>
+          <span class="${evClass}">EV ${fmtPct(t.ev_per_unit)}</span>
+          <span class="font-semibold">停 ${fmtMoney(t.stake)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderTodayParlay(parlay) {
+  const list = $('#today-parlay-list');
+  const section = $('#today-parlay-section');
+  if (!parlay || !parlay.recommendations || parlay.recommendations.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  const totalStake = parlay.recommendations.reduce((s, r) => s + (r.stake_units || 0), 0);
+  $('#today-parlay-count').textContent =
+    ` · ${parlay.recommendations.length} 注 · 总停 ${fmtMoney(totalStake)}`;
+  list.innerHTML = parlay.recommendations.map((r) => {
+    const evClass = sign(r.ev_per_unit);
+    const legCount = r.legs.length;
+    // Compact: show "X 串 1" + legs summary
+    const legsSummary = r.legs.map(l => {
+      const sels = l.selections.map(s => `${s.outcome}@${s.odds.toFixed(2)}`).join(', ');
+      return `${l.match_id.split('|').slice(0, 2).join(' vs ')} (${sels})`;
+    }).join(' + ');
+    return `
+      <div class="border rounded p-3">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+          <span class="font-medium">${legCount} 串 1</span>
+          <span class="text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span class="text-gray-600">命中 ${fmtPct(r.hit_probability)}</span>
+            <span class="${evClass}">EV ${fmtPct(r.ev_per_unit)}</span>
+            <span class="font-semibold">停 ${fmtMoney(r.stake_units || 0)}</span>
+          </span>
+        </div>
+        <div class="text-xs text-gray-500">${legsSummary}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderTodaySummary(body) {
+  const card = $('#today-summary');
+  card.classList.remove('hidden');
+  $('#today-n-fixtures').textContent = body.fixtures_fetched;
+  $('#today-n-recs').textContent = body.summary.total_recs;
+  $('#today-total-stake').textContent = fmtMoney(body.summary.total_stake);
+  const ev = body.summary.weighted_ev;
+  $('#today-weighted-ev').textContent = (ev === null || ev === undefined)
+    ? '—' : fmtPct(ev);
+}
+
+async function loadTodayRecommendations() {
+  const bankrollEl = $('#today-bankroll');
+  const bankroll = Math.max(2, parseFloat(bankrollEl.value) || 1000);
+  setStatus('#today-status', 'loading', t('today_loading'));
+  try {
+    const resp = await fetch(API + '/today-recommendations', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        leagues: TODAY_DEFAULT_LEAGUES,
+        bankroll: bankroll,
+        include: ['single', 'parlay'],
+      }),
+    });
+    if (!resp.ok) {
+      const detail = resp.status === 503
+        ? '模型未加载 (服务器 503)'
+        : `HTTP ${resp.status}`;
+      throw new Error(detail);
+    }
+    const body = await resp.json();
+    renderTodaySummary(body);
+    renderTodaySingle(body.single);
+    renderTodayParlay(body.parlay);
+    // Empty state
+    const noRecs = body.summary.total_recs === 0;
+    const noFixtures = body.fixtures_fetched === 0;
+    $('#today-empty').classList.toggle('hidden', !(noRecs && !noFixtures));
+    if (noFixtures) {
+      setStatus('#today-status', 'success', t('today_no_fixtures'));
+    } else if (noRecs) {
+      setStatus('#today-status', 'success',
+        `已抓 ${body.fixtures_fetched} 场 · 0 推荐 (no-bet)`);
+    } else {
+      setStatus('#today-status', 'success',
+        `已抓 ${body.fixtures_fetched} 场 · ${body.summary.total_recs} 推荐`);
+    }
+  } catch (err) {
+    setStatus('#today-status', 'error', t('today_api_error') + ': ' + err.message);
+    $('#today-summary').classList.add('hidden');
+    $('#today-single-section').classList.add('hidden');
+    $('#today-parlay-section').classList.add('hidden');
+    $('#today-empty').classList.add('hidden');
+  }
+}
+
+// Debounced bankroll change → re-fetch
+$('#today-bankroll').addEventListener('input', () => {
+  if (_todayDebounce) clearTimeout(_todayDebounce);
+  _todayDebounce = setTimeout(loadTodayRecommendations, 500);
+});
+$('#today-refresh').addEventListener('click', loadTodayRecommendations);
+
 // --- Init ---
 loadHealth();
 loadRules();  // pre-fetch so the hint banner shows live values
@@ -1361,6 +1613,8 @@ $('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 $('#single-fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
 $('#pool-fixtures-json').value = JSON.stringify(POOL_SAMPLE, null, 2);
 initRecordSessionPersistence();
+// V10 W1: fire today-recommendations on initial load (today tab is default)
+loadTodayRecommendations();
 // P1#14: i18n init + language toggle wiring
 initLocale();
 $('#lang-toggle').addEventListener('click', () => {
