@@ -125,21 +125,29 @@ ENV_PREFIX="cd $REPO_ROOT && set -a && source .env && set +a"
 echo "Installing 7 launchd jobs into $PLIST_DIR ..."
 
 # Job 1: daily odds ingest (14:00 daily)
-# Pulls today's odds for the 5 main domestic leagues.
-# post-v9 P1#20: UCL+UEL removed — cup ablation answered negatively
-# (see docs/post_v9_p1_20_cup_ablation_negative.md), forward
-# accumulation no longer serves any open question. Save ~10 API calls/day.
+# Pulls today's odds across all 13 trained leagues (top 5 + 5 second-tier
+# + Eredivisie + Liga Portugal + Belgian Pro League + J League J1).
+# post-V11 audit (2026-05-25): the production model covers all 13 since
+# the football-data.co.uk historical ingest predates V5; daily_odds was
+# stuck at 5 until this expansion. API budget: ~33 calls/day average,
+# well under free tier's 100/day.
+# post-v9 P1#20: UCL/UEL/UECL still excluded — cup ablation closed
+# negative (docs/post_v9_p1_20_cup_ablation_negative.md). Cups stay
+# out of cron until / unless a separate cup model ships.
 install_job "com.nutmeg.daily_odds" \
   14 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1"
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,ENG_CHAMPIONSHIP,ESP_SEGUNDA_DIVISION,ITA_SERIE_B,GER_2_BUNDESLIGA,FRA_LIGUE_2,NED_EREDIVISIE,PRT_PRIMEIRA_LIGA,BEL_PRO_LEAGUE,JPN_J1"
 
 # Job 2: daily recommend + record (15:00 daily)
 # Generates recommendations using both default + lineup-aware models,
 # records each session into the observation DB. This is what populates
-# the data we need for the 4-week lineup ROI verdict.
+# the data we need for the 4-week lineup ROI verdict + Layer A T
+# calibration.
+# post-V11 audit: expanded from EPL+La Liga to all 13 trained leagues
+# so Layer A's weekly calibration_check sees multi-league data.
 install_job "com.nutmeg.daily_recommend" \
   15 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.recommend --auto-fetch --leagues EPL,ESP_LA_LIGA --record-to $DB_PATH"
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.recommend --auto-fetch --leagues EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,ENG_CHAMPIONSHIP,ESP_SEGUNDA_DIVISION,ITA_SERIE_B,GER_2_BUNDESLIGA,FRA_LIGUE_2,NED_EREDIVISIE,PRT_PRIMEIRA_LIGA,BEL_PRO_LEAGUE,JPN_J1 --record-to $DB_PATH"
 
 # Job 3: weekly settle (Sunday 02:00)
 # Pulls past-week match results, settles open recommendations,

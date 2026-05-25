@@ -303,8 +303,22 @@ class TodayRecommendationsRequest(BaseModel):
     date: Optional[str] = Field(None, description=
         "ISO YYYY-MM-DD; defaults to today (UTC).")
     leagues: list[str] = Field(
-        default_factory=lambda: ["EPL", "ESP_LA_LIGA"],
-        description="V4 canonical league codes (default: EPL + La Liga).",
+        default_factory=lambda: [
+            # Top 5 European
+            "EPL", "ESP_LA_LIGA", "ITA_SERIE_A", "GER_BUNDESLIGA", "FRA_LIGUE_1",
+            # Second-tier European
+            "ENG_CHAMPIONSHIP", "ESP_SEGUNDA_DIVISION", "ITA_SERIE_B",
+            "GER_2_BUNDESLIGA", "FRA_LIGUE_2",
+            # Other major European
+            "NED_EREDIVISIE", "PRT_PRIMEIRA_LIGA", "BEL_PRO_LEAGUE",
+            # Asia
+            "JPN_J1",
+        ],
+        description=(
+            "V4 canonical league codes (default: all 13 trained leagues). "
+            "post-V11 audit (2026-05-25): expanded from EPL+La Liga to "
+            "match the production model's full training coverage."
+        ),
     )
     bankroll: float = Field(1000.0, gt=0,
         description="Total bankroll. Default ¥1000.")
