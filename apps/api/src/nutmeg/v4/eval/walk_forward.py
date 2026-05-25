@@ -47,6 +47,11 @@ class WalkForwardConfig:
     # --with-cup-data UNION rows).
     cup_history_df: pd.DataFrame | None = None
     cross_league_seed: bool = False
+    # V11 backlog #5 — when set, national-team-cup fixtures (WC, EURO,
+    # COPA_AMERICA, WC_QUAL_UEFA) seed their Elo from the 68-nation
+    # clubelo lookup instead of falling back to 1500. Only effective
+    # when cross_league_seed=True (the seeding path is gated on it).
+    nation_state: dict[str, float] | None = None
 
 
 def _three_way_split(df: pd.DataFrame, cfg: WalkForwardConfig, league: str):
@@ -79,6 +84,7 @@ def run_walk_forward(df: pd.DataFrame, cfg: WalkForwardConfig | None = None) -> 
         df,
         cup_history_df=cfg.cup_history_df,
         cross_league_seed=cfg.cross_league_seed,
+        nation_state=cfg.nation_state,
     )
 
     # ---- Per-league MLE DC (legacy comparison) ----

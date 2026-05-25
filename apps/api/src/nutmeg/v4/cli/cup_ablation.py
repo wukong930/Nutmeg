@@ -110,8 +110,16 @@ def run_one_fold(
     cup_odds_dir: Path,
     cup_leagues: list[str],
     cup_seasons: list[int],
+    nation_state: dict[str, float] | None = None,
 ) -> dict:
-    """Run a single (cutoff, mode) fold; return the pooled metric summary."""
+    """Run a single (cutoff, mode) fold; return the pooled metric summary.
+
+    V11 backlog #5: ``nation_state`` (built from clubelo per-nation parquets
+    via ``build_nation_elo_lookup``) is threaded through to the walk-forward
+    feature builder. When provided AND the mode opts into cross-league
+    seeding (cup_data / cup_full), national-team-cup rows seed their Elo
+    from the real per-nation clubelo lookup instead of the 1500 default.
+    """
     df, cup_hist, cross_seed = _build_inputs_for_mode(
         league_df, mode,
         cup_history_dir=cup_history_dir, cup_odds_dir=cup_odds_dir,
@@ -121,6 +129,7 @@ def run_one_fold(
         test_cutoff=cutoff,
         cup_history_df=cup_hist,
         cross_league_seed=cross_seed,
+        nation_state=nation_state,
     )
     result = run_walk_forward(df, cfg)
     pooled = result.get("pooled", {})
@@ -253,6 +262,17 @@ def main(argv: list[str] | None = None) -> int:
         default="docs/v8_w3_cup_ablation.md",
         help="Output markdown card path",
     )
+    p.add_argument(
+        "--nation-elo-cache-dir",
+        type=Path,
+        default=None,
+        help="V11 backlog #5: when set (e.g. data/external/clubelo_national), "
+        "load per-nation Elo histories via build_nation_elo_lookup and pass "
+        "to walk-forward. National-team-cup rows (WC, EURO, COPA_AMERICA, "
+        "WC_QUAL_UEFA) get seeded from the real clubelo nation Elo instead "
+        "of 1500 default. Only effective for modes that enable "
+        "cross_league_seed (cup_data, cup_full).",
+    )
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
 
@@ -281,6 +301,19 @@ def main(argv: list[str] | None = None) -> int:
     league_df = load_all_matches(str(data_path))
     log.info("Loaded %d league matches", len(league_df))
 
+    # V11 backlog #5 — load per-nation Elo lookup once if requested
+    nation_state: dict[str, float] | None = None
+    if args.nation_elo_cache_dir is not None:
+        from nutmeg.v4.data.national_team_elo import build_nation_elo_lookup
+        try:
+            nation_state = build_nation_elo_lookup(args.nation_elo_cache_dir)
+            log.info("Loaded nation Elo lookup: %d countries from %s",
+                     len(nation_state), args.nation_elo_cache_dir)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("nation Elo load failed (%s); proceeding without",
+                        exc)
+            nation_state = None
+
     rows: list[dict] = []
     for cutoff in cutoffs:
         for mode in modes:
@@ -292,6 +325,7 @@ def main(argv: list[str] | None = None) -> int:
                     cup_odds_dir=args.cup_odds_dir,
                     cup_leagues=cup_leagues,
                     cup_seasons=cup_seasons,
+                    nation_state=nation_state,
                 )
             except Exception as exc:  # noqa: BLE001
                 log.error("fold %s/%s failed: %s", cutoff.date(), mode, exc)
