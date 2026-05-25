@@ -51,7 +51,10 @@ from nutmeg.v4.observation.auto_calibration import (
     DEFAULT_MAX_P_VALUE,
     DEFAULT_MIN_LOG_LOSS_GAIN,
     DEFAULT_MIN_SAMPLES,
+    DEFAULT_ROLLBACK_LOG_LOSS_THRESHOLD,
+    CorrectionEvaluation,
     DriftProposal,
+    evaluate_active_correction,
     propose_drift_correction,
     record_calibration_journal,
     remove_artifact_correction,
@@ -136,6 +139,64 @@ def render_markdown(proposal: DriftProposal, db_path: str) -> str:
     return "\n".join(lines)
 
 
+def render_rollback_markdown(
+    eval_: CorrectionEvaluation,
+    db_path: str,
+    *,
+    rollback_executed: bool,
+) -> str:
+    """V10 W2 Day 4 — markdown card for auto-rollback verdicts."""
+    verdict = "🔄 AUTO-ROLLBACK" if rollback_executed else "✅ KEPT"
+    lines = [
+        "# Auto-T Calibration Rollback Check",
+        "",
+        f"_Generated {dt.datetime.now(dt.UTC).isoformat(timespec='seconds')}_",
+        "",
+        f"**Source DB**: `{db_path}`",
+        "",
+        f"## Verdict: {verdict}",
+        "",
+        f"- **Deployed T**: `{eval_.deployed_T:.4f}`",
+        f"- **Eval window**: `{eval_.eval_window[0]}` → `{eval_.eval_window[1]}`",
+        f"- **Pairs evaluated**: **{eval_.n_pairs}**",
+        f"- **Reason**: {eval_.reason}",
+        "",
+        "## Post-deploy log-loss",
+        "",
+    ]
+    if eval_.n_pairs > 0 and eval_.log_loss_deployed == eval_.log_loss_deployed:
+        lines.extend([
+            "| Strategy | Log-loss |",
+            "|---|---:|",
+            f"| Deployed T = {eval_.deployed_T:.3f} | {eval_.log_loss_deployed:.4f} |",
+            f"| Identity (T = 1.000) | {eval_.log_loss_identity:.4f} |",
+            f"| **Δ (deployed − identity)** | **{eval_.delta:+.4f}** |",
+            "",
+            "Positive Δ → identity beats deployed → correction was hurting.",
+            "",
+        ])
+    else:
+        lines.append("_No post-deploy data available — keeping current state._\n")
+
+    lines.append("## Action")
+    lines.append("")
+    if rollback_executed:
+        lines.extend([
+            "Deployed correction REMOVED (`live_T_correction.json` deleted). "
+            "Serving layer reverts to identity (T=1.0) on next request.",
+            "",
+            "Next: weekly cron will re-propose a new T if drift persists.",
+        ])
+    else:
+        lines.extend([
+            "Deployed correction RETAINED. No change to serving layer.",
+            "",
+            "Next: the propose flow runs to potentially recommend a NEW T.",
+        ])
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description="V10 W2 — propose post-hoc T calibration drift correction"
@@ -195,6 +256,28 @@ def main(argv: list[str] | None = None) -> int:
              "existing correction file (auto-rollback).",
     )
     p.add_argument(
+        "--auto-rollback", action="store_true",
+        help="V10 W2 Day 4 — before proposing, validate the currently-"
+             "deployed correction (if any). If post-deploy data shows "
+             "identity (T=1.0) beats deployed T by more than "
+             "--rollback-threshold log-loss, automatically rollback "
+             "(journal + delete artifact file) and SHORT-CIRCUIT the "
+             "propose flow. Requires --apply + --deploy-artifact.",
+    )
+    p.add_argument(
+        "--rollback-threshold", type=float,
+        default=DEFAULT_ROLLBACK_LOG_LOSS_THRESHOLD,
+        help=f"Rollback if deployed log-loss > identity by this much "
+             f"on post-deploy data (default "
+             f"{DEFAULT_ROLLBACK_LOG_LOSS_THRESHOLD}).",
+    )
+    p.add_argument(
+        "--rollback-lookback-weeks", type=int, default=2,
+        help="How far back to look for post-deploy validation data "
+             "(default 2). The effective cutoff is "
+             "max(deploy_time, now - lookback).",
+    )
+    p.add_argument(
         "--out", default="-",
         help="Markdown report path; '-' for stdout (default).",
     )
@@ -208,6 +291,83 @@ def main(argv: list[str] | None = None) -> int:
     if not db_path.exists():
         log.error("observation DB not found: %s", db_path)
         return 1
+
+    # V10 W2 Day 4 — pre-flight auto-rollback check.
+    # When --auto-rollback is set and there's an active correction whose
+    # post-deploy log-loss is materially worse than identity, we revert
+    # FIRST + short-circuit the propose flow. This is the safety net
+    # that prevents one bad deploy from compounding across weeks.
+    if args.auto_rollback:
+        if not args.apply or not args.deploy_artifact:
+            log.warning(
+                "--auto-rollback requires --apply + --deploy-artifact; "
+                "skipping rollback check.",
+            )
+        else:
+            eval_ = evaluate_active_correction(
+                db_path, args.deploy_artifact,
+                lookback_weeks=args.rollback_lookback_weeks,
+                rollback_threshold=args.rollback_threshold,
+            )
+            log.info("auto-rollback check: %s", eval_.reason)
+            if eval_.should_rollback:
+                # Synthesize a DriftProposal that captures the rollback
+                # context, then journal + delete artifact.
+                rollback_prop = DriftProposal(
+                    proposed_T=1.0,  # rollback target
+                    current_T=eval_.deployed_T,
+                    log_loss_before=eval_.log_loss_deployed,
+                    log_loss_after=eval_.log_loss_identity,
+                    log_loss_delta=eval_.delta,
+                    p_value=float("nan"),  # no bootstrap on rollback path
+                    n_train=0,
+                    n_holdout=eval_.n_pairs,
+                    holdout_window=eval_.eval_window,
+                    should_apply=True,
+                    reason=eval_.reason,
+                )
+                try:
+                    row_id = record_calibration_journal(
+                        db_path, rollback_prop, action="rollback",
+                    )
+                    log.info("Recorded auto-rollback journal row #%d", row_id)
+                except Exception as exc:  # noqa: BLE001
+                    log.error("rollback journal write failed: %s", exc)
+                    return 1
+                removed = remove_artifact_correction(args.deploy_artifact)
+                if removed:
+                    log.warning(
+                        "AUTO-ROLLBACK: removed live_T_correction.json from %s",
+                        args.deploy_artifact,
+                    )
+                else:
+                    log.info(
+                        "rollback no-op: no live_T_correction.json in %s",
+                        args.deploy_artifact,
+                    )
+                # Write the rollback report + short-circuit
+                report = render_rollback_markdown(
+                    eval_, str(db_path), rollback_executed=True,
+                )
+                if args.out == "-":
+                    print(report)
+                else:
+                    out_path = Path(args.out)
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                    out_path.write_text(report)
+                    log.info("wrote %d bytes → %s", len(report), out_path)
+                return 0
+            # Not triggered → fall through to normal propose flow.
+            # Use the deployed T as baseline for propose's bootstrap
+            # p-value (otherwise we'd compare against T=1.0 even though
+            # serving applies the deployed T). Only override when the
+            # user kept --current-T at its default 1.0.
+            if eval_.correction is not None and args.current_T == 1.0:
+                args.current_T = eval_.deployed_T
+                log.info(
+                    "auto-rollback retained: using deployed T=%.4f as "
+                    "baseline for propose", args.current_T,
+                )
 
     log.info(
         "Proposing drift correction: lookback=%dw, holdout=%dw, min_samples=%d, current_T=%.3f",

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # post-v9 P1#16 — one-shot install of the local Nutmeg data pipeline (macOS).
 #
-# Installs 3 launchd jobs into ~/Library/LaunchAgents:
-#   1. com.nutmeg.daily_odds        14:00 daily — fetch today's odds
-#   2. com.nutmeg.daily_recommend   15:00 daily — generate recommendations + record session
-#   3. com.nutmeg.weekly_settle     Sunday 02:00 — settle past-week outcomes + write ROI report
+# Installs 5 launchd jobs into ~/Library/LaunchAgents:
+#   1. com.nutmeg.daily_odds                  14:00 daily — fetch today's odds
+#   2. com.nutmeg.daily_recommend             15:00 daily — generate recommendations + record session
+#   3. com.nutmeg.weekly_settle               Sunday 02:00 — settle past-week outcomes + write ROI report
+#   4. com.nutmeg.weekly_gate                 Sunday 04:00 — P1#19 live-vs-backtest gate
+#   5. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
 #
-# All 3 read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
+# All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
 # (no plaintext key in plists). Logs go to logs/launchd/.
 #
 # Usage:   ./scripts/setup_local_pipeline.sh
@@ -118,7 +120,7 @@ EOF
 # Common shell prefix for all jobs: cd + source .env so NUTMEG_API_FOOTBALL_KEY is set
 ENV_PREFIX="cd $REPO_ROOT && set -a && source .env && set +a"
 
-echo "Installing 3 launchd jobs into $PLIST_DIR ..."
+echo "Installing 5 launchd jobs into $PLIST_DIR ..."
 
 # Job 1: daily odds ingest (14:00 daily)
 # Pulls today's odds for the 5 main domestic leagues.
@@ -161,16 +163,35 @@ install_job "com.nutmeg.weekly_gate" \
   4 0 0 \
   "$ENV_PREFIX && mkdir -p $GATE_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.live_vs_backtest --db $DB_PATH --weeks 4 --live-model-arm lineup_aware --roi-backtest-db $BACKTEST_DB --roi-backtest-arm lineup_aware --tolerance-pp 50 --out $GATE_OUT_DIR/p1_19_gate_\$(date +%Y-W%V).md || true"
 
+# Job 5: V10 W2 weekly auto-T calibration check (Monday 03:00)
+# Runs auto-rollback safety net FIRST: if the currently-deployed
+# `live_T_correction.json` has post-deploy log-loss WORSE than identity
+# by > 0.003, automatically revert (journal + delete artifact).
+# Otherwise proposes a fresh T against the last 8 weeks of data and
+# writes the proposal to the journal (action=propose). User reviews
+# the report Monday morning and decides whether to ship via:
+#   nutmeg-auto-calibration --apply --action=deploy --deploy-artifact <dir>
+#
+# Why Monday 03:00? Settle (Sunday 02:00) and Gate (Sunday 04:00)
+# need to finish first — calibration uses the freshly-settled rows.
+ARTIFACT_DIR="$REPO_ROOT/data/v4_model"
+CALIB_OUT_DIR="$REPO_ROOT/docs/weekly"
+install_job "com.nutmeg.weekly_calibration_check" \
+  3 0 1 \
+  "$ENV_PREFIX && mkdir -p $CALIB_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.auto_calibration --db $DB_PATH --apply --auto-rollback --deploy-artifact $ARTIFACT_DIR --out $CALIB_OUT_DIR/auto_calibration_\$(date +%Y-W%V).md || true"
+
 echo ""
 echo "✓ Done. Jobs are loaded. Logs:"
 echo "    $LOG_DIR/com.nutmeg.daily_odds.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_recommend.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_settle.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_gate.{out,err}.log"
+echo "    $LOG_DIR/com.nutmeg.weekly_calibration_check.{out,err}.log"
 echo ""
 echo "Next:"
 echo "  • Verify with: ./scripts/health_check.sh"
 echo "  • Inspect jobs: launchctl list | grep com.nutmeg"
-echo "  • Wait until 14:00 / 15:00 / Sunday 02:00 / Sunday 04:00 for next run"
+echo "  • Wait until 14:00 / 15:00 / Sunday 02:00 / Sunday 04:00 / Monday 03:00 for next run"
 echo "  • Weekly gate reports land at: $GATE_OUT_DIR/p1_19_gate_<ISO-week>.md"
+echo "  • Weekly calibration reports land at: $CALIB_OUT_DIR/auto_calibration_<ISO-week>.md"
 echo "  • Uninstall: ./scripts/teardown_local_pipeline.sh"

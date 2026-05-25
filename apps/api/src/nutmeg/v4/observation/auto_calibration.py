@@ -548,6 +548,153 @@ def apply_correction_to_probs(
     return apply_post_temperature(probs, T)
 
 
+# --------- Auto-rollback evaluation (V10 W2 Day 4) ---------------------
+
+# A deployed T should consistently beat identity (T=1.0) on the data it's
+# being applied to. If post-deploy data shows the deployed correction
+# is actively HARMING log-loss by more than this threshold, the weekly
+# cron auto-reverts to identity. Conservative — beats noise on ~20-50
+# pairs/week without chasing every blip.
+DEFAULT_ROLLBACK_LOG_LOSS_THRESHOLD = 0.003
+
+
+@dataclass
+class CorrectionEvaluation:
+    """Outcome of `evaluate_active_correction`.
+
+    Used by the weekly cron's auto-rollback check. The CLI inspects
+    `.should_rollback` to decide whether to revert the artifact-side
+    correction file.
+    """
+    correction: dict | None
+    n_pairs: int
+    log_loss_deployed: float
+    log_loss_identity: float
+    delta: float  # deployed - identity (positive = identity is better)
+    should_rollback: bool
+    reason: str
+    eval_window: tuple[str, str] = ("", "")
+    deployed_T: float = 1.0
+
+
+def evaluate_active_correction(
+    db_path: Path | str,
+    artifact_dir: Path | str,
+    *,
+    lookback_weeks: int = 2,
+    rollback_threshold: float = DEFAULT_ROLLBACK_LOG_LOSS_THRESHOLD,
+    as_of: dt.datetime | None = None,
+) -> CorrectionEvaluation:
+    """Validate the currently-deployed T correction against fresh data.
+
+    Loads `live_T_correction.json` from ``artifact_dir`` (returns a
+    pass-through eval when nothing is deployed). Pulls calibration
+    pairs from the more recent of (deploy time, ``as_of -
+    lookback_weeks``). Computes log-loss under both:
+
+      (a) the deployed T
+      (b) identity (T = 1.0)
+
+    If identity beats deployed by more than ``rollback_threshold``
+    log-loss, the correction is judged to be actively harming
+    predictions → ``should_rollback = True``. The weekly cron honors
+    this verdict by deleting the correction file (and journaling the
+    rollback).
+
+    This is the post-hoc safety net: even with the ship-gate check at
+    deploy time, real-world drift can outpace the calibration. Auto-
+    rollback prevents a single bad deploy from compounding across
+    weeks of recommendations.
+    """
+    correction = load_artifact_correction(artifact_dir)
+    if correction is None:
+        return CorrectionEvaluation(
+            correction=None, n_pairs=0,
+            log_loss_deployed=float("nan"),
+            log_loss_identity=float("nan"),
+            delta=float("nan"),
+            should_rollback=False,
+            reason="no active correction to evaluate",
+        )
+
+    if as_of is None:
+        as_of = dt.datetime.now(dt.UTC).replace(microsecond=0)
+
+    deployed_T = float(correction.get("T", 1.0))
+
+    # Determine the eval window: from MAX(deploy_time, as_of - lookback_weeks)
+    cutoff = as_of - dt.timedelta(weeks=lookback_weeks)
+    deployed_at_iso = correction.get("deployed_at_utc")
+    if deployed_at_iso:
+        try:
+            deployed_at = dt.datetime.fromisoformat(deployed_at_iso)
+            if deployed_at.tzinfo is None:
+                deployed_at = deployed_at.replace(tzinfo=dt.UTC)
+            if deployed_at > cutoff:
+                cutoff = deployed_at
+        except (ValueError, TypeError):
+            pass  # use lookback_weeks cutoff
+
+    # Pull all candidate pairs (over a generous window), then filter
+    # by cutoff date. The +1 ensures we capture the full window edge.
+    days_back = max(7, int((as_of - cutoff).total_seconds() / 86400) + 1)
+    weeks_back = max(1, int(np.ceil(days_back / 7.0)) + 1)
+    all_pairs = load_calibration_pairs(db_path, weeks_back, as_of=as_of)
+    cutoff_iso = cutoff.date().isoformat()
+    pairs = [p for p in all_pairs if p.match_date >= cutoff_iso]
+
+    eval_window = (cutoff_iso, as_of.date().isoformat())
+    if pairs:
+        eval_window = (
+            min(p.match_date for p in pairs),
+            max(p.match_date for p in pairs),
+        )
+
+    if not pairs:
+        return CorrectionEvaluation(
+            correction=correction, n_pairs=0,
+            log_loss_deployed=float("nan"),
+            log_loss_identity=float("nan"),
+            delta=float("nan"),
+            should_rollback=False,
+            reason=f"no post-deploy data since {cutoff_iso}; "
+                   f"deployed T={deployed_T:.3f} retained",
+            eval_window=eval_window,
+            deployed_T=deployed_T,
+        )
+
+    probs, outc = _stack(pairs)
+    ll_deployed = log_loss_1x2(apply_post_temperature(probs, deployed_T), outc)
+    ll_identity = log_loss_1x2(apply_post_temperature(probs, 1.0), outc)
+    delta = ll_deployed - ll_identity  # positive = identity is better
+
+    should_rollback = delta > rollback_threshold
+    if should_rollback:
+        reason = (
+            f"AUTO-ROLLBACK: deployed T={deployed_T:.3f} log-loss "
+            f"{ll_deployed:.4f} > identity {ll_identity:.4f} by "
+            f"{delta:+.4f} (> threshold {rollback_threshold:.4f}) on "
+            f"{len(pairs)} post-deploy pairs"
+        )
+    else:
+        reason = (
+            f"deployed T={deployed_T:.3f} OK: log-loss {ll_deployed:.4f} vs "
+            f"identity {ll_identity:.4f} (Δ {delta:+.4f}, threshold "
+            f"{rollback_threshold:.4f}); retained on {len(pairs)} pairs"
+        )
+
+    return CorrectionEvaluation(
+        correction=correction, n_pairs=len(pairs),
+        log_loss_deployed=ll_deployed,
+        log_loss_identity=ll_identity,
+        delta=delta,
+        should_rollback=should_rollback,
+        reason=reason,
+        eval_window=eval_window,
+        deployed_T=deployed_T,
+    )
+
+
 __all__ = [
     "CalibrationPair",
     "DriftProposal",
@@ -572,4 +719,8 @@ __all__ = [
     "load_artifact_correction",
     "remove_artifact_correction",
     "apply_correction_to_probs",
+    # V10 W2 Day 4 — auto-rollback safety net
+    "DEFAULT_ROLLBACK_LOG_LOSS_THRESHOLD",
+    "CorrectionEvaluation",
+    "evaluate_active_correction",
 ]

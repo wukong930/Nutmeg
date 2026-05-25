@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# post-v9 P1#16 — uninstall the 3 launchd jobs installed by setup_local_pipeline.sh
+# post-v9 P1#16 — uninstall the launchd jobs installed by setup_local_pipeline.sh
+# V10 W2 Day 4 — added com.nutmeg.weekly_calibration_check
 #
 # Usage:  ./scripts/teardown_local_pipeline.sh
 #
@@ -9,7 +10,13 @@
 set -euo pipefail
 
 PLIST_DIR="$HOME/Library/LaunchAgents"
-JOBS=("com.nutmeg.daily_odds" "com.nutmeg.daily_recommend" "com.nutmeg.weekly_settle" "com.nutmeg.weekly_gate")
+JOBS=(
+  "com.nutmeg.daily_odds"
+  "com.nutmeg.daily_recommend"
+  "com.nutmeg.weekly_settle"
+  "com.nutmeg.weekly_gate"
+  "com.nutmeg.weekly_calibration_check"
+)
 
 echo "Uninstalling launchd jobs ..."
 for job in "${JOBS[@]}"; do
