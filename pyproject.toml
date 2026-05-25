@@ -78,6 +78,7 @@ nutmeg-ece-audit = "nutmeg.v4.cli.ece_audit:main"
 nutmeg-cat-calibration-ablation = "nutmeg.v4.cli.cat_calibration_ablation:main"
 nutmeg-roi-backtest = "nutmeg.v4.cli.roi_backtest:main"
 nutmeg-ingest-cup-odds-via-odds-api = "nutmeg.v4.cli.ingest_cup_odds_via_odds_api:main"
+nutmeg-wc-predict = "nutmeg.v4.cli.wc_predict:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]

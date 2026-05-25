@@ -168,6 +168,27 @@ def fetch_fixtures_for_date(
     return _request("/fixtures", params, cache_dir=cache_dir, refresh=refresh)
 
 
+def fetch_fixtures_for_league_season(
+    league_canonical: str,
+    season: int,
+    *,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+) -> list[dict[str, Any]]:
+    """V10 W1 Track B Day 4 — pull ALL fixtures for one (league, season).
+
+    Returns both NS (upcoming) and FT (finished) fixtures. Used by the
+    WC predict CLI which needs the full tournament schedule, not just
+    one day. The season-based query is also more cache-friendly for
+    repeated calls within a tournament window.
+    """
+    params = {
+        "league": league_id(league_canonical),
+        "season": season,
+    }
+    return _request("/fixtures", params, cache_dir=cache_dir, refresh=refresh)
+
+
 def fetch_lineups(
     fixture_id: int,
     *,
