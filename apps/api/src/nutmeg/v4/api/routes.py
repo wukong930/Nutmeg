@@ -263,7 +263,11 @@ def service_worker() -> Response:
     update; bump CACHE_VERSION below when shell-cached files change.
     """
     sw_js = """
-const CACHE_VERSION = 'nutmeg-v1';
+// Bumped 2026-05-25 V11 P1-FE#1 — forces SW to re-fetch dashboard.html
+// after design-system refresh. The activate handler below deletes any
+// cache named differently from this constant, so the next page load
+// auto-purges the old shell + grabs the new HTML.
+const CACHE_VERSION = 'nutmeg-v2-fe-refresh';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
