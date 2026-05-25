@@ -44,6 +44,8 @@ from nutmeg.v4.api.schemas import (
     TodaySummary,
     UpcomingPredictionsRequest,
     UpcomingPredictionsResponse,
+    WcMatchPrediction,
+    WcPredictionsResponse,
 )
 from nutmeg.v4.combo import MatchInput, recommend_combinations
 from nutmeg.v4.combo.compound_pool import recommend_pool
@@ -1017,4 +1019,134 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             total_stake=total_stake,
             weighted_ev=weighted_ev,
         ),
+    )
+
+
+# ---------- /predictions/wc (V10 W1 Track B Day 5) ----------
+
+@router.get(
+    "/predictions/wc",
+    response_model=WcPredictionsResponse,
+    summary="Daily WC 1X2 predictions (LightGBM + Pinnacle blend per Day 3 verdict)",
+)
+def predictions_wc(
+    date: str | None = None,
+    fetch_current_odds: bool = False,
+    alpha: float = 0.4,
+    season: int | None = None,
+) -> WcPredictionsResponse:
+    """V10 W1 Track B Day 5 — HTTP wrapper around the `nutmeg-wc-predict`
+    CLI logic. Used by the dashboard "🏆 WC 2026" tab.
+
+    Parameters
+    ----------
+    date : YYYY-MM-DD. Default today (UTC).
+    fetch_current_odds : if True, pulls Pinnacle from The Odds API
+        (costs ~10 quota per request); if False, model-only output.
+    alpha : blend weight LightGBM × Pinnacle (default 0.4 per Day 3
+        walk-forward).
+    season : WC season year (default derived from date.year).
+
+    Graceful degradation
+    --------------------
+    - Missing training data → 503
+    - No fixtures on date → 200 with predictions=[] and n_fixtures=0
+    - API-Football error → 200 with empty predictions (logged)
+    - Odds API error → 200, fall back to lightgbm_only
+    """
+    import datetime as _dt
+    import logging
+    from pathlib import Path as _Path
+
+    _log = logging.getLogger(__name__)
+
+    if date is None:
+        on_date = _dt.date.today()
+    else:
+        try:
+            on_date = _dt.date.fromisoformat(date)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"date must be ISO YYYY-MM-DD: {exc}",
+            )
+
+    season_resolved = season or on_date.year
+
+    # Local imports (avoid top-level cost in tests / other endpoints)
+    try:
+        from nutmeg.v4.cli.wc_predict import (
+            HOST_COUNTRIES,
+            _build_pinnacle_lookup_for_date,
+            _pinnacle_lookup_with_aliases,
+            _predict_one_fixture,
+            _train_combined_model,
+        )
+        from nutmeg.v4.data.sources.api_football import (
+            fetch_fixtures_for_league_season,
+        )
+        from nutmeg.v4.data.wc_training_frame import load_elo_snapshot
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"WC prediction module not loadable: {exc}",
+        )
+
+    snapshots = sorted(_Path("data/external/eloratings").glob("eloratings_*.parquet"))
+    if not snapshots:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No eloratings snapshot found at data/external/eloratings/. "
+                   "Run the eloratings scraper first (see v10_w1_day2_*.md).",
+        )
+
+    # Training data needed
+    try:
+        host_hint = HOST_COUNTRIES.get(2018)
+        model = _train_combined_model([2018, 2022], host_countries=host_hint)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"WC training data missing: {exc}. "
+                   "Run nutmeg-ingest-cup-history --leagues WC --seasons 2018,2022",
+        )
+
+    elo = load_elo_snapshot(snapshots[-1])
+
+    try:
+        all_fx = fetch_fixtures_for_league_season("WC", season_resolved)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("WC fixture fetch failed: %s", exc)
+        all_fx = []
+
+    on_iso = on_date.isoformat()
+    today_fx = [f for f in all_fx if f.get("fixture", {}).get("date", "").startswith(on_iso)]
+
+    pinnacle_lookup = {}
+    if fetch_current_odds and today_fx:
+        try:
+            pinnacle_lookup = _build_pinnacle_lookup_for_date(on_date)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("WC pinnacle fetch failed: %s", exc)
+
+    season_hosts = HOST_COUNTRIES.get(season_resolved, {})
+    preds: list[WcMatchPrediction] = []
+    for fx in today_fx:
+        home = fx["teams"]["home"]["name"]
+        away = fx["teams"]["away"]["name"]
+        pin = _pinnacle_lookup_with_aliases(home, away, pinnacle_lookup)
+        raw = _predict_one_fixture(
+            fx, model, elo, season_hosts, pinnacle_h2h=pin, alpha=alpha,
+        )
+        preds.append(WcMatchPrediction(**raw))
+
+    return WcPredictionsResponse(
+        date=on_iso,
+        season=season_resolved,
+        n_fixtures=len(preds),
+        blend_alpha=alpha,
+        elo_snapshot=snapshots[-1].name,
+        host_country_hint=season_hosts,
+        predictions=preds,
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
     )

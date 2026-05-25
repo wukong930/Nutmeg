@@ -65,6 +65,10 @@
       <!-- V10 W1: 今日推荐 is now the default landing tab. Auto-loads
            recommendations on page open; no user input required. -->
       <button data-tab="today"     role="tab" aria-controls="tab-today"     data-i18n="tab_today"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">🎯 今日推荐</button>
+      <!-- V10 W1 Day 5: WC 2026 special tab. Auto-loads predictions for
+           today's WC fixtures (national-team Elo + LightGBM × Pinnacle blend).
+           Visible by default during the WC window; can be hidden post-tournament. -->
+      <button data-tab="wc"        role="tab" aria-controls="tab-wc"        data-i18n="tab_wc"       class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">🏆 WC 2026</button>
       <!-- V10 W1 Day 4: legacy 7 tabs fold under this toggle. Default
            collapsed → new/casual users see only 今日推荐. Engineers /
            power users click 高级 ▾ to reveal manual JSON entry, ROI
@@ -162,6 +166,51 @@
         所有场次的 EV / 命中率均未达推荐门槛 (建议 no-bet)。明天再来 ·
         或前往 <a href="#" data-tab-link="single" class="text-indigo-600 hover:underline">高级模式 →</a> 手动输入场次。
       </p>
+    </div>
+  </div>
+
+  <!-- Tab: WC 2026 (V10 W1 Day 5) -->
+  <div id="tab-wc" role="tabpanel" aria-labelledby="tab-wc" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-bold" data-i18n="h_wc_title">🏆 2026 世界杯预测</h2>
+          <p class="text-sm text-gray-500" data-i18n="sub_wc">
+            国家队 Elo + LightGBM × Pinnacle 混合模型 · WC 2018/2022 训练 (128 场)
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-sm">
+            <span data-i18n="lbl_date">日期</span>
+            <input id="wc-date" type="date" value="2026-06-11" min="2026-06-11" max="2026-07-19"
+                   class="px-2 py-1 border rounded text-sm">
+          </label>
+          <label class="text-sm flex items-center gap-1" title="拉取实时 Pinnacle 盘口做加权混合 (消耗 10 quota / 次)">
+            <input id="wc-fetch-odds" type="checkbox" class="mr-1">
+            <span data-i18n="lbl_use_pinnacle">用实时盘口</span>
+          </label>
+          <button id="wc-refresh"
+                  data-i18n="btn_refresh"
+                  class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+            刷新
+          </button>
+        </div>
+      </div>
+      <div id="wc-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
+      <div class="mt-3 text-xs text-gray-500" data-i18n="wc_caveat">
+        ⚠️ 诚实声明: 64 场训练样本很小。WC 2022 walk-forward 验证 hit-rate 54.7%, log-loss 0.98 (略好于 Pinnacle 1.01); 2026 真实命中率预期 50-52%。这是一个 "通过 ship gate 但要谨慎使用" 的模型。
+      </div>
+    </div>
+
+    <!-- WC predictions list -->
+    <div id="wc-list-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6">
+      <h3 class="font-bold mb-3"><span data-i18n="h_wc_matches">今日 WC 比赛</span> <span id="wc-count" class="text-sm font-normal text-gray-500"></span></h3>
+      <div id="wc-list" class="space-y-2"></div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="wc-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-gray-600">
+      <p data-i18n="wc_empty">该日无 WC 比赛。试试 2026-06-11 (开幕) 或 2026-06-14 (5 场密集日)。</p>
     </div>
   </div>
 
@@ -567,6 +616,17 @@ const I18N = {
     today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
     btn_advanced_show: '高级 ▾',
     btn_advanced_hide: '高级 ▴',
+    // V10 W1 Day 5: WC tab
+    tab_wc:           '🏆 WC 2026',
+    h_wc_title:       '🏆 2026 世界杯预测',
+    sub_wc:           '国家队 Elo + LightGBM × Pinnacle 混合模型 · WC 2018/2022 训练 (128 场)',
+    lbl_date:         '日期',
+    lbl_use_pinnacle: '用实时盘口',
+    h_wc_matches:     '今日 WC 比赛',
+    wc_empty:         '该日无 WC 比赛。试试 2026-06-11 (开幕) 或 2026-06-14 (5 场密集日)。',
+    wc_caveat:        '⚠️ 诚实声明: 64 场训练样本很小。WC 2022 walk-forward 验证 hit-rate 54.7%, log-loss 0.98 (略好于 Pinnacle 1.01); 2026 真实命中率预期 50-52%。这是一个 "通过 ship gate 但要谨慎使用" 的模型。',
+    wc_loading:       '加载 WC 预测 ...',
+    wc_api_error:     '加载预测失败',
 
     // Common buttons
     btn_load_sample:  '使用示例数据 (8 场)',
@@ -696,6 +756,17 @@ const I18N = {
     today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
     btn_advanced_show: 'Advanced ▾',
     btn_advanced_hide: 'Advanced ▴',
+    // V10 W1 Day 5: WC tab
+    tab_wc:           '🏆 WC 2026',
+    h_wc_title:       "🏆 2026 World Cup Predictions",
+    sub_wc:           'National-team Elo + LightGBM × Pinnacle blend · trained on WC 2018+2022 (128 matches)',
+    lbl_date:         'Date',
+    lbl_use_pinnacle: 'Use live odds',
+    h_wc_matches:     "Today's WC matches",
+    wc_empty:         "No WC matches on this date. Try 2026-06-11 (opener) or 2026-06-14 (5 fixtures).",
+    wc_caveat:        '⚠️ Honest disclaimer: 64-match training set is small. WC 2022 walk-forward: hit-rate 54.7%, log-loss 0.98 (slightly better than Pinnacle 1.01). 2026 realistic expectation: hit-rate 50-52%. Ship-gate passed but use with caution.',
+    wc_loading:       'Loading WC predictions ...',
+    wc_api_error:     'Failed to load predictions',
 
     btn_load_sample:  'Load sample data (8 fixtures)',
     btn_clear:        'Clear',
@@ -871,6 +942,7 @@ function switchTab(name) {
   if (name === 'roi') loadROI();
   if (name === 'sessions') loadSessions();
   if (name === 'rules') loadRules();
+  if (name === 'wc') loadWcPredictions();
 }
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -1626,6 +1698,81 @@ $('#today-bankroll').addEventListener('input', () => {
   _todayDebounce = setTimeout(loadTodayRecommendations, 500);
 });
 $('#today-refresh').addEventListener('click', loadTodayRecommendations);
+
+// =====================================================================
+// V10 W1 Day 5 — WC 2026 predictions tab
+// =====================================================================
+// Calls GET /v4/predictions/wc?date=YYYY-MM-DD&fetch_current_odds=...
+// Renders compact card list with probabilities. Show Pure-Elo baseline
+// as a smaller secondary line for transparency.
+function renderWcMatch(p) {
+  // Outcome with highest probability is bolded
+  const probs = [['H', p.p_home, p.home_team], ['D', p.p_draw, '平'], ['A', p.p_away, p.away_team]];
+  probs.sort((a, b) => b[1] - a[1]);
+  const topO = probs[0][0];
+  const fmtOne = (label, prob, isTop) => {
+    const cls = isTop ? 'font-semibold text-indigo-700' : 'text-gray-600';
+    return `<span class="${cls}">${label} ${(prob*100).toFixed(0)}%</span>`;
+  };
+  const pinTag = p.has_pinnacle
+    ? `<span class="text-xs px-1.5 py-0.5 bg-green-50 text-green-700 rounded">+市场盘口</span>`
+    : `<span class="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">仅模型</span>`;
+  return `
+    <div class="border rounded p-3">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div class="text-sm">
+          <div class="font-medium">${p.home_team} <span class="text-gray-400">vs</span> ${p.away_team}</div>
+          <div class="text-xs text-gray-500">${p.kickoff_utc.slice(0,16).replace('T', ' ')} UTC · ${p.round || '?'} · Elo ${p.home_elo.toFixed(0)} vs ${p.away_elo.toFixed(0)}</div>
+        </div>
+        <div class="flex items-center gap-3 text-sm">
+          ${fmtOne(p.home_team.slice(0,3), p.p_home, topO === 'H')}
+          ${fmtOne('平', p.p_draw, topO === 'D')}
+          ${fmtOne(p.away_team.slice(0,3), p.p_away, topO === 'A')}
+          ${pinTag}
+        </div>
+      </div>
+      <div class="mt-1 text-xs text-gray-400">
+        纯 Elo 基线: H ${(p.p_home_elo_only*100).toFixed(0)}% · D ${(p.p_draw_elo_only*100).toFixed(0)}% · A ${(p.p_away_elo_only*100).toFixed(0)}%
+      </div>
+    </div>`;
+}
+
+async function loadWcPredictions() {
+  const date = $('#wc-date').value;
+  const useOdds = $('#wc-fetch-odds').checked;
+  if (!date) return;
+  setStatus('#wc-status', 'loading', t('wc_loading'));
+  try {
+    const url = `${API}/predictions/wc?date=${encodeURIComponent(date)}` +
+                `&fetch_current_odds=${useOdds ? 'true' : 'false'}`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const body = await resp.json();
+    if (body.n_fixtures === 0) {
+      $('#wc-list-section').classList.add('hidden');
+      $('#wc-empty').classList.remove('hidden');
+      setStatus('#wc-status', 'success', `0 场比赛 · season ${body.season}`);
+      return;
+    }
+    $('#wc-empty').classList.add('hidden');
+    $('#wc-list-section').classList.remove('hidden');
+    $('#wc-count').textContent = ` · ${body.n_fixtures} 场 · α=${body.blend_alpha}`;
+    $('#wc-list').innerHTML = body.predictions.map(renderWcMatch).join('');
+    const n_blend = body.predictions.filter(p => p.has_pinnacle).length;
+    setStatus('#wc-status', 'success',
+      `已抓 ${body.n_fixtures} 场 · ${n_blend} 含市场盘口 · ${body.elo_snapshot}`);
+  } catch (err) {
+    setStatus('#wc-status', 'error', t('wc_api_error') + ': ' + err.message);
+    $('#wc-list-section').classList.add('hidden');
+    $('#wc-empty').classList.add('hidden');
+  }
+}
+
+$('#wc-refresh').addEventListener('click', loadWcPredictions);
+$('#wc-date').addEventListener('change', loadWcPredictions);
+$('#wc-fetch-odds').addEventListener('change', loadWcPredictions);
 
 // =====================================================================
 // V10 W1 Day 4 — "高级 ▾" toggle for legacy 7 tabs

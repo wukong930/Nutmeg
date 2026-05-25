@@ -348,6 +348,50 @@ class TodayRecommendationsResponse(BaseModel):
     summary: TodaySummary
 
 
+# ---------- /predictions/wc (V10 W1 Track B Day 5) ----------
+
+class WcMatchPrediction(BaseModel):
+    """One WC fixture's predicted 1X2 probabilities + diagnostics.
+
+    Mirrors the JSON shape that `nutmeg-wc-predict` CLI outputs per
+    fixture. `source` is "blend(α=0.4)" when Pinnacle was available,
+    "lightgbm_only" when only the model contributed.
+    """
+    fixture_id: int
+    kickoff_utc: str
+    round: Optional[str] = None
+    home_team: str
+    away_team: str
+    home_elo: float
+    away_elo: float
+    elo_diff: float
+    home_adv: float
+    has_pinnacle: bool
+    psc_home: Optional[float] = None
+    psc_draw: Optional[float] = None
+    psc_away: Optional[float] = None
+    p_home: float
+    p_draw: float
+    p_away: float
+    # Pure-Elo baseline for transparency (always populated)
+    p_home_elo_only: float
+    p_draw_elo_only: float
+    p_away_elo_only: float
+    source: str
+
+
+class WcPredictionsResponse(BaseModel):
+    """Wraps `nutmeg-wc-predict` output for the dashboard."""
+    date: str
+    season: int
+    n_fixtures: int
+    blend_alpha: float
+    elo_snapshot: Optional[str] = None
+    host_country_hint: dict[str, float] = Field(default_factory=dict)
+    predictions: list[WcMatchPrediction]
+    generated_at_utc: str
+
+
 # ---------- /rules (V6 W10) ----------
 
 class LotteryRulesResponse(BaseModel):
