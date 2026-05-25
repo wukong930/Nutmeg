@@ -1058,6 +1058,10 @@ function setLocale(loc) {
   _LOCALE = loc;
   try { localStorage.setItem('nutmeg.locale', loc); } catch (_) {}
   applyI18n();
+  // V11 P1-FE#2 — re-render auto-loading tabs so team names switch language
+  if (typeof loadTodayRecommendations === 'function') {
+    try { loadTodayRecommendations(); } catch (_) {}
+  }
 }
 function initLocale() {
   let stored = null;
@@ -1069,6 +1073,23 @@ function initLocale() {
     _LOCALE = 'en';
   }
   applyI18n();
+}
+
+// V11 P1-FE#2 — Chinese team name dict, fetched once at init from
+// /api/v4/team-name-zh. Covers ~100 top-5 European league teams. Used
+// by `zhTeam(name)` which falls through unchanged for unknown teams.
+let TEAM_ZH_DICT = {};
+async function loadTeamZhDict() {
+  try {
+    const r = await fetch(API + '/team-name-zh');
+    if (r.ok) TEAM_ZH_DICT = await r.json();
+  } catch (_) { /* network fail is non-critical; fall through to English */ }
+}
+// Public helper — call from every team-name render site.
+function zhTeam(name) {
+  if (!name) return '';
+  if (_LOCALE !== 'zh') return name;
+  return TEAM_ZH_DICT[name] || name;
 }
 
 // P1#13: setStatus — visual styling for status messages instead of just
@@ -1217,7 +1238,7 @@ function renderRecommendations(body) {
     // Desktop: table row
     ptbody.insertAdjacentHTML('beforeend',
       `<tr>
-        <td>${p.home_team} <span class="text-gray-400">vs</span> ${p.away_team} <span class="text-xs text-gray-400">(${p.league})</span></td>
+        <td>${zhTeam(p.home_team)} <span class="text-gray-400">vs</span> ${zhTeam(p.away_team)} <span class="text-xs text-gray-400">(${p.league})</span></td>
         <td class="num">${p.lambda_home.toFixed(2)}</td>
         <td class="num">${p.lambda_away.toFixed(2)}</td>
         <td class="num">${fmtPct(p.p_home_1x2)}</td>
@@ -1238,7 +1259,7 @@ function renderRecommendations(body) {
     pcards.insertAdjacentHTML('beforeend',
       `<div class="border rounded p-3 bg-gray-50">
         <div class="font-medium text-sm mb-1">
-          ${p.home_team} <span class="text-gray-400">vs</span> ${p.away_team}
+          ${zhTeam(p.home_team)} <span class="text-gray-400">vs</span> ${zhTeam(p.away_team)}
           <span class="text-xs text-gray-400">(${p.league})</span>
         </div>
         <div class="text-xs text-gray-600 mb-1">λ 主/客: <strong>${p.lambda_home.toFixed(2)}</strong> / <strong>${p.lambda_away.toFixed(2)}</strong></div>
@@ -1270,7 +1291,12 @@ function renderRecommendations(body) {
           `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
         ).join('');
         const market = leg.market_type === '1x2' ? '胜平负' : '让球';
-        const matchName = leg.match_id.split('_').slice(-3).join(' ').replace('vs', ' vs ');
+        // V11 P1-FE#2: parse "league_home_vs_away" → translate via zhTeam.
+        const raw = (leg.match_id || '').replace(/^[A-Z_]+_/, '');
+        const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
+        const matchName = parts[1]
+          ? `${zhTeam(parts[0])} vs ${zhTeam(parts[1])}`
+          : zhTeam(parts[0]);
         return `<div class="text-sm py-1 text-primary">${matchName} <span class="text-xs text-muted">[${market}]</span>${sels}</div>`;
       }).join('');
       recsList.insertAdjacentHTML('beforeend',
@@ -1375,7 +1401,7 @@ function renderSingleRecommendations(body) {
       return `<div class="card-rec">
         <div class="flex items-start justify-between gap-3 mb-3">
           <div class="flex-1 min-w-0">
-            <div class="font-display font-semibold text-base text-primary">${home}${away ? ` <span class="text-muted font-normal">vs</span> ${away}` : ''}</div>
+            <div class="font-display font-semibold text-base text-primary">${zhTeam(home)}${away ? ` <span class="text-muted font-normal">vs</span> ${zhTeam(away)}` : ''}</div>
           </div>
           <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(t.outcome)}</span>
         </div>
@@ -1488,9 +1514,19 @@ function renderPoolRecommendations(body) {
   // (engineer metric). Legs shown as inline badges.
   list.innerHTML =
     selected.map((t, i) => {
-      const legsHtml = t.legs.map(l =>
-        `<span class="badge-ok ml-1">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>`
-      ).join('');
+      // V11 P1-FE#2: extract home/away from match_id ("league_home_vs_away")
+      // so each leg shows match context, not just an opaque outcome+odds.
+      const legsHtml = t.legs.map(l => {
+        const raw = (l.match_id || '').replace(/^[A-Z_]+_/, '');
+        const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
+        const home = zhTeam(parts[0]);
+        const away = zhTeam(parts[1]);
+        const match = away ? `${home} vs ${away}` : home;
+        return `<div class="text-xs flex items-center justify-between gap-2 py-1">
+          <span class="text-secondary truncate">${match}</span>
+          <span class="badge-ok shrink-0">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+        </div>`;
+      }).join('');
       return `<div class="card-rec">
         <div class="flex items-start justify-between gap-3 mb-3">
           <div>
@@ -1499,7 +1535,7 @@ function renderPoolRecommendations(body) {
           </div>
           <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(t.stake)}</div>
         </div>
-        <div class="mb-3 text-sm">${legsHtml}</div>
+        <div class="mb-3 divide-y" style="border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">${legsHtml}</div>
         <div class="flex items-center justify-between text-xs pt-2" style="border-top: 1px solid var(--border-subtle);">
           <span class="flex items-center gap-2">
             <span class="text-secondary">命中</span>${probBar(t.hit_probability)}
@@ -1595,7 +1631,7 @@ function renderTodaySingle(single) {
       <div class="card-rec">
         <div class="flex items-start justify-between gap-3 mb-3">
           <div class="flex-1 min-w-0">
-            <div class="font-display font-semibold text-base text-primary">${t.home_team} <span class="text-muted font-normal">vs</span> ${t.away_team}</div>
+            <div class="font-display font-semibold text-base text-primary">${zhTeam(t.home_team)} <span class="text-muted font-normal">vs</span> ${zhTeam(t.away_team)}</div>
             <div class="text-xs text-muted mt-1">${t.league} · ${t.date}</div>
           </div>
           <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(t.outcome)}</span>
@@ -1733,9 +1769,9 @@ function renderWcMatch(p) {
   // pure-Elo baseline row (engineer info), and "+市场盘口" / "仅模型"
   // technical tags. Kept: teams, kickoff, top tip, probability bars.
   const probs = [
-    {key: 'H', label: '主胜', team: p.home_team, prob: p.p_home},
+    {key: 'H', label: '主胜', team: zhTeam(p.home_team), prob: p.p_home},
     {key: 'D', label: '平局', team: '平', prob: p.p_draw},
-    {key: 'A', label: '客胜', team: p.away_team, prob: p.p_away},
+    {key: 'A', label: '客胜', team: zhTeam(p.away_team), prob: p.p_away},
   ];
   probs.sort((a, b) => b.prob - a.prob);
   const top = probs[0];
@@ -1747,7 +1783,7 @@ function renderWcMatch(p) {
     <div class="card-rec">
       <div class="flex items-start justify-between gap-3 mb-3">
         <div class="flex-1 min-w-0">
-          <div class="font-display font-semibold text-base text-primary">${p.home_team} <span class="text-muted font-normal">vs</span> ${p.away_team}</div>
+          <div class="font-display font-semibold text-base text-primary">${zhTeam(p.home_team)} <span class="text-muted font-normal">vs</span> ${zhTeam(p.away_team)}</div>
           <div class="text-xs text-muted mt-1">${kickoff} · ${p.round || 'WC 2026'}</div>
         </div>
         <span class="badge-gold whitespace-nowrap">${top.label}</span>
@@ -1800,8 +1836,12 @@ async function loadWcPredictions() {
 $('#wc-refresh').addEventListener('click', loadWcPredictions);
 $('#wc-date').addEventListener('change', loadWcPredictions);
 $('#wc-fetch-odds').addEventListener('change', loadWcPredictions);
-// V10 W1: fire today-recommendations on initial load (today tab is default)
-loadTodayRecommendations();
+// V11 P1-FE#2 — fetch Chinese team name dict, then trigger initial today
+// recommendations load (V10 W1 default landing). Doing it after the fetch
+// means first paint already has Chinese names for known teams.
+loadTeamZhDict().then(() => {
+  if (typeof loadTodayRecommendations === 'function') loadTodayRecommendations();
+});
 // P1#14: i18n init + language toggle wiring
 initLocale();
 $('#lang-toggle').addEventListener('click', () => {

@@ -267,7 +267,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v3-fe-cards';
+const CACHE_VERSION = 'nutmeg-v4-fe-zh';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -334,6 +334,27 @@ def rules() -> LotteryRulesResponse:
         vig=r.vig,
         min_ev_per_unit=r.min_ev_per_unit,
         min_hit_probability=r.min_hit_probability,
+    )
+
+
+# ---------- /v4/team-name-zh (V11 P1-FE#2) ------------------------------
+
+@router.get("/team-name-zh", include_in_schema=False)
+def team_name_zh_endpoint() -> Response:
+    """Return Chinese name dict for ~100 top-5 European league teams.
+
+    Dashboard fetches this once at init and stores it as ``TEAM_ZH_DICT``.
+    When ``locale == 'zh'`` the frontend calls ``zhTeam(name)`` to swap
+    English → Chinese in match cards. Unknown teams fall through unchanged.
+
+    Static — cached aggressively (1 day).
+    """
+    import json as _json
+    from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+    return Response(
+        content=_json.dumps(TEAM_NAME_ZH, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=86400"},
     )
 
 
