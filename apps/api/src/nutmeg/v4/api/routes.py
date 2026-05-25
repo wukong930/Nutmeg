@@ -78,8 +78,50 @@ _artifact_cache: dict[str, V4Artifact] = {}
 _load_lock = Lock()
 
 
+# V11 backlog #4 — Layer B: live_artifact_pointer.json redirect cache.
+# When present at the base artifact dir, serving redirects to the
+# Layer-B-deployed candidate dir without server restart. Mtime cache
+# mirrors _load_correction(): re-reads when the pointer file changes.
+_pointer_cache: dict[str, tuple[float, str | None]] = {}
+
+
 def _artifact_path() -> str:
-    return os.environ.get("NUTMEG_V4_ARTIFACT_PATH", DEFAULT_ARTIFACT_PATH)
+    """Resolve the effective artifact directory.
+
+    Precedence:
+      1. ``NUTMEG_V4_ARTIFACT_PATH`` env var → that path (existing V5 W11 behavior)
+      2. ``live_artifact_pointer.json`` at the base dir → its target path
+         (V11 backlog #4 Layer B)
+      3. ``DEFAULT_ARTIFACT_PATH`` → fallback
+
+    Layer B's pointer can redirect to ``data/v4_model_layer_b/v_2026-Q3/``;
+    the redirect is mtime-cached so the next request post-deploy
+    serves the new artifact without restart.
+    """
+    base = os.environ.get("NUTMEG_V4_ARTIFACT_PATH", DEFAULT_ARTIFACT_PATH)
+    from nutmeg.v4.observation.auto_retrain import (
+        LIVE_ARTIFACT_POINTER_FILENAME,
+        load_artifact_pointer,
+    )
+    pointer_path = Path(base) / LIVE_ARTIFACT_POINTER_FILENAME
+    try:
+        mtime = pointer_path.stat().st_mtime
+    except FileNotFoundError:
+        _pointer_cache.pop(base, None)
+        return base
+    cached = _pointer_cache.get(base)
+    if cached and cached[0] == mtime:
+        return cached[1] or base
+    pointer = load_artifact_pointer(base)
+    if pointer is None:
+        _pointer_cache[base] = (mtime, None)
+        return base
+    target = pointer.get("artifact_path")
+    if target and Path(target).is_dir():
+        _pointer_cache[base] = (mtime, target)
+        return target
+    _pointer_cache[base] = (mtime, None)
+    return base
 
 
 def _observation_db_path() -> Optional[str]:
