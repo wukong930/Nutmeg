@@ -59,6 +59,11 @@ from nutmeg.v4.model.persist import (
     load_artifact,
     predict_lambdas,
 )
+from nutmeg.v4.observation.auto_calibration import (
+    LIVE_T_CORRECTION_FILENAME,
+    apply_correction_to_probs,
+    load_artifact_correction,
+)
 
 
 router = APIRouter(prefix="/v4", tags=["v4"])
@@ -86,6 +91,37 @@ def _observation_db_path() -> Optional[str]:
     behavior).
     """
     return os.environ.get("NUTMEG_V4_OBSERVATION_DB")
+
+
+# ---------- Live T-correction loader (V10 W2 Day 3) ---------------------
+# Per-request load with mtime cache invalidation. The file ships from
+# `nutmeg-auto-calibration --apply --deploy-artifact <art_dir>`; serving
+# applies it as a final post-hoc temperature pass on 1X2 / handicap probs.
+# Missing file → None → identity passthrough (existing V4-V9 behavior).
+_correction_cache: dict[str, tuple[float, dict | None]] = {}
+
+
+def _load_correction() -> dict | None:
+    """Return the cached `live_T_correction.json` content (or None).
+
+    Re-reads from disk when the file mtime changes (so a fresh
+    `--deploy-artifact` takes effect on the next request without a
+    server restart). Returns None when the file is missing, empty,
+    or unparseable.
+    """
+    art_dir = _artifact_path()
+    path = Path(art_dir) / LIVE_T_CORRECTION_FILENAME
+    try:
+        mtime = path.stat().st_mtime
+    except FileNotFoundError:
+        _correction_cache.pop(art_dir, None)
+        return None
+    cached = _correction_cache.get(art_dir)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    correction = load_artifact_correction(art_dir)
+    _correction_cache[art_dir] = (mtime, correction)
+    return correction
 
 
 def _should_record_session(req_record_flag: bool) -> Optional[str]:
@@ -374,13 +410,16 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
     feats = build_features_for_fixtures(art, fixtures_df)
     lambdas = predict_lambdas(art, feats)
     gbm_rho = float(art.metadata.get("gbm_rho", -0.10))
+    correction = _load_correction()
 
     # Per-fixture predictions
     single_preds = []
     for i, f in enumerate(req.fixtures):
         lh, la = lambdas[i]
         grid = score_grid(lh, la, rho=gbm_rho)
-        ph, pd_, pa = grid_to_1x2(grid)
+        ph, pd_, pa = tuple(
+            apply_correction_to_probs(np.array(grid_to_1x2(grid)), correction)
+        )
         pred = SinglePrediction(
             home_team=f.home_team,
             away_team=f.away_team,
@@ -393,7 +432,12 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
             p_away_1x2=float(pa),
         )
         if f.handicap_home is not None:
-            hph, hpd, hpa = grid_to_handicap_1x2(grid, handicap_home=f.handicap_home)
+            hph, hpd, hpa = tuple(
+                apply_correction_to_probs(
+                    np.array(grid_to_handicap_1x2(grid, handicap_home=f.handicap_home)),
+                    correction,
+                )
+            )
             pred.handicap_home = f.handicap_home
             pred.p_home_handicap = float(hph)
             pred.p_draw_handicap = float(hpd)
@@ -419,6 +463,7 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
         kelly_fraction=req.kelly_fraction,
         max_stake_fraction=req.max_stake_fraction,
         include_compound=req.include_compound,
+        correction=correction,
     )
 
     recommendations_out = []
@@ -534,12 +579,15 @@ def predictions_upcoming(req: UpcomingPredictionsRequest) -> UpcomingPredictions
     feats = build_features_for_fixtures(art, fixtures_df)
     lambdas = predict_lambdas(art, feats)
     gbm_rho = float(art.metadata.get("gbm_rho", -0.10))
+    correction = _load_correction()
 
     predictions = []
     for i, f in enumerate(req.fixtures):
         lh, la = lambdas[i]
         grid = score_grid(lh, la, rho=gbm_rho)
-        ph, pd_, pa = grid_to_1x2(grid)
+        ph, pd_, pa = tuple(
+            apply_correction_to_probs(np.array(grid_to_1x2(grid)), correction)
+        )
         pred = SinglePrediction(
             home_team=f.home_team,
             away_team=f.away_team,
@@ -552,7 +600,12 @@ def predictions_upcoming(req: UpcomingPredictionsRequest) -> UpcomingPredictions
             p_away_1x2=float(pa),
         )
         if f.handicap_home is not None:
-            hph, hpd, hpa = grid_to_handicap_1x2(grid, handicap_home=f.handicap_home)
+            hph, hpd, hpa = tuple(
+                apply_correction_to_probs(
+                    np.array(grid_to_handicap_1x2(grid, handicap_home=f.handicap_home)),
+                    correction,
+                )
+            )
             pred.handicap_home = f.handicap_home
             pred.p_home_handicap = float(hph)
             pred.p_draw_handicap = float(hpd)
@@ -603,6 +656,7 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
     feats = build_features_for_fixtures(art, fixtures_df)
     lambdas = predict_lambdas(art, feats)
     gbm_rho = float(art.metadata.get("gbm_rho", -0.10))
+    correction = _load_correction()
 
     matches: list[MatchInput] = []
     for i in range(len(fixtures_df)):
@@ -617,6 +671,7 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
         kelly_fraction=req.kelly_fraction,
         max_stake_fraction_per_ticket=req.max_stake_fraction,
         top_per_match=req.top_per_match,
+        correction=correction,
     )
 
     tickets_out = [
@@ -686,18 +741,26 @@ def _pick_to_selection(
     la: float,
     gbm_rho: float,
     pick: str,
+    *,
+    correction: dict | None = None,
 ) -> Optional[Selection]:
     """Convert one (fixture row, pick) → one Selection for the compound pool.
 
     Mirrors the CLI's `_row_to_selection` in cli/recommend_pool.py but
     consumes a typed `pick` string instead of a CSV cell.
+
+    V10 W2 Day 3 — applies the live post-T correction (if any) to the
+    1X2 / handicap_1x2 probability tuple before extracting the chosen
+    outcome's probability.
     """
     grid = score_grid(float(lh), float(la), rho=gbm_rho)
     match_id = f"{row['league']}_{row['home_team']}_vs_{row['away_team']}"
     market_type, outcome = _POOL_PICK_MAP[pick]
 
     if market_type == "1x2":
-        ph, pd_, pa = grid_to_1x2(grid)
+        ph, pd_, pa = tuple(
+            apply_correction_to_probs(np.array(grid_to_1x2(grid)), correction)
+        )
         prob = {"H": ph, "D": pd_, "A": pa}[outcome]
         odds_col = f"odds_1x2_{outcome}"
         odds = row.get(odds_col)
@@ -718,7 +781,12 @@ def _pick_to_selection(
             detail=f"row {match_id}: pick={pick} requires handicap_home to be set",
         )
     handicap_home = int(row["handicap_home"])
-    hp_h, hp_d, hp_a = grid_to_handicap_1x2(grid, handicap_home=handicap_home)
+    hp_h, hp_d, hp_a = tuple(
+        apply_correction_to_probs(
+            np.array(grid_to_handicap_1x2(grid, handicap_home=handicap_home)),
+            correction,
+        )
+    )
     prob = {"H": hp_h, "D": hp_d, "A": hp_a}[outcome]
     odds_col = f"odds_handicap_{outcome}"
     odds = row.get(odds_col)
@@ -753,6 +821,7 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
     feats = build_features_for_fixtures(art, fixtures_df)
     lambdas = predict_lambdas(art, feats)
     gbm_rho = float(art.metadata.get("gbm_rho", -0.10))
+    correction = _load_correction()
 
     selections: list[Selection] = []
     for i in range(len(fixtures_df)):
@@ -760,6 +829,7 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
         sel = _pick_to_selection(
             row, lambdas[i, 0], lambdas[i, 1], gbm_rho,
             req.fixtures[i].pick,
+            correction=correction,
         )
         if sel is not None:
             selections.append(sel)

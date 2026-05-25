@@ -54,6 +54,8 @@ from nutmeg.v4.observation.auto_calibration import (
     DriftProposal,
     propose_drift_correction,
     record_calibration_journal,
+    remove_artifact_correction,
+    write_artifact_correction,
 )
 
 
@@ -180,8 +182,17 @@ def main(argv: list[str] | None = None) -> int:
         "--action", default="propose",
         choices=("propose", "deploy", "rollback"),
         help="Journal action tag (only used when --apply is set). "
-             "Default 'propose'. Day 3 ships --deploy semantics that "
-             "additionally writes the artifact-side correction file.",
+             "Default 'propose'. Pass --deploy-artifact to also write the "
+             "artifact-side `live_T_correction.json` (only effective when "
+             "--apply is set, --action=deploy, and ship gate passes).",
+    )
+    p.add_argument(
+        "--deploy-artifact", default=None,
+        help="V10 W2 Day 3 — when ship gate passes, write "
+             "`<dir>/live_T_correction.json` so the serving layer picks "
+             "up the new T on the next request. Requires --apply. "
+             "When --action=rollback (gate not required), DELETES the "
+             "existing correction file (auto-rollback).",
     )
     p.add_argument(
         "--out", default="-",
@@ -225,6 +236,42 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     else:
         log.info("[dry-run] not writing to calibration_journal (pass --apply to record)")
+
+    # V10 W2 Day 3 — artifact-side deploy / rollback
+    if args.deploy_artifact:
+        if not args.apply:
+            log.warning(
+                "--deploy-artifact without --apply is a no-op (won't write); "
+                "pass --apply to actually deploy.",
+            )
+        elif args.action == "rollback":
+            # Rollback: delete the correction file regardless of gate verdict.
+            removed = remove_artifact_correction(args.deploy_artifact)
+            if removed:
+                log.info("rolled back: removed live_T_correction.json from %s",
+                         args.deploy_artifact)
+            else:
+                log.info("rollback no-op: no live_T_correction.json in %s",
+                         args.deploy_artifact)
+        elif args.action == "deploy":
+            if not proposal.should_apply:
+                log.warning(
+                    "--deploy-artifact ignored: ship gate did NOT pass "
+                    "(reason: %s)", proposal.reason,
+                )
+            else:
+                try:
+                    path = write_artifact_correction(args.deploy_artifact, proposal)
+                    log.info("deployed: wrote %s (T=%.4f)", path, proposal.proposed_T)
+                except Exception as exc:  # noqa: BLE001
+                    log.error("artifact write failed: %s", exc)
+                    return 1
+        else:
+            # action == 'propose'
+            log.warning(
+                "--deploy-artifact ignored: --action=%s requires "
+                "--action=deploy or --action=rollback", args.action,
+            )
 
     report = render_markdown(proposal, str(db_path))
     if args.out == "-":

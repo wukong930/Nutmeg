@@ -76,6 +76,7 @@ def recommend_combinations(
     max_stake_fraction: float = 0.05,
     min_hit_probability: float = 0.02,
     min_kelly_stake: float = 1.0,
+    correction: dict | None = None,
 ) -> list[Recommendation]:
     """Generate parlay recommendations.
 
@@ -84,10 +85,14 @@ def recommend_combinations(
       2. hit_probability >= min_hit_probability  (no pure longshots)
       3. kelly.recommended_stake >= min_kelly_stake  (large enough to play)
     Then sort surviving by kelly_log_growth descending.
+
+    V10 W2 Day 3 — optional ``correction`` is forwarded to
+    ``build_selections_from_match`` so post-hoc temperature scaling is
+    applied uniformly to every match's selections.
     """
     all_selections: list[Selection] = []
     for m in matches:
-        all_selections.extend(build_selections_from_match(m))
+        all_selections.extend(build_selections_from_match(m, correction=correction))
 
     parlays = generate_single_parlays(
         all_selections,

@@ -98,6 +98,7 @@ def recommend_singles(
     rules: LotteryRules = JINGCAI_DEFAULT,
     top_per_match: int = 1,
     apply_thresholds: bool = True,
+    correction: dict | None = None,
 ) -> SingleMatchRecommendation:
     """Recommend single-leg tickets across the supplied matches.
 
@@ -114,7 +115,7 @@ def recommend_singles(
     """
     candidates: list[SingleMatchTicket] = []
     for match in matches:
-        sels = build_selections_from_match(match)
+        sels = build_selections_from_match(match, correction=correction)
         for sel in sels:
             if apply_thresholds and not passes_recommendation_thresholds(
                 hit_probability=sel.probability,

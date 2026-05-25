@@ -461,6 +461,93 @@ def fetch_latest_journal_entry(
         return dict(row) if row else None
 
 
+# --------- Artifact-side correction file (V10 W2 Day 3) ---------------
+
+LIVE_T_CORRECTION_FILENAME = "live_T_correction.json"
+
+
+def write_artifact_correction(
+    artifact_dir: Path | str,
+    proposal: DriftProposal,
+    *,
+    as_of: dt.datetime | None = None,
+) -> Path:
+    """Persist a deploy decision as `<artifact_dir>/live_T_correction.json`.
+
+    Distinct from the static `metadata.json` — this file is rewritten
+    each time auto-T deploys, while metadata.json is the immutable model
+    descriptor. Serving layer reads both at request time.
+    """
+    art_dir = Path(artifact_dir)
+    if not art_dir.is_dir():
+        raise FileNotFoundError(f"artifact directory not found: {art_dir}")
+    if as_of is None:
+        as_of = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    payload = {
+        "T": float(proposal.proposed_T),
+        "deployed_at_utc": as_of.isoformat(),
+        "train_window": list(proposal.train_window),
+        "holdout_window": list(proposal.holdout_window),
+        "log_loss_before": None if np.isnan(proposal.log_loss_before) else proposal.log_loss_before,
+        "log_loss_after": None if np.isnan(proposal.log_loss_after) else proposal.log_loss_after,
+        "log_loss_delta": None if np.isnan(proposal.log_loss_delta) else proposal.log_loss_delta,
+        "p_value": None if np.isnan(proposal.p_value) else proposal.p_value,
+        "n_train": proposal.n_train,
+        "n_holdout": proposal.n_holdout,
+        "reason": proposal.reason,
+        "previous_T": float(proposal.current_T),
+    }
+    path = art_dir / LIVE_T_CORRECTION_FILENAME
+    path.write_text(json.dumps(payload, indent=2, default=str))
+    return path
+
+
+def load_artifact_correction(artifact_dir: Path | str) -> dict | None:
+    """Read `live_T_correction.json` from the artifact dir.
+
+    Returns None when the file is missing (= no live correction,
+    serving uses identity T=1.0) or unparseable (logged then ignored).
+    """
+    art_dir = Path(artifact_dir)
+    if not art_dir.is_dir():
+        return None
+    path = art_dir / LIVE_T_CORRECTION_FILENAME
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        log.warning("could not parse %s: %s — treating as no correction", path, exc)
+        return None
+
+
+def remove_artifact_correction(artifact_dir: Path | str) -> bool:
+    """Delete the correction file (auto-rollback support).
+
+    Returns True if removed, False if it didn't exist.
+    """
+    path = Path(artifact_dir) / LIVE_T_CORRECTION_FILENAME
+    if not path.exists():
+        return False
+    path.unlink()
+    return True
+
+
+def apply_correction_to_probs(
+    probs: np.ndarray, correction: dict | None
+) -> np.ndarray:
+    """Apply the post-T correction (if any) to 1X2 probabilities.
+
+    None correction (or T close to 1.0) → identity passthrough.
+    """
+    if correction is None:
+        return np.asarray(probs)
+    T = float(correction.get("T", 1.0))
+    if abs(T - 1.0) < 1e-9:
+        return np.asarray(probs)
+    return apply_post_temperature(probs, T)
+
+
 __all__ = [
     "CalibrationPair",
     "DriftProposal",
@@ -479,4 +566,10 @@ __all__ = [
     "DEFAULT_MIN_SAMPLES",
     "DEFAULT_MIN_LOG_LOSS_GAIN",
     "DEFAULT_MAX_P_VALUE",
+    # V10 W2 Day 3 — serving integration
+    "LIVE_T_CORRECTION_FILENAME",
+    "write_artifact_correction",
+    "load_artifact_correction",
+    "remove_artifact_correction",
+    "apply_correction_to_probs",
 ]

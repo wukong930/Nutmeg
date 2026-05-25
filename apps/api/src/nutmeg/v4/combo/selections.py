@@ -16,11 +16,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+import numpy as np
+
 from nutmeg.v4.model.dixon_coles import (
     grid_to_1x2,
     grid_to_handicap_1x2,
     score_grid,
 )
+from nutmeg.v4.observation.auto_calibration import apply_correction_to_probs
 
 
 MarketType = Literal["1x2", "handicap_1x2"]
@@ -69,13 +72,28 @@ class Selection:
                 f"edge={self.edge:+.3f})")
 
 
-def build_selections_from_match(match: MatchInput) -> list[Selection]:
-    """Compute up to 6 selections for one match (3 outcomes × up to 2 markets)."""
+def build_selections_from_match(
+    match: MatchInput,
+    *,
+    correction: dict | None = None,
+) -> list[Selection]:
+    """Compute up to 6 selections for one match (3 outcomes × up to 2 markets).
+
+    V10 W2 Day 3 — optional ``correction`` (dict from
+    ``nutmeg.v4.observation.auto_calibration.load_artifact_correction``).
+    When supplied and ``T != 1.0``, post-hoc temperature scaling is applied
+    to both the 1X2 and the handicap_1x2 probability tuples before
+    building selections. Downstream Kelly / EV computations therefore see
+    the calibrated probabilities. ``correction=None`` is the no-op
+    passthrough — backward compatible with all pre-Day-3 callers.
+    """
     grid = score_grid(match.lambda_home, match.lambda_away, rho=match.rho)
     out: list[Selection] = []
 
     if match.odds_1x2:
-        ph, pd, pa = grid_to_1x2(grid)
+        ph, pd, pa = tuple(
+            apply_correction_to_probs(np.array(grid_to_1x2(grid)), correction)
+        )
         probs = {"H": ph, "D": pd, "A": pa}
         for outcome, prob in probs.items():
             o = match.odds_1x2.get(outcome)
@@ -85,12 +103,17 @@ def build_selections_from_match(match: MatchInput) -> list[Selection]:
                 match_id=match.match_id,
                 market_type="1x2",
                 outcome=outcome,
-                probability=prob,
+                probability=float(prob),
                 odds=o,
             ))
 
     if match.handicap_home is not None and match.odds_handicap_1x2:
-        ph, pd, pa = grid_to_handicap_1x2(grid, handicap_home=match.handicap_home)
+        ph, pd, pa = tuple(
+            apply_correction_to_probs(
+                np.array(grid_to_handicap_1x2(grid, handicap_home=match.handicap_home)),
+                correction,
+            )
+        )
         probs = {"H": ph, "D": pd, "A": pa}
         for outcome, prob in probs.items():
             o = match.odds_handicap_1x2.get(outcome)
@@ -100,7 +123,7 @@ def build_selections_from_match(match: MatchInput) -> list[Selection]:
                 match_id=match.match_id,
                 market_type="handicap_1x2",
                 outcome=outcome,
-                probability=prob,
+                probability=float(prob),
                 odds=o,
             ))
 
