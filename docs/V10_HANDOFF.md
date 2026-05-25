@@ -1,6 +1,6 @@
 # Nutmeg V10 Handoff
 
-_Last updated: 2026-05-25 (V10 W3 shipped — full green, WC 2026 dry-run, WCAG fixes; 16 days ahead of target)._
+_Last updated: 2026-05-25 (V10 W4 shipped — pre-WC infrastructure complete; engineering done, awaiting 2026-06-11 kickoff for live monitoring)._
 
 Single source of truth for V10 — the 4-week dual-track version
 that opened on 3 simultaneous triggers and a hard external deadline
@@ -98,11 +98,28 @@ since V10 W1; previous 4 Playwright failures now resolved).
 
 See [v10_w3_ship_note.md](v10_w3_ship_note.md) for full W3 inventory.
 
-### W4 — WC live week + monitoring
+### W4 — WC live prep ✅ (shipped 2026-05-25, all engineering done pre-kickoff)
 
-Daily WC cron + settlement; first real Layer A auto-T cycle.
+W4 = pre-WC infrastructure so the tournament window runs autonomously:
+  - Day 1: `wc_predictions` audit-log table + `nutmeg-wc-predict --record-to`
+  - Day 2: `nutmeg-wc-settle` (API-Football → outcomes) +
+    `nutmeg-wc-report` (hit-rate / log-loss summary) + 2 launchd jobs
+    (`daily_wc_predict` 09:00 + `daily_wc_settle` 02:00)
+  - Day 3: `scripts/wc_preflight.sh` (7-check pre-kickoff verification)
+    + V10 retrospective skeleton
 
-Target ship: `v10.0-shipped`, 2026-06-21.
+7 launchd jobs total now (3 daily + 4 weekly + 2 WC daily).
+**1108/1108 V4 non-Playwright tests pass** (+30 from W4).
+
+Remaining work (2026-06-11 → 2026-06-21):
+- Daily monitor cron output (`docs/wc/wc_report_*.md`)
+- Weekly Layer A check on Monday — first real-data cycle
+- Fill in `docs/v10_retrospective.md` post-tournament numbers
+- Tag `v10.0-shipped` when WC tournament concludes (or 2026-06-21,
+  whichever comes first)
+
+See [v10_w4_ship_note.md](v10_w4_ship_note.md) for full W4 inventory
+and [v10_retrospective.md](v10_retrospective.md) for the skeleton.
 
 ## 5. Numbers (V9 → V10 W0)
 

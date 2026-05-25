@@ -59,6 +59,8 @@ JOBS=(
   "com.nutmeg.weekly_settle"
   "com.nutmeg.weekly_gate"
   "com.nutmeg.weekly_calibration_check"
+  "com.nutmeg.daily_wc_predict"
+  "com.nutmeg.daily_wc_settle"
 )
 # Snapshot launchctl list ONCE (avoid SIGPIPE issues with grep -q + pipefail
 # + repeated large-output pipes that previously caused false negatives).

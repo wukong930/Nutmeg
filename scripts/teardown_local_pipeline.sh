@@ -16,6 +16,8 @@ JOBS=(
   "com.nutmeg.weekly_settle"
   "com.nutmeg.weekly_gate"
   "com.nutmeg.weekly_calibration_check"
+  "com.nutmeg.daily_wc_predict"
+  "com.nutmeg.daily_wc_settle"
 )
 
 echo "Uninstalling launchd jobs ..."

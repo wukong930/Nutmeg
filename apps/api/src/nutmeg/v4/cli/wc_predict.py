@@ -291,6 +291,13 @@ def main(argv: list[str] | None = None) -> int:
         "--out", default="-",
         help="Output JSON path; '-' for stdout (default)",
     )
+    p.add_argument(
+        "--record-to", default=None,
+        help="V10 W4 Day 1 — observation DB path. When set, every "
+             "prediction is upserted into the wc_predictions table for "
+             "later settle + hit-rate scoring. Idempotent on fixture_id "
+             "(re-running with fresher odds REPLACES the prior row).",
+    )
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
 
@@ -388,6 +395,25 @@ def main(argv: list[str] | None = None) -> int:
         "generated_at_utc": dt.datetime.now(dt.UTC).isoformat(),
     }
     _write_output(result, args.out)
+
+    # V10 W4 Day 1 — optional persistence for the daily WC cron.
+    # We upsert AFTER writing JSON so an aborted CLI run still emits
+    # the report; only the database side fails silently if the path
+    # is bad. Idempotent on fixture_id.
+    if args.record_to:
+        try:
+            from nutmeg.v4.observation.wc_log import record_wc_prediction
+            recorded_at = dt.datetime.now(dt.UTC).replace(microsecond=0)
+            for p in preds:
+                record_wc_prediction(
+                    args.record_to, p,
+                    season=season, recorded_at=recorded_at,
+                )
+            log.info("recorded %d predictions → %s", len(preds), args.record_to)
+        except Exception as exc:  # noqa: BLE001
+            log.error("failed to record predictions to %s: %s", args.record_to, exc)
+            # Don't fail the CLI; the JSON report is the user-facing artifact.
+
     return 0
 
 

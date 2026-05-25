@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # post-v9 P1#16 — one-shot install of the local Nutmeg data pipeline (macOS).
 #
-# Installs 5 launchd jobs into ~/Library/LaunchAgents:
+# Installs 7 launchd jobs into ~/Library/LaunchAgents:
 #   1. com.nutmeg.daily_odds                  14:00 daily — fetch today's odds
 #   2. com.nutmeg.daily_recommend             15:00 daily — generate recommendations + record session
 #   3. com.nutmeg.weekly_settle               Sunday 02:00 — settle past-week outcomes + write ROI report
 #   4. com.nutmeg.weekly_gate                 Sunday 04:00 — P1#19 live-vs-backtest gate
 #   5. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
+#   6. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
+#   7. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
 # (no plaintext key in plists). Logs go to logs/launchd/.
@@ -120,7 +122,7 @@ EOF
 # Common shell prefix for all jobs: cd + source .env so NUTMEG_API_FOOTBALL_KEY is set
 ENV_PREFIX="cd $REPO_ROOT && set -a && source .env && set +a"
 
-echo "Installing 5 launchd jobs into $PLIST_DIR ..."
+echo "Installing 7 launchd jobs into $PLIST_DIR ..."
 
 # Job 1: daily odds ingest (14:00 daily)
 # Pulls today's odds for the 5 main domestic leagues.
@@ -180,6 +182,25 @@ install_job "com.nutmeg.weekly_calibration_check" \
   3 0 1 \
   "$ENV_PREFIX && mkdir -p $CALIB_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.auto_calibration --db $DB_PATH --apply --auto-rollback --deploy-artifact $ARTIFACT_DIR --out $CALIB_OUT_DIR/auto_calibration_\$(date +%Y-W%V).md || true"
 
+# Job 6: V10 W4 WC daily predict (09:00 daily during tournament)
+# Re-runs nutmeg-wc-predict for today, fetches current Pinnacle odds
+# (once they open), and UPSERTS each prediction into wc_predictions
+# (PK = fixture_id → idempotent on repeated runs).
+# Also writes a per-day JSON report under docs/wc/.
+WC_OUT_DIR="$REPO_ROOT/docs/wc"
+install_job "com.nutmeg.daily_wc_predict" \
+  9 0 "" \
+  "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_predict --date \$(date +%Y-%m-%d) --fetch-current-odds --record-to $DB_PATH --out $WC_OUT_DIR/wc_\$(date +%Y-%m-%d).json --quiet || true"
+
+# Job 7: V10 W4 WC daily settle (02:00 daily)
+# Pulls finished WC fixtures from API-Football, fills outcome columns
+# in wc_predictions. Runs BEFORE the calibration check so today's
+# wc_predictions rows are settled before Layer A reads them.
+# Then writes a fresh aggregate hit-rate / log-loss report.
+install_job "com.nutmeg.daily_wc_settle" \
+  2 0 "" \
+  "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_settle --db $DB_PATH --quiet && $VENV_PY -m nutmeg.v4.cli.wc_report --db $DB_PATH --season 2026 --out $WC_OUT_DIR/wc_report_\$(date +%Y-%m-%d).md --quiet || true"
+
 echo ""
 echo "✓ Done. Jobs are loaded. Logs:"
 echo "    $LOG_DIR/com.nutmeg.daily_odds.{out,err}.log"
@@ -187,11 +208,14 @@ echo "    $LOG_DIR/com.nutmeg.daily_recommend.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_settle.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_gate.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_calibration_check.{out,err}.log"
+echo "    $LOG_DIR/com.nutmeg.daily_wc_predict.{out,err}.log"
+echo "    $LOG_DIR/com.nutmeg.daily_wc_settle.{out,err}.log"
 echo ""
 echo "Next:"
 echo "  • Verify with: ./scripts/health_check.sh"
 echo "  • Inspect jobs: launchctl list | grep com.nutmeg"
-echo "  • Wait until 14:00 / 15:00 / Sunday 02:00 / Sunday 04:00 / Monday 03:00 for next run"
+echo "  • Daily timeline: 02:00 wc_settle → 03:00 calibration → 09:00 wc_predict → 14:00 odds → 15:00 recommend"
 echo "  • Weekly gate reports land at: $GATE_OUT_DIR/p1_19_gate_<ISO-week>.md"
 echo "  • Weekly calibration reports land at: $CALIB_OUT_DIR/auto_calibration_<ISO-week>.md"
+echo "  • Daily WC reports land at: $WC_OUT_DIR/wc_report_<YYYY-MM-DD>.md"
 echo "  • Uninstall: ./scripts/teardown_local_pipeline.sh"
