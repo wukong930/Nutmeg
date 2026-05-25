@@ -9,7 +9,7 @@
 #   ./scripts/run_local_server.sh 8080      # foreground, custom port
 #   ./scripts/run_local_server.sh 8000 lan  # bind 0.0.0.0 so phone on LAN can reach it
 #
-# Then visit http://127.0.0.1:8000/api/v4/dashboard
+# Then visit http://127.0.0.1:8000/ (redirects to /api/v4/dashboard since post-v10/w1)
 
 set -euo pipefail
 
