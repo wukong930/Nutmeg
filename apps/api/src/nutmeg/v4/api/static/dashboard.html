@@ -561,13 +561,17 @@
             自动抓取今日联赛盘口 · 根据预算生成 单关 + 串关 + 复式 推荐
           </p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <label class="text-sm whitespace-nowrap">
             <span data-i18n="lbl_bankroll">预算 ¥</span>
             <input id="today-bankroll" type="number" inputmode="numeric"
                    value="1000" min="2" step="50"
                    class="w-24 px-2 py-1 border rounded text-sm">
           </label>
+          <!-- V11 P1-FE#6 — stale indicator. Subtle grey text; updates every
+               10s while tab is visible. Says "刚刚" right after a successful
+               load, "Xs 前" / "X 分前" thereafter. -->
+          <span id="today-stale" class="text-xs text-muted whitespace-nowrap" aria-live="off"></span>
           <button id="today-refresh"
                   data-i18n="btn_refresh"
                   class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
@@ -1125,6 +1129,11 @@ const I18N = {
     // V11 P1-FE#5 — dynamic recommendation badges
     banner_updated:      '推荐已更新',
     badge_updated:       '已更新',
+    // V11 P1-FE#6 — auto-refresh stale indicator
+    stale_just_now:      '刚刚更新',
+    stale_seconds_ago:   '{n} 秒前更新',
+    stale_minutes_ago:   '{n} 分钟前更新',
+    stale_hours_ago:     '{n} 小时前更新',
 
     // Page section headings
     h_single_rec:     '单关推荐',
@@ -1291,6 +1300,11 @@ const I18N = {
     // V11 P1-FE#5 — dynamic recommendation badges
     banner_updated:      'Recommendations updated',
     badge_updated:       'Updated',
+    // V11 P1-FE#6 — auto-refresh stale indicator
+    stale_just_now:      'Just now',
+    stale_seconds_ago:   '{n}s ago',
+    stale_minutes_ago:   '{n}m ago',
+    stale_hours_ago:     '{n}h ago',
 
     h_single_rec:     'Single-bet recommendations',
     h_parlay_rec:     'Parlay recommendations',
@@ -2346,6 +2360,119 @@ $('#today-refresh').addEventListener('click', loadTodayRecommendations);
 // V11 P1-FE#5 — banner dismiss button
 const _bannerDismiss = $('#today-update-banner-dismiss');
 if (_bannerDismiss) _bannerDismiss.addEventListener('click', _hideUpdateBanner);
+
+// =====================================================================
+// V11 P1-FE#6 — auto-refresh with Visibility API
+// =====================================================================
+// Background poll every TODAY_POLL_INTERVAL_MS while ALL of:
+//   1. The 今日推荐 tab is the active tab
+//   2. The page is currently visible (document.visibilityState === 'visible')
+// On every load (manual or auto), update _lastLoadAt + re-render the
+// "上次更新 X 秒前" stale indicator. The indicator also ticks every 10s
+// independently of the load timer so the relative-time stays current
+// even between polls.
+const TODAY_POLL_INTERVAL_MS = 60_000;   // 60s — picks rarely move faster
+const TODAY_STALE_TICK_MS    = 10_000;   // refresh the label every 10s
+let _todayPollTimer = null;
+let _todayStaleTimer = null;
+let _todayLastLoadAt = null;
+let _todayCurrentTab = 'today';          // mirrors switchTab()
+
+function _formatStale(ms) {
+  if (ms === null || ms === undefined) return '';
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 5)   return t('stale_just_now');
+  if (s < 60)  return t('stale_seconds_ago').replace('{n}', String(s));
+  const m = Math.floor(s / 60);
+  if (m < 60)  return t('stale_minutes_ago').replace('{n}', String(m));
+  const h = Math.floor(m / 60);
+  return t('stale_hours_ago').replace('{n}', String(h));
+}
+function _renderStaleLabel() {
+  const el = $('#today-stale');
+  if (!el) return;
+  if (_todayLastLoadAt === null) { el.textContent = ''; return; }
+  el.textContent = _formatStale(Date.now() - _todayLastLoadAt);
+}
+
+function _shouldAutoPoll() {
+  if (typeof document === 'undefined') return false;
+  if (document.visibilityState !== 'visible') return false;
+  return _todayCurrentTab === 'today';
+}
+
+function _startTodayPolling() {
+  if (_todayPollTimer !== null) return;
+  if (!_shouldAutoPoll()) return;
+  _todayPollTimer = setInterval(() => {
+    if (_shouldAutoPoll()) loadTodayRecommendations();
+  }, TODAY_POLL_INTERVAL_MS);
+}
+function _stopTodayPolling() {
+  if (_todayPollTimer !== null) {
+    clearInterval(_todayPollTimer);
+    _todayPollTimer = null;
+  }
+}
+
+// Stale label ticks always run while tab is visible (cheap UI-only timer).
+function _startStaleTicker() {
+  if (_todayStaleTimer !== null) return;
+  _todayStaleTimer = setInterval(_renderStaleLabel, TODAY_STALE_TICK_MS);
+}
+function _stopStaleTicker() {
+  if (_todayStaleTimer !== null) {
+    clearInterval(_todayStaleTimer);
+    _todayStaleTimer = null;
+  }
+}
+
+// Wrap loadTodayRecommendations so every (manual + auto) call refreshes
+// the "上次更新" timestamp + label. We monkey-patch instead of editing the
+// big async function to keep the surface area small.
+const _origLoadToday = loadTodayRecommendations;
+loadTodayRecommendations = async function() {
+  try {
+    return await _origLoadToday.apply(this, arguments);
+  } finally {
+    _todayLastLoadAt = Date.now();
+    _renderStaleLabel();
+  }
+};
+
+// Visibility API: pause both timers when the tab is hidden; resume when
+// it becomes visible again.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    _renderStaleLabel();             // immediate update on return
+    _startStaleTicker();
+    if (_todayCurrentTab === 'today') _startTodayPolling();
+  } else {
+    _stopTodayPolling();
+    _stopStaleTicker();
+  }
+});
+
+// Hook switchTab so polling only runs when the today tab is active.
+// We wrap the existing function so the WC / single / parlay / pool /
+// history tabs don't burn API quota in the background.
+const _origSwitchTab = switchTab;
+switchTab = function(name) {
+  _todayCurrentTab = name;
+  const r = _origSwitchTab.apply(this, arguments);
+  if (name === 'today') {
+    _renderStaleLabel();
+    _startStaleTicker();
+    _startTodayPolling();
+  } else {
+    _stopTodayPolling();
+  }
+  return r;
+};
+
+// Kick everything off at startup (today is the default landing tab).
+_startStaleTicker();
+_startTodayPolling();
 
 // =====================================================================
 // V10 W1 Day 5 — WC 2026 predictions tab
