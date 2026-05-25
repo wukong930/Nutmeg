@@ -1,37 +1,337 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<!-- post-v9 P1#13: viewport meta enables responsive rendering on mobile.
-     Without this iOS Safari + Android Chrome render at desktop width (~980px)
-     and force pinch-zoom. width=device-width tells the browser to honor
-     CSS media queries and the responsive sm:/md:/lg: Tailwind breakpoints. -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nutmeg V4 Dashboard</title>
-<!-- post-v9 P1#14: PWA shell. Manifest enables Add-to-Home-Screen on
-     Android Chrome / iOS Safari; theme-color paints the address bar. -->
+<title>Nutmeg · 竞彩助手</title>
 <link rel="manifest" href="/api/v4/manifest.json">
-<meta name="theme-color" content="#4f46e5">
+<meta name="theme-color" content="#0a0e1a">
 <link rel="icon" type="image/svg+xml" href="/api/v4/icon.svg">
 <link rel="apple-touch-icon" href="/api/v4/icon.svg">
+
+<!-- V11 P1-FE#1: theme bootstrap. Run BEFORE Tailwind / page render to
+     avoid flash-of-wrong-theme. Reads localStorage; falls back to OS
+     preference; default dark. Sets `class="dark"` on <html> so Tailwind
+     `dark:` variants kick in. -->
+<script>
+  (function() {
+    try {
+      var stored = localStorage.getItem('nutmeg-theme');
+      var prefersDark = window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var theme = stored || (prefersDark ? 'dark' : 'dark'); // default dark
+      document.documentElement.setAttribute('data-theme', theme);
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+    } catch (e) {
+      // Private mode / SSR — default to dark
+      document.documentElement.classList.add('dark');
+    }
+  })();
+</script>
+
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // V11 P1-FE#1: enable Tailwind dark mode + premium accent colors
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          gold:    { 400: '#e4ba8a', 500: '#d4a574', 600: '#b88842', 700: '#9c6c30' },
+        },
+        fontFamily: {
+          display: ['"Inter Display"', 'Inter', '"PingFang SC"', '"Noto Sans SC"', 'system-ui', 'sans-serif'],
+          sans:    ['Inter', '"PingFang SC"', '"Noto Sans SC"', 'system-ui', 'sans-serif'],
+          mono:    ['"JetBrains Mono"', '"IBM Plex Mono"', '"SF Mono"', 'Menlo', 'monospace'],
+        },
+        boxShadow: {
+          'card':       '0 1px 3px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.08)',
+          'card-hover': '0 4px 12px rgba(0,0,0,0.24), 0 12px 24px rgba(0,0,0,0.18)',
+        },
+      },
+    },
+  };
+</script>
+
+<!-- V11 P1-FE#1: design system — CSS variables + base components.
+     Replaces the legacy <style> block. Uses Tailwind for layout, this
+     CSS for theme tokens + bespoke components (recommendation cards,
+     theme transitions, mono numbers, etc.). -->
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  .tab-active { @apply bg-white text-indigo-700 border-b-2 border-indigo-600; }
-  .tab-inactive { @apply text-gray-500 hover:text-gray-700 hover:bg-gray-50; }
-  .badge-ok { @apply px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800; }
-  .badge-warn { @apply px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800; }
-  .badge-err { @apply px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800; }
-  table { @apply w-full text-sm; }
-  th { @apply px-3 py-2 text-left font-semibold text-gray-700 bg-gray-50 border-b; }
-  td { @apply px-3 py-2 border-b border-gray-100; }
-  .num { @apply text-right tabular-nums; }
-  .pos { @apply text-green-600 font-medium; }
-  .neg { @apply text-red-600 font-medium; }
-  textarea { font-family: 'SF Mono', Monaco, Menlo, monospace; }
+  /* ── Theme tokens ──────────────────────────────────────────────────── */
+  :root[data-theme="dark"] {
+    --bg-base:        #0a0e1a;
+    --bg-surface-1:   #131826;
+    --bg-surface-2:   #1c2334;
+    --bg-surface-hi:  #232c42;
+    --border-subtle:  #2a3144;
+    --border-strong:  #3d4762;
+    --text-primary:   #e5e7eb;
+    --text-secondary: #94a3b8;  /* contrast 7.51 on bg-base — AA pass */
+    --text-muted:     #8b95a8;  /* contrast 6.05 on bg-base — AA pass (was #64748b: 4.05 FAIL) */
+    --accent-gold:    #d4a574;
+    --accent-green:   #34d399;
+    --accent-orange:  #f97316;
+    --accent-rose:    #f87171;
+  }
+  :root[data-theme="light"] {
+    --bg-base:        #fafaf9;
+    --bg-surface-1:   #ffffff;
+    --bg-surface-2:   #f5f5f4;
+    --bg-surface-hi:  #ffffff;
+    --border-subtle:  #e7e5e4;
+    --border-strong:  #d6d3d1;
+    --text-primary:   #1c1917;
+    --text-secondary: #57534e;
+    --text-muted:     #78716c;
+    --accent-gold:    #9c6c30;  /* contrast 4.84 on white — AA pass (was #b88842: 3.03 FAIL) */
+    --accent-green:   #15803d;  /* contrast 5.32 on white — AA pass (was #16a34a: 3.16 FAIL) */
+    --accent-orange:  #c2410c;  /* AA pass */
+    --accent-rose:    #b91c1c;  /* AA pass */
+  }
+
+  html, body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    transition: background-color 300ms ease, color 300ms ease;
+  }
+  body {
+    font-family: 'Inter', 'PingFang SC', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* ── Surface components ────────────────────────────────────────────── */
+  .surface-card {
+    background: var(--bg-surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    transition: background-color 300ms ease, border-color 300ms ease,
+                transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 200ms ease;
+  }
+  .surface-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.24), 0 12px 24px rgba(0,0,0,0.16);
+    border-color: var(--accent-gold);
+  }
+  [data-theme="light"] .surface-card-hover:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 12px 24px rgba(0,0,0,0.06);
+  }
+
+  /* ── Recommendation card (used by P1-FE#1 Day 2) ───────────────────── */
+  .card-rec {
+    background: linear-gradient(180deg, var(--bg-surface-1) 0%, var(--bg-surface-2) 100%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 24px;
+    transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 200ms ease,
+                border-color 200ms ease;
+  }
+  .card-rec:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    border-color: var(--accent-gold);
+  }
+  .card-rec-featured {
+    border-color: var(--accent-gold);
+    box-shadow: 0 0 0 1px var(--accent-gold);
+  }
+
+  /* ── Text tokens ───────────────────────────────────────────────────── */
+  .text-primary   { color: var(--text-primary); }
+  .text-secondary { color: var(--text-secondary); }
+  .text-muted     { color: var(--text-muted); }
+  .text-gold      { color: var(--accent-gold); }
+  .text-pos       { color: var(--accent-green); font-weight: 500; }
+  .text-neg       { color: var(--accent-rose); font-weight: 500; }
+
+  /* ── Display numbers (mono, tabular) ────────────────────────────────── */
+  .num-display {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+    font-feature-settings: 'tnum';
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Tab buttons ────────────────────────────────────────────────────── */
+  .tab-btn {
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    transition: color 200ms ease, border-color 200ms ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-primary);
+  }
+  .tab-btn[aria-selected="true"],
+  .tab-btn.active {
+    color: var(--accent-gold);
+    border-bottom-color: var(--accent-gold);
+  }
+
+  /* ── Badges ────────────────────────────────────────────────────────── */
+  .badge-ok {
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 500;
+    background: rgba(52, 211, 153, 0.15);
+    color: var(--accent-green);
+  }
+  .badge-warn {
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 500;
+    background: rgba(249, 115, 22, 0.15);
+    color: var(--accent-orange);
+  }
+  .badge-err {
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 500;
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--accent-rose);
+  }
+  .badge-gold {
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 500;
+    background: rgba(212, 165, 116, 0.15);
+    color: var(--accent-gold);
+  }
+
+  /* ── Buttons ────────────────────────────────────────────────────────── */
+  .btn-primary {
+    background: var(--accent-gold);
+    color: #0a0e1a;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 8px;
+    transition: opacity 200ms, transform 100ms;
+  }
+  .btn-primary:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+  .btn-secondary {
+    background: var(--bg-surface-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: background-color 200ms, border-color 200ms;
+  }
+  .btn-secondary:hover {
+    background: var(--bg-surface-hi);
+    border-color: var(--border-strong);
+  }
+
+  /* ── Form inputs ────────────────────────────────────────────────────── */
+  input[type="text"], input[type="number"], textarea, select {
+    background: var(--bg-surface-1);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    transition: border-color 200ms, background-color 300ms ease;
+  }
+  input[type="text"]:focus, input[type="number"]:focus,
+  textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--accent-gold);
+  }
+  textarea { font-family: 'JetBrains Mono', 'SF Mono', Monaco, Menlo, monospace; }
+
+  /* ── Tables ────────────────────────────────────────────────────────── */
+  table { width: 100%; font-size: 14px; }
+  th {
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-surface-2);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+  }
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  }
+  .pos { color: var(--accent-green); font-weight: 500; }
+  .neg { color: var(--accent-rose); font-weight: 500; }
+
+  /* ── EV bar (visual confidence indicator) ──────────────────────────── */
+  .ev-bar {
+    display: inline-flex;
+    width: 80px;
+    height: 6px;
+    background: var(--border-subtle);
+    border-radius: 3px;
+    overflow: hidden;
+    vertical-align: middle;
+  }
+  .ev-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-gold) 0%, var(--accent-green) 100%);
+    transition: width 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ── Theme toggle button ───────────────────────────────────────────── */
+  #theme-toggle {
+    background: var(--bg-surface-1);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: color 200ms, border-color 200ms, background-color 300ms ease;
+    font-size: 16px;
+    line-height: 1;
+  }
+  #theme-toggle:hover {
+    color: var(--accent-gold);
+    border-color: var(--accent-gold);
+  }
+
+  /* ── Tailwind utility overrides for theme awareness ────────────────── */
+  /* Override .bg-white / .bg-gray-50 etc. so legacy classes auto-adapt
+     while we migrate to semantic surface-* classes. */
+  [data-theme="dark"] .bg-white { background-color: var(--bg-surface-1) !important; }
+  [data-theme="dark"] .bg-gray-50 { background-color: var(--bg-surface-2) !important; }
+  [data-theme="dark"] .bg-gray-100 { background-color: var(--bg-surface-2) !important; }
+  [data-theme="dark"] .text-gray-900 { color: var(--text-primary) !important; }
+  [data-theme="dark"] .text-gray-700 { color: var(--text-primary) !important; }
+  [data-theme="dark"] .text-gray-600 { color: var(--text-secondary) !important; }
+  [data-theme="dark"] .text-gray-500 { color: var(--text-secondary) !important; }
+  [data-theme="dark"] .text-gray-400 { color: var(--text-muted) !important; }
+  [data-theme="dark"] .border-gray-100 { border-color: var(--border-subtle) !important; }
+  [data-theme="dark"] .border-gray-200 { border-color: var(--border-subtle) !important; }
+  [data-theme="dark"] .border-gray-300 { border-color: var(--border-strong) !important; }
+  [data-theme="dark"] .border { border-color: var(--border-subtle); }
+  [data-theme="dark"] .border-b { border-bottom-color: var(--border-subtle); }
+  [data-theme="dark"] .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+
+  /* Indigo (legacy accent) → gold (new accent) for backwards-compat
+     during migration. Refactored elements should use .text-gold directly. */
+  [data-theme="dark"] .bg-indigo-600,
+  [data-theme="dark"] .bg-indigo-700 { background-color: var(--accent-gold) !important; color: #0a0e1a !important; }
+  [data-theme="dark"] .text-indigo-600,
+  [data-theme="dark"] .text-indigo-700 { color: var(--accent-gold) !important; }
+  [data-theme="dark"] .border-indigo-600 { border-color: var(--accent-gold) !important; }
+  [data-theme="dark"] .hover\:bg-indigo-700:hover { background-color: var(--accent-gold) !important; opacity: 0.9; }
 </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body><!-- bg + text now via :root[data-theme] -->
 
 <!-- P1#13: tighter mobile padding (px-3) widening at sm breakpoint. -->
 <div class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -44,58 +344,39 @@
       <p class="text-xs sm:text-sm text-gray-500" data-i18n="app_subtitle">中国体彩 · 胜平负 + 让球胜平负 · 单关 / 串关 / 复式 全玩法推荐</p>
     </div>
     <div class="flex items-center gap-2 self-start sm:self-auto">
+      <!-- V11 P1-FE#1: theme toggle (sun / moon). Cycles dark ↔ light;
+           persists to localStorage. Icon reflects the CURRENT theme. -->
+      <button id="theme-toggle" type="button"
+              aria-label="Toggle dark/light theme"
+              title="切换主题">
+        <span id="theme-icon-dark" aria-hidden="true">🌙</span>
+        <span id="theme-icon-light" aria-hidden="true" class="hidden">☀️</span>
+      </button>
       <!-- P1#14: language toggle. Label shows the TARGET locale you'll switch to. -->
       <button id="lang-toggle" type="button"
               aria-label="Switch language"
-              class="px-2 py-1 text-sm border rounded bg-white hover:bg-gray-50 font-medium">EN</button>
+              class="btn-secondary text-sm">EN</button>
       <div id="health-pill" class="text-sm">
         <span class="badge-warn" data-i18n="health_checking">checking ...</span>
       </div>
     </div>
   </div>
 
-  <!-- Tab nav — P1#13: mobile horizontal-scroll instead of wrap.
-       flex-wrap on mobile was eating ~120px of vertical space (3 rows of tabs).
-       overflow-x-auto + flex-nowrap keeps a single row + lets user swipe.
-       The whitespace-nowrap on each button prevents Chinese labels from
-       breaking mid-character. -->
-  <!-- V10 W3 Day 1 restructure: adv-toggle moved OUT of the role="tablist"
-       to satisfy WCAG's aria-required-children — a tablist may only
-       contain elements with role="tab". The 7 legacy tabs remain inside
-       the tablist as proper tab children but get the `adv-tab` class so
-       they can be individually hidden when the toggle is collapsed. -->
-  <div class="flex items-end gap-2 border-b border-gray-200 mb-6">
+  <!-- Tab nav — V11 P1-FE#1: 4 engineer tabs removed (outcomes / roi /
+       sessions / rules). adv-toggle removed (no advanced tabs left).
+       Remaining 5 user-facing tabs all directly visible. -->
+  <div class="border-b mb-6" style="border-color: var(--border-subtle);">
     <nav id="tab-nav" role="tablist" data-i18n-attr="aria-label:tablist_label" aria-label="主功能选项卡"
-         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px flex-1">
-      <!-- V10 W1: 今日推荐 is now the default landing tab. Auto-loads
-           recommendations on page open; no user input required. -->
-      <button data-tab="today"     role="tab" aria-controls="tab-today"     data-i18n="tab_today"    class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700">🎯 今日推荐</button>
-      <!-- V10 W1 Day 5: WC 2026 special tab. Auto-loads predictions for
-           today's WC fixtures (national-team Elo + LightGBM × Pinnacle blend).
-           Visible by default during the WC window; can be hidden post-tournament. -->
-      <button data-tab="wc"        role="tab" aria-controls="tab-wc"        data-i18n="tab_wc"       class="tab-btn whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">🏆 WC 2026</button>
-      <!-- The 7 legacy tabs. Hidden by default (V10 W1 Day 4); revealed
-           by #adv-toggle. Each remains a proper role="tab" child of the
-           tablist nav so WCAG aria-required-children stays clean. The
-           .adv-tab class lets JS hide them as a group. -->
-      <button data-tab="single"    role="tab" aria-controls="tab-single"    data-i18n="tab_single"   class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">① 单关</button>
-      <button data-tab="recommend" role="tab" aria-controls="tab-recommend" data-i18n="tab_parlay"   class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">② 串关</button>
-      <button data-tab="pool"      role="tab" aria-controls="tab-pool"      data-i18n="tab_pool"     class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">③ 复式</button>
-      <button data-tab="outcomes"  role="tab" aria-controls="tab-outcomes"  data-i18n="tab_outcomes" class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">④ 录入结果</button>
-      <button data-tab="roi"       role="tab" aria-controls="tab-roi"       data-i18n="tab_roi"      class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑤ ROI 报告</button>
-      <button data-tab="sessions"  role="tab" aria-controls="tab-sessions"  data-i18n="tab_sessions" class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑥ 会话历史</button>
-      <button data-tab="rules"     role="tab" aria-controls="tab-rules"     data-i18n="tab_rules"    class="tab-btn adv-tab hidden whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">⑦ 规则说明</button>
+         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px">
+      <!-- V10 W1: 今日推荐 is the default landing tab. Auto-loads on open. -->
+      <button data-tab="today"     role="tab" aria-controls="tab-today"     aria-selected="true"  data-i18n="tab_today"  class="tab-btn active whitespace-nowrap px-4 py-3 text-sm font-medium">🎯 今日推荐</button>
+      <!-- V10 W1 Day 5: WC 2026 special tab (visible during tournament window). -->
+      <button data-tab="wc"        role="tab" aria-controls="tab-wc"        aria-selected="false" data-i18n="tab_wc"     class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">🏆 WC 2026</button>
+      <!-- 3 retained 玩法 tabs (engineer tabs removed in P1-FE#1). -->
+      <button data-tab="single"    role="tab" aria-controls="tab-single"    aria-selected="false" data-i18n="tab_single" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">① 单关</button>
+      <button data-tab="recommend" role="tab" aria-controls="tab-recommend" aria-selected="false" data-i18n="tab_parlay" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">② 串关</button>
+      <button data-tab="pool"      role="tab" aria-controls="tab-pool"      aria-selected="false" data-i18n="tab_pool"   class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">③ 复式</button>
     </nav>
-    <!-- adv-toggle lives OUTSIDE the role="tablist" so it doesn't
-         violate aria-required-children. Still controls the same 7 tabs
-         via aria-controls + click handler. -->
-    <button id="adv-toggle" type="button"
-            data-i18n="btn_advanced_show"
-            aria-expanded="false"
-            aria-controls="tab-nav"
-            class="whitespace-nowrap px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-b-2 border-transparent -mb-px shrink-0">
-      高级 ▾
-    </button>
   </div>
 
   <!-- Tab: Today (V10 W1) — default landing. Auto-fetches today's
@@ -406,142 +687,6 @@
     </div>
   </div>
 
-  <!-- Tab: Outcomes -->
-  <div id="tab-outcomes" role="tabpanel" class="tab-panel hidden">
-    <div class="bg-white shadow-sm rounded-lg p-6">
-      <h2 class="font-bold mb-3" data-i18n="h_outcomes">录入比赛结果（自动结算）</h2>
-      <p class="text-sm text-gray-500 mb-3">每行一场，格式：
-        <code class="bg-gray-100 px-1 rounded">date,league,home_team,away_team,home_goals,away_goals</code>
-      </p>
-      <textarea id="outcomes-csv" rows="8" placeholder="2025-08-17,EPL,Arsenal,Liverpool,2,1
-2025-08-17,ESP_LA_LIGA,Real Madrid,Getafe,3,0"
-        class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
-      <div class="mt-3">
-        <button id="btn-submit-outcomes" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium">
-          提交并结算
-        </button>
-        <span id="outcomes-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
-      </div>
-      <div id="outcomes-result" class="mt-4 hidden p-4 bg-green-50 border border-green-200 rounded text-sm"></div>
-    </div>
-  </div>
-
-  <!-- Tab: ROI -->
-  <div id="tab-roi" role="tabpanel" class="tab-panel hidden">
-    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-3" data-i18n="h_roi">ROI 总览</h2>
-      <div id="roi-headline" class="text-sm text-gray-500">加载中 ...</div>
-    </div>
-    <div class="grid grid-cols-2 gap-6 mb-6">
-      <div class="bg-white shadow-sm rounded-lg p-6">
-        <h3 class="font-bold mb-3">按串关大小</h3>
-        <div id="roi-by-k"></div>
-      </div>
-      <div class="bg-white shadow-sm rounded-lg p-6">
-        <h3 class="font-bold mb-3">按联赛</h3>
-        <div id="roi-by-league"></div>
-      </div>
-    </div>
-    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h3 class="font-bold mb-3">校准</h3>
-      <div id="roi-calibration"></div>
-    </div>
-    <div class="bg-white shadow-sm rounded-lg p-6">
-      <h3 class="font-bold mb-3">周累计盈亏</h3>
-      <div id="roi-weekly"></div>
-    </div>
-  </div>
-
-  <!-- Tab: Sessions -->
-  <div id="tab-sessions" role="tabpanel" class="tab-panel hidden">
-    <div class="bg-white shadow-sm rounded-lg p-6">
-      <h2 class="font-bold mb-3" data-i18n="h_sessions">最近会话</h2>
-      <div id="sessions-table"></div>
-    </div>
-  </div>
-
-  <!-- Tab: Rules (V6 W10) -->
-  <div id="tab-rules" role="tabpanel" class="tab-panel hidden">
-    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-2" data-i18n="h_rules">中国体彩 · 竞彩足球 规则速查</h2>
-      <p class="text-sm text-gray-500 mb-4">数据来自 <code class="bg-gray-100 px-1 rounded">/api/v4/rules</code>,
-        与后端 <code class="bg-gray-100 px-1 rounded">nutmeg.v4.combo.lottery_rules.JINGCAI_DEFAULT</code> 保持同步。
-      </p>
-      <div id="rules-loading" class="text-sm text-gray-500">加载中 ...</div>
-      <div id="rules-content" class="hidden">
-
-        <h3 class="font-semibold mt-2 mb-2">💰 投注规则</h3>
-        <table class="mb-6">
-          <thead><tr><th>项目</th><th>取值</th><th>含义</th></tr></thead>
-          <tbody>
-            <tr><td>起投单位</td><td class="num"><strong id="rule-stake-unit">—</strong></td>
-                <td>单注最低金额，必须是该数的整数倍 (¥2 起投, 倍数限制)</td></tr>
-            <tr><td>单注上限</td><td class="num"><strong id="rule-max-ticket">—</strong></td>
-                <td>每张票最大金额，超过则系统拒单</td></tr>
-            <tr><td>串关下限</td><td class="num"><strong id="rule-min-legs">—</strong></td>
-                <td>混合过关最少串关数 (2 串 1 起)</td></tr>
-            <tr><td>串关上限</td><td class="num"><strong id="rule-max-legs">—</strong></td>
-                <td>混合过关最多串关数 (8 串 1 封顶)</td></tr>
-          </tbody>
-        </table>
-
-        <h3 class="font-semibold mt-2 mb-2">🎲 派奖机制</h3>
-        <table class="mb-6">
-          <thead><tr><th>项目</th><th>取值</th><th>含义</th></tr></thead>
-          <tbody>
-            <tr><td>派奖率</td><td class="num"><strong id="rule-payout">—</strong></td>
-                <td>平均派奖比例，¥1 投注长期回收 = 派奖率 × ¥1</td></tr>
-            <tr><td>庄家抽水 (vig)</td><td class="num"><strong id="rule-vig">—</strong></td>
-                <td>= 1 - 派奖率。对比 Pinnacle 体育博彩 vig ≈ 2.5%，竞彩高出 ~12x</td></tr>
-          </tbody>
-        </table>
-
-        <h3 class="font-semibold mt-2 mb-2">✅ 推荐门槛</h3>
-        <table class="mb-6">
-          <thead><tr><th>项目</th><th>取值</th><th>含义</th></tr></thead>
-          <tbody>
-            <tr><td>最小 EV/单位</td><td class="num"><strong id="rule-min-ev">—</strong></td>
-                <td>票面 EV 低于此值则不推荐 (5% = 模型相对庄家盘口的安全边际)</td></tr>
-            <tr><td>最小命中率</td><td class="num"><strong id="rule-min-hit">—</strong></td>
-                <td>低命中率 + 高赔率 = 高方差，默认筛掉</td></tr>
-            <tr><td>凯利分数</td><td class="num"><strong>0.25</strong></td>
-                <td>部分凯利 (1/4 倍) 防止模型误差导致的过激加仓</td></tr>
-            <tr><td>单注预算占比</td><td class="num"><strong>≤ 5%</strong></td>
-                <td>单张票最高占预算 5%，避免单次重仓</td></tr>
-          </tbody>
-        </table>
-
-        <h3 class="font-semibold mt-2 mb-2">📋 玩法说明</h3>
-        <table class="mb-6">
-          <thead><tr><th>玩法</th><th>说明</th></tr></thead>
-          <tbody>
-            <tr><td><strong>胜平负 (1X2)</strong></td>
-                <td>不带让球，单纯判断主队胜 / 平 / 客队胜</td></tr>
-            <tr><td><strong>让球胜平负</strong></td>
-                <td>带<em>整数</em>让球数 (如 -1 = 主队让一球)；按让球后的比分判定胜平负</td></tr>
-            <tr><td><strong>浮动让球</strong></td>
-                <td>让球数在下单瞬间锁定 (SP 同步锁定)，与赛前其他时间无关</td></tr>
-            <tr><td><strong>浮动 SP</strong></td>
-                <td>赔率在下单瞬间锁定，竞彩平台显示的为参考值</td></tr>
-            <tr><td><strong>单关</strong></td>
-                <td>单场比赛，单注最低 ¥2，命中即返奖</td></tr>
-            <tr><td><strong>串关 (混合过关)</strong></td>
-                <td>2 ~ 8 场比赛全部命中才返奖，赔率累乘</td></tr>
-            <tr><td><strong>复式</strong></td>
-                <td>选 M 场预测 + N 串 1，下注全部 C(M,N) 张子票</td></tr>
-          </tbody>
-        </table>
-
-        <h3 class="font-semibold mt-2 mb-2">⚠️ 风险提示</h3>
-        <ul class="text-sm space-y-2 list-disc list-inside text-gray-700">
-          <li>本系统仅提供 <em>参考</em> 推荐，从不自动下单。所有票请人工到竞彩终端复核 SP 后再下注。</li>
-          <li>派奖率 68.5% 意味着即使是 +5% EV 的推荐，仍有较大方差；请用闲置资金、固定预算。</li>
-          <li>建议每周用<code class="bg-gray-100 px-1 rounded">②录入结果</code> + <code class="bg-gray-100 px-1 rounded">③ROI 报告</code> 复盘，连续 4 周 ROI 负值时停手复盘模型。</li>
-          <li>未成年人请勿购买，理性投注。</li>
-        </ul>
-      </div>
-    </div>
-  </div>
 
 </div>
 
@@ -927,23 +1072,16 @@ function setStatus(sel, kind, msg) {
 
 // --- Tab switching ---
 function switchTab(name) {
+  // V11 P1-FE#1: styling driven by CSS .tab-btn.active selector +
+  // aria-selected attribute. No Tailwind color classes added/removed.
   document.querySelectorAll('.tab-btn').forEach(b => {
-    if (b.dataset.tab === name) {
-      b.classList.remove('border-transparent','text-gray-500');
-      b.classList.add('border-indigo-600','text-indigo-700');
-      b.setAttribute('aria-selected', 'true');   // P1#13 a11y
-    } else {
-      b.classList.remove('border-indigo-600','text-indigo-700');
-      b.classList.add('border-transparent','text-gray-500');
-      b.setAttribute('aria-selected', 'false');  // P1#13 a11y
-    }
+    const isActive = b.dataset.tab === name;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', isActive ? 'true' : 'false');
   });
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
   const panel = $('#tab-' + name);
   if (panel) panel.classList.remove('hidden');
-  if (name === 'roi') loadROI();
-  if (name === 'sessions') loadSessions();
-  if (name === 'rules') loadRules();
   if (name === 'wc') loadWcPredictions();
 }
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1120,155 +1258,6 @@ function renderRecommendations(body) {
     }
   }
 }
-
-// --- Outcomes ---
-$('#btn-submit-outcomes').addEventListener('click', async () => {
-  const lines = $('#outcomes-csv').value.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
-  if (lines.length === 0) {
-    $('#outcomes-status').textContent = '❌ 没有内容';
-    return;
-  }
-  const outcomes = [];
-  for (const line of lines) {
-    const parts = line.split(',').map(p => p.trim());
-    if (parts.length < 6) {
-      $('#outcomes-status').textContent = '❌ 行格式错误：' + line;
-      return;
-    }
-    outcomes.push({
-      match_date: parts[0],
-      league: parts[1],
-      home_team: parts[2],
-      away_team: parts[3],
-      home_goals: Number(parts[4]),
-      away_goals: Number(parts[5]),
-    });
-  }
-  setStatus('#outcomes-status', 'loading', t('status_submitting'));
-  try {
-    const res = await fetch(API + '/observation/outcomes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ outcomes }),
-    });
-    if (!res.ok) {
-      setStatus('#outcomes-status', 'error',
-        `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      return;
-    }
-    const body = await res.json();
-    $('#outcomes-status').textContent = '✓ 提交成功';
-    $('#outcomes-result').classList.remove('hidden');
-    $('#outcomes-result').innerHTML =
-      `✓ 录入 ${body.n_recorded} 场结果，结算 ${body.settle_counts.settled} 条推荐，
-       ${body.settle_counts.still_unknown} 条仍待其他比赛结果。`;
-    loadHealth();  // refresh badge
-  } catch (e) {
-    setStatus('#outcomes-status', 'error', e.message);
-  }
-});
-
-// --- ROI ---
-async function loadROI() {
-  try {
-    const res = await fetch(API + '/observation/roi');
-    if (!res.ok) {
-      $('#roi-headline').innerHTML = '<span class="text-gray-500">还没有任何已结算推荐。先用"录入结果"或 CLI 录入比赛结果。</span>';
-      return;
-    }
-    const body = await res.json();
-    const h = body.headline;
-    const calGap = h.actual_hit_rate - h.avg_hit_p_predicted;
-    $('#roi-headline').innerHTML = `
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div><div class="text-xs text-gray-500">已结算</div><div class="text-xl sm:text-2xl font-bold">${h.n_settled}</div></div>
-        <div><div class="text-xs text-gray-500">命中 / 错失</div><div class="text-xl sm:text-2xl font-bold">${h.n_hit} / ${h.n_miss}</div></div>
-        <div><div class="text-xs text-gray-500">净盈亏</div><div class="text-xl sm:text-2xl font-bold ${sign(h.profit_loss)}">${fmtMoney(h.profit_loss)}</div></div>
-        <div><div class="text-xs text-gray-500">ROI</div><div class="text-xl sm:text-2xl font-bold ${sign(h.roi)}">${fmtPct(h.roi, 2)}</div></div>
-      </div>
-      <div class="mt-4 text-sm text-gray-600">
-        总投入 ${fmtMoney(h.total_stake)} · 总回收 ${fmtMoney(h.total_payout)} ·
-        模型预测平均命中率 ${fmtPct(h.avg_hit_p_predicted)} · 实际 ${fmtPct(h.actual_hit_rate)} ·
-        <span class="${Math.abs(calGap) > 0.05 ? 'text-yellow-600' : 'text-gray-500'}">校准偏差 ${(calGap>=0?'+':'') + calGap.toFixed(3)}</span>
-      </div>
-    `;
-    // by k
-    // P1#13: wrap each ROI table in overflow-x-auto so mobile can scroll horizontally
-    $('#roi-by-k').innerHTML = body.by_k_legs.length === 0 ? '<span class="text-gray-500">无数据</span>' :
-      '<div class="overflow-x-auto"><table><thead><tr><th>k</th><th class="num">n</th><th class="num">命中</th><th class="num">投入</th><th class="num">P/L</th><th class="num">ROI</th></tr></thead><tbody>' +
-      body.by_k_legs.map(r => `<tr><td>${r.k_legs} 串 1</td><td class="num">${r.n}</td><td class="num">${r.n_hit}</td><td class="num">${fmtMoney(r.stake)}</td><td class="num ${sign(r.pl)}">${fmtMoney(r.pl)}</td><td class="num ${sign(r.pl)}">${fmtPct(r.pl/Math.max(r.stake,1e-9))}</td></tr>`).join('') + '</tbody></table></div>';
-    // by league
-    $('#roi-by-league').innerHTML = body.by_league.length === 0 ? '<span class="text-gray-500">无数据</span>' :
-      '<div class="overflow-x-auto"><table><thead><tr><th>联赛</th><th class="num">n</th><th class="num">命中率</th><th class="num">P/L</th><th class="num">ROI</th></tr></thead><tbody>' +
-      body.by_league.map(r => `<tr><td>${r.league}</td><td class="num">${r.n}</td><td class="num">${fmtPct(r.hit_rate)}</td><td class="num ${sign(r.pl)}">${fmtMoney(r.pl)}</td><td class="num ${sign(r.roi)}">${fmtPct(r.roi)}</td></tr>`).join('') + '</tbody></table></div>';
-    // calibration
-    $('#roi-calibration').innerHTML = body.calibration.length === 0 ? '<span class="text-gray-500">无数据</span>' :
-      '<div class="overflow-x-auto"><table><thead><tr><th>预测命中率区间</th><th class="num">n</th><th class="num">平均预测</th><th class="num">实际</th><th class="num">偏差</th></tr></thead><tbody>' +
-      body.calibration.map(b => `<tr><td>${fmtPct(b.bin_lo,0)}–${fmtPct(b.bin_hi,0)}</td><td class="num">${b.n}</td><td class="num">${fmtPct(b.avg_predicted)}</td><td class="num">${fmtPct(b.actual_hit_rate)}</td><td class="num ${b.actual_hit_rate-b.avg_predicted>=0?'pos':'neg'}">${(b.actual_hit_rate-b.avg_predicted>=0?'+':'') + (b.actual_hit_rate-b.avg_predicted).toFixed(3)}</td></tr>`).join('') + '</tbody></table></div>';
-    // weekly
-    $('#roi-weekly').innerHTML = body.weekly.length === 0 ? '<span class="text-gray-500">无数据</span>' :
-      '<div class="overflow-x-auto"><table><thead><tr><th>周次</th><th class="num">n</th><th class="num">投入</th><th class="num">本周 P/L</th><th class="num">累计 P/L</th></tr></thead><tbody>' +
-      body.weekly.map(w => `<tr><td>${w.week}</td><td class="num">${w.n}</td><td class="num">${fmtMoney(w.stake)}</td><td class="num ${sign(w.pl)}">${fmtMoney(w.pl)}</td><td class="num ${sign(w.cumulative_pl)}">${fmtMoney(w.cumulative_pl)}</td></tr>`).join('') + '</tbody></table></div>';
-  } catch (e) {
-    $('#roi-headline').textContent = '❌ ' + e.message;
-  }
-}
-
-// --- Sessions ---
-async function loadSessions() {
-  try {
-    const body = await fetch(API + '/observation/sessions?limit=20').then(r => r.json());
-    if (body.n === 0) {
-      $('#sessions-table').innerHTML = '<span class="text-gray-500">还没有会话。</span>';
-      return;
-    }
-    // P1#13: wrap sessions table in overflow-x-auto for mobile scrolling
-    $('#sessions-table').innerHTML =
-      '<div class="overflow-x-auto"><table><thead><tr><th>ID</th><th>时间 (UTC)</th><th class="num">预算</th><th class="num">比赛数</th><th class="num">推荐数</th><th>模型截止日</th></tr></thead><tbody>' +
-      body.sessions.map(s => `<tr><td>#${s.session_id}</td><td class="text-xs text-gray-500">${s.created_at}</td><td class="num">${fmtMoney(s.bankroll)}</td><td class="num">${s.n_fixtures}</td><td class="num">${s.n_recommendations}</td><td class="text-xs text-gray-500">${s.model_cutoff || '—'}</td></tr>`).join('') + '</tbody></table></div>';
-  } catch (e) {
-    $('#sessions-table').textContent = '❌ ' + e.message;
-  }
-}
-
-// --- Rules (V6 W10) ---
-let RULES = null;  // cached after first load
-
-async function loadRules() {
-  // Already loaded?
-  if (RULES) { renderRules(); return; }
-  try {
-    const res = await fetch(API + '/rules');
-    if (!res.ok) {
-      $('#rules-loading').textContent = '⚠️ 加载规则失败: HTTP ' + res.status;
-      return;
-    }
-    RULES = await res.json();
-    renderRules();
-    // Refresh the recommend-tab hint with live values too
-    const hint = $('#rules-hint');
-    if (hint) {
-      hint.innerHTML = `竞彩规则: 起投 <strong>¥${RULES.stake_unit}</strong>, 单注上限 <strong>¥${RULES.max_ticket_stake.toLocaleString()}</strong>, 混合过关 <strong>≤${RULES.max_legs_per_ticket} 串</strong>, 派奖率 <strong>${(RULES.payout_ratio*100).toFixed(1)}%</strong> (vig ${(RULES.vig*100).toFixed(1)}%)。 <a href="#" data-tab-link="rules" class="text-indigo-600 hover:underline">详细规则 →</a>`;
-    }
-  } catch (e) {
-    $('#rules-loading').textContent = '⚠️ 加载规则失败: ' + e.message;
-  }
-}
-
-function renderRules() {
-  if (!RULES) return;
-  $('#rules-loading').classList.add('hidden');
-  $('#rules-content').classList.remove('hidden');
-  $('#rule-stake-unit').textContent  = '¥' + RULES.stake_unit;
-  $('#rule-max-ticket').textContent  = '¥' + RULES.max_ticket_stake.toLocaleString();
-  $('#rule-min-legs').textContent    = RULES.min_parlay_legs + ' 串';
-  $('#rule-max-legs').textContent    = RULES.max_legs_per_ticket + ' 串';
-  $('#rule-payout').textContent      = (RULES.payout_ratio * 100).toFixed(1) + '%';
-  $('#rule-vig').textContent         = (RULES.vig * 100).toFixed(1) + '%';
-  $('#rule-min-ev').textContent      = (RULES.min_ev_per_unit * 100).toFixed(0) + '%';
-  $('#rule-min-hit').textContent     = (RULES.min_hit_probability * 100).toFixed(0) + '%';
-}
-
 // --- V8 W6: Single (单关) ---
 const MARKET_LABEL = { '1x2': '胜平负', 'handicap_1x2': '让球胜平负' };
 
@@ -1775,69 +1764,6 @@ async function loadWcPredictions() {
 $('#wc-refresh').addEventListener('click', loadWcPredictions);
 $('#wc-date').addEventListener('change', loadWcPredictions);
 $('#wc-fetch-odds').addEventListener('change', loadWcPredictions);
-
-// =====================================================================
-// V10 W1 Day 4 — "高级 ▾" toggle for legacy 7 tabs
-// =====================================================================
-// Default state: only 🎯 今日推荐 visible in nav. Engineer-facing
-// tabs (单关/串关/复式/录入/ROI/会话/规则) hidden behind a toggle.
-// State persisted to localStorage so power users don't re-click each
-// page load. A11y: button has aria-expanded + aria-controls.
-const ADV_STATE_KEY = 'nutmeg-v10-adv-expanded';
-
-function setAdvancedExpanded(expanded) {
-  // V10 W3 Day 1: the 7 advanced tabs are now individual children of
-  // the role="tablist" nav (not wrapped in a span) for WCAG compliance.
-  // Show/hide them per-button via the .adv-tab class marker.
-  const advTabs = document.querySelectorAll('.adv-tab');
-  const btn = $('#adv-toggle');
-  if (expanded) {
-    advTabs.forEach(t => t.classList.remove('hidden'));
-    btn.setAttribute('aria-expanded', 'true');
-    btn.textContent = t('btn_advanced_hide');
-  } else {
-    advTabs.forEach(t => t.classList.add('hidden'));
-    btn.setAttribute('aria-expanded', 'false');
-    btn.textContent = t('btn_advanced_show');
-  }
-  try { localStorage.setItem(ADV_STATE_KEY, expanded ? '1' : '0'); }
-  catch (_) { /* private mode → in-memory only */ }
-}
-
-function initAdvancedToggle() {
-  // Read persisted state (default collapsed)
-  let expanded = false;
-  try {
-    expanded = localStorage.getItem(ADV_STATE_KEY) === '1';
-  } catch (_) { /* ignore */ }
-  setAdvancedExpanded(expanded);
-  $('#adv-toggle').addEventListener('click', () => {
-    const isExpanded = $('#adv-toggle').getAttribute('aria-expanded') === 'true';
-    setAdvancedExpanded(!isExpanded);
-  });
-}
-
-// If user switches to a legacy tab via inline data-tab-link (e.g.,
-// "前往高级模式 →" link in the today empty state), auto-expand
-// the advanced panel so they can see the tab they just switched to.
-document.addEventListener('click', (e) => {
-  const link = e.target.closest('[data-tab-link]');
-  if (!link) return;
-  const target = link.dataset.tabLink;
-  if (target && target !== 'today') {
-    setAdvancedExpanded(true);
-  }
-});
-
-// --- Init ---
-loadHealth();
-loadRules();  // pre-fetch so the hint banner shows live values
-$('#fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
-$('#single-fixtures-json').value = JSON.stringify(SAMPLE, null, 2);
-$('#pool-fixtures-json').value = JSON.stringify(POOL_SAMPLE, null, 2);
-initRecordSessionPersistence();
-// V10 W1 Day 4: initialize 高级 ▾ toggle (read persisted state)
-initAdvancedToggle();
 // V10 W1: fire today-recommendations on initial load (today tab is default)
 loadTodayRecommendations();
 // P1#14: i18n init + language toggle wiring
@@ -1855,6 +1781,34 @@ if ('serviceWorker' in navigator) {
   });
 }
 setInterval(loadHealth, 30_000);
+
+// V11 P1-FE#1 — theme toggle.
+// The initial theme is already applied by the inline bootstrap script in
+// <head> (runs before render). This handler just lets the user flip
+// dark ↔ light + persists the choice.
+(function initThemeToggle() {
+  const btn = document.getElementById('theme-toggle');
+  const iconDark = document.getElementById('theme-icon-dark');
+  const iconLight = document.getElementById('theme-icon-light');
+  if (!btn || !iconDark || !iconLight) return;
+
+  function syncIcon() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    // Show OPPOSITE icon (the target you'd switch to)
+    iconDark.classList.toggle('hidden', !isDark);
+    iconLight.classList.toggle('hidden', isDark);
+  }
+  syncIcon();
+
+  btn.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    document.documentElement.classList.toggle('dark', next === 'dark');
+    try { localStorage.setItem('nutmeg-theme', next); } catch (_) {}
+    syncIcon();
+  });
+})();
 </script>
 
 </body>

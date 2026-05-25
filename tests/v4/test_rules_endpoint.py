@@ -68,24 +68,25 @@ class TestDashboardChineseLocalization:
         assert r.status_code == 200
         return r.text
 
-    def test_dashboard_has_rules_tab(self, html: str):
-        # V8 W6 renumbered tabs (added 单关 + 复式), rules moved from ⑤ to ⑦
-        assert "规则说明" in html
-        assert "data-tab=\"rules\"" in html
-        assert "tab-rules" in html
+    def test_rules_endpoint_still_serves(self, client):
+        """V11 P1-FE#1 removed the rules tab from the dashboard (engineer-
+        facing UI cleanup), but the /api/v4/rules ENDPOINT is still live
+        for backend / CLI consumers."""
+        r = client.get("/api/v4/rules")
+        assert r.status_code == 200
+        body = r.json()
+        assert "stake_unit" in body
+        assert "max_ticket_stake" in body
 
-    def test_dashboard_calls_loadRules(self, html: str):
-        # JS path that fetches /rules + binds values into the tab
-        assert "function loadRules" in html or "async function loadRules" in html
-        assert "renderRules" in html
-        assert "/rules" in html
-
-    def test_dashboard_renders_key_chinese_terms(self, html: str):
-        """The rule tab + inline hint must surface the explicit terms
-        the user asked us to call out (派奖率, 浮动让球, 起投 ¥2)."""
-        for term in ("派奖率", "浮动让球", "浮动 SP", "起投", "¥2", "¥20,000",
-                     "庄家抽水", "凯利"):
-            assert term in html, f"missing UI term: {term!r}"
+    def test_dashboard_chinese_app_chrome_intact(self, html: str):
+        """V11 P1-FE#1 deleted the rules / outcomes / roi / sessions tabs,
+        but the core Chinese app chrome (tab labels, title) is still there."""
+        # Title + tab labels
+        assert "Nutmeg" in html
+        assert "今日推荐" in html
+        assert "单关" in html
+        assert "串关" in html
+        assert "复式" in html
 
     def test_dashboard_no_orphan_english_copy(self, html: str):
         """A few English phrases shouldn't appear in user-facing copy.

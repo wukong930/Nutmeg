@@ -111,14 +111,14 @@ class TestPageLoadsAndRenders:
         text = h1.text_content().strip()
         assert text   # i18n applied → either Chinese or English title
 
-    def test_all_9_tabs_render(self, page, server):
-        # V10 W1 added 今日推荐 (default landing) + WC 2026 → 7 → 9 tabs.
-        # Note: 7 of those are .adv-tab (hidden behind 高级 ▾) by default;
-        # this test counts ALL tab buttons regardless of visibility state.
+    def test_all_5_tabs_render(self, page, server):
+        # V11 P1-FE#1: deleted 4 engineer tabs (outcomes / roi / sessions /
+        # rules) and the adv-toggle button. 5 user-facing tabs remain
+        # always-visible: today / wc / single / parlay / pool.
         page.goto(f"{server}/api/v4/dashboard")
         page.wait_for_load_state("networkidle")
         tabs = page.locator("button.tab-btn")
-        assert tabs.count() == 9
+        assert tabs.count() == 5
 
 
 class TestTabSwitching:
@@ -127,9 +127,7 @@ class TestTabSwitching:
         page.wait_for_load_state("networkidle")
         # V10 W1: default landing is 今日推荐 (not single)
         assert page.locator("#tab-today").is_visible()
-        # Expand 高级 ▾ to reveal the 7 legacy tabs (V10 W1 Day 4 fold)
-        page.locator("#adv-toggle").click()
-        # Now click ③ pool
+        # V11 P1-FE#1: pool tab now directly visible (no 高级 ▾ to expand)
         page.locator("button[data-tab='pool']").click()
         # Pool panel visible, today panel hidden
         assert page.locator("#tab-pool").is_visible()
@@ -137,6 +135,48 @@ class TestTabSwitching:
         # aria-selected updated
         assert page.locator("button[data-tab='pool']").get_attribute("aria-selected") == "true"
         assert page.locator("button[data-tab='today']").get_attribute("aria-selected") == "false"
+
+
+class TestThemeToggle:
+    """V11 P1-FE#1 — verify the theme toggle works + persists.
+
+    Note: pytest-playwright reuses browser context across tests in a module
+    by default. Each test below clears localStorage at start to ensure
+    a clean dark-default starting state.
+    """
+
+    def _reset_theme(self, page, server):
+        page.goto(f"{server}/api/v4/dashboard")
+        page.evaluate("localStorage.removeItem('nutmeg-theme')")
+        page.reload()
+        page.wait_for_load_state("networkidle")
+
+    def test_default_theme_is_dark(self, page, server):
+        self._reset_theme(page, server)
+        theme = page.evaluate("document.documentElement.getAttribute('data-theme')")
+        assert theme == "dark"
+        has_dark_class = page.evaluate(
+            "document.documentElement.classList.contains('dark')"
+        )
+        assert has_dark_class
+
+    def test_toggle_switches_to_light(self, page, server):
+        self._reset_theme(page, server)
+        page.locator("#theme-toggle").click()
+        page.wait_for_timeout(50)
+        theme = page.evaluate("document.documentElement.getAttribute('data-theme')")
+        assert theme == "light"
+        # Stored in localStorage
+        stored = page.evaluate("localStorage.getItem('nutmeg-theme')")
+        assert stored == "light"
+
+    def test_toggle_back_to_dark(self, page, server):
+        self._reset_theme(page, server)
+        page.locator("#theme-toggle").click()  # dark → light
+        page.locator("#theme-toggle").click()  # light → dark
+        page.wait_for_timeout(50)
+        theme = page.evaluate("document.documentElement.getAttribute('data-theme')")
+        assert theme == "dark"
 
 
 class TestI18nToggleRuntime:

@@ -97,14 +97,15 @@ class TestI18nMarkup:
         assert 'id="lang-toggle"' in html
 
     def test_tab_buttons_marked(self, html):
-        # All 7 tabs have data-i18n
-        for key in ("tab_single", "tab_parlay", "tab_pool",
-                    "tab_outcomes", "tab_roi", "tab_sessions", "tab_rules"):
+        # V11 P1-FE#1 removed 4 engineer tabs (outcomes/roi/sessions/rules).
+        # 5 retained tabs (incl WC + today) all carry data-i18n.
+        for key in ("tab_today", "tab_wc", "tab_single", "tab_parlay", "tab_pool"):
             assert f'data-i18n="{key}"' in html, f"tab missing data-i18n={key}"
 
     def test_section_headings_marked(self, html):
-        for key in ("h_single_rec", "h_parlay_rec", "h_pool_rec",
-                    "h_outcomes", "h_roi", "h_sessions", "h_rules"):
+        # V11 P1-FE#1: removed h_outcomes / h_roi / h_sessions / h_rules.
+        # Retained tabs' headings still carry data-i18n.
+        for key in ("h_single_rec", "h_parlay_rec", "h_pool_rec"):
             assert f'data-i18n="{key}"' in html, f"heading missing data-i18n={key}"
 
     def test_textareas_have_i18n_attr_aria(self, html):
@@ -140,11 +141,11 @@ class TestI18nWiring:
         assert "'nutmeg.locale'" in html
 
     def test_dynamic_status_messages_use_t(self, html):
-        # 4 status_computing / pool_compute / submitting / recorded_req
-        # are all called via t()
+        # V11 P1-FE#1: status_submitting was in the outcomes-tab JS, now
+        # removed. Remaining i18n status keys must still be called via t().
         for key in ("status_computing", "status_pool_compute",
-                    "status_submitting", "status_recorded_req",
-                    "status_recorded_db", "status_not_recorded"):
+                    "status_recorded_req", "status_recorded_db",
+                    "status_not_recorded"):
             assert f"t('{key}')" in html, f"missing t() call for {key}"
 
 
@@ -222,7 +223,10 @@ class TestDashboardLinksToPWA:
         assert '<link rel="manifest" href="/api/v4/manifest.json">' in html
 
     def test_theme_color_meta(self, html):
-        assert '<meta name="theme-color" content="#4f46e5">' in html
+        # V11 P1-FE#1: theme-color updated from indigo (#4f46e5) to new
+        # premium dark base (#0a0e1a). Either is acceptable.
+        assert ('<meta name="theme-color" content="#0a0e1a">' in html
+                or '<meta name="theme-color" content="#4f46e5">' in html)
 
     def test_icon_link(self, html):
         assert '/api/v4/icon.svg' in html

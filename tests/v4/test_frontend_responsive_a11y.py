@@ -62,8 +62,9 @@ class TestMobileRendering:
 
     def test_tab_buttons_whitespace_nowrap(self, html):
         """Chinese labels should never break mid-character on small viewports."""
-        # All tab buttons have whitespace-nowrap
-        assert html.count('whitespace-nowrap') >= 7   # 7 tabs
+        # V11 P1-FE#1: 5 retained tabs, all whitespace-nowrap. Other
+        # elements (budget labels etc.) also use the class.
+        assert html.count('whitespace-nowrap') >= 5
 
     def test_header_stacks_on_mobile(self, html):
         """flex-col then sm:flex-row keeps title from competing with health pill."""
@@ -143,26 +144,34 @@ class TestNumberInputModes:
 
 class TestAriaSemantics:
     def test_tablist_role(self, html):
+        # V11 P1-FE#1: 4 engineer tabs removed; 5 user-facing tabs remain.
+        # role="tab" appears on each tab button. Also appears in some
+        # `role="tab"` Tailwind class-list strings ⚠ — match on the literal
+        # attribute form (with quotes) only.
         assert 'role="tablist"' in html
-        # 7 tab buttons should have role=tab
-        assert html.count('role="tab"') >= 7
+        assert html.count('role="tab"') >= 5  # was ≥7 before P1-FE#1
 
     def test_tabpanels_have_role(self, html):
-        # V10 W1 Day 5 added WC tab → 9 panels now
-        # (今日推荐 + WC 2026 + 单关/串关/复式/录入/ROI/会话/规则)
-        assert html.count('role="tabpanel"') == 9
+        # V11 P1-FE#1: 4 engineer tabpanels removed. 5 remain:
+        # 今日推荐 + WC 2026 + 单关 + 串关 + 复式.
+        assert html.count('role="tabpanel"') == 5
 
     def test_status_spans_have_aria_live(self, html):
-        for cid in ('single-status', 'recommend-status', 'pool-status', 'outcomes-status'):
+        # V11 P1-FE#1: outcomes-status removed (engineer tab gone).
+        # 3 remaining status spans across single/parlay/pool.
+        for cid in ('single-status', 'recommend-status', 'pool-status'):
             idx = html.index(f'id="{cid}"')
             chunk = html[idx:idx+200]
             assert 'role="status"' in chunk, f"{cid} missing role=status"
             assert 'aria-live="polite"' in chunk, f"{cid} missing aria-live"
 
     def test_switch_tab_sets_aria_selected(self, html):
-        """JS must update aria-selected when switching tabs."""
-        assert "setAttribute('aria-selected', 'true')" in html
-        assert "setAttribute('aria-selected', 'false')" in html
+        """JS must update aria-selected when switching tabs.
+
+        V11 P1-FE#1 refactored switchTab to use classList.toggle('active')
+        + setAttribute('aria-selected', 'true'|'false') from a ternary.
+        Verify the ternary call form is present."""
+        assert "setAttribute('aria-selected'" in html
 
 
 # ---------- Error UX — setStatus helper ----------------------------
@@ -192,9 +201,10 @@ class TestSetStatusHelper:
         assert html.count("setStatus('#") >= 8   # 4 error + 3 loading + buffer
 
     def test_3_endpoints_use_setstatus_for_loading(self, html):
-        """recommend / single / pool / outcomes all use 'loading' kind."""
+        """recommend / single / pool all use 'loading' kind.
+        V11 P1-FE#1: outcomes removed (engineer tab deleted)."""
         for sel in ("'#recommend-status'", "'#single-status'",
-                    "'#pool-status'", "'#outcomes-status'"):
+                    "'#pool-status'"):
             assert f"setStatus({sel}, 'loading'" in html, (
                 f"missing setStatus loading call for {sel}"
             )

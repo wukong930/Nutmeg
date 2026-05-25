@@ -268,7 +268,8 @@ class TestDashboard:
         assert r.headers.get("content-type", "").startswith("text/html")
         html = r.text
         assert "<title>" in html
-        assert "Nutmeg V4" in html
+        # V11 P1-FE#1 renamed title to "Nutmeg · 竞彩助手"
+        assert "Nutmeg" in html
         assert "/api/v4" in html  # JS calls our endpoints
 
 
