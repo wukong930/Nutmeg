@@ -328,6 +328,63 @@
   .tl-c6 { background: #713f12; color: #f5f7fa; border-color: #713f12; }  /* amber-dark */
   .tl-c7 { background: #334155; color: #f5f7fa; border-color: #334155; }  /* slate */
 
+  /* ── V11 P1-FE#5 — "推荐已更新" banner + per-rec 已更新 badge ───── */
+  .update-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(212,165,116,0.10), rgba(212,165,116,0.04));
+    border: 1px solid var(--accent-gold);
+    color: var(--text-primary);
+    animation: update-banner-slidedown 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .update-banner-icon {
+    font-size: 18px;
+    line-height: 1;
+  }
+  .update-banner-text {
+    flex: 1;
+    font-weight: 500;
+    font-size: 14px;
+  }
+  .update-banner-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 1;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: color 150ms ease;
+  }
+  .update-banner-dismiss:hover {
+    color: var(--text-primary);
+  }
+  @keyframes update-banner-slidedown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* Inline "已更新" badge next to a changed rec card. The card itself
+     also gets a subtle gold outline on the right side. */
+  .badge-updated {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(212,165,116,0.15);
+    color: var(--accent-gold);
+    border: 1px solid var(--accent-gold);
+    white-space: nowrap;
+  }
+  .card-rec.is-updated {
+    box-shadow: 0 0 0 1px var(--accent-gold);
+  }
+
   /* ── 推荐追溯 outcome chips (V11 P1-FE#3) ────────────────────────── */
   /*
    * Per design doc: ✓ 命中 uses soft green tint + thin gold edge (premium
@@ -550,6 +607,17 @@
         </div>
       </div>
       <div id="today-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
+    </div>
+
+    <!-- V11 P1-FE#5 — "推荐已更新" banner. Becomes visible when the
+         response carries a `diff` block (i.e. version_hash moved since
+         the user's last visit). aria-live so SR users hear it. -->
+    <div id="today-update-banner" class="hidden update-banner mb-6"
+         role="status" aria-live="polite">
+      <span class="update-banner-icon" aria-hidden="true">✨</span>
+      <span id="today-update-banner-text" class="update-banner-text" data-i18n="banner_updated">推荐已更新</span>
+      <button id="today-update-banner-dismiss" type="button" class="update-banner-dismiss"
+              aria-label="关闭通知">×</button>
     </div>
 
     <!-- Summary card -->
@@ -1054,6 +1122,9 @@ const I18N = {
     history_outcome_miss:'✗ 未命中',
     history_outcome_partial:'◐ 部分',
     history_outcome_pending:'⌛ 待结算',
+    // V11 P1-FE#5 — dynamic recommendation badges
+    banner_updated:      '推荐已更新',
+    badge_updated:       '已更新',
 
     // Page section headings
     h_single_rec:     '单关推荐',
@@ -1217,6 +1288,9 @@ const I18N = {
     history_outcome_miss:'✗ Miss',
     history_outcome_partial:'◐ Partial',
     history_outcome_pending:'⌛ Pending',
+    // V11 P1-FE#5 — dynamic recommendation badges
+    banner_updated:      'Recommendations updated',
+    badge_updated:       'Updated',
 
     h_single_rec:     'Single-bet recommendations',
     h_parlay_rec:     'Parlay recommendations',
@@ -1930,10 +2004,16 @@ function renderTodaySingle(single) {
   // V11 P1-FE#1 Day 2: card-rec style with mono-display numbers + EV bar.
   // Engineer info (probability %, "停"短语) hidden; replaced with visual
   // confidence indicator + plain "建议投注" copy.
+  // V11 P1-FE#5 — i18n label captured outside the map (parameter `t`
+  // below shadows the i18n helper).
+  const updatedLabel = t('badge_updated');
   list.innerHTML = single.tickets.map(t => {
     const marketLabel = t.market_type === 'handicap_1x2' ? '让球' : '胜平负';
+    // V11 P1-FE#5 — stamp .is-updated outline + badge when this pick is new
+    const isUpdated = t.selection_fingerprint && isFingerprintChanged(t.selection_fingerprint);
+    const updatedBadge = isUpdated ? `<span class="badge-updated">${updatedLabel}</span>` : '';
     return `
-      <div class="card-rec">
+      <div class="card-rec ${isUpdated ? 'is-updated' : ''}">
         <div class="flex items-start justify-between gap-3 mb-3">
           <div class="flex-1 min-w-0">
             <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
@@ -1945,7 +2025,10 @@ function renderTodaySingle(single) {
             </div>
             <div class="text-xs text-muted mt-1">${t.league} · ${t.date}</div>
           </div>
-          <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(t.outcome)}</span>
+          <div class="flex flex-col items-end gap-1 shrink-0">
+            ${updatedBadge}
+            <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(t.outcome)}</span>
+          </div>
         </div>
         <div class="flex items-end justify-between gap-3">
           <div>
@@ -1973,6 +2056,8 @@ function renderTodayParlay(parlay) {
   $('#today-parlay-count').textContent =
     ` · ${parlay.recommendations.length} 注 · 总投注 ${fmtMoney(totalStake)}`;
   // V11 P1-FE#1 Day 2: card-rec parlay style.
+  // V11 P1-FE#5: 已更新 badge label captured outside the map.
+  const updatedLabelParlay = t('badge_updated');
   list.innerHTML = parlay.recommendations.map((r) => {
     const legCount = r.legs.length;
     // Each leg: "Team A vs Team B (outcome @ odds)"
@@ -1983,14 +2068,19 @@ function renderTodayParlay(parlay) {
       const matchName = l.match_id.split('|').slice(0, 2).join(' vs ').replace(/_/g, ' ');
       return `<div class="text-sm py-1 text-primary">${matchName}${sels}</div>`;
     }).join('');
+    const isUpdated = r.selection_fingerprint && isFingerprintChanged(r.selection_fingerprint);
+    const updatedBadge = isUpdated ? `<span class="badge-updated">${updatedLabelParlay}</span>` : '';
     return `
-      <div class="card-rec">
+      <div class="card-rec ${isUpdated ? 'is-updated' : ''}">
         <div class="flex items-start justify-between gap-3 mb-3">
           <div>
             <div class="font-display font-semibold text-base text-primary">${legCount} 串 1</div>
             <div class="text-xs text-muted mt-1">推荐 #${r.rank}</div>
           </div>
-          <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(r.stake_units || 0)}</div>
+          <div class="flex flex-col items-end gap-1">
+            ${updatedBadge}
+            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(r.stake_units || 0)}</div>
+          </div>
         </div>
         <div class="mb-3 space-y-0">${legsHtml}</div>
         <div class="flex items-center justify-between text-xs pt-2" style="border-top: 1px solid var(--border-subtle);">
@@ -2046,6 +2136,8 @@ function renderTodayPool(pool) {
   const list = $('#today-pool-list');
   list.innerHTML = '';
   const selected = pool.tickets.filter(t => t.stake > 0);
+  // V11 P1-FE#5 — i18n label captured outside the map (parameter `t` shadows).
+  const updatedLabelPool = t('badge_updated');
   // Re-use the same card design as the dedicated 复式 tab for visual consistency
   list.innerHTML = selected.map((t, i) => {
     const legsHtml = t.legs.map(l => {
@@ -2059,13 +2151,18 @@ function renderTodayPool(pool) {
         <span class="badge-ok shrink-0">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
       </div>`;
     }).join('');
-    return `<div class="card-rec">
+    const isUpdated = t.selection_fingerprint && isFingerprintChanged(t.selection_fingerprint);
+    const updatedBadge = isUpdated ? `<span class="badge-updated">${updatedLabelPool}</span>` : '';
+    return `<div class="card-rec ${isUpdated ? 'is-updated' : ''}">
       <div class="flex items-start justify-between gap-3 mb-3">
         <div>
           <div class="font-display font-semibold text-base text-primary">${pool.n} 串 1 · 第 ${i+1} 张</div>
           <div class="text-xs text-muted mt-1">总赔率 <span class="num-display text-primary">${t.combined_odds.toFixed(2)}</span></div>
         </div>
-        <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(t.stake)}</div>
+        <div class="flex flex-col items-end gap-1">
+          ${updatedBadge}
+          <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(t.stake)}</div>
+        </div>
       </div>
       <div class="mb-3" style="border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">${legsHtml}</div>
       <div class="flex items-center justify-between text-xs pt-2" style="border-top: 1px solid var(--border-subtle);">
@@ -2080,12 +2177,76 @@ function renderTodayPool(pool) {
   }).join('');
 }
 
+// V11 P1-FE#5 — dynamic-recommendation tracking. We keep the
+// last-known fingerprint set + version_hash in localStorage so the
+// frontend can:
+//   1. Send `prev_version` with each request → server can echo a `diff` block
+//   2. Compute per-rec "已更新" badges client-side (server only signals
+//      "yes, version moved"; per-rec granularity needs the prior set)
+const LS_LAST_VERSION = 'nutmeg.today.lastVersion';
+const LS_LAST_FPS     = 'nutmeg.today.lastFingerprints';
+
+function _readLastVersion() {
+  try { return localStorage.getItem(LS_LAST_VERSION) || null; } catch (_) { return null; }
+}
+function _writeLastVersion(v) {
+  if (!v) return;
+  try { localStorage.setItem(LS_LAST_VERSION, v); } catch (_) {}
+}
+function _readLastFingerprints() {
+  try {
+    const raw = localStorage.getItem(LS_LAST_FPS);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw));
+  } catch (_) { return new Set(); }
+}
+function _writeLastFingerprints(fps) {
+  try { localStorage.setItem(LS_LAST_FPS, JSON.stringify([...fps])); } catch (_) {}
+}
+
+// Collect the *current* response's selection_fingerprints across all 3 pipelines.
+function _collectCurrentFingerprints(body) {
+  const fps = new Set();
+  if (body.single && body.single.tickets) {
+    body.single.tickets.forEach(t => { if (t.selection_fingerprint) fps.add(t.selection_fingerprint); });
+  }
+  if (body.parlay && body.parlay.recommendations) {
+    body.parlay.recommendations.forEach(r => { if (r.selection_fingerprint) fps.add(r.selection_fingerprint); });
+  }
+  if (body.pool && body.pool.tickets) {
+    body.pool.tickets.forEach(t => {
+      if (t.selection_fingerprint && t.stake > 0) fps.add(t.selection_fingerprint);
+    });
+  }
+  return fps;
+}
+
+// Read the badge-set: fingerprints present NOW but NOT in the prior snapshot.
+let _CHANGED_FINGERPRINTS = new Set();
+function isFingerprintChanged(fp) {
+  return _CHANGED_FINGERPRINTS.has(fp);
+}
+
+function _showUpdateBanner(summary) {
+  const banner = $('#today-update-banner');
+  const text = $('#today-update-banner-text');
+  if (!banner) return;
+  if (text && summary) text.textContent = summary;
+  banner.classList.remove('hidden');
+}
+function _hideUpdateBanner() {
+  const banner = $('#today-update-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
 async function loadTodayRecommendations() {
   const bankrollEl = $('#today-bankroll');
   const bankroll = Math.max(2, parseFloat(bankrollEl.value) || 1000);
   // V11 P1-FE#4 — pull slider state into the request body
   const risk = _readRiskPreference();
   const minEv = _readMinEv();
+  // V11 P1-FE#5 — echo last-seen version so the server can emit a diff
+  const prevVersion = _readLastVersion();
   setStatus('#today-status', 'loading', t('today_loading'));
   try {
     const resp = await fetch(API + '/today-recommendations', {
@@ -2097,6 +2258,7 @@ async function loadTodayRecommendations() {
         include: ['single', 'parlay', 'pool'],
         risk_preference: risk,
         min_ev: minEv,
+        ...(prevVersion ? { prev_version: prevVersion } : {}),
       }),
     });
     if (!resp.ok) {
@@ -2106,6 +2268,25 @@ async function loadTodayRecommendations() {
       throw new Error(detail);
     }
     const body = await resp.json();
+    // V11 P1-FE#5 — compute per-rec diff before render so the renderers
+    // can stamp "已更新" badges. Then persist the new fingerprints +
+    // version_hash for next time.
+    const newFps = _collectCurrentFingerprints(body);
+    const priorFps = _readLastFingerprints();
+    _CHANGED_FINGERPRINTS = new Set([...newFps].filter(fp => !priorFps.has(fp)));
+    // Show banner when the server signaled a diff OR we have any
+    // client-side changed fingerprints. The server's `diff` block
+    // confirms the version moved; first-load (no prev) → no banner.
+    if (body.diff || (prevVersion && _CHANGED_FINGERPRINTS.size > 0)) {
+      const summary = (body.diff && body.diff.summary) || t('banner_updated');
+      _showUpdateBanner(summary);
+    } else {
+      _hideUpdateBanner();
+    }
+    // Persist for next poll
+    _writeLastVersion(body.version_hash);
+    _writeLastFingerprints(newFps);
+
     renderTodaySummary(body);
     renderTodaySingle(body.single);
     renderTodayParlay(body.parlay);
@@ -2162,6 +2343,9 @@ $('#today-min-ev').addEventListener('input', () => {
   _debouncedReload();
 });
 $('#today-refresh').addEventListener('click', loadTodayRecommendations);
+// V11 P1-FE#5 — banner dismiss button
+const _bannerDismiss = $('#today-update-banner-dismiss');
+if (_bannerDismiss) _bannerDismiss.addEventListener('click', _hideUpdateBanner);
 
 // =====================================================================
 // V10 W1 Day 5 — WC 2026 predictions tab

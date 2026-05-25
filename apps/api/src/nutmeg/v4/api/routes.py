@@ -40,6 +40,7 @@ from nutmeg.v4.api.schemas import (
     SingleRecommendResponse,
     SinglePrediction,
     SingleTicketResponse,
+    TodayRecommendationsDiff,
     TodayRecommendationsRequest,
     TodayRecommendationsResponse,
     TodaySummary,
@@ -268,7 +269,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v7-fe-history';
+const CACHE_VERSION = 'nutmeg-v8-fe-dyn-recs';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -542,7 +543,11 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
                     for s in leg.selections
                 ],
             ))
-        recommendations_out.append(RecommendationResponse(
+        # V11 P1-FE#5 — per-rec fingerprint over its pick set
+        from nutmeg.v4.observation.recommendation_version import (
+            parlay_recommendation_fingerprint,
+        )
+        rec_resp = RecommendationResponse(
             rank=r.rank,
             k_legs=p.k,
             is_compound=p.is_compound,
@@ -554,8 +559,19 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
             ev_per_unit=float(p.ev_per_unit),
             log_growth=float(r.kelly_log_growth),
             legs=legs_out,
-        ))
+        )
+        rec_resp.selection_fingerprint = parlay_recommendation_fingerprint(rec_resp)
+        recommendations_out.append(rec_resp)
 
+    # V11 P1-FE#5 — parlay top-level version_hash
+    from nutmeg.v4.observation.recommendation_version import (
+        version_hash as _vh,
+        fixtures_odds_digest,
+    )
+    _parlay_top_hash = _vh(
+        parlay_fingerprints=[r.selection_fingerprint for r in recommendations_out if r.selection_fingerprint],
+        odds_digest=fixtures_odds_digest(req.fixtures),
+    )
     response = RecommendResponse(
         generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         model=ModelInfo(
@@ -572,6 +588,7 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
         n_recommendations=len(recommendations_out),
         single_match_predictions=single_preds,
         recommendations=recommendations_out,
+        version_hash=_parlay_top_hash,
     )
 
     # V9 W3: 串关 (parlay) auto-record path — both env AND request flag required.
@@ -732,8 +749,16 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
         correction=correction,
     )
 
-    tickets_out = [
-        SingleTicketResponse(
+    # V11 P1-FE#5 — stamp each ticket with its selection_fingerprint
+    # so the frontend can diff against its prior view.
+    from nutmeg.v4.observation.recommendation_version import (
+        single_ticket_fingerprint,
+        version_hash as _vh,
+        fixtures_odds_digest,
+    )
+    tickets_out: list[SingleTicketResponse] = []
+    for t in rec.selected_tickets:
+        tk = SingleTicketResponse(
             match_id=t.selection.match_id,
             market_type=t.selection.market_type,
             outcome=t.selection.outcome,
@@ -744,8 +769,12 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
             raw_kelly_stake=float(t.raw_kelly_stake),
             expected_return=float(t.expected_return),
         )
-        for t in rec.selected_tickets
-    ]
+        tk.selection_fingerprint = single_ticket_fingerprint(tk)
+        tickets_out.append(tk)
+    _single_top_hash = _vh(
+        single_fingerprints=[tk.selection_fingerprint for tk in tickets_out if tk.selection_fingerprint],
+        odds_digest=fixtures_odds_digest(req.fixtures),
+    )
 
     response = SingleRecommendResponse(
         generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -756,6 +785,7 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
         tickets=tickets_out,
         total_stake=float(rec.total_stake),
         total_expected_return=float(rec.total_expected_return),
+        version_hash=_single_top_hash,
     )
 
     # V9 W3: record when both gates pass (server env + request flag).
@@ -900,8 +930,15 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
         max_stake_fraction_per_ticket=req.max_stake_fraction_per_ticket,
     )
 
-    tickets_out = [
-        PoolTicketResponse(
+    # V11 P1-FE#5 — pool tickets get per-ticket fingerprints
+    from nutmeg.v4.observation.recommendation_version import (
+        pool_ticket_fingerprint,
+        version_hash as _vh,
+        fixtures_odds_digest,
+    )
+    tickets_out: list[PoolTicketResponse] = []
+    for t in rec.tickets:
+        tk = PoolTicketResponse(
             legs=[
                 PoolLegResponse(
                     match_id=leg.match_id,
@@ -920,8 +957,8 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
             raw_kelly_stake=float(t.raw_kelly_stake),
             expected_return=float(t.expected_return),
         )
-        for t in rec.tickets  # all candidates, EV desc
-    ]
+        tk.selection_fingerprint = pool_ticket_fingerprint(tk)
+        tickets_out.append(tk)
 
     response = PoolRecommendResponse(
         generated_at_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -934,6 +971,10 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
         total_stake=float(rec.total_stake),
         total_expected_return=float(rec.total_expected_return),
         tickets=tickets_out,
+        version_hash=_vh(
+            pool_fingerprints=[tk.selection_fingerprint for tk in tickets_out if tk.selection_fingerprint and tk.stake > 0],
+            odds_digest=fixtures_odds_digest(req.fixtures),
+        ),
     )
 
     # V9 W3: record when both gates pass (server env + request flag).
@@ -1190,6 +1231,41 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
 
     weighted_ev = (stake_weighted_ev_sum / total_stake) if total_stake > 0 else None
 
+    # V11 P1-FE#5 — top-level version_hash + optional diff vs prev_version.
+    # Combines fingerprints from all three pipelines + the odds digest.
+    from nutmeg.v4.observation.recommendation_version import (
+        version_hash as _vh,
+        fixtures_odds_digest,
+    )
+    _single_fps  = [t.selection_fingerprint for t in (single_resp.tickets if single_resp else []) if t.selection_fingerprint]
+    _parlay_fps  = [r.selection_fingerprint for r in (parlay_resp.recommendations if parlay_resp else []) if r.selection_fingerprint]
+    _pool_fps    = [t.selection_fingerprint for t in (pool_resp.tickets if pool_resp else []) if t.selection_fingerprint and t.stake > 0]
+    _odds_digest = fixtures_odds_digest(fixtures)
+    _top_hash = _vh(
+        single_fingerprints=_single_fps,
+        parlay_fingerprints=_parlay_fps,
+        pool_fingerprints=_pool_fps,
+        odds_digest=_odds_digest,
+    )
+
+    # If the client sent a prev_version and it differs, surface a diff
+    # block. We can't compute added/removed server-side because the
+    # client's prior fingerprint set isn't echoed back — the frontend
+    # owns the per-rec diff (it has the prior set in localStorage and
+    # compares against the new selection_fingerprints inline).
+    # Server's role: confirm "yes, version moved" + a one-line summary.
+    diff_block: TodayRecommendationsDiff | None = None
+    if req.prev_version and req.prev_version != _top_hash:
+        cur_set = set(_single_fps + _parlay_fps + _pool_fps)
+        diff_block = TodayRecommendationsDiff(
+            prev_version=req.prev_version,
+            current_version=_top_hash,
+            odds_changed=False,  # frontend infers from rec-level fp comparison
+            added_fingerprints=sorted(cur_set),
+            removed_fingerprints=[],
+            summary="推荐已更新",
+        )
+
     return TodayRecommendationsResponse(
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
         date=on_date.isoformat(),
@@ -1204,6 +1280,8 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             total_stake=total_stake,
             weighted_ev=weighted_ev,
         ),
+        version_hash=_top_hash,
+        diff=diff_block,
     )
 
 

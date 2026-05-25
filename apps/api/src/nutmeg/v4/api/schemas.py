@@ -111,6 +111,12 @@ class RecommendationResponse(BaseModel):
     ev_per_unit: float
     log_growth: float
     legs: list[LegResponse]
+    # V11 P1-FE#5 — deterministic fingerprint of the picks (sorted
+    # match_id+market+outcome tuples). Frontend uses this to detect
+    # "this specific recommendation's picks changed" so it can render
+    # an "已更新" badge next to it. Computed server-side.
+    selection_fingerprint: str | None = Field(None, description=
+        "12-char SHA1 prefix of sorted (match_id, market_type, outcome) tuples")
 
 
 class ModelInfo(BaseModel):
@@ -133,6 +139,8 @@ class RecommendResponse(BaseModel):
     n_recommendations: int
     single_match_predictions: list[SinglePrediction]
     recommendations: list[RecommendationResponse]
+    # V11 P1-FE#5 — top-level version hash for parlay output.
+    version_hash: str | None = None
 
 
 # ---------- Health ----------
@@ -205,6 +213,10 @@ class SingleTicketResponse(BaseModel):
     stake: float                  # ¥2-quantized
     raw_kelly_stake: float        # pre-quantization (diagnostic)
     expected_return: float
+    # V11 P1-FE#5 — per-ticket fingerprint (12 chars). One single
+    # ticket = a single (match_id, market, outcome) triple, so the
+    # fingerprint identifies exactly that pick.
+    selection_fingerprint: str | None = None
 
 
 class SingleRecommendResponse(BaseModel):
@@ -216,6 +228,10 @@ class SingleRecommendResponse(BaseModel):
     tickets: list[SingleTicketResponse]
     total_stake: float
     total_expected_return: float
+    # V11 P1-FE#5 — same versioning treatment as parlays/pool.
+    version_hash: str | None = Field(None, description=
+        "12-char SHA1 prefix covering this response's picks. Frontend compares "
+        "to its last-seen hash to detect when recs need a refresh.")
 
 
 # ---------- /recommend/pool (V8 W6) ----------
@@ -272,6 +288,8 @@ class PoolTicketResponse(BaseModel):
     stake: float                  # ¥2-quantized
     raw_kelly_stake: float
     expected_return: float
+    # V11 P1-FE#5 — per-ticket fingerprint over its leg set.
+    selection_fingerprint: str | None = None
 
 
 class PoolRecommendResponse(BaseModel):
@@ -285,6 +303,8 @@ class PoolRecommendResponse(BaseModel):
     total_stake: float
     total_expected_return: float
     tickets: list[PoolTicketResponse]  # all enumerated, sorted by EV desc
+    # V11 P1-FE#5 — top-level pool version hash.
+    version_hash: str | None = None
 
 
 # ---------- /today-recommendations (V10 W1 Track A) ----------
@@ -366,6 +386,20 @@ class TodayRecommendationsRequest(BaseModel):
             "Pool generation only runs when at least N matches pass the EV gate."
         ),
     )
+    # V11 P1-FE#5 — when set, the server compares the new response's
+    # version_hash against this one; if different, it includes a `diff`
+    # field describing which picks changed. The frontend supplies its
+    # last-known hash via this param.
+    prev_version: str | None = Field(
+        None,
+        description=(
+            "Caller's last-known version_hash. When provided and the new "
+            "hash differs, the response carries a `diff` block (added "
+            "fingerprints / removed fingerprints / odds_changed flag)."
+        ),
+        min_length=8,
+        max_length=64,
+    )
 
 
 class TodaySummary(BaseModel):
@@ -374,6 +408,31 @@ class TodaySummary(BaseModel):
     total_stake: float
     weighted_ev: Optional[float] = Field(None, description=
         "Stake-weighted average EV. None if total_stake == 0.")
+
+
+class TodayRecommendationsDiff(BaseModel):
+    """V11 P1-FE#5 — describes what changed vs the caller's prev_version.
+
+    The frontend uses this to:
+      - Show "推荐已更新" banner with a short summary
+      - Add a 已更新 badge next to each rec whose selection_fingerprint
+        is in `added_fingerprints` but not in the caller's prior set
+
+    All lists are sorted for stable diffs.
+    """
+    prev_version: str = Field(..., description="echoed from the request")
+    current_version: str
+    odds_changed: bool = Field(False, description=
+        "True when the fixture odds digest differs even though picks are stable.")
+    # Selection fingerprints present in the current response but NOT in
+    # the caller's previous one (i.e. newly recommended picks).
+    added_fingerprints: list[str] = Field(default_factory=list)
+    # Fingerprints that were in prev but no longer present (picks dropped).
+    removed_fingerprints: list[str] = Field(default_factory=list)
+    # Human-readable summary for the banner — server-generated so zh/en
+    # is consistent regardless of locale toggle state.
+    summary: str = Field(..., description=
+        "One-line summary, e.g. '2 picks changed' / 'odds moved on 1 leg'")
 
 
 class TodayRecommendationsResponse(BaseModel):
@@ -398,6 +457,15 @@ class TodayRecommendationsResponse(BaseModel):
     # pick max-EV market per match, generate C(M, N) pool of N-selections.
     pool: Optional[PoolRecommendResponse] = None
     summary: TodaySummary
+    # V11 P1-FE#5 — top-level version hash covering single + parlay + pool
+    # picks + the fixture odds digest. Frontend polls every 30s and shows
+    # a "推荐已更新" banner when this changes.
+    version_hash: str | None = Field(None, description=
+        "12-char SHA1 prefix. Stable as long as picks and odds don't change.")
+    # When the client passes `prev_version` and the hash differs, the
+    # server fills in a diff describing what changed (per-rec changed
+    # selection_fingerprints + odds_changed flag).
+    diff: Optional["TodayRecommendationsDiff"] = None
 
 
 # ---------- /predictions/wc (V10 W1 Track B Day 5) ----------
