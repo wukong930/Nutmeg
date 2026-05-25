@@ -322,9 +322,33 @@ class TodayRecommendationsRequest(BaseModel):
     )
     bankroll: float = Field(1000.0, gt=0,
         description="Total bankroll. Default ¥1000.")
-    include: list[Literal["single", "parlay"]] = Field(
-        default_factory=lambda: ["single", "parlay"],
-        description="Which game types to include. Pool deferred to W2.",
+    include: list[Literal["single", "parlay", "pool"]] = Field(
+        default_factory=lambda: ["single", "parlay", "pool"],
+        description=(
+            "Which game types to include. V11 P1-FE#4: pool added; "
+            "default now includes all three (was: single + parlay only)."
+        ),
+    )
+    # V11 P1-FE#4 — UI-facing risk + EV sliders. risk_preference is the
+    # high-level dial; it maps to a kelly_fraction (0.15 / 0.25 / 0.40).
+    # min_ev is the EV gate; recommendations below this are dropped.
+    risk_preference: Literal["conservative", "balanced", "aggressive"] = Field(
+        "balanced",
+        description=(
+            "User-facing risk dial. Maps to internal Kelly fraction: "
+            "保守=0.15, 中=0.25, 激进=0.40. Explicit `kelly_fraction` "
+            "overrides this when set non-default."
+        ),
+    )
+    min_ev: float = Field(
+        0.05,
+        ge=-0.20,
+        le=0.50,
+        description=(
+            "Minimum EV-per-unit threshold; recommendations with "
+            "ev < min_ev are dropped. Default +5% matches the original "
+            "JINGCAI_DEFAULT.min_ev_per_unit. UI offers -5% / 0% / +5% / +10%."
+        ),
     )
     # carry-over from RecommendRequest for advanced overrides
     kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
@@ -332,6 +356,16 @@ class TodayRecommendationsRequest(BaseModel):
     min_kelly_stake: float = Field(2.0, ge=0.0)
     record_session: bool = Field(False, description=
         "Opt-in observation recording (see RecommendRequest.record_session).")
+    # V11 P1-FE#4 — pool sizing (when "pool" in include)
+    pool_n: int = Field(
+        3,
+        ge=2,
+        le=8,
+        description=(
+            "N legs per pool ticket (M-select-N). Default 3 (most popular). "
+            "Pool generation only runs when at least N matches pass the EV gate."
+        ),
+    )
 
 
 class TodaySummary(BaseModel):
@@ -359,6 +393,10 @@ class TodayRecommendationsResponse(BaseModel):
     fixtures_fetched: int
     single: Optional[SingleRecommendResponse] = None
     parlay: Optional[RecommendResponse] = None
+    # V11 P1-FE#4 — third option in the today landing tab.
+    # Strategy B (locked 2026-05-25): filter fixtures to ev_per_unit ≥ min_ev,
+    # pick max-EV market per match, generate C(M, N) pool of N-selections.
+    pool: Optional[PoolRecommendResponse] = None
     summary: TodaySummary
 
 

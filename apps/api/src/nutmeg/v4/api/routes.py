@@ -27,6 +27,7 @@ from nutmeg.v4.api.schemas import (
     LegResponse,
     LotteryRulesResponse,
     ModelInfo,
+    PoolFixturePick,
     PoolLegResponse,
     PoolRecommendRequest,
     PoolRecommendResponse,
@@ -267,7 +268,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v5-fe-logos';
+const CACHE_VERSION = 'nutmeg-v6-fe-pool-sliders';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1025,9 +1026,11 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
     or whose pipeline raised — UI renders "no recommendations today" rather
     than throwing a 500.
 
-    Pool intentionally NOT included for V10 W1: it requires per-fixture
-    `pick` selection which needs a separate auto-pick policy decision.
-    Deferred to W2.
+    V11 P1-FE#4 — pool option is now included by default. Strategy B
+    (locked 2026-05-25 in docs/v11_p1_fe_design.md): for each fixture
+    that passes the EV gate, pick the max-EV market; then build C(M, N)
+    pool of size N=req.pool_n. min_ev gate + risk_preference→Kelly map
+    are applied to all three pipelines (single/parlay/pool).
     """
     import datetime as _dt
     from pathlib import Path as _Path
@@ -1036,6 +1039,20 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
         PINNACLE_BOOKMAKER_ID,
         _gather_rows,
     )
+
+    # V11 P1-FE#4 — risk dial → Kelly fraction. The explicit
+    # `kelly_fraction` field acts as an override: when the caller leaves
+    # it at the default 0.25 we map from risk_preference; if it's been
+    # set to anything else (e.g. via the engineer CLI) we honor that.
+    _RISK_TO_KELLY = {
+        "conservative": 0.15,
+        "balanced": 0.25,
+        "aggressive": 0.40,
+    }
+    if abs(req.kelly_fraction - 0.25) < 1e-9:
+        effective_kelly = _RISK_TO_KELLY[req.risk_preference]
+    else:
+        effective_kelly = req.kelly_fraction
 
     # Resolve date
     if req.date is None:
@@ -1074,6 +1091,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
 
     single_resp: SingleRecommendResponse | None = None
     parlay_resp: RecommendResponse | None = None
+    pool_resp: PoolRecommendResponse | None = None
     total_recs = 0
     total_stake = 0.0
     stake_weighted_ev_sum = 0.0
@@ -1083,10 +1101,17 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             single_req = SingleRecommendRequest(
                 fixtures=fixtures,
                 bankroll=req.bankroll,
-                kelly_fraction=req.kelly_fraction,
+                kelly_fraction=effective_kelly,
                 record_session=req.record_session,
             )
             single_resp = recommend_single(single_req)
+            # V11 P1-FE#4 — min_ev gate (single)
+            if single_resp.n_recommendations > 0 and req.min_ev > 0:
+                kept = [t for t in single_resp.tickets if t.ev_per_unit >= req.min_ev]
+                single_resp.tickets = kept
+                single_resp.n_recommendations = len(kept)
+                single_resp.total_stake = float(sum(t.stake for t in kept))
+                single_resp.total_expected_return = float(sum(t.expected_return for t in kept))
             if single_resp.n_recommendations > 0:
                 total_recs += single_resp.n_recommendations
                 total_stake += single_resp.total_stake
@@ -1112,16 +1137,22 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
                 k_max=min(8, fixtures_fetched),
                 min_hit_probability=req.min_hit_probability,
                 min_kelly_stake=req.min_kelly_stake,
-                kelly_fraction=req.kelly_fraction,
+                kelly_fraction=effective_kelly,
                 include_compound=False,
                 record_session=req.record_session,
             )
             parlay_resp = recommend(parlay_req)
+            # V11 P1-FE#4 — min_ev gate (parlay)
+            if parlay_resp.n_recommendations > 0 and req.min_ev > 0:
+                kept = [r for r in parlay_resp.recommendations if r.ev_per_unit >= req.min_ev]
+                parlay_resp.recommendations = kept
+                parlay_resp.n_recommendations = len(kept)
+                parlay_resp.total_stake = float(sum(r.stake_units for r in kept))
             if parlay_resp.n_recommendations > 0:
                 total_recs += parlay_resp.n_recommendations
                 total_stake += parlay_resp.total_stake
                 for r in parlay_resp.recommendations:
-                    stake_weighted_ev_sum += r.stake_units * 1.0 * r.ev_per_unit  # stake_units is in ¥ for parlays
+                    stake_weighted_ev_sum += r.stake_units * 1.0 * r.ev_per_unit
             else:
                 parlay_resp = None
         except Exception:  # noqa: BLE001
@@ -1130,6 +1161,32 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
                 "today-recommendations: parlay pipeline failed",
             )
             parlay_resp = None
+
+    # V11 P1-FE#4 — pool (Strategy B: auto-pick max-EV market per fixture)
+    if fixtures_fetched >= req.pool_n and "pool" in req.include:
+        try:
+            pool_resp = _build_today_pool(
+                fixtures=fixtures,
+                bankroll=req.bankroll,
+                kelly_fraction=effective_kelly,
+                min_ev=req.min_ev,
+                pool_n=req.pool_n,
+                record_session=req.record_session,
+            )
+            if pool_resp is not None and pool_resp.n_selected > 0:
+                total_recs += pool_resp.n_selected
+                total_stake += pool_resp.total_stake
+                for t in pool_resp.tickets:
+                    if t.stake > 0:
+                        stake_weighted_ev_sum += t.stake * t.ev_per_unit
+            else:
+                pool_resp = None
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "today-recommendations: pool pipeline failed",
+            )
+            pool_resp = None
 
     weighted_ev = (stake_weighted_ev_sum / total_stake) if total_stake > 0 else None
 
@@ -1141,12 +1198,91 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
         fixtures_fetched=fixtures_fetched,
         single=single_resp,
         parlay=parlay_resp,
+        pool=pool_resp,
         summary=TodaySummary(
             total_recs=total_recs,
             total_stake=total_stake,
             weighted_ev=weighted_ev,
         ),
     )
+
+
+# ---------- helper: today-recommendations pool builder ------------------
+
+# V11 P1-FE#4 Strategy B (locked 2026-05-25):
+#   1. Run /recommend/single on all fixtures with top_per_match=1 so each
+#      fixture yields its single max-EV pick.
+#   2. Filter to ev_per_unit ≥ min_ev. If fewer than pool_n remain, return None.
+#   3. Convert each surviving pick → PoolFixturePick (with the pick field
+#      derived from market_type + outcome).
+#   4. Call recommend_pool_endpoint with N=pool_n. The pool ticket set
+#      is fully enumerated (C(M, N)) inside that engine.
+_OUTCOME_TO_POOL_PICK: dict[tuple[str, str], str] = {
+    ("1x2", "H"):          "1x2_H",
+    ("1x2", "D"):          "1x2_D",
+    ("1x2", "A"):          "1x2_A",
+    ("handicap_1x2", "H"): "hc_H",
+    ("handicap_1x2", "D"): "hc_D",
+    ("handicap_1x2", "A"): "hc_A",
+}
+
+
+def _build_today_pool(
+    *,
+    fixtures: list[FixtureOddsInput],
+    bankroll: float,
+    kelly_fraction: float,
+    min_ev: float,
+    pool_n: int,
+    record_session: bool,
+) -> PoolRecommendResponse | None:
+    """Run Strategy B and return a PoolRecommendResponse, or None if there
+    aren't enough +EV fixtures to form an N-leg pool."""
+    if len(fixtures) < pool_n:
+        return None
+
+    # 1+2. Get one max-EV pick per fixture (top_per_match=1) then filter
+    single_resp = recommend_single(SingleRecommendRequest(
+        fixtures=fixtures,
+        bankroll=bankroll,
+        kelly_fraction=kelly_fraction,
+        top_per_match=1,
+        record_session=False,  # don't double-record; today endpoint records its own intent
+    ))
+    if single_resp.n_recommendations < pool_n:
+        return None
+    picks = [t for t in single_resp.tickets if t.ev_per_unit >= min_ev]
+    if len(picks) < pool_n:
+        return None
+
+    # 3. Build PoolFixturePick rows from the surviving picks.
+    by_match: dict[str, FixtureOddsInput] = {
+        f"{f.league}_{f.home_team}_vs_{f.away_team}": f for f in fixtures
+    }
+    pool_fixtures: list[PoolFixturePick] = []
+    for t in picks:
+        f = by_match.get(t.match_id)
+        if f is None:
+            continue
+        pick_str = _OUTCOME_TO_POOL_PICK.get((t.market_type, t.outcome))
+        if pick_str is None:
+            continue
+        pool_fixtures.append(PoolFixturePick(
+            **f.model_dump(),
+            pick=pick_str,
+        ))
+    if len(pool_fixtures) < pool_n:
+        return None
+
+    # 4. Pool engine — N legs across the M picks
+    pool_req = PoolRecommendRequest(
+        fixtures=pool_fixtures,
+        n=pool_n,
+        bankroll=bankroll,
+        kelly_fraction=kelly_fraction,
+        record_session=record_session,
+    )
+    return recommend_pool_endpoint(pool_req)
 
 
 # ---------- /predictions/wc (V10 W1 Track B Day 5) ----------

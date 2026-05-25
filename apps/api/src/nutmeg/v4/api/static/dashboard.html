@@ -430,7 +430,7 @@
         <div>
           <h2 class="font-bold" data-i18n="h_today_title">今日推荐</h2>
           <p class="text-sm text-gray-500" data-i18n="sub_today">
-            自动抓取今日联赛盘口 · 根据预算生成 单关 + 串关 推荐
+            自动抓取今日联赛盘口 · 根据预算生成 单关 + 串关 + 复式 推荐
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -445,6 +445,37 @@
                   class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
             刷新
           </button>
+        </div>
+      </div>
+      <!-- V11 P1-FE#4 — risk + EV sliders. Maps to risk_preference +
+           min_ev params; debounced re-fetch keeps server load sane. -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 pt-3" style="border-top: 1px solid var(--border-subtle);">
+        <div>
+          <label for="today-risk" class="text-xs text-secondary block mb-1">
+            <span data-i18n="lbl_risk_preference">风险偏好</span>
+            <span id="today-risk-label" class="ml-2 text-primary font-medium" data-i18n="risk_balanced">中</span>
+          </label>
+          <input id="today-risk" type="range" min="0" max="2" step="1" value="1"
+                 class="w-full" aria-labelledby="today-risk-label">
+          <div class="flex justify-between text-xs text-muted mt-0.5">
+            <span data-i18n="risk_conservative">保守</span>
+            <span data-i18n="risk_balanced">中</span>
+            <span data-i18n="risk_aggressive">激进</span>
+          </div>
+        </div>
+        <div>
+          <label for="today-min-ev" class="text-xs text-secondary block mb-1">
+            <span data-i18n="lbl_min_ev">最低期望值</span>
+            <span id="today-min-ev-label" class="ml-2 text-primary font-medium">+5%</span>
+          </label>
+          <input id="today-min-ev" type="range" min="-0.05" max="0.10" step="0.05" value="0.05"
+                 class="w-full" aria-labelledby="today-min-ev-label">
+          <div class="flex justify-between text-xs text-muted mt-0.5">
+            <span>-5%</span>
+            <span>0%</span>
+            <span>+5%</span>
+            <span>+10%</span>
+          </div>
         </div>
       </div>
       <div id="today-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
@@ -482,6 +513,13 @@
     <div id="today-parlay-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h3 class="font-bold mb-3"><span data-i18n="h_today_parlay">② 串关推荐</span> <span id="today-parlay-count" class="text-sm font-normal text-gray-500"></span></h3>
       <div id="today-parlay-list" class="space-y-2"></div>
+    </div>
+
+    <!-- V11 P1-FE#4 — 复式 (pool) section -->
+    <div id="today-pool-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-3"><span data-i18n="h_today_pool">③ 复式推荐</span> <span id="today-pool-count" class="text-sm font-normal text-gray-500"></span></h3>
+      <div id="today-pool-summary" class="text-sm text-muted mb-3"></div>
+      <div id="today-pool-list" class="space-y-2"></div>
     </div>
 
     <!-- Empty state -->
@@ -866,6 +904,13 @@ const I18N = {
     lbl_pool_max_budget:'最大预算',
     lbl_record_session:'记录到观测库',
     title_record_session: '需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库',
+    // V11 P1-FE#4 — 今日推荐 sliders
+    lbl_risk_preference: '风险偏好',
+    lbl_min_ev:          '最低期望值',
+    risk_conservative:   '保守',
+    risk_balanced:       '中',
+    risk_aggressive:     '激进',
+    h_today_pool:        '③ 复式推荐',
 
     // Page section headings
     h_single_rec:     '单关推荐',
@@ -1004,6 +1049,13 @@ const I18N = {
     lbl_pool_max_budget:'Max budget',
     lbl_record_session:'Record to observation DB',
     title_record_session: 'Server-side recording requires NUTMEG_V4_OBSERVATION_DB env var',
+    // V11 P1-FE#4 — Today tab sliders
+    lbl_risk_preference: 'Risk preference',
+    lbl_min_ev:          'Minimum EV',
+    risk_conservative:   'Conservative',
+    risk_balanced:       'Balanced',
+    risk_aggressive:     'Aggressive',
+    h_today_pool:        '③ Pool bets',
 
     h_single_rec:     'Single-bet recommendations',
     h_parlay_rec:     'Parlay recommendations',
@@ -1801,9 +1853,76 @@ function renderTodaySummary(body) {
     ? '—' : fmtPct(ev);
 }
 
+// V11 P1-FE#4 — slider value readers
+const _RISK_SLIDER_VALUES = ['conservative', 'balanced', 'aggressive'];
+function _readRiskPreference() {
+  const el = $('#today-risk');
+  if (!el) return 'balanced';
+  return _RISK_SLIDER_VALUES[parseInt(el.value, 10)] || 'balanced';
+}
+function _readMinEv() {
+  const el = $('#today-min-ev');
+  if (!el) return 0.05;
+  return parseFloat(el.value);
+}
+
+// V11 P1-FE#4 — render the third option (pool / 复式).
+function renderTodayPool(pool) {
+  const section = $('#today-pool-section');
+  if (!pool || pool.n_selected === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  $('#today-pool-count').textContent =
+    `(${pool.n_selected}/${pool.n_combinations})`;
+  $('#today-pool-summary').innerHTML =
+    `${pool.m} 选 ${pool.n} · 共 <span class="num-display text-primary">${pool.n_combinations}</span> 张候选, ` +
+    `选中 <span class="num-display text-gold">${pool.n_selected}</span> 张, ` +
+    `总投注 <span class="num-display text-primary">${fmtMoney(pool.total_stake)}</span>`;
+  const list = $('#today-pool-list');
+  list.innerHTML = '';
+  const selected = pool.tickets.filter(t => t.stake > 0);
+  // Re-use the same card design as the dedicated 复式 tab for visual consistency
+  list.innerHTML = selected.map((t, i) => {
+    const legsHtml = t.legs.map(l => {
+      const raw = (l.match_id || '').replace(/^[A-Z_]+_/, '');
+      const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
+      const matchHtml = parts[1]
+        ? `<span class="inline-flex items-center gap-1.5 flex-wrap">${teamLogo(parts[0])}<span>${zhTeam(parts[0])}</span><span class="text-muted">vs</span>${teamLogo(parts[1])}<span>${zhTeam(parts[1])}</span></span>`
+        : zhTeam(parts[0]);
+      return `<div class="text-xs flex items-center justify-between gap-2 py-1">
+        <span class="text-secondary truncate">${matchHtml}</span>
+        <span class="badge-ok shrink-0">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+      </div>`;
+    }).join('');
+    return `<div class="card-rec">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div class="font-display font-semibold text-base text-primary">${pool.n} 串 1 · 第 ${i+1} 张</div>
+          <div class="text-xs text-muted mt-1">总赔率 <span class="num-display text-primary">${t.combined_odds.toFixed(2)}</span></div>
+        </div>
+        <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(t.stake)}</div>
+      </div>
+      <div class="mb-3" style="border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">${legsHtml}</div>
+      <div class="flex items-center justify-between text-xs pt-2" style="border-top: 1px solid var(--border-subtle);">
+        <span class="flex items-center gap-2">
+          <span class="text-secondary">命中</span>${probBar(t.hit_probability)}
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="text-secondary">期望值</span>${evBar(t.ev_per_unit)}
+        </span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 async function loadTodayRecommendations() {
   const bankrollEl = $('#today-bankroll');
   const bankroll = Math.max(2, parseFloat(bankrollEl.value) || 1000);
+  // V11 P1-FE#4 — pull slider state into the request body
+  const risk = _readRiskPreference();
+  const minEv = _readMinEv();
   setStatus('#today-status', 'loading', t('today_loading'));
   try {
     const resp = await fetch(API + '/today-recommendations', {
@@ -1812,7 +1931,9 @@ async function loadTodayRecommendations() {
       body: JSON.stringify({
         leagues: TODAY_DEFAULT_LEAGUES,
         bankroll: bankroll,
-        include: ['single', 'parlay'],
+        include: ['single', 'parlay', 'pool'],
+        risk_preference: risk,
+        min_ev: minEv,
       }),
     });
     if (!resp.ok) {
@@ -1825,7 +1946,8 @@ async function loadTodayRecommendations() {
     renderTodaySummary(body);
     renderTodaySingle(body.single);
     renderTodayParlay(body.parlay);
-    // Empty state
+    renderTodayPool(body.pool);
+    // Empty state — fold pool into the "no recs" check
     const noRecs = body.summary.total_recs === 0;
     const noFixtures = body.fixtures_fetched === 0;
     $('#today-empty').classList.toggle('hidden', !(noRecs && !noFixtures));
@@ -1843,14 +1965,38 @@ async function loadTodayRecommendations() {
     $('#today-summary').classList.add('hidden');
     $('#today-single-section').classList.add('hidden');
     $('#today-parlay-section').classList.add('hidden');
+    $('#today-pool-section').classList.add('hidden');
     $('#today-empty').classList.add('hidden');
   }
 }
 
-// Debounced bankroll change → re-fetch
-$('#today-bankroll').addEventListener('input', () => {
+// V11 P1-FE#4 — slider input handlers + visible labels.
+// All 3 controls (bankroll / risk / min-ev) share the same 500ms
+// debounce so rapid drags don't spam the API.
+function _debouncedReload() {
   if (_todayDebounce) clearTimeout(_todayDebounce);
   _todayDebounce = setTimeout(loadTodayRecommendations, 500);
+}
+$('#today-bankroll').addEventListener('input', _debouncedReload);
+$('#today-risk').addEventListener('input', () => {
+  const v = _readRiskPreference();
+  const key = v === 'conservative' ? 'risk_conservative'
+    : v === 'aggressive' ? 'risk_aggressive' : 'risk_balanced';
+  const label = $('#today-risk-label');
+  if (label) {
+    label.setAttribute('data-i18n', key);
+    label.textContent = t(key);
+  }
+  _debouncedReload();
+});
+$('#today-min-ev').addEventListener('input', () => {
+  const v = _readMinEv();
+  const label = $('#today-min-ev-label');
+  if (label) {
+    const pct = Math.round(v * 100);
+    label.textContent = (pct >= 0 ? '+' : '') + pct + '%';
+  }
+  _debouncedReload();
 });
 $('#today-refresh').addEventListener('click', loadTodayRecommendations);
 

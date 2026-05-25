@@ -247,11 +247,28 @@ class TestTodayRecommendationsDefaults:
         req = TodayRecommendationsRequest()
         assert req.bankroll == 1000.0
 
-    def test_default_include_is_single_plus_parlay(self):
-        """V10 W1: pool deferred — defaults to single + parlay only."""
+    def test_default_include_is_all_three(self):
+        """V11 P1-FE#4: pool added; default = single + parlay + pool."""
         from nutmeg.v4.api.schemas import TodayRecommendationsRequest
         req = TodayRecommendationsRequest()
-        assert set(req.include) == {"single", "parlay"}
+        assert set(req.include) == {"single", "parlay", "pool"}
+
+    def test_default_risk_preference_is_balanced(self):
+        """V11 P1-FE#4 — risk dial defaults to 中 (Kelly 0.25)."""
+        from nutmeg.v4.api.schemas import TodayRecommendationsRequest
+        req = TodayRecommendationsRequest()
+        assert req.risk_preference == "balanced"
+
+    def test_default_min_ev_matches_jingcai(self):
+        """V11 P1-FE#4 — min_ev default = +5% matches JINGCAI_DEFAULT."""
+        from nutmeg.v4.api.schemas import TodayRecommendationsRequest
+        req = TodayRecommendationsRequest()
+        assert req.min_ev == 0.05
+
+    def test_default_pool_n_is_3(self):
+        from nutmeg.v4.api.schemas import TodayRecommendationsRequest
+        req = TodayRecommendationsRequest()
+        assert req.pool_n == 3
 
     def test_default_record_session_is_false(self):
         """Carry-over from P1#7 / V9 W3: opt-in, never auto-record."""
