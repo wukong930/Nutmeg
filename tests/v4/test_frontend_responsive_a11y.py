@@ -114,14 +114,15 @@ class TestRecommendationsDualRender:
         chunk = html[idx-100:idx]
         assert 'hidden md:block' in chunk
 
-    def test_pool_cards_branch_in_render_js(self, html):
-        """Pool render function emits both table (hidden md:block) and
-        card list (md:hidden) so each viewport sees exactly one."""
-        # Look in the renderPoolRecommendations function
+    def test_pool_cards_render_uses_card_rec(self, html):
+        """V11 P1-FE#1 Day 2: pool render now uses card-rec (single
+        responsive style) instead of the legacy dual-render table+cards.
+        Verifies the new design class is applied."""
         idx = html.index('function renderPoolRecommendations')
         chunk = html[idx:idx+3000]
-        assert 'hidden md:block' in chunk   # desktop table wrapper
-        assert 'md:hidden space-y' in chunk  # mobile card list
+        assert 'card-rec' in chunk          # new card design class
+        assert 'num-display' in chunk       # mono numbers
+        assert 'badge-ok' in chunk          # leg badges
 
 
 # ---------- a11y — input modes + ARIA ------------------------------

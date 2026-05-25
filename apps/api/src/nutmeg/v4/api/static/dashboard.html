@@ -480,8 +480,8 @@
         </div>
       </div>
       <div id="wc-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
-      <div class="mt-3 text-xs text-gray-500" data-i18n="wc_caveat">
-        ⚠️ 诚实声明: 64 场训练样本很小。WC 2022 walk-forward 验证 hit-rate 54.7%, log-loss 0.98 (略好于 Pinnacle 1.01); 2026 真实命中率预期 50-52%。这是一个 "通过 ship gate 但要谨慎使用" 的模型。
+      <div class="mt-3 text-xs text-muted" data-i18n="wc_caveat">
+        ⚠️ 世界杯历史数据较少, 2026 真实命中率预期 50% 左右; 谨慎参考
       </div>
     </div>
 
@@ -711,6 +711,36 @@ const fmtMoney = (x) => '¥' + Number(x).toFixed(2);
 const fmtPct = (x, d=1) => (Number(x)*100).toFixed(d) + '%';
 const sign = (x) => x > 0 ? 'pos' : (x < 0 ? 'neg' : '');
 
+// V11 P1-FE#1 Day 2: visual confidence bar for EV display.
+// Maps EV ∈ [0, 0.20] → width [0, 100%]. EV > 20% caps at 100%.
+// Negative EV gets a 0-width bar (recommendation filter shouldn't surface
+// negative-EV picks anyway, but defensive).
+function evBar(ev) {
+  const w = Math.min(100, Math.max(0, ev * 500));
+  const pct = (ev * 100).toFixed(1);
+  const cls = ev >= 0.10 ? 'text-pos' : (ev >= 0 ? 'text-gold' : 'text-muted');
+  return `<span class="inline-flex items-center gap-2">
+    <span class="ev-bar"><span class="ev-bar-fill" style="width: ${w}%"></span></span>
+    <span class="num-display text-xs ${cls}">+${pct}%</span>
+  </span>`;
+}
+
+// V11 P1-FE#1 Day 2: probability bar (for hit-rate display).
+// Maps probability ∈ [0, 1] → width [0, 100%]. Uses muted color, no
+// gold/green emphasis — it's informational, not a "recommendation strength".
+function probBar(p) {
+  const w = Math.max(0, Math.min(100, p * 100));
+  return `<span class="inline-flex items-center gap-2">
+    <span class="ev-bar"><span class="ev-bar-fill" style="width: ${w}%; background: var(--text-secondary);"></span></span>
+    <span class="num-display text-xs text-muted">${(p*100).toFixed(0)}%</span>
+  </span>`;
+}
+
+// V11 P1-FE#1 Day 2: outcome label (主胜/平/客胜) for 1X2 or handicap_1x2.
+function outcomeLabel(outcome) {
+  return { H: '主胜', D: '平局', A: '客胜' }[outcome] || outcome;
+}
+
 // =====================================================================
 // P1#14 — i18n framework (zh / en, default zh, localStorage persisted)
 // =====================================================================
@@ -771,7 +801,7 @@ const I18N = {
     lbl_use_pinnacle: '用实时盘口',
     h_wc_matches:     '今日 WC 比赛',
     wc_empty:         '该日无 WC 比赛。试试 2026-06-11 (开幕) 或 2026-06-14 (5 场密集日)。',
-    wc_caveat:        '⚠️ 诚实声明: 64 场训练样本很小。WC 2022 walk-forward 验证 hit-rate 54.7%, log-loss 0.98 (略好于 Pinnacle 1.01); 2026 真实命中率预期 50-52%。这是一个 "通过 ship gate 但要谨慎使用" 的模型。',
+    wc_caveat:        '⚠️ 世界杯历史数据较少, 2026 真实命中率预期 50% 左右; 谨慎参考',
     wc_loading:       '加载 WC 预测 ...',
     wc_api_error:     '加载预测失败',
 
@@ -911,7 +941,7 @@ const I18N = {
     lbl_use_pinnacle: 'Use live odds',
     h_wc_matches:     "Today's WC matches",
     wc_empty:         "No WC matches on this date. Try 2026-06-11 (opener) or 2026-06-14 (5 fixtures).",
-    wc_caveat:        '⚠️ Honest disclaimer: 64-match training set is small. WC 2022 walk-forward: hit-rate 54.7%, log-loss 0.98 (slightly better than Pinnacle 1.01). 2026 realistic expectation: hit-rate 50-52%. Ship-gate passed but use with caution.',
+    wc_caveat:        '⚠️ WC historical data is sparse. 2026 realistic hit-rate expectation: ~50%. Use with caution.',
     wc_loading:       'Loading WC predictions ...',
     wc_api_error:     'Failed to load predictions',
 
@@ -1165,8 +1195,9 @@ $('#btn-recommend').addEventListener('click', async () => {
     const recordedNote = recordChecked
       ? ' · 📝 ' + t('status_recorded_req')
       : '';
+    // V11 P1-FE#1: removed engineer info (training_cutoff) from status.
     $('#recommend-status').textContent =
-      `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 条推荐  (模型截止 ${body.model.training_cutoff})${recordedNote}`;
+      `✓ ${body.n_fixtures} 场 · ${body.n_recommendations} 条推荐${recordedNote}`;
     await verifyRecordedAndAppend('#recommend-status', recordChecked, beforeId);
   } catch (e) {
     setStatus('#recommend-status', 'error', e.message);
@@ -1230,30 +1261,36 @@ function renderRecommendations(body) {
   } else {
     recsList.classList.remove('hidden');
     recsEmpty.classList.add('hidden');
+    // V11 P1-FE#1 Day 2: card-rec parlay style; engineer info hidden
+    // (Kelly fraction, 占预算 %, 对数增长 etc.). Only user-relevant
+    // numbers shown: 建议投注 (big mono), 命中率, 期望值 (visual bars).
     for (const r of body.recommendations) {
       const legsHTML = r.legs.map(leg => {
         const sels = leg.selections.map(s =>
-          `<span class="inline-block px-2 py-0.5 ml-1 rounded bg-gray-100 text-xs">${s.outcome} @ ${s.odds.toFixed(2)} <span class="text-gray-500">(模型 ${fmtPct(s.probability, 0)})</span></span>`
+          `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
         ).join('');
-        const market = leg.market_type === '1x2' ? '胜平负' : '让球胜平负';
-        return `<div class="text-sm py-1"><code class="text-gray-600 text-xs">${leg.match_id}</code> <span class="text-gray-500">[${market}]</span>${sels}</div>`;
+        const market = leg.market_type === '1x2' ? '胜平负' : '让球';
+        const matchName = leg.match_id.split('_').slice(-3).join(' ').replace('vs', ' vs ');
+        return `<div class="text-sm py-1 text-primary">${matchName} <span class="text-xs text-muted">[${market}]</span>${sels}</div>`;
       }).join('');
       recsList.insertAdjacentHTML('beforeend',
-        `<div class="border rounded p-4 mb-3 bg-gradient-to-r from-indigo-50 to-white">
-          <div class="flex items-center justify-between mb-2">
-            <div class="font-bold text-lg">#${r.rank} — ${r.k_legs} 串 1${r.is_compound ? ' (复式)' : ''}</div>
-            <div class="text-right text-sm">
-              <span class="font-medium">命中率</span> ${fmtPct(r.hit_probability)} ·
-              <span class="font-medium">EV/单位</span> <span class="${sign(r.ev_per_unit)}">+${fmtPct(r.ev_per_unit)}</span>
+        `<div class="card-rec mb-3">
+          <div class="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <div class="font-display font-semibold text-base text-primary">${r.k_legs} 串 1${r.is_compound ? ' · 复式' : ''}</div>
+              <div class="text-xs text-muted mt-1">推荐 #${r.rank}</div>
             </div>
+            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(r.kelly_recommended_stake)}</div>
           </div>
-          <div class="text-sm text-gray-600 mb-2">
-            <span class="font-medium">Kelly 推荐资金</span> ${fmtMoney(r.kelly_recommended_stake)}
-            (占预算 ${fmtPct(r.kelly_capped_fraction)})
-            · <span class="font-medium">预期回报</span> <span class="${sign(r.expected_return)}">${fmtMoney(r.expected_return)}</span>
-            · <span class="font-medium">对数增长</span> ${r.log_growth.toFixed(4)}
+          <div class="mb-3 space-y-0">${legsHTML}</div>
+          <div class="flex items-center justify-between text-xs pt-2" style="border-top: 1px solid var(--border-subtle);">
+            <span class="flex items-center gap-2">
+              <span class="text-secondary">命中</span>${probBar(r.hit_probability)}
+            </span>
+            <span class="flex items-center gap-2">
+              <span class="text-secondary">期望值</span>${evBar(r.ev_per_unit)}
+            </span>
           </div>
-          ${legsHTML}
         </div>`);
     }
   }
@@ -1306,8 +1343,9 @@ $('#btn-recommend-single').addEventListener('click', async () => {
     const recordedNote = recordCheckedSingle
       ? ' · 📝 ' + t('status_recorded_req')
       : '';
+    // V11 P1-FE#1: removed engineer info (training_cutoff) from status.
     $('#single-status').textContent =
-      `✓ ${body.n_fixtures} 场, ${body.n_recommendations} 注推荐 (模型截止 ${body.model.training_cutoff})${recordedNote}`;
+      `✓ ${body.n_fixtures} 场 · ${body.n_recommendations} 注推荐${recordedNote}`;
     await verifyRecordedAndAppend('#single-status', recordCheckedSingle, beforeIdSingle);
   } catch (e) {
     setStatus('#single-status', 'error', e.message);
@@ -1326,54 +1364,37 @@ function renderSingleRecommendations(body) {
   }
   list.classList.remove('hidden');
   empty.classList.add('hidden');
-  // P1#13: dual render (table on md+, card list on mobile)
-  list.insertAdjacentHTML('beforeend',
-    // Desktop: original table, wrapped for overflow safety
-    '<div class="overflow-x-auto hidden md:block"><table><thead><tr>' +
-    '<th>#</th><th>比赛</th><th>玩法</th><th>选</th>' +
-    '<th class="num">模型概率</th><th class="num">赔率</th>' +
-    '<th class="num">EV/单位</th><th class="num">投注</th><th class="num">预期回报</th>' +
-    '</tr></thead><tbody>' +
-    body.tickets.map((t, i) => `<tr>
-      <td>${i+1}</td>
-      <td>${t.match_id.replace(/^[A-Z_]+_/, '').replace('_vs_', ' vs ')}</td>
-      <td>${MARKET_LABEL[t.market_type] || t.market_type}</td>
-      <td><strong>${t.outcome}</strong></td>
-      <td class="num">${fmtPct(t.probability)}</td>
-      <td class="num">${t.odds.toFixed(2)}</td>
-      <td class="num ${sign(t.ev_per_unit)}">${(t.ev_per_unit>=0?'+':'') + fmtPct(t.ev_per_unit, 2)}</td>
-      <td class="num">${fmtMoney(t.stake)}</td>
-      <td class="num ${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</td>
-    </tr>`).join('') +
-    `</tbody><tfoot><tr><td colspan="7" class="text-right font-bold">总计</td>` +
-    `<td class="num font-bold">${fmtMoney(body.total_stake)}</td>` +
-    `<td class="num font-bold ${sign(body.total_expected_return)}">${fmtMoney(body.total_expected_return)}</td>` +
-    `</tr></tfoot></table></div>` +
-    // Mobile: card list
-    '<div class="md:hidden space-y-2">' +
-    body.tickets.map((t, i) => {
+  // V11 P1-FE#1 Day 2: card-rec list. Removed: 模型概率, 预期回报,
+  // table view (was engineer-y), legacy "总计 → 预期回报" footer.
+  // Kept: 比赛对阵, 玩法, 选项, 赔率, 建议投注, 期望值 (visual bar).
+  list.innerHTML =
+    body.tickets.map((t) => {
       const match = t.match_id.replace(/^[A-Z_]+_/, '').replace('_vs_', ' vs ');
-      const market = MARKET_LABEL[t.market_type] || t.market_type;
-      return `<div class="border rounded p-3 bg-gray-50">
-        <div class="flex justify-between items-baseline mb-1">
-          <span class="text-xs text-gray-400">#${i+1}</span>
-          <span class="text-sm font-bold">${fmtMoney(t.stake)} → <span class="${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</span></span>
+      const [home, away] = match.includes(' vs ') ? match.split(' vs ') : [match, ''];
+      const marketLabel = t.market_type === 'handicap_1x2' ? '让球' : '胜平负';
+      return `<div class="card-rec">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div class="flex-1 min-w-0">
+            <div class="font-display font-semibold text-base text-primary">${home}${away ? ` <span class="text-muted font-normal">vs</span> ${away}` : ''}</div>
+          </div>
+          <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(t.outcome)}</span>
         </div>
-        <div class="font-medium text-sm">${match}</div>
-        <div class="text-xs text-gray-600 mb-1">${market} · <strong>${t.outcome}</strong> @ ${t.odds.toFixed(2)}</div>
-        <div class="text-xs">
-          模型 <strong>${fmtPct(t.probability)}</strong> ·
-          EV <strong class="${sign(t.ev_per_unit)}">${(t.ev_per_unit>=0?'+':'') + fmtPct(t.ev_per_unit, 2)}</strong>
+        <div class="flex items-end justify-between gap-3">
+          <div>
+            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(t.stake)}</div>
+            <div class="text-xs text-muted mt-0.5">建议投注</div>
+          </div>
+          <div class="flex flex-col items-end gap-1 text-xs">
+            <div class="text-secondary">赔率 <span class="num-display text-primary">${t.odds.toFixed(2)}</span></div>
+            ${evBar(t.ev_per_unit)}
+          </div>
         </div>
       </div>`;
     }).join('') +
-    `<div class="border-t pt-2 text-sm font-bold flex justify-between">
-       <span>总计</span>
-       <span>${fmtMoney(body.total_stake)} → <span class="${sign(body.total_expected_return)}">${fmtMoney(body.total_expected_return)}</span></span>
-     </div>` +
-    '</div>' +
-    '<p class="mt-3 text-xs text-gray-500">⚠️ 系统不进行自动投注；推荐仅供参考。请按 ¥2 倍数确认 SP 后下注。</p>'
-  );
+    `<div class="text-xs text-muted mt-3 pt-3" style="border-top: 1px solid var(--border-subtle);">
+       共 ${body.n_recommendations} 注 · 总投注 <span class="num-display text-primary">${fmtMoney(body.total_stake)}</span>
+       · ⚠️ 仅供参考, 请按 ¥2 倍数确认 SP 后下注
+     </div>`;
 }
 
 // --- V8 W6: Pool (复式) ---
@@ -1435,8 +1456,9 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
     const recordedNote = recordCheckedPool
       ? ' · 📝 ' + t('status_recorded_req')
       : '';
+    // V11 P1-FE#1: pool status cleaner.
     $('#pool-status').textContent =
-      `✓ ${body.m} 选 ${body.n} = ${body.n_combinations} 张候选, ${body.n_selected} 张选中${recordedNote}`;
+      `✓ ${body.m} 选 ${body.n} · ${body.n_combinations} 张候选 · ${body.n_selected} 张选中${recordedNote}`;
     await verifyRecordedAndAppend('#pool-status', recordCheckedPool, beforeIdPool);
   } catch (e) {
     setStatus('#pool-status', 'error', e.message);
@@ -1446,11 +1468,11 @@ $('#btn-recommend-pool').addEventListener('click', async () => {
 function renderPoolRecommendations(body) {
   $('#pool-output').classList.remove('hidden');
   $('#pool-count').textContent = `(${body.n_selected}/${body.n_combinations})`;
+  // V11 P1-FE#1 Day 2: summary card, no engineer % math.
   $('#pool-summary').innerHTML =
-    `共 <strong>${body.n_combinations}</strong> 张候选 (${body.m} 选 ${body.n}),
-     选中 <strong>${body.n_selected}</strong> 张,
-     总投注 <strong>${fmtMoney(body.total_stake)}</strong>,
-     预期总回报 <strong class="${sign(body.total_expected_return)}">${fmtMoney(body.total_expected_return)}</strong>`;
+    `${body.m} 选 ${body.n} · 共 <span class="num-display text-primary">${body.n_combinations}</span> 张候选,
+     选中 <span class="num-display text-gold">${body.n_selected}</span> 张,
+     总投注 <span class="num-display text-primary">${fmtMoney(body.total_stake)}</span>`;
   const list = $('#pool-list'), empty = $('#pool-empty');
   list.innerHTML = '';
   // selected only (stake > 0); zero-stake tickets are diagnostic
@@ -1462,39 +1484,35 @@ function renderPoolRecommendations(body) {
   }
   list.classList.remove('hidden');
   empty.classList.add('hidden');
-  // P1#13: dual-render (table on md+, card list on mobile)
-  list.insertAdjacentHTML('beforeend',
-    '<div class="overflow-x-auto hidden md:block"><table><thead><tr>' +
-    '<th>#</th><th class="num">命中率</th><th class="num">总赔率</th>' +
-    '<th class="num">EV/单位</th><th class="num">投注</th><th class="num">预期回报</th><th>选项</th>' +
-    '</tr></thead><tbody>' +
-    selected.map((t, i) => `<tr>
-      <td>${i+1}</td>
-      <td class="num">${fmtPct(t.hit_probability, 2)}</td>
-      <td class="num">${t.combined_odds.toFixed(2)}</td>
-      <td class="num ${sign(t.ev_per_unit)}">${(t.ev_per_unit>=0?'+':'') + fmtPct(t.ev_per_unit, 2)}</td>
-      <td class="num">${fmtMoney(t.stake)}</td>
-      <td class="num ${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</td>
-      <td class="text-xs">${t.legs.map(l => `<span class="inline-block bg-gray-100 px-1 mx-0.5 rounded">${l.outcome}@${l.odds.toFixed(2)}</span>`).join(' + ')}</td>
-    </tr>`).join('') +
-    '</tbody></table></div>' +
-    // Mobile: card list
-    '<div class="md:hidden space-y-2">' +
-    selected.map((t, i) => `<div class="border rounded p-3 bg-gray-50">
-      <div class="flex justify-between items-baseline mb-1">
-        <span class="text-xs text-gray-400">#${i+1}</span>
-        <span class="text-sm font-bold">${fmtMoney(t.stake)} → <span class="${sign(t.expected_return)}">${fmtMoney(t.expected_return)}</span></span>
-      </div>
-      <div class="text-xs text-gray-600 mb-1">
-        命中 <strong>${fmtPct(t.hit_probability, 2)}</strong> ·
-        总赔率 <strong>${t.combined_odds.toFixed(2)}</strong> ·
-        EV <strong class="${sign(t.ev_per_unit)}">${(t.ev_per_unit>=0?'+':'') + fmtPct(t.ev_per_unit, 2)}</strong>
-      </div>
-      <div class="text-xs">${t.legs.map(l => `<span class="inline-block bg-gray-100 px-1 mx-0.5 rounded">${l.outcome}@${l.odds.toFixed(2)}</span>`).join(' + ')}</div>
-    </div>`).join('') +
-    '</div>' +
-    '<p class="mt-3 text-xs text-gray-500">⚠️ 系统不进行自动投注；推荐仅供参考。</p>'
-  );
+  // V11 P1-FE#1 Day 2: card-rec list; removed table + "预期回报" column
+  // (engineer metric). Legs shown as inline badges.
+  list.innerHTML =
+    selected.map((t, i) => {
+      const legsHtml = t.legs.map(l =>
+        `<span class="badge-ok ml-1">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>`
+      ).join('');
+      return `<div class="card-rec">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <div class="font-display font-semibold text-base text-primary">${body.n} 串 1 · 第 ${i+1} 张</div>
+            <div class="text-xs text-muted mt-1">总赔率 <span class="num-display text-primary">${t.combined_odds.toFixed(2)}</span></div>
+          </div>
+          <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(t.stake)}</div>
+        </div>
+        <div class="mb-3 text-sm">${legsHtml}</div>
+        <div class="flex items-center justify-between text-xs pt-2" style="border-top: 1px solid var(--border-subtle);">
+          <span class="flex items-center gap-2">
+            <span class="text-secondary">命中</span>${probBar(t.hit_probability)}
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="text-secondary">期望值</span>${evBar(t.ev_per_unit)}
+          </span>
+        </div>
+      </div>`;
+    }).join('') +
+    `<div class="text-xs text-muted mt-3 pt-3" style="border-top: 1px solid var(--border-subtle);">
+       ⚠️ 仅供参考, 请按 ¥2 倍数确认 SP 后下注
+     </div>`;
 }
 
 // --- post-v9 P1#8: read-back to confirm the server actually persisted ---
@@ -1567,26 +1585,30 @@ function renderTodaySingle(single) {
   }
   section.classList.remove('hidden');
   $('#today-single-count').textContent =
-    ` · ${single.n_recommendations} 注 · 总停 ${fmtMoney(single.total_stake)}`;
-  // Render each ticket as a compact card
+    ` · ${single.n_recommendations} 注 · 总投注 ${fmtMoney(single.total_stake)}`;
+  // V11 P1-FE#1 Day 2: card-rec style with mono-display numbers + EV bar.
+  // Engineer info (probability %, "停"短语) hidden; replaced with visual
+  // confidence indicator + plain "建议投注" copy.
   list.innerHTML = single.tickets.map(t => {
-    const outcomeLabel = {
-      'H': '主胜', 'D': '平局', 'A': '客胜',
-    }[t.outcome] || t.outcome;
     const marketLabel = t.market_type === 'handicap_1x2' ? '让球' : '胜平负';
-    const evClass = sign(t.ev_per_unit);
     return `
-      <div class="border rounded p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div class="text-sm">
-          <div class="font-medium">${t.home_team} vs ${t.away_team}</div>
-          <div class="text-xs text-gray-500">${t.league} · ${t.date}</div>
+      <div class="card-rec">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div class="flex-1 min-w-0">
+            <div class="font-display font-semibold text-base text-primary">${t.home_team} <span class="text-muted font-normal">vs</span> ${t.away_team}</div>
+            <div class="text-xs text-muted mt-1">${t.league} · ${t.date}</div>
+          </div>
+          <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(t.outcome)}</span>
         </div>
-        <div class="text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span class="font-medium">${marketLabel} · ${outcomeLabel}</span>
-          <span class="text-gray-600">@${t.odds.toFixed(2)}</span>
-          <span class="text-gray-600">P ${fmtPct(t.probability)}</span>
-          <span class="${evClass}">EV ${fmtPct(t.ev_per_unit)}</span>
-          <span class="font-semibold">停 ${fmtMoney(t.stake)}</span>
+        <div class="flex items-end justify-between gap-3">
+          <div>
+            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(t.stake)}</div>
+            <div class="text-xs text-muted mt-0.5">建议投注</div>
+          </div>
+          <div class="flex flex-col items-end gap-1 text-xs">
+            <div class="text-secondary">赔率 <span class="num-display text-primary">${t.odds.toFixed(2)}</span></div>
+            ${evBar(t.ev_per_unit)}
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -1602,26 +1624,36 @@ function renderTodayParlay(parlay) {
   section.classList.remove('hidden');
   const totalStake = parlay.recommendations.reduce((s, r) => s + (r.stake_units || 0), 0);
   $('#today-parlay-count').textContent =
-    ` · ${parlay.recommendations.length} 注 · 总停 ${fmtMoney(totalStake)}`;
+    ` · ${parlay.recommendations.length} 注 · 总投注 ${fmtMoney(totalStake)}`;
+  // V11 P1-FE#1 Day 2: card-rec parlay style.
   list.innerHTML = parlay.recommendations.map((r) => {
-    const evClass = sign(r.ev_per_unit);
     const legCount = r.legs.length;
-    // Compact: show "X 串 1" + legs summary
-    const legsSummary = r.legs.map(l => {
-      const sels = l.selections.map(s => `${s.outcome}@${s.odds.toFixed(2)}`).join(', ');
-      return `${l.match_id.split('|').slice(0, 2).join(' vs ')} (${sels})`;
-    }).join(' + ');
+    // Each leg: "Team A vs Team B (outcome @ odds)"
+    const legsHtml = r.legs.map(l => {
+      const sels = l.selections.map(s =>
+        `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
+      ).join('');
+      const matchName = l.match_id.split('|').slice(0, 2).join(' vs ').replace(/_/g, ' ');
+      return `<div class="text-sm py-1 text-primary">${matchName}${sels}</div>`;
+    }).join('');
     return `
-      <div class="border rounded p-3">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-          <span class="font-medium">${legCount} 串 1</span>
-          <span class="text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span class="text-gray-600">命中 ${fmtPct(r.hit_probability)}</span>
-            <span class="${evClass}">EV ${fmtPct(r.ev_per_unit)}</span>
-            <span class="font-semibold">停 ${fmtMoney(r.stake_units || 0)}</span>
+      <div class="card-rec">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <div class="font-display font-semibold text-base text-primary">${legCount} 串 1</div>
+            <div class="text-xs text-muted mt-1">推荐 #${r.rank}</div>
+          </div>
+          <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(r.stake_units || 0)}</div>
+        </div>
+        <div class="mb-3 space-y-0">${legsHtml}</div>
+        <div class="flex items-center justify-between text-xs pt-2" style="border-top: 1px solid var(--border-subtle);">
+          <span class="flex items-center gap-2">
+            <span class="text-secondary">命中</span>${probBar(r.hit_probability)}
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="text-secondary">期望值</span>${evBar(r.ev_per_unit)}
           </span>
         </div>
-        <div class="text-xs text-gray-500">${legsSummary}</div>
       </div>`;
   }).join('');
 }
@@ -1697,33 +1729,37 @@ $('#today-refresh').addEventListener('click', loadTodayRecommendations);
 // Renders compact card list with probabilities. Show Pure-Elo baseline
 // as a smaller secondary line for transparency.
 function renderWcMatch(p) {
-  // Outcome with highest probability is bolded
-  const probs = [['H', p.p_home, p.home_team], ['D', p.p_draw, '平'], ['A', p.p_away, p.away_team]];
-  probs.sort((a, b) => b[1] - a[1]);
-  const topO = probs[0][0];
-  const fmtOne = (label, prob, isTop) => {
-    const cls = isTop ? 'font-semibold text-indigo-700' : 'text-gray-600';
-    return `<span class="${cls}">${label} ${(prob*100).toFixed(0)}%</span>`;
-  };
-  const pinTag = p.has_pinnacle
-    ? `<span class="text-xs px-1.5 py-0.5 bg-green-50 text-green-700 rounded">+市场盘口</span>`
-    : `<span class="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">仅模型</span>`;
+  // V11 P1-FE#1 Day 2: card-rec WC style. Removed Elo numerical values,
+  // pure-Elo baseline row (engineer info), and "+市场盘口" / "仅模型"
+  // technical tags. Kept: teams, kickoff, top tip, probability bars.
+  const probs = [
+    {key: 'H', label: '主胜', team: p.home_team, prob: p.p_home},
+    {key: 'D', label: '平局', team: '平', prob: p.p_draw},
+    {key: 'A', label: '客胜', team: p.away_team, prob: p.p_away},
+  ];
+  probs.sort((a, b) => b.prob - a.prob);
+  const top = probs[0];
+  // Format kickoff: 2026-06-11T19:00:00 → "06-11 19:00"
+  const kickoff = p.kickoff_utc
+    ? p.kickoff_utc.slice(5, 16).replace('T', ' ')
+    : '';
   return `
-    <div class="border rounded p-3">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div class="text-sm">
-          <div class="font-medium">${p.home_team} <span class="text-gray-400">vs</span> ${p.away_team}</div>
-          <div class="text-xs text-gray-500">${p.kickoff_utc.slice(0,16).replace('T', ' ')} UTC · ${p.round || '?'} · Elo ${p.home_elo.toFixed(0)} vs ${p.away_elo.toFixed(0)}</div>
+    <div class="card-rec">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div class="flex-1 min-w-0">
+          <div class="font-display font-semibold text-base text-primary">${p.home_team} <span class="text-muted font-normal">vs</span> ${p.away_team}</div>
+          <div class="text-xs text-muted mt-1">${kickoff} · ${p.round || 'WC 2026'}</div>
         </div>
-        <div class="flex items-center gap-3 text-sm">
-          ${fmtOne(p.home_team.slice(0,3), p.p_home, topO === 'H')}
-          ${fmtOne('平', p.p_draw, topO === 'D')}
-          ${fmtOne(p.away_team.slice(0,3), p.p_away, topO === 'A')}
-          ${pinTag}
-        </div>
+        <span class="badge-gold whitespace-nowrap">${top.label}</span>
       </div>
-      <div class="mt-1 text-xs text-gray-400">
-        纯 Elo 基线: H ${(p.p_home_elo_only*100).toFixed(0)}% · D ${(p.p_draw_elo_only*100).toFixed(0)}% · A ${(p.p_away_elo_only*100).toFixed(0)}%
+      <div class="space-y-2">
+        ${probs.map(o => `
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-secondary w-12 shrink-0">${o.label}</span>
+            <span class="ev-bar flex-1"><span class="ev-bar-fill" style="width: ${(o.prob*100).toFixed(0)}%; background: ${o.key === top.key ? 'var(--accent-gold)' : 'var(--text-secondary)'};"></span></span>
+            <span class="num-display text-xs ${o.key === top.key ? 'text-gold font-semibold' : 'text-secondary'} w-10 text-right">${(o.prob*100).toFixed(0)}%</span>
+          </div>
+        `).join('')}
       </div>
     </div>`;
 }
@@ -1752,8 +1788,8 @@ async function loadWcPredictions() {
     $('#wc-count').textContent = ` · ${body.n_fixtures} 场 · α=${body.blend_alpha}`;
     $('#wc-list').innerHTML = body.predictions.map(renderWcMatch).join('');
     const n_blend = body.predictions.filter(p => p.has_pinnacle).length;
-    setStatus('#wc-status', 'success',
-      `已抓 ${body.n_fixtures} 场 · ${n_blend} 含市场盘口 · ${body.elo_snapshot}`);
+    // V11 P1-FE#1: removed engineer info (elo_snapshot path) from status.
+    setStatus('#wc-status', 'success', `${body.n_fixtures} 场预测`);
   } catch (err) {
     setStatus('#wc-status', 'error', t('wc_api_error') + ': ' + err.message);
     $('#wc-list-section').classList.add('hidden');
