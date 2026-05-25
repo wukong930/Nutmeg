@@ -82,6 +82,7 @@ nutmeg-wc-predict = "nutmeg.v4.cli.wc_predict:main"
 nutmeg-auto-calibration = "nutmeg.v4.cli.auto_calibration:main"
 nutmeg-wc-settle = "nutmeg.v4.cli.wc_settle:main"
 nutmeg-wc-report = "nutmeg.v4.cli.wc_report:main"
+nutmeg-ingest-team-logos = "nutmeg.v4.cli.ingest_team_logos:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]

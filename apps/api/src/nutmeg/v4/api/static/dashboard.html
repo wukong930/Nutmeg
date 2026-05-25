@@ -286,6 +286,48 @@
     transition: width 400ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  /* ── Team logo / initials circle (V11 P1-FE#2 Day 2) ──────────────── */
+  /*
+   * Each team-logo span renders as a 28×28 circle with the team's first
+   * 2 characters as fallback. When a logo PNG has been ingested via
+   * `nutmeg-ingest-team-logos`, the <img> covers the circle. On 404 the
+   * onerror handler hides the image, leaving the initials visible.
+   * The background color is hashed off the team name so the circles
+   * are distinguishable at a glance.
+   */
+  .team-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--bg-surface-2);
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border-subtle);
+  }
+  .team-logo img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: white;
+  }
+  /* Hashed palette — 8 distinguishable colors */
+  .tl-c0 { background: #1e3a8a; color: #f5f7fa; border-color: #1e3a8a; }  /* deep blue */
+  .tl-c1 { background: #7c2d12; color: #f5f7fa; border-color: #7c2d12; }  /* rust */
+  .tl-c2 { background: #14532d; color: #f5f7fa; border-color: #14532d; }  /* forest */
+  .tl-c3 { background: #581c87; color: #f5f7fa; border-color: #581c87; }  /* purple */
+  .tl-c4 { background: #064e3b; color: #f5f7fa; border-color: #064e3b; }  /* teal */
+  .tl-c5 { background: #831843; color: #f5f7fa; border-color: #831843; }  /* maroon */
+  .tl-c6 { background: #713f12; color: #f5f7fa; border-color: #713f12; }  /* amber-dark */
+  .tl-c7 { background: #334155; color: #f5f7fa; border-color: #334155; }  /* slate */
+
   /* ── Theme toggle button ───────────────────────────────────────────── */
   #theme-toggle {
     background: var(--bg-surface-1);
@@ -1092,6 +1134,46 @@ function zhTeam(name) {
   return TEAM_ZH_DICT[name] || name;
 }
 
+// V11 P1-FE#2 Day 2 — team logo circle.
+// Returns a 28x28 round avatar containing either:
+//   - the cached PNG from `nutmeg-ingest-team-logos`, OR
+//   - the team's first 2 chars on a hashed background color (fallback).
+// `<img onerror>` hides the failed image so the initials remain visible.
+function teamSlug(name) {
+  if (!name) return '';
+  return String(name).trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+function _teamHashColor(name) {
+  // Deterministic 0..7 from name for color picking
+  let h = 0;
+  const s = name || '';
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return 'tl-c' + (h % 8);
+}
+function teamInitials(name) {
+  // Display the team's first 2 chars (Han-aware: count code points).
+  if (!name) return '?';
+  // Prefer Chinese name when locale is zh
+  const display = (_LOCALE === 'zh' && TEAM_ZH_DICT[name]) ? TEAM_ZH_DICT[name] : name;
+  // Iterate as code points; Han chars are 1 grapheme each.
+  const chars = Array.from(display);
+  return chars.slice(0, 2).join('');
+}
+function teamLogo(name) {
+  if (!name) return '';
+  const slug = teamSlug(name);
+  const color = _teamHashColor(name);
+  const initials = teamInitials(name);
+  // <img onerror=""> hides the image, leaving the initials underneath.
+  return `<span class="team-logo ${color}" title="${name}" aria-label="${name}">
+    <span class="team-logo-initials">${initials}</span>
+    <img src="${API}/team-logo/${slug}" alt=""
+         onerror="this.style.display='none'"
+         loading="lazy">
+  </span>`;
+}
+
 // P1#13: setStatus — visual styling for status messages instead of just
 // emoji + plain text. error → red banner, loading → spinner + dim text,
 // success → plain text. Caller passes the message WITHOUT the emoji prefix;
@@ -1235,10 +1317,10 @@ function renderRecommendations(body) {
   pcards.innerHTML = '';
   for (const p of body.single_match_predictions) {
     const hc = p.handicap_home !== null && p.handicap_home !== undefined;
-    // Desktop: table row
+    // Desktop: table row (parlay tab — still uses Tailwind grays not theme tokens)
     ptbody.insertAdjacentHTML('beforeend',
       `<tr>
-        <td>${zhTeam(p.home_team)} <span class="text-gray-400">vs</span> ${zhTeam(p.away_team)} <span class="text-xs text-gray-400">(${p.league})</span></td>
+        <td class="flex items-center gap-2 flex-wrap">${teamLogo(p.home_team)}<span>${zhTeam(p.home_team)}</span><span class="text-gray-400">vs</span>${teamLogo(p.away_team)}<span>${zhTeam(p.away_team)}</span><span class="text-xs text-gray-400">(${p.league})</span></td>
         <td class="num">${p.lambda_home.toFixed(2)}</td>
         <td class="num">${p.lambda_away.toFixed(2)}</td>
         <td class="num">${fmtPct(p.p_home_1x2)}</td>
@@ -1258,8 +1340,10 @@ function renderRecommendations(body) {
       : '';
     pcards.insertAdjacentHTML('beforeend',
       `<div class="border rounded p-3 bg-gray-50">
-        <div class="font-medium text-sm mb-1">
-          ${zhTeam(p.home_team)} <span class="text-gray-400">vs</span> ${zhTeam(p.away_team)}
+        <div class="font-medium text-sm mb-1 flex items-center gap-2 flex-wrap">
+          ${teamLogo(p.home_team)}<span>${zhTeam(p.home_team)}</span>
+          <span class="text-gray-400">vs</span>
+          ${teamLogo(p.away_team)}<span>${zhTeam(p.away_team)}</span>
           <span class="text-xs text-gray-400">(${p.league})</span>
         </div>
         <div class="text-xs text-gray-600 mb-1">λ 主/客: <strong>${p.lambda_home.toFixed(2)}</strong> / <strong>${p.lambda_away.toFixed(2)}</strong></div>
@@ -1291,13 +1375,14 @@ function renderRecommendations(body) {
           `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
         ).join('');
         const market = leg.market_type === '1x2' ? '胜平负' : '让球';
-        // V11 P1-FE#2: parse "league_home_vs_away" → translate via zhTeam.
+        // V11 P1-FE#2: parse "league_home_vs_away" → translate via zhTeam
+        // + render small team logos for visual context.
         const raw = (leg.match_id || '').replace(/^[A-Z_]+_/, '');
         const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
-        const matchName = parts[1]
-          ? `${zhTeam(parts[0])} vs ${zhTeam(parts[1])}`
+        const matchHtml = parts[1]
+          ? `<span class="inline-flex items-center gap-1.5 flex-wrap">${teamLogo(parts[0])}<span>${zhTeam(parts[0])}</span><span class="text-muted">vs</span>${teamLogo(parts[1])}<span>${zhTeam(parts[1])}</span></span>`
           : zhTeam(parts[0]);
-        return `<div class="text-sm py-1 text-primary">${matchName} <span class="text-xs text-muted">[${market}]</span>${sels}</div>`;
+        return `<div class="text-sm py-1 text-primary flex items-center gap-2 flex-wrap">${matchHtml} <span class="text-xs text-muted">[${market}]</span>${sels}</div>`;
       }).join('');
       recsList.insertAdjacentHTML('beforeend',
         `<div class="card-rec mb-3">
@@ -1401,7 +1486,11 @@ function renderSingleRecommendations(body) {
       return `<div class="card-rec">
         <div class="flex items-start justify-between gap-3 mb-3">
           <div class="flex-1 min-w-0">
-            <div class="font-display font-semibold text-base text-primary">${zhTeam(home)}${away ? ` <span class="text-muted font-normal">vs</span> ${zhTeam(away)}` : ''}</div>
+            <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
+              ${home ? teamLogo(home) : ''}
+              <span>${zhTeam(home)}</span>
+              ${away ? `<span class="text-muted font-normal">vs</span>${teamLogo(away)}<span>${zhTeam(away)}</span>` : ''}
+            </div>
           </div>
           <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(t.outcome)}</span>
         </div>
@@ -1515,15 +1604,16 @@ function renderPoolRecommendations(body) {
   list.innerHTML =
     selected.map((t, i) => {
       // V11 P1-FE#2: extract home/away from match_id ("league_home_vs_away")
-      // so each leg shows match context, not just an opaque outcome+odds.
+      // so each leg shows match context (small team logos + names), not
+      // just an opaque outcome+odds.
       const legsHtml = t.legs.map(l => {
         const raw = (l.match_id || '').replace(/^[A-Z_]+_/, '');
         const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
-        const home = zhTeam(parts[0]);
-        const away = zhTeam(parts[1]);
-        const match = away ? `${home} vs ${away}` : home;
+        const matchHtml = parts[1]
+          ? `<span class="inline-flex items-center gap-1.5 flex-wrap">${teamLogo(parts[0])}<span>${zhTeam(parts[0])}</span><span class="text-muted">vs</span>${teamLogo(parts[1])}<span>${zhTeam(parts[1])}</span></span>`
+          : zhTeam(parts[0]);
         return `<div class="text-xs flex items-center justify-between gap-2 py-1">
-          <span class="text-secondary truncate">${match}</span>
+          <span class="text-secondary truncate">${matchHtml}</span>
           <span class="badge-ok shrink-0">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
         </div>`;
       }).join('');
@@ -1631,7 +1721,13 @@ function renderTodaySingle(single) {
       <div class="card-rec">
         <div class="flex items-start justify-between gap-3 mb-3">
           <div class="flex-1 min-w-0">
-            <div class="font-display font-semibold text-base text-primary">${zhTeam(t.home_team)} <span class="text-muted font-normal">vs</span> ${zhTeam(t.away_team)}</div>
+            <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
+              ${teamLogo(t.home_team)}
+              <span>${zhTeam(t.home_team)}</span>
+              <span class="text-muted font-normal">vs</span>
+              ${teamLogo(t.away_team)}
+              <span>${zhTeam(t.away_team)}</span>
+            </div>
             <div class="text-xs text-muted mt-1">${t.league} · ${t.date}</div>
           </div>
           <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(t.outcome)}</span>
@@ -1783,7 +1879,13 @@ function renderWcMatch(p) {
     <div class="card-rec">
       <div class="flex items-start justify-between gap-3 mb-3">
         <div class="flex-1 min-w-0">
-          <div class="font-display font-semibold text-base text-primary">${zhTeam(p.home_team)} <span class="text-muted font-normal">vs</span> ${zhTeam(p.away_team)}</div>
+          <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
+            ${teamLogo(p.home_team)}
+            <span>${zhTeam(p.home_team)}</span>
+            <span class="text-muted font-normal">vs</span>
+            ${teamLogo(p.away_team)}
+            <span>${zhTeam(p.away_team)}</span>
+          </div>
           <div class="text-xs text-muted mt-1">${kickoff} · ${p.round || 'WC 2026'}</div>
         </div>
         <span class="badge-gold whitespace-nowrap">${top.label}</span>

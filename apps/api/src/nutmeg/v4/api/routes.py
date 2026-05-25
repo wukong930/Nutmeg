@@ -267,7 +267,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v4-fe-zh';
+const CACHE_VERSION = 'nutmeg-v5-fe-logos';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -334,6 +334,38 @@ def rules() -> LotteryRulesResponse:
         vig=r.vig,
         min_ev_per_unit=r.min_ev_per_unit,
         min_hit_probability=r.min_hit_probability,
+    )
+
+
+# ---------- /v4/team-logo/{slug} (V11 P1-FE#2 Day 2) -------------------
+
+_TEAM_LOGOS_DIR = Path("data/external/team_logos")
+
+
+@router.get("/team-logo/{slug}", include_in_schema=False)
+def team_logo_endpoint(slug: str) -> Response:
+    """Serve a cached team logo PNG.
+
+    404 when the logo hasn't been ingested yet — the dashboard's
+    ``<img onerror=...>`` then falls back to the 2-letter initials
+    circle so a missing logo is never a user-visible defect.
+
+    Slug format: lowercase + underscore (produced by ``team_slug()`` in
+    ``nutmeg.v4.data.team_logos``).
+    """
+    # Defensive: only allow simple lowercase + underscore + digits to
+    # prevent path traversal. Anything else → 404.
+    import re as _re
+    if not slug or not _re.fullmatch(r"[a-z0-9_]+", slug):
+        raise HTTPException(status_code=404, detail="invalid slug")
+    candidate = _TEAM_LOGOS_DIR / f"{slug}.png"
+    if not candidate.exists():
+        raise HTTPException(status_code=404, detail="logo not cached")
+    return Response(
+        content=candidate.read_bytes(),
+        media_type="image/png",
+        # Logos rarely change — cache aggressively
+        headers={"Cache-Control": "public, max-age=604800"},  # 7 days
     )
 
 

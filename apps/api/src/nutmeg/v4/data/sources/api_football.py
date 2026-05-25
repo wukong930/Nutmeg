@@ -231,6 +231,26 @@ def fetch_status() -> dict[str, Any]:
     return _request("/status", {})  # singleton response, len=1
 
 
+def fetch_teams_for_league_season(
+    league_canonical: str,
+    season: int,
+    *,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+) -> list[dict[str, Any]]:
+    """All teams in a league + season — used to harvest logo URLs.
+
+    Each record contains ``team`` (id/name/logo) + ``venue``. V11 P1-FE#2
+    uses this to ingest team logos for the dashboard.
+    """
+    return _request(
+        "/teams",
+        {"league": league_id(league_canonical), "season": season},
+        cache_dir=cache_dir,
+        refresh=refresh,
+    )
+
+
 def fetch_team_squad_stats(
     team_id: int,
     season: int,
