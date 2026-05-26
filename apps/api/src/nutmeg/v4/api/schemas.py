@@ -342,11 +342,15 @@ class TodayRecommendationsRequest(BaseModel):
     )
     bankroll: float = Field(1000.0, gt=0,
         description="Total bankroll. Default ¥1000.")
-    include: list[Literal["single", "parlay", "pool"]] = Field(
-        default_factory=lambda: ["single", "parlay", "pool"],
+    include: list[Literal["single", "parlay", "pool", "wc"]] = Field(
+        default_factory=lambda: ["single", "parlay", "pool", "wc"],
         description=(
             "Which game types to include. V11 P1-FE#4: pool added; "
-            "default now includes all three (was: single + parlay only)."
+            "V11 post-ship: 'wc' added — when on a date with WC fixtures, "
+            "surfaces today's WC 1X2 predictions as a side block "
+            "(no auto-handicap; user enters SP in the WC tab to get 让球 "
+            "recommendations). 'wc' is informational only — it doesn't "
+            "contribute to total_recs / total_stake / weighted_ev."
         ),
     )
     # V11 P1-FE#4 — UI-facing risk + EV sliders. risk_preference is the
@@ -456,6 +460,12 @@ class TodayRecommendationsResponse(BaseModel):
     # Strategy B (locked 2026-05-25): filter fixtures to ev_per_unit ≥ min_ev,
     # pick max-EV market per match, generate C(M, N) pool of N-selections.
     pool: Optional[PoolRecommendResponse] = None
+    # V11 post-ship — WC 1X2 model predictions for the same date.
+    # Surfaced informationally; doesn't contribute to total_recs/stake/ev
+    # (no handicap → no EV computation possible until user enters SP in the
+    # WC tab). Frontend renders this as a "🏆 WC 板块" with a CTA that
+    # deep-links to the WC tab. None when no WC fixtures or "wc" excluded.
+    wc: Optional[WcPredictionsResponse] = None
     summary: TodaySummary
     # V11 P1-FE#5 — top-level version hash covering single + parlay + pool
     # picks + the fixture odds digest. Frontend polls every 30s and shows
@@ -568,6 +578,13 @@ class WcSingleRecRequest(BaseModel):
         "passed to NationalTeamModel for host-advantage")
     host_advantage: float = Field(50.0,
         description="Elo points added for host country")
+    # V11 post-ship — A/B observation hook (mirrors single/parlay/pool).
+    # Two gates required for a real write: server NUTMEG_V4_OBSERVATION_DB
+    # env var + this request flag. Recorded outcomes settle via the regular
+    # auto-settle pipeline once a WC match outcome lands in match_outcomes.
+    record_session: bool = Field(False,
+        description="Opt-in observation recording for A/B / ROI tracking. "
+        "Server-side recording also requires NUTMEG_V4_OBSERVATION_DB env.")
 
 
 class WcRecommendationOutcome(BaseModel):

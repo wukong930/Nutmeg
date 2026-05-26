@@ -152,3 +152,79 @@ class TestSwCacheBust:
         assert "wc-handicap" in version, (
             f"CACHE_VERSION = {version!r} doesn't mention wc-handicap"
         )
+
+
+# ============ V11 post-ship — Today WC block ==========================
+
+class TestTodayWcBlock:
+    """Today's recommendations tab surfaces a 🏆 WC section when the
+    today endpoint returns body.wc populated."""
+
+    def test_today_section_div_present(self, html):
+        assert 'id="today-wc-section"' in html
+        assert 'id="today-wc-count"' in html
+        assert 'id="today-wc-list"' in html
+
+    def test_render_function_defined(self, html):
+        assert "function renderTodayWc(wc)" in html
+
+    def test_render_called_in_today_load(self, html):
+        # Hook into the existing load pipeline alongside single/parlay/pool
+        assert "renderTodayWc(body.wc)" in html
+
+    def test_deeplink_to_wc_tab(self, html):
+        # CTA button uses data-tab-link="wc" which the existing handler
+        # picks up to switch the active tab.
+        assert 'data-tab-link="wc"' in html
+        # i18n key for the CTA copy
+        assert "today_wc_cta" in html
+
+    def test_pinnacle_required_indicator(self, html):
+        """Cards render a "需 Pinnacle 盘口" badge when has_pinnacle=false."""
+        assert "today_wc_no_pin" in html
+        assert "today_wc_blend_ready" in html
+
+    def test_error_path_hides_section(self, html):
+        """On today error, the WC section is hidden alongside others."""
+        # Look for the cleanup line we added
+        assert "$('#today-wc-section').classList.add('hidden')" in html
+
+
+# ============ V11 post-ship — record-session checkbox =================
+
+class TestRecordSessionCheckbox:
+    """WC handicap form now has the same opt-in observation checkbox
+    as single/parlay/pool — both env + flag required for an actual write."""
+
+    def test_checkbox_in_handicap_form(self, html):
+        assert "wc-hc-record-session" in html
+
+    def test_record_session_flag_in_request_body(self, html):
+        """The JS must pass record_session: recordChecked into the POST."""
+        assert "record_session: recordChecked," in html
+
+    def test_label_uses_shared_i18n_key(self, html):
+        """Reuse lbl_record_session (already in both locales) instead of
+        defining a new key — keeps the dictionary lean."""
+        # The existing key is present (used by 4 forms now)
+        assert "lbl_record_session" in html
+
+
+# ============ V11 post-ship — Today WC i18n parity ====================
+
+class TestTodayWcI18n:
+    REQUIRED_KEYS = (
+        "h_today_wc",
+        "today_wc_hint",
+        "today_wc_cta",
+        "today_wc_blend_ready",
+        "today_wc_no_pin",
+    )
+
+    def test_each_key_present_twice(self, html):
+        """Each new key must appear in both zh + en locales."""
+        for key in self.REQUIRED_KEYS:
+            count = html.count(f"{key}:")
+            assert count >= 2, (
+                f"{key} appears {count}x — i18n parity broken (zh+en expected)"
+            )

@@ -247,11 +247,12 @@ class TestTodayRecommendationsDefaults:
         req = TodayRecommendationsRequest()
         assert req.bankroll == 1000.0
 
-    def test_default_include_is_all_three(self):
-        """V11 P1-FE#4: pool added; default = single + parlay + pool."""
+    def test_default_include_is_all_four(self):
+        """V11 P1-FE#4: pool added; V11 post-ship: 'wc' added.
+        Default now covers single + parlay + pool + WC (informational)."""
         from nutmeg.v4.api.schemas import TodayRecommendationsRequest
         req = TodayRecommendationsRequest()
-        assert set(req.include) == {"single", "parlay", "pool"}
+        assert set(req.include) == {"single", "parlay", "pool", "wc"}
 
     def test_default_risk_preference_is_balanced(self):
         """V11 P1-FE#4 — risk dial defaults to 中 (Kelly 0.25)."""

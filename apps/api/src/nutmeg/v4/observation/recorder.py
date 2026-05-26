@@ -1,16 +1,19 @@
 """Record a recommend session into the observation DB.
 
-Three entry points:
+Four entry points:
 - `record_session` — V4 / V6 W8 串关 (parlay) response shape
 - `record_single_session` — V8 W6 单关 (single-leg) response shape
                             (Post-V8 P1#5)
 - `record_pool_session` — V8 W6 复式 (compound pool) response shape
                           (Post-V8 P1#5)
+- `record_wc_handicap_session` — V11 post-ship Path A++ WC 让球 shape
 
-All three write to the same `recommendation_sessions` / `parlay_recommendations`
+All four write to the same `recommendation_sessions` / `parlay_recommendations`
 schema so V6 W8's `nutmeg-ab-report` and V4's `nutmeg-roi-report` see them
 uniformly. Single tickets land as `k_legs=1, is_compound=False`; pool tickets
-land as `k_legs=N, is_compound=True`. Settlement (V4 W8) handles all three.
+land as `k_legs=N, is_compound=True`. WC handicap tickets land per-outcome
+as `k_legs=1, is_compound=False` with `league="WC"` so settlement picks them
+up once a WC match outcome lands in `match_outcomes`.
 """
 from __future__ import annotations
 
@@ -164,6 +167,135 @@ def record_single_session(
                 log_growth=0.0,  # single-leg has no compounding log-growth
                 legs=[leg],
             )
+        return session_id
+
+
+def record_wc_handicap_session(
+    db_path: str | Path,
+    *,
+    request: dict[str, Any],
+    response: dict[str, Any],
+    snapshot_phase: str = "closing",
+) -> int:
+    """V11 post-ship — record a Path A++ WC handicap recommendation session.
+
+    Each fixture's outcomes with ``stake > 0`` land as one
+    ``parlay_recommendations`` row with ``k_legs=1, is_compound=False``.
+    The leg ``match_id`` follows the ``"WC_<home>_vs_<away>"`` convention
+    so the regular ``settle_unsettled`` pipeline picks it up once a
+    ``match_outcomes`` row with ``league="WC"`` lands.
+
+    Per-fixture ``single_predictions`` rows are also inserted (one per
+    fixture, NOT per outcome) so the settler can resolve handicap_home
+    from the leg's match_id lookup — same shape as `record_single_session`.
+
+    Returns the session_id.
+    """
+    bankroll = float(response.get("bankroll", 0.0))
+    blend_alpha = float(response.get("blend_alpha", 0.4))
+    lambda_total_prior = float(response.get("lambda_total_prior", 2.6))
+    n_recs = int(response.get("n_recommendations", 0))
+    n_fixtures = int(response.get("n_fixtures", 0))
+
+    # Build a minimal "model_info" so AB-report can slice by model_type.
+    model_info = {
+        "model_type": "national_team_handicap",
+        "trained_at_utc": None,  # WC model retrains every request; not pinned
+        "training_cutoff": None,
+        "blend_alpha": blend_alpha,
+        "lambda_total_prior": lambda_total_prior,
+    }
+
+    with open_db(db_path) as conn:
+        session_id = insert_session(
+            conn,
+            bankroll=bankroll,
+            model_cutoff=None,
+            model_trained_at=None,
+            n_fixtures=n_fixtures,
+            n_recommendations=n_recs,
+            request=request,
+            metadata={
+                "model": model_info,
+                "generated_at_utc": response.get("generated_at_utc"),
+                # Tag the session shape so reports can filter
+                "session_kind": "wc_handicap",
+                "blend_alpha": blend_alpha,
+                "lambda_total_prior": lambda_total_prior,
+            },
+            snapshot_phase=snapshot_phase,
+            model_type="national_team_handicap",
+        )
+
+        rank = 0
+        for match in response.get("matches", []) or []:
+            # ``kickoff_utc`` is ISO "YYYY-MM-DDTHH:MM:SS+TZ" — settle
+            # reads match_date as the date portion of kickoff.
+            kickoff = str(match.get("kickoff_utc", "") or "")
+            match_date = kickoff[:10] if len(kickoff) >= 10 else ""
+            home = str(match["home_team"])
+            away = str(match["away_team"])
+            handicap_home = int(match["handicap_home"])
+            p_h, p_d, p_a = (
+                float(match["p_1x2_blended"][0]),
+                float(match["p_1x2_blended"][1]),
+                float(match["p_1x2_blended"][2]),
+            )
+            # One single_prediction row per fixture (handicap_home pinned)
+            insert_single_prediction(
+                conn,
+                session_id,
+                match_date=match_date,
+                league="WC",
+                home_team=home,
+                away_team=away,
+                lambda_home=float(match.get("inferred_lambda_home", 0.0)),
+                lambda_away=float(match.get("inferred_lambda_away", 0.0)),
+                p_home_1x2=p_h,
+                p_draw_1x2=p_d,
+                p_away_1x2=p_a,
+                handicap_home=handicap_home,
+                p_home_handicap=float(match["outcomes"][0]["p_final"]),
+                p_draw_handicap=float(match["outcomes"][1]["p_final"]),
+                p_away_handicap=float(match["outcomes"][2]["p_final"]),
+            )
+
+            # One parlay_recommendations row per outcome with stake > 0
+            match_id = f"WC_{home}_vs_{away}"
+            for outcome in match.get("outcomes", []) or []:
+                stake = float(outcome.get("stake", 0.0))
+                if stake <= 0:
+                    continue
+                rank += 1
+                leg = {
+                    "match_id": match_id,
+                    "market_type": "handicap_1x2",
+                    "selections": [{
+                        "outcome": outcome["outcome"],
+                        "odds": float(outcome["odds"]),
+                        "probability": float(outcome["p_final"]),
+                        "edge": float(outcome["ev_per_unit"]),
+                    }],
+                }
+                # stake_units = ¥ stake / ¥2 minimum (always whole for our
+                # quantize_stake output). For WC handicap fall back to 1
+                # when stake < 2 (defensive — shouldn't happen since the
+                # endpoint quantizes to ¥2 multiples).
+                stake_units = max(1, int(stake // 2.0)) if stake > 0 else 0
+                insert_parlay_recommendation(
+                    conn,
+                    session_id,
+                    rank=rank,
+                    k_legs=1,
+                    is_compound=False,
+                    stake_units=stake_units,
+                    kelly_stake=stake,
+                    expected_return=float(outcome["expected_return"]),
+                    hit_probability=float(outcome["p_final"]),
+                    ev_per_unit=float(outcome["ev_per_unit"]),
+                    log_growth=0.0,
+                    legs=[leg],
+                )
         return session_id
 
 

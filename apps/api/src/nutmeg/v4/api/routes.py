@@ -316,7 +316,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v11-fe-wc-handicap';
+const CACHE_VERSION = 'nutmeg-v11-fe-wc-handicap-today';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1276,6 +1276,38 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             )
             pool_resp = None
 
+    # V11 post-ship — WC 1X2 informational block.
+    # Reuses /predictions/wc internally; surfaces today's WC fixtures so
+    # the user doesn't need to switch tabs to see what's on. The user
+    # still goes to the 🏆 WC tab to enter handicap SP for actual
+    # recommendations (which then post to /recommend/wc/single). WC is
+    # purely informational here — doesn't count toward total_recs / stake.
+    wc_resp: WcPredictionsResponse | None = None
+    if "wc" in req.include:
+        try:
+            wc_resp = predictions_wc(
+                date=on_date.isoformat(),
+                fetch_current_odds=False,  # don't burn Odds API quota in today loop
+                alpha=0.4,
+            )
+            if not wc_resp or wc_resp.n_fixtures == 0:
+                wc_resp = None
+        except HTTPException as exc:
+            # 503 when WC training data / eloratings missing — degrade
+            # gracefully (today endpoint shouldn't fail because WC infra
+            # is incomplete; the rest still works).
+            import logging
+            logging.getLogger(__name__).info(
+                "today-recommendations: WC block unavailable (%s)", exc.detail,
+            )
+            wc_resp = None
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "today-recommendations: WC block failed",
+            )
+            wc_resp = None
+
     weighted_ev = (stake_weighted_ev_sum / total_stake) if total_stake > 0 else None
 
     # V11 P1-FE#5 — top-level version_hash + optional diff vs prev_version.
@@ -1322,6 +1354,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
         single=single_resp,
         parlay=parlay_resp,
         pool=pool_resp,
+        wc=wc_resp,
         summary=TodaySummary(
             total_recs=total_recs,
             total_stake=total_stake,
@@ -1789,7 +1822,7 @@ def recommend_wc_single(req: WcSingleRecRequest) -> WcSingleRecResponse:
             outcomes=outcomes_out,
         ))
 
-    return WcSingleRecResponse(
+    response = WcSingleRecResponse(
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
         bankroll=req.bankroll,
         n_fixtures=len(req.fixtures),
@@ -1800,3 +1833,23 @@ def recommend_wc_single(req: WcSingleRecRequest) -> WcSingleRecResponse:
         blend_alpha=req.blend_alpha,
         lambda_total_prior=DEFAULT_WC_LAMBDA_TOTAL,
     )
+
+    # V11 post-ship — A/B observation hook. Both gates required:
+    # server env NUTMEG_V4_OBSERVATION_DB set + request record_session=True.
+    # Only fixtures with at least one stake>0 outcome land in the DB.
+    db_path = _should_record_session(req.record_session)
+    if db_path and n_recs > 0:
+        from nutmeg.v4.observation.recorder import record_wc_handicap_session
+        try:
+            record_wc_handicap_session(
+                db_path,
+                request=req.model_dump(mode="json"),
+                response=response.model_dump(mode="json"),
+            )
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "record_wc_handicap_session failed (db=%s); rec returned anyway",
+                db_path,
+            )
+    return response

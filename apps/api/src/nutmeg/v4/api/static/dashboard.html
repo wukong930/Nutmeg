@@ -665,6 +665,18 @@
       <div id="today-pool-list" class="space-y-2"></div>
     </div>
 
+    <!-- V11 post-ship — 🏆 WC block (informational, includes deep-link to WC tab) -->
+    <div id="today-wc-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-3">
+        <span data-i18n="h_today_wc">🏆 WC 板块</span>
+        <span id="today-wc-count" class="text-sm font-normal text-gray-500"></span>
+      </h3>
+      <div class="text-xs text-muted mb-3" data-i18n="today_wc_hint">
+        想下 让球 推荐? 前往 🏆 WC 2026 tab 输入 SP 即可计算 (Path A++ 反推 λ + 市场融合).
+      </div>
+      <div id="today-wc-list" class="space-y-2"></div>
+    </div>
+
     <!-- Empty state -->
     <div id="today-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center">
       <p class="text-gray-600" data-i18n="today_empty_main"><strong>今日无可下注组合</strong></p>
@@ -1122,6 +1134,12 @@ const I18N = {
     wc_hc_sp_d:       '让平 SP',
     wc_hc_sp_a:       '让负 SP',
     wc_hc_calc:       '计算让球推荐',
+    // V11 post-ship — 今日推荐里的 🏆 WC 板块
+    h_today_wc:       '🏆 WC 板块',
+    today_wc_hint:    '想下 让球 推荐? 前往 🏆 WC 2026 tab 输入 SP 即可计算 (Path A++ 反推 λ + 市场融合).',
+    today_wc_cta:     '🎯 前往 WC tab 输入让球盘口 →',
+    today_wc_blend_ready: '让球可计算',
+    today_wc_no_pin:  '需 Pinnacle 盘口',
 
     // Common buttons
     btn_load_sample:  '使用示例数据 (8 场)',
@@ -1303,6 +1321,12 @@ const I18N = {
     wc_hc_sp_d:       'Draw SP',
     wc_hc_sp_a:       'Away SP',
     wc_hc_calc:       'Calculate handicap',
+    // V11 post-ship — 🏆 WC block in today's recommendations
+    h_today_wc:       '🏆 WC',
+    today_wc_hint:    'Want handicap picks? Go to the 🏆 WC 2026 tab and enter SP — Path A++ infers λ and blends with the market.',
+    today_wc_cta:     '🎯 Go to WC tab to enter handicap SP →',
+    today_wc_blend_ready: 'Handicap ready',
+    today_wc_no_pin:  'Needs Pinnacle 1X2',
 
     btn_load_sample:  'Load sample data (8 fixtures)',
     btn_clear:        'Clear',
@@ -2262,6 +2286,58 @@ function renderTodayPool(pool) {
   }).join('');
 }
 
+// V11 post-ship — render today's WC fixtures as an informational block.
+// User clicks "前往 🏆 让球推荐" to switch tabs (the actual handicap form
+// + computation lives in the WC tab — this is just a preview / deep-link).
+function renderTodayWc(wc) {
+  const section = $('#today-wc-section');
+  if (!wc || !wc.predictions || wc.predictions.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  $('#today-wc-count').textContent = ` · ${wc.n_fixtures} 场`;
+  const list = $('#today-wc-list');
+  list.innerHTML = wc.predictions.map(p => {
+    const kickoff = p.kickoff_utc ? p.kickoff_utc.slice(5, 16).replace('T', ' ') : '';
+    const probs = [
+      {key: 'H', label: '主胜', prob: p.p_home},
+      {key: 'D', label: '平局', prob: p.p_draw},
+      {key: 'A', label: '客胜', prob: p.p_away},
+    ].sort((a, b) => b.prob - a.prob);
+    const top = probs[0];
+    const pinBadge = p.has_pinnacle
+      ? `<span class="badge-ok shrink-0 text-xs" data-i18n="today_wc_blend_ready">让球可计算</span>`
+      : `<span class="text-muted shrink-0 text-xs" data-i18n="today_wc_no_pin">需 Pinnacle 盘口</span>`;
+    return `<div class="card-rec">
+      <div class="flex items-start justify-between gap-3 mb-2">
+        <div class="flex-1 min-w-0">
+          <div class="font-display font-semibold text-sm text-primary flex items-center gap-2 flex-wrap">
+            ${teamLogo(p.home_team)}
+            <span>${zhTeam(p.home_team)}</span>
+            <span class="text-muted font-normal">vs</span>
+            ${teamLogo(p.away_team)}
+            <span>${zhTeam(p.away_team)}</span>
+          </div>
+          <div class="text-xs text-muted mt-1">${kickoff} · ${p.round || 'WC 2026'}</div>
+        </div>
+        ${pinBadge}
+      </div>
+      <div class="flex items-center gap-2 text-xs mb-2">
+        <span class="text-secondary w-12">${top.label}</span>
+        <span class="ev-bar flex-1">
+          <span class="ev-bar-fill" style="width: ${(top.prob*100).toFixed(0)}%; background: var(--accent-gold);"></span>
+        </span>
+        <span class="num-display text-gold font-semibold w-10 text-right">${(top.prob*100).toFixed(0)}%</span>
+      </div>
+      <button type="button" class="today-wc-deeplink mt-1 text-xs text-indigo-600 hover:underline"
+              data-tab-link="wc" aria-label="Go to WC tab">
+        <span data-i18n="today_wc_cta">🎯 前往 WC tab 输入让球盘口 →</span>
+      </button>
+    </div>`;
+  }).join('');
+}
+
 // V11 P1-FE#5 — dynamic-recommendation tracking. We keep the
 // last-known fingerprint set + version_hash in localStorage so the
 // frontend can:
@@ -2376,6 +2452,7 @@ async function loadTodayRecommendations() {
     renderTodaySingle(body.single);
     renderTodayParlay(body.parlay);
     renderTodayPool(body.pool);
+    renderTodayWc(body.wc);
     // Empty state — fold pool into the "no recs" check
     const noRecs = body.summary.total_recs === 0;
     const noFixtures = body.fixtures_fetched === 0;
@@ -2395,6 +2472,7 @@ async function loadTodayRecommendations() {
     $('#today-single-section').classList.add('hidden');
     $('#today-parlay-section').classList.add('hidden');
     $('#today-pool-section').classList.add('hidden');
+    $('#today-wc-section').classList.add('hidden');
     $('#today-empty').classList.add('hidden');
   }
 }
@@ -2651,11 +2729,19 @@ function renderWcHandicapSection(p) {
                  inputmode="decimal" aria-label="让负 SP odds">
         </label>
       </div>
-      <button type="button"
-              class="wc-hc-calc-btn mt-3 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700"
-              data-meta="${metaJson}">
-        <span data-i18n="wc_hc_calc">计算让球推荐</span>
-      </button>
+      <div class="flex items-center gap-3 mt-3 flex-wrap">
+        <button type="button"
+                class="wc-hc-calc-btn px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                data-meta="${metaJson}">
+          <span data-i18n="wc_hc_calc">计算让球推荐</span>
+        </button>
+        <label class="text-xs flex items-center gap-1"
+               title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 才会真正落库"
+               data-i18n-attr="title:title_record_session">
+          <input type="checkbox" class="wc-hc-record-session mr-1">
+          <span data-i18n="lbl_record_session">记录到观测库</span>
+        </label>
+      </div>
       <div class="wc-hc-result mt-3" role="region" aria-live="polite"></div>
     </details>`;
 }
@@ -2707,6 +2793,10 @@ async function _wcHcCalc(btn) {
     return;
   }
 
+  // V11 post-ship — A/B observation opt-in (per-fixture checkbox).
+  const recordCheck = card.querySelector('.wc-hc-record-session');
+  const recordChecked = !!(recordCheck && recordCheck.checked);
+
   btn.disabled = true;
   const origText = btn.innerHTML;
   btn.innerHTML = '<span class="text-xs">计算中...</span>';
@@ -2732,6 +2822,7 @@ async function _wcHcCalc(btn) {
       max_stake_fraction: 0.05,
       min_ev: 0.05,
       blend_alpha: 0.4,
+      record_session: recordChecked,
     };
     const resp = await fetch(`${API}/recommend/wc/single`, {
       method: 'POST',
