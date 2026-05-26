@@ -26,6 +26,15 @@ from nutmeg.v4.features.cup_features import (
     build_cup_features,
 )
 from nutmeg.v4.features.elo import build_elo_features
+# V12 Day 2 (post-V11 audit) — fatigue features wired into the pipeline.
+# The 12-column output captures nonlinear rest patterns that form.py's
+# continuous `rest_days` doesn't (3-day turnaround penalty, 14-day rust,
+# euro-midweek hangover, 3-in-8 congestion). See Day 1 audit:
+# docs/v12_stadium_fatigue_day1_audit.md.
+from nutmeg.v4.features.fatigue_features import (
+    OUTPUT_COLUMNS as FATIGUE_FEATURE_COLUMNS,
+    build_fatigue_features,
+)
 from nutmeg.v4.features.form import build_form_features
 from nutmeg.v4.features.lineup_features import (
     LINEUP_FEATURE_COLUMNS,
@@ -95,6 +104,25 @@ def feature_columns_with_lineups() -> list[str]:
     diagnostics. See docs/v6_w6_lineup_validation.md for the ablation.
     """
     return list(GBM_FEATURE_COLUMNS) + LINEUP_VALIDATED_COLUMNS
+
+
+def feature_columns_with_fatigue(
+    *, include_lineups: bool = False, include_cup: bool = False,
+) -> list[str]:
+    """V12 Day 2 — feature column list including the 12 fatigue cols.
+
+    Stacks orthogonally with lineups + cup, mirroring the existing
+    ``feature_columns_with_cup(include_lineups=True)`` pattern. All four
+    flags are independent — train.py composes them based on what's
+    actually requested.
+    """
+    cols = list(GBM_FEATURE_COLUMNS)
+    if include_lineups:
+        cols += LINEUP_VALIDATED_COLUMNS
+    if include_cup:
+        cols += list(CUP_FEATURE_COLUMNS)
+    cols += list(FATIGUE_FEATURE_COLUMNS)
+    return cols
 
 
 def feature_columns_with_cup(*, include_lineups: bool = False) -> list[str]:
@@ -176,6 +204,7 @@ def build_feature_frame(
     cup_history_df: pd.DataFrame | None = None,
     cross_league_seed: bool = False,
     nation_state: dict[str, float] | None = None,
+    with_fatigue: bool = False,
 ) -> pd.DataFrame:
     """Build all features. df must contain the canonical MATCH_COLUMNS.
 
@@ -226,4 +255,11 @@ def build_feature_frame(
     if cup_history_df is not None:
         out = _merge_cup_round_labels(out, cup_history_df)
         out = build_cup_features(out, league_col="league", round_col="round_label")
+    # V12 Day 2 (post-V11 audit) — fatigue features. The builder needs
+    # the frame to be sorted by date ascending; out comes out of
+    # build_form_features in that order, so it's safe. Returns a
+    # same-index DataFrame which we concat column-wise.
+    if with_fatigue:
+        fatigue_df = build_fatigue_features(out)
+        out = pd.concat([out, fatigue_df], axis=1)
     return out

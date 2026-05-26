@@ -26,6 +26,7 @@ from nutmeg.v4.features.pipeline import feature_columns_with_cup
 from nutmeg.v4.features.lineup_features import _fixture_key
 from nutmeg.v4.features.pipeline import (
     LINEUP_VALIDATED_COLUMNS,
+    feature_columns_with_fatigue,
     feature_columns_with_lineups,
 )
 from nutmeg.v4.model.cat_lambda import fit_cat_lambda
@@ -152,6 +153,19 @@ def main(argv: list[str] | None = None) -> int:
         "league seeding only fires when that flag is set). Run `nutmeg-ingest-"
         "national-elo` first to populate the cache.",
     )
+    parser.add_argument(
+        "--with-fatigue",
+        action="store_true",
+        help="V12 Day 2 (post-V11 audit) — include the 12 fatigue / "
+        "fixture-congestion features (short-rest flags 3/5 day, long-rest "
+        "rust 14-day, euro-midweek-4day, third-match-in-8day, "
+        "matches-in-30day; × home/away). Zero new data dependency — uses "
+        "the existing date/home/away/league columns. Day 1 audit "
+        "(docs/v12_stadium_fatigue_day1_audit.md) verified 10/12 features "
+        "fire on real EPL 24/25 with sensible distributions; euro-midweek "
+        "stays 0 on single-league data (gate enabled only when training "
+        "frame includes UCL/UEL via --with-cup-data).",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -268,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         cup_history_df=cup_history_df,
         cross_league_seed=args.with_cup_data,
         nation_state=nation_state,
+        with_fatigue=args.with_fatigue,
     )
 
     # Time split
@@ -284,11 +299,18 @@ def main(argv: list[str] | None = None) -> int:
     # input is the union of whichever transforms were actually run:
     #   --with-lineups        → +2 lineup validated cols (V6 W6)
     #   --with-cup-features   → +5 cup side-channel cols (V6 W11 + V7 W6)
-    #   both                  → +7 cols
-    #   neither               → V5 W12 baseline (39 cols)
-    # Conflating either flag into the other would break callers that only
+    #   --with-fatigue        → +12 fatigue cols (V12 Day 2 post-V11 audit)
+    #   any combination       → union of the above on top of GBM_FEATURE_COLUMNS
+    # Conflating any flag into another would break callers that only
     # have one data source ingested.
-    if args.with_cup_features and args.with_lineups:
+    if args.with_fatigue:
+        # The 12 fatigue cols stack on top of whatever lineup/cup combo
+        # is in use. feature_columns_with_fatigue handles the matrix.
+        base_numeric_cols = feature_columns_with_fatigue(
+            include_lineups=args.with_lineups,
+            include_cup=args.with_cup_features,
+        )
+    elif args.with_cup_features and args.with_lineups:
         base_numeric_cols = feature_columns_with_cup(include_lineups=True)
     elif args.with_cup_features:
         base_numeric_cols = feature_columns_with_cup(include_lineups=False)
