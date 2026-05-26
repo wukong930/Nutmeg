@@ -971,15 +971,48 @@
 const API = window.NUTMEG_V4_API || '/api/v4';
 
 // --- Sample data ---
+// V11 post-ship — sample data rewritten as typical 竞彩 fixtures.
+// - Team names use the V4 canonical English form; dashboard renders
+//   them as Chinese via zhTeam() when locale=zh (e.g. "Man City" → 曼城)
+// - Every fixture includes the China 竞彩 integer handicap line
+//   (handicap_home ∈ {-2, -1, 0, +1, +2}) + the lottery SP odds for
+//   让胜 / 让平 / 让负. These are the 浮动 SP figures the user reads
+//   from the 竞彩终端 at bet time.
+// - psc_home/draw/away are Pinnacle 1X2 closing odds (model input).
+// - 8 fixtures: mix of strong/medium/even matchups across 6 leagues
+//   to exercise both 胜平负 and 让球胜平负 candidates.
 const SAMPLE = [
-  {date:'2025-08-17',league:'EPL',home_team:'Arsenal',away_team:'Liverpool',psc_home:2.85,psc_draw:3.40,psc_away:2.60},
-  {date:'2025-08-17',league:'ESP_LA_LIGA',home_team:'Real Madrid',away_team:'Getafe',psc_home:1.40,psc_draw:4.80,psc_away:7.00,handicap_home:-1,odds_handicap_H:2.10,odds_handicap_D:3.40,odds_handicap_A:3.20},
-  {date:'2025-08-17',league:'ITA_SERIE_A',home_team:'Inter',away_team:'Fiorentina',psc_home:1.85,psc_draw:3.50,psc_away:4.20},
-  {date:'2025-08-17',league:'GER_BUNDESLIGA',home_team:'Bayern Munich',away_team:'Koln',psc_home:1.20,psc_draw:7.00,psc_away:12.00,handicap_home:-2,odds_handicap_H:2.80,odds_handicap_D:3.20,odds_handicap_A:2.50},
-  {date:'2025-08-17',league:'FRA_LIGUE_1',home_team:'Paris SG',away_team:'Nice',psc_home:1.45,psc_draw:4.80,psc_away:6.50,handicap_home:-1,odds_handicap_H:2.20,odds_handicap_D:3.40,odds_handicap_A:3.00},
-  {date:'2025-08-17',league:'NED_EREDIVISIE',home_team:'Ajax',away_team:'AZ Alkmaar',psc_home:1.85,psc_draw:3.50,psc_away:4.20},
-  {date:'2025-08-17',league:'PRT_PRIMEIRA_LIGA',home_team:'Porto',away_team:'Benfica',psc_home:2.30,psc_draw:3.20,psc_away:3.20},
-  {date:'2025-08-17',league:'ENG_CHAMPIONSHIP',home_team:'Leeds',away_team:'Burnley',psc_home:1.95,psc_draw:3.50,psc_away:3.80,handicap_home:-1,odds_handicap_H:2.40,odds_handicap_D:3.20,odds_handicap_A:2.80}
+  // 英超 — 主队中强 (让一球)
+  {date:'2026-05-26',league:'EPL',           home_team:'Man United',  away_team:'West Ham',
+   psc_home:2.10, psc_draw:3.40, psc_away:3.60,
+   handicap_home:-1, odds_handicap_H:2.30, odds_handicap_D:3.30, odds_handicap_A:2.85},
+  // 英超 — 势均力敌 (仅胜平负, 不让球)
+  {date:'2026-05-26',league:'EPL',           home_team:'Arsenal',     away_team:'Liverpool',
+   psc_home:2.50, psc_draw:3.30, psc_away:2.80},
+  // 西甲 — 主队大幅强势 (让两球)
+  {date:'2026-05-26',league:'ESP_LA_LIGA',   home_team:'Real Madrid', away_team:'Getafe',
+   psc_home:1.35, psc_draw:5.20, psc_away:8.50,
+   handicap_home:-2, odds_handicap_H:2.05, odds_handicap_D:3.20, odds_handicap_A:3.30},
+  // 意甲 — 主队明显强势 (让一球)
+  {date:'2026-05-26',league:'ITA_SERIE_A',   home_team:'Inter',       away_team:'Fiorentina',
+   psc_home:1.75, psc_draw:3.60, psc_away:4.50,
+   handicap_home:-1, odds_handicap_H:2.40, odds_handicap_D:3.20, odds_handicap_A:2.70},
+  // 德甲 — 主队碾压 (让两球)
+  {date:'2026-05-26',league:'GER_BUNDESLIGA',home_team:'Bayern Munich',away_team:'Mainz 05',
+   psc_home:1.25, psc_draw:6.50, psc_away:10.00,
+   handicap_home:-2, odds_handicap_H:2.20, odds_handicap_D:3.30, odds_handicap_A:3.00},
+  // 法甲 — 主队强势 (让一球)
+  {date:'2026-05-26',league:'FRA_LIGUE_1',   home_team:'Paris SG',    away_team:'Reims',
+   psc_home:1.40, psc_draw:5.00, psc_away:7.50,
+   handicap_home:-2, odds_handicap_H:2.60, odds_handicap_D:3.30, odds_handicap_A:2.50},
+  // 英冠 — 升班马交锋 (主场略胜, 让一球)
+  {date:'2026-05-26',league:'ENG_CHAMPIONSHIP',home_team:'Leeds',     away_team:'Burnley',
+   psc_home:2.00, psc_draw:3.40, psc_away:3.70,
+   handicap_home:-1, odds_handicap_H:2.50, odds_handicap_D:3.20, odds_handicap_A:2.70},
+  // 比甲 — 势均力敌 (受让一球, 客队让球)
+  {date:'2026-05-26',league:'BEL_PRO_LEAGUE',home_team:'Antwerp',     away_team:'Club Brugge',
+   psc_home:2.80, psc_draw:3.30, psc_away:2.55,
+   handicap_home:1, odds_handicap_H:2.45, odds_handicap_D:3.25, odds_handicap_A:2.75},
 ];
 
 // --- Utility ---
@@ -1816,11 +1849,33 @@ function renderSingleRecommendations(body) {
 }
 
 // --- V8 W6: Pool (复式) ---
+// V11 post-ship — 复式 (M-select-N pool) sample: 4 fixtures with picks
+// pre-filled to demonstrate the typical 竞彩 mix: mostly 让胜 picks on
+// strong-favorite matches + one 胜平负 pick on a coin-flip match.
+// pick ∈ {1x2_H, 1x2_D, 1x2_A, hc_H, hc_D, hc_A}
 const POOL_SAMPLE = [
-  {date:'2025-08-17',league:'EPL',home_team:'Arsenal',away_team:'Liverpool',psc_home:2.20,psc_draw:3.40,psc_away:3.40,odds_1x2_H:1.85,odds_1x2_D:3.20,odds_1x2_A:4.00,pick:'1x2_H'},
-  {date:'2025-08-17',league:'EPL',home_team:'Man City',away_team:'Brighton',psc_home:1.50,psc_draw:4.50,psc_away:6.00,odds_1x2_H:1.45,odds_1x2_D:4.30,odds_1x2_A:7.00,pick:'1x2_H'},
-  {date:'2025-08-17',league:'ESP_LA_LIGA',home_team:'Real Madrid',away_team:'Getafe',psc_home:1.30,psc_draw:5.50,psc_away:9.00,handicap_home:-1,odds_handicap_H:1.95,odds_handicap_D:3.40,odds_handicap_A:3.85,pick:'hc_H'},
-  {date:'2025-08-17',league:'ITA_SERIE_A',home_team:'Inter',away_team:'Roma',psc_home:2.05,psc_draw:3.50,psc_away:3.70,odds_1x2_H:1.90,odds_1x2_D:3.40,odds_1x2_A:4.10,pick:'1x2_H'},
+  // 英超 — 主队碾压, 选让胜 (让两球后仍主队赢)
+  {date:'2026-05-26',league:'EPL',          home_team:'Man City',    away_team:'Brighton',
+   psc_home:1.45, psc_draw:4.80, psc_away:7.00,
+   odds_1x2_H:1.40, odds_1x2_D:4.60, odds_1x2_A:7.50,
+   handicap_home:-2, odds_handicap_H:2.10, odds_handicap_D:3.30, odds_handicap_A:3.20,
+   pick:'hc_H'},
+  // 英超 — 主队稍强, 选胜 (不让球, 直接胜平负)
+  {date:'2026-05-26',league:'EPL',          home_team:'Arsenal',     away_team:'Chelsea',
+   psc_home:1.95, psc_draw:3.50, psc_away:3.90,
+   odds_1x2_H:1.90, odds_1x2_D:3.40, odds_1x2_A:4.00,
+   pick:'1x2_H'},
+  // 西甲 — 主队大幅强势, 选让胜
+  {date:'2026-05-26',league:'ESP_LA_LIGA',  home_team:'Barcelona',   away_team:'Cadiz',
+   psc_home:1.25, psc_draw:6.00, psc_away:11.00,
+   handicap_home:-2, odds_handicap_H:1.95, odds_handicap_D:3.40, odds_handicap_A:3.50,
+   pick:'hc_H'},
+  // 意甲 — 主队明显强势, 选让胜
+  {date:'2026-05-26',league:'ITA_SERIE_A',  home_team:'Inter',       away_team:'Roma',
+   psc_home:1.95, psc_draw:3.50, psc_away:4.00,
+   odds_1x2_H:1.90, odds_1x2_D:3.40, odds_1x2_A:4.10,
+   handicap_home:-1, odds_handicap_H:2.50, odds_handicap_D:3.20, odds_handicap_A:2.70,
+   pick:'hc_H'},
 ];
 
 $('#btn-load-sample-pool').addEventListener('click', () => {
