@@ -277,11 +277,14 @@ def record_wc_handicap_session(
                         "edge": float(outcome["ev_per_unit"]),
                     }],
                 }
-                # stake_units = ¥ stake / ¥2 minimum (always whole for our
-                # quantize_stake output). For WC handicap fall back to 1
-                # when stake < 2 (defensive — shouldn't happen since the
-                # endpoint quantizes to ¥2 multiples).
-                stake_units = max(1, int(stake // 2.0)) if stake > 0 else 0
+                # ``stake_units`` follows the V4 convention: "number of
+                # atomic combinations" (单式 = 1, 复式 = product of
+                # selections per leg). A WC handicap pick is always 单式
+                # (1 selection × 1 leg). The actual money stake lives in
+                # ``kelly_stake``; settlement computes unit_money =
+                # kelly_stake / stake_units = stake, so payout =
+                # stake × odds — exactly what we want.
+                stake_units = 1
                 insert_parlay_recommendation(
                     conn,
                     session_id,

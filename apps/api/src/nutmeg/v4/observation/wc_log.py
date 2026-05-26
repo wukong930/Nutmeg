@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from nutmeg.v4.observation.store import open_db
+from nutmeg.v4.observation.store import open_db, upsert_outcome
 
 
 log = logging.getLogger(__name__)
@@ -219,6 +219,14 @@ def settle_wc_prediction(
     fixture_id (settle was called for a fixture we never predicted).
     Idempotent — re-settling a fixture overwrites previous outcome
     columns (useful for correcting bad initial settle calls).
+
+    V11 post-ship — dual-writes to ``match_outcomes`` with
+    ``league="WC"`` so the regular ``settle_unsettled`` pipeline can
+    close out WC handicap recommendations recorded via
+    ``record_wc_handicap_session`` (Path A++ 让球). Without this bridge
+    the recs stayed in "still_unknown" indefinitely because the WC arm
+    only wrote to its own ``wc_predictions`` table. The dual-write is
+    idempotent — `upsert_outcome` ON CONFLICT updates in-place.
     """
     ensure_wc_predictions_table(db_path)
     if settled_at is None:
@@ -238,7 +246,40 @@ def settle_wc_prediction(
             """,
             (home_goals, away_goals, outcome, settled_at.isoformat(), fixture_id),
         )
-        return cur.rowcount > 0
+        updated = cur.rowcount > 0
+        if updated:
+            # Pull the (match_date, home, away) pinned at prediction time
+            # and mirror into match_outcomes so WC-league handicap recs
+            # can settle through the regular pipeline. Use match_date
+            # (date-only) since match_outcomes is keyed by date.
+            row = conn.execute(
+                """SELECT match_date, home_team, away_team
+                     FROM wc_predictions
+                    WHERE fixture_id = ?""",
+                (fixture_id,),
+            ).fetchone()
+            if row is not None and row["home_team"] and row["away_team"]:
+                try:
+                    upsert_outcome(
+                        conn,
+                        match_date=str(row["match_date"]),
+                        league="WC",
+                        home_team=str(row["home_team"]),
+                        away_team=str(row["away_team"]),
+                        home_goals=int(home_goals),
+                        away_goals=int(away_goals),
+                    )
+                except Exception:  # noqa: BLE001
+                    # Mirror failure should not break the wc_predictions
+                    # update — log + continue. The regular auto-settle
+                    # pipeline picks up the gap on the next run.
+                    log.warning(
+                        "wc settle mirror to match_outcomes failed for "
+                        "fixture_id=%s (%s vs %s)",
+                        fixture_id, row["home_team"], row["away_team"],
+                        exc_info=True,
+                    )
+        return updated
 
 
 def fetch_wc_predictions(
