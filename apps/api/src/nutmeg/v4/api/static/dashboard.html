@@ -1114,6 +1114,14 @@ const I18N = {
     wc_caveat:        '⚠️ 世界杯历史数据较少, 2026 真实命中率预期 50% 左右; 谨慎参考',
     wc_loading:       '加载 WC 预测 ...',
     wc_api_error:     '加载预测失败',
+    // V11 post-ship — Path A++ 让球推荐
+    wc_hc_toggle:     '🎯 让球推荐 (Path A++)',
+    wc_hc_needs_pin:  '⚠️ 让球推荐需 Pinnacle 1X2 — 请勾选「用实时盘口」',
+    wc_hc_line:       '让球数',
+    wc_hc_sp_h:       '让胜 SP',
+    wc_hc_sp_d:       '让平 SP',
+    wc_hc_sp_a:       '让负 SP',
+    wc_hc_calc:       '计算让球推荐',
 
     // Common buttons
     btn_load_sample:  '使用示例数据 (8 场)',
@@ -1287,6 +1295,14 @@ const I18N = {
     wc_caveat:        '⚠️ WC historical data is sparse. 2026 realistic hit-rate expectation: ~50%. Use with caution.',
     wc_loading:       'Loading WC predictions ...',
     wc_api_error:     'Failed to load predictions',
+    // V11 post-ship — Path A++ handicap recommendation
+    wc_hc_toggle:     '🎯 Handicap recommendation (Path A++)',
+    wc_hc_needs_pin:  '⚠️ Handicap needs Pinnacle 1X2 — check "Use live odds" first',
+    wc_hc_line:       'Line',
+    wc_hc_sp_h:       'Home SP',
+    wc_hc_sp_d:       'Draw SP',
+    wc_hc_sp_a:       'Away SP',
+    wc_hc_calc:       'Calculate handicap',
 
     btn_load_sample:  'Load sample data (8 fixtures)',
     btn_clear:        'Clear',
@@ -2574,8 +2590,197 @@ function renderWcMatch(p) {
           </div>
         `).join('')}
       </div>
+      ${renderWcHandicapSection(p)}
     </div>`;
 }
+
+// =====================================================================
+// V11 post-ship — Path A++ WC handicap recommendation inline form
+// =====================================================================
+// Each WC card embeds a collapsible 让球推荐 section. Path A++ requires
+// Pinnacle 1X2 for the reverse-map, so when has_pinnacle === false we
+// show a hint instead of the form. The user enters handicap line + 3
+// 竞彩 SP odds and POSTs to /recommend/wc/single → renders per-outcome
+// stake / EV / Kelly inline.
+function renderWcHandicapSection(p) {
+  if (!p.has_pinnacle) {
+    return `
+      <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-muted">
+        <span data-i18n="wc_hc_needs_pin">⚠️ 让球推荐需 Pinnacle 1X2 — 请勾选「用实时盘口」</span>
+      </div>`;
+  }
+  // Pass fixture metadata (incl. Pinnacle 1X2) through data-* JSON.
+  const meta = {
+    fixture_id: p.fixture_id,
+    home_team: p.home_team,
+    away_team: p.away_team,
+    kickoff_utc: p.kickoff_utc,
+    psc_home: p.psc_home,
+    psc_draw: p.psc_draw,
+    psc_away: p.psc_away,
+  };
+  const metaJson = JSON.stringify(meta).replace(/"/g, '&quot;');
+  return `
+    <details class="wc-hc-section mt-3 pt-3 border-t border-gray-100">
+      <summary class="cursor-pointer text-sm font-medium text-secondary hover:text-primary">
+        <span data-i18n="wc_hc_toggle">🎯 让球推荐 (Path A++)</span>
+      </summary>
+      <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+        <label class="block">
+          <span class="text-muted block mb-1" data-i18n="wc_hc_line">让球数</span>
+          <input type="number" class="wc-hc-input w-full px-2 py-1 border rounded num-display"
+                 data-fld="handicap_home" value="0" min="-5" max="5" step="1"
+                 inputmode="numeric" aria-label="让球数">
+        </label>
+        <label class="block">
+          <span class="text-muted block mb-1" data-i18n="wc_hc_sp_h">让胜 SP</span>
+          <input type="number" class="wc-hc-input w-full px-2 py-1 border rounded num-display"
+                 data-fld="odds_h" value="2.00" min="1.01" step="0.01"
+                 inputmode="decimal" aria-label="让胜 SP odds">
+        </label>
+        <label class="block">
+          <span class="text-muted block mb-1" data-i18n="wc_hc_sp_d">让平 SP</span>
+          <input type="number" class="wc-hc-input w-full px-2 py-1 border rounded num-display"
+                 data-fld="odds_d" value="3.00" min="1.01" step="0.01"
+                 inputmode="decimal" aria-label="让平 SP odds">
+        </label>
+        <label class="block">
+          <span class="text-muted block mb-1" data-i18n="wc_hc_sp_a">让负 SP</span>
+          <input type="number" class="wc-hc-input w-full px-2 py-1 border rounded num-display"
+                 data-fld="odds_a" value="3.50" min="1.01" step="0.01"
+                 inputmode="decimal" aria-label="让负 SP odds">
+        </label>
+      </div>
+      <button type="button"
+              class="wc-hc-calc-btn mt-3 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700"
+              data-meta="${metaJson}">
+        <span data-i18n="wc_hc_calc">计算让球推荐</span>
+      </button>
+      <div class="wc-hc-result mt-3" role="region" aria-live="polite"></div>
+    </details>`;
+}
+
+function _wcHcOutcomeRow(o, t_h, t_a, hc) {
+  const teamCh = {H: zhTeam(t_h), D: '平', A: zhTeam(t_a)}[o.outcome];
+  const hcLabel = {H: '让胜', D: '让平', A: '让负'}[o.outcome];
+  const evPct = (o.ev_per_unit * 100).toFixed(1);
+  const evCls = o.ev_per_unit >= 0.05 ? 'text-gold font-semibold' : 'text-muted';
+  const stakeCell = o.stake > 0
+    ? `<span class="badge-gold">${fmtMoney(o.stake)}</span>`
+    : `<span class="text-muted text-xs">—</span>`;
+  const pMarket = (o.p_market !== null && o.p_market !== undefined)
+    ? `${(o.p_market*100).toFixed(0)}%`
+    : '—';
+  return `
+    <div class="grid grid-cols-12 gap-2 items-center text-xs py-1.5 border-b border-gray-100 last:border-0">
+      <span class="col-span-2 text-secondary">${hcLabel}</span>
+      <span class="col-span-3 truncate">${teamCh}</span>
+      <span class="col-span-2 num-display text-center">${(o.p_final*100).toFixed(0)}%</span>
+      <span class="col-span-1 num-display text-muted text-right">${(o.p_model*100).toFixed(0)}</span>
+      <span class="col-span-1 num-display text-muted text-right">${pMarket}</span>
+      <span class="col-span-1 num-display ${evCls} text-right">${evPct}%</span>
+      <span class="col-span-2 text-right">${stakeCell}</span>
+    </div>`;
+}
+
+async function _wcHcCalc(btn) {
+  let meta;
+  try {
+    meta = JSON.parse((btn.dataset.meta || '').replace(/&quot;/g, '"'));
+  } catch (e) {
+    return;
+  }
+  const card = btn.closest('details');
+  const resultEl = card.querySelector('.wc-hc-result');
+  // Gather form inputs
+  const getVal = (fld) => parseFloat(card.querySelector(`[data-fld="${fld}"]`).value);
+  const handicap_home = parseInt(card.querySelector('[data-fld="handicap_home"]').value, 10);
+  const odds_h = getVal('odds_h');
+  const odds_d = getVal('odds_d');
+  const odds_a = getVal('odds_a');
+  if (![odds_h, odds_d, odds_a].every(v => Number.isFinite(v) && v > 1.0)) {
+    resultEl.innerHTML = `<div class="text-xs text-red-600">⚠️ SP 必须 > 1.0</div>`;
+    return;
+  }
+  if (!Number.isInteger(handicap_home) || handicap_home < -5 || handicap_home > 5) {
+    resultEl.innerHTML = `<div class="text-xs text-red-600">⚠️ 让球数必须是 -5 到 5 之间的整数</div>`;
+    return;
+  }
+
+  btn.disabled = true;
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<span class="text-xs">计算中...</span>';
+  resultEl.innerHTML = '';
+
+  try {
+    const body = {
+      fixtures: [{
+        fixture_id: meta.fixture_id,
+        home_team: meta.home_team,
+        away_team: meta.away_team,
+        kickoff_utc: meta.kickoff_utc,
+        psc_home: meta.psc_home,
+        psc_draw: meta.psc_draw,
+        psc_away: meta.psc_away,
+        handicap_home: handicap_home,
+        odds_handicap_H: odds_h,
+        odds_handicap_D: odds_d,
+        odds_handicap_A: odds_a,
+      }],
+      bankroll: 1000.0,
+      kelly_fraction: 0.25,
+      max_stake_fraction: 0.05,
+      min_ev: 0.05,
+      blend_alpha: 0.4,
+    };
+    const resp = await fetch(`${API}/recommend/wc/single`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const detail = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 100)}`);
+    }
+    const data = await resp.json();
+    const match = data.matches && data.matches[0];
+    if (!match || !match.outcomes || match.outcomes.length === 0) {
+      resultEl.innerHTML = `<div class="text-xs text-muted">无有效推荐</div>`;
+      return;
+    }
+    const nRecs = match.outcomes.filter(o => o.stake > 0).length;
+    const lambdaH = match.inferred_lambda_home.toFixed(2);
+    const lambdaA = match.inferred_lambda_away.toFixed(2);
+    const headerCh = '让球 ' + (handicap_home > 0 ? '+' : '') + handicap_home;
+    resultEl.innerHTML = `
+      <div class="bg-gray-50 dark:bg-gray-800 rounded p-2">
+        <div class="grid grid-cols-12 gap-2 text-xs font-medium text-muted pb-2 border-b border-gray-200">
+          <span class="col-span-2">${headerCh}</span>
+          <span class="col-span-3">球队</span>
+          <span class="col-span-2 text-center">融合 P</span>
+          <span class="col-span-1 text-right">模型</span>
+          <span class="col-span-1 text-right">市场</span>
+          <span class="col-span-1 text-right">EV</span>
+          <span class="col-span-2 text-right">¥推荐</span>
+        </div>
+        ${match.outcomes.map(o => _wcHcOutcomeRow(o, meta.home_team, meta.away_team, handicap_home)).join('')}
+        <div class="text-xs text-muted mt-2 pt-2 border-t border-gray-200">
+          λ̂ = (${lambdaH}, ${lambdaA}) · α=0.4 · EV 门槛 5% · ${nRecs} 注满足
+        </div>
+      </div>`;
+  } catch (err) {
+    resultEl.innerHTML = `<div class="text-xs text-red-600">${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+}
+
+// Event delegation — the form is rendered dynamically per fixture.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.wc-hc-calc-btn');
+  if (btn) _wcHcCalc(btn);
+});
 
 async function loadWcPredictions() {
   const date = $('#wc-date').value;
