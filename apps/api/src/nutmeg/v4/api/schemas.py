@@ -512,6 +512,111 @@ class WcPredictionsResponse(BaseModel):
     generated_at_utc: str
 
 
+# ---------- /recommend/wc/single (V11 post-ship — Path A++ hybrid) ----
+
+class WcFixtureRecInput(BaseModel):
+    """One WC fixture for the multi-market recommendation endpoint.
+
+    Inputs the user provides per fixture:
+    - Identity + Pinnacle 1X2 (for NationalTeamModel reverse-mapping)
+    - 让球 line + 竞彩 SP odds (the actual bet market)
+
+    All three handicap odds fields must be present together; if any
+    is missing, the endpoint falls back to pure-model handicap probs
+    (no Bayesian blend).
+    """
+    fixture_id: int
+    home_team: str = Field(..., min_length=1)
+    away_team: str = Field(..., min_length=1)
+    kickoff_utc: str
+    # Pinnacle 1X2 — model reverse-map input (REQUIRED for path A++)
+    psc_home: float = Field(..., gt=1.0)
+    psc_draw: float = Field(..., gt=1.0)
+    psc_away: float = Field(..., gt=1.0)
+    # 竞彩 整数让球 line + SP odds — the actual bet market
+    handicap_home: int = Field(..., ge=-5, le=5,
+        description="主队 让球数 (正 = 主队 受让, 负 = 主队 让球)")
+    odds_handicap_H: float = Field(..., gt=1.0)
+    odds_handicap_D: float = Field(..., gt=1.0)
+    odds_handicap_A: float = Field(..., gt=1.0)
+
+
+class WcSingleRecRequest(BaseModel):
+    """POST /v4/recommend/wc/single body.
+
+    Path A++ hybrid: runs NationalTeamModel for 1X2, reverse-maps to
+    (λ_h, λ_a) under a WC-mean total-goals prior, computes model-side
+    handicap probs via DC grid, blends with market-implied (dewedged)
+    handicap probs at alpha=0.4 (matching the 1X2 blend convention).
+
+    Returns one recommendation per fixture per market: 让球胜 / 让球平 /
+    让球负 are scored independently; the server filters to outcomes with
+    EV ≥ ``min_ev``.
+    """
+    fixtures: list[WcFixtureRecInput] = Field(..., min_length=1, max_length=20)
+    bankroll: float = Field(1000.0, gt=0)
+    kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
+    max_stake_fraction: float = Field(0.05, gt=0.0, le=1.0,
+        description="Per-ticket cap as fraction of bankroll")
+    min_ev: float = Field(0.05, ge=-0.20, le=0.50,
+        description="EV-per-unit floor; outcomes below this are dropped")
+    blend_alpha: float = Field(0.4, ge=0.0, le=1.0,
+        description="Model weight in the model+market handicap blend "
+        "(0=pure market, 1=pure model; default 0.4 matches WC 1X2 blend)")
+    host_country: Optional[str] = Field(None,
+        description="Optional 3-letter code (e.g. 'USA' for WC 2026 host) "
+        "passed to NationalTeamModel for host-advantage")
+    host_advantage: float = Field(50.0,
+        description="Elo points added for host country")
+
+
+class WcRecommendationOutcome(BaseModel):
+    """One row in WcSingleRecResponse.recommendations — the engine
+    surfaces up to 3 outcomes per fixture (让胜, 让平, 让负); only the
+    ones passing min_ev get a non-zero stake."""
+    outcome: Literal["H", "D", "A"]
+    p_final: float = Field(..., description="Final blended probability")
+    p_model: float = Field(..., description="Model-only (DC reverse-mapped)")
+    p_market: Optional[float] = Field(None,
+        description="Market-implied (dewedged from SP). None if SP missing.")
+    odds: float
+    ev_per_unit: float
+    kelly_fraction: float = Field(..., description="Full Kelly fraction "
+        "(server applies kelly_fraction × kelly_fraction_param × bankroll)")
+    stake: float = Field(..., description="¥2-quantized recommended stake")
+    expected_return: float
+
+
+class WcSingleRecMatch(BaseModel):
+    """One fixture in the WC recommendation output."""
+    fixture_id: int
+    home_team: str
+    away_team: str
+    kickoff_utc: str
+    handicap_home: int
+    # Surfaced for transparency / diagnostics
+    p_1x2_blended: list[float] = Field(..., description="The blended 1X2 from "
+        "wc_predict (model + Pinnacle); the reverse-map input")
+    inferred_lambda_home: float = Field(..., description="λ̂_h from 1X2 reverse-map")
+    inferred_lambda_away: float = Field(..., description="λ̂_a from 1X2 reverse-map")
+    # The 3 让球 outcomes — those with stake > 0 are the recommendations
+    outcomes: list[WcRecommendationOutcome]
+
+
+class WcSingleRecResponse(BaseModel):
+    generated_at_utc: str
+    bankroll: float
+    n_fixtures: int
+    n_recommendations: int = Field(..., description=
+        "Outcomes with stake > 0 across all fixtures")
+    matches: list[WcSingleRecMatch]
+    total_stake: float
+    total_expected_return: float
+    blend_alpha: float
+    lambda_total_prior: float = Field(..., description=
+        "Total-goals prior used for the 1X2 → λ reverse-map (WC mean ~2.6)")
+
+
 # ---------- /rules (V6 W10) ----------
 
 class LotteryRulesResponse(BaseModel):

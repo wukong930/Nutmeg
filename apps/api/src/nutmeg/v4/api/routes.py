@@ -44,6 +44,11 @@ from nutmeg.v4.api.schemas import (
     TodayRecommendationsRequest,
     TodayRecommendationsResponse,
     TodaySummary,
+    WcFixtureRecInput,
+    WcRecommendationOutcome,
+    WcSingleRecMatch,
+    WcSingleRecRequest,
+    WcSingleRecResponse,
     UpcomingPredictionsRequest,
     UpcomingPredictionsResponse,
     WcMatchPrediction,
@@ -1532,4 +1537,266 @@ def predictions_wc(
         host_country_hint=season_hosts,
         predictions=preds,
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
+    )
+
+
+# ---------- /recommend/wc/single (V11 post-ship — Path A++ hybrid) -------
+
+@router.post(
+    "/recommend/wc/single",
+    response_model=WcSingleRecResponse,
+    summary="WC integer-handicap recommendations (Path A++: 1X2 reverse-map + DC + market blend)",
+)
+def recommend_wc_single(req: WcSingleRecRequest) -> WcSingleRecResponse:
+    """V11 post-ship — bridges NationalTeamModel (1X2) to the 竞彩 整数让球
+    market via Path A++ hybrid:
+
+      1. NationalTeamModel.predict_proba → 1X2 model probs
+      2. Blend with user-provided Pinnacle 1X2 (α = req.blend_alpha)
+      3. Reverse-map blended 1X2 → (λ_h, λ_a) under WC mean λ_total prior
+      4. DC score grid → model handicap probs (让胜 / 让平 / 让负)
+      5. Dewedge user 竞彩 SP → market handicap probs
+      6. Bayesian blend model HC + market HC at α = req.blend_alpha
+      7. Per-outcome EV + Kelly → ¥2-quantized stake, gated by req.min_ev
+
+    The 1X2 blend and the handicap blend reuse the same α; this is
+    intentional — both are model-vs-Pinnacle and the WC convention is 0.4.
+
+    Returns one ``WcSingleRecMatch`` per fixture, each carrying 3 outcomes
+    (H/D/A on the let-line) with diagnostics + stake. Outcomes whose EV is
+    below ``req.min_ev`` are surfaced with stake=0 (kept for transparency
+    on the dashboard).
+
+    Graceful degradation
+    --------------------
+    - eloratings snapshot missing      → 503
+    - WC training data missing         → 503
+    - NationalTeamModel fit fails      → 503
+    - Per-fixture errors (e.g. unknown team) → matches[].outcomes is empty
+      with diagnostic fields zeroed; the rest of the request continues.
+    """
+    import datetime as _dt
+    import logging
+    from pathlib import Path as _Path
+
+    _log = logging.getLogger(__name__)
+
+    # Local imports — avoid top-level cost on cold start / non-WC routes.
+    try:
+        from nutmeg.v4.cli.wc_predict import (
+            HOST_COUNTRIES,
+            _train_combined_model,
+        )
+        from nutmeg.v4.data.national_team_name_to_elo import lookup_elo_code
+        from nutmeg.v4.data.wc_training_frame import load_elo_snapshot
+        from nutmeg.v4.model.national_team_handicap import (
+            DEFAULT_WC_LAMBDA_TOTAL,
+            evaluate_handicap_market,
+        )
+        from nutmeg.v4.model.national_team_predict import (
+            bayesian_blend,
+            market_implied_probs,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"WC recommendation module not loadable: {exc}",
+        )
+
+    # Lottery rules — for stake quantization + cap.
+    from nutmeg.v4.combo.compound_pool import quantize_stake
+    from nutmeg.v4.combo.kelly import fractional_kelly_stake
+    from nutmeg.v4.combo.lottery_rules import (
+        JINGCAI_DEFAULT,
+        cap_ticket_stake,
+    )
+
+    snapshots = sorted(
+        _Path("data/external/eloratings").glob("eloratings_*.parquet")
+    )
+    if not snapshots:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No eloratings snapshot found at data/external/eloratings/. "
+                   "Run the eloratings scraper first (see v10_w1_day2_*.md).",
+        )
+
+    try:
+        # Use 2018 hosts as default training-time hint (matches predictions_wc).
+        host_hint = HOST_COUNTRIES.get(2018)
+        model = _train_combined_model([2018, 2022], host_countries=host_hint)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"WC training data missing: {exc}. "
+                   "Run nutmeg-ingest-cup-history --leagues WC --seasons 2018,2022",
+        )
+
+    elo = load_elo_snapshot(snapshots[-1])
+    rules = JINGCAI_DEFAULT
+
+    # Optional host-country override (e.g. 'USA' for WC 2026).
+    user_hosts: dict[str, float] = {}
+    if req.host_country:
+        user_hosts[req.host_country] = req.host_advantage
+
+    matches: list[WcSingleRecMatch] = []
+    total_stake = 0.0
+    total_expected_return = 0.0
+    n_recs = 0
+
+    for fx in req.fixtures:
+        # ----- Per-fixture model 1X2 -----
+        h_code = lookup_elo_code(fx.home_team)
+        a_code = lookup_elo_code(fx.away_team)
+        h_elo = float(elo.get(h_code, {}).get("elo", 1500.0)) if h_code else 1500.0
+        a_elo = float(elo.get(a_code, {}).get("elo", 1500.0)) if a_code else 1500.0
+
+        # Per-row host hint: if user named a host, treat fixture's home team
+        # as host when its name matches the user_hosts key OR fall back to
+        # season-hint convention (use_hosts lookup only if home matches).
+        is_host = fx.home_team in user_hosts
+        home_adv = user_hosts.get(fx.home_team, 0.0) if is_host else 0.0
+
+        df = pd.DataFrame([{
+            "home_team": fx.home_team,
+            "away_team": fx.away_team,
+            "home_elo": h_elo,
+            "away_elo": a_elo,
+            "psc_home": fx.psc_home,
+            "psc_draw": fx.psc_draw,
+            "psc_away": fx.psc_away,
+        }])
+
+        try:
+            lgb_probs = model.predict_proba(
+                df,
+                host_country=fx.home_team if is_host else None,
+                host_advantage=home_adv if is_host else 0.0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning(
+                "WC recommend: predict_proba failed for %s vs %s: %s",
+                fx.home_team, fx.away_team, exc,
+            )
+            matches.append(WcSingleRecMatch(
+                fixture_id=fx.fixture_id,
+                home_team=fx.home_team,
+                away_team=fx.away_team,
+                kickoff_utc=fx.kickoff_utc,
+                handicap_home=fx.handicap_home,
+                p_1x2_blended=[0.0, 0.0, 0.0],
+                inferred_lambda_home=0.0,
+                inferred_lambda_away=0.0,
+                outcomes=[],
+            ))
+            continue
+
+        # ----- Blend with user-provided Pinnacle 1X2 -----
+        pin_probs = market_implied_probs(
+            pd.Series([fx.psc_home]),
+            pd.Series([fx.psc_draw]),
+            pd.Series([fx.psc_away]),
+        )
+        blended_1x2 = bayesian_blend(lgb_probs, pin_probs, alpha=req.blend_alpha)[0]
+        p_h, p_d, p_a = float(blended_1x2[0]), float(blended_1x2[1]), float(blended_1x2[2])
+
+        # ----- Path A++ handicap evaluation -----
+        try:
+            rec = evaluate_handicap_market(
+                p_h, p_d, p_a,
+                fx.handicap_home,
+                fx.odds_handicap_H, fx.odds_handicap_D, fx.odds_handicap_A,
+                blend_alpha=req.blend_alpha,
+                lambda_total_prior=DEFAULT_WC_LAMBDA_TOTAL,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning(
+                "WC recommend: handicap evaluation failed for %s vs %s @ HC %+d: %s",
+                fx.home_team, fx.away_team, fx.handicap_home, exc,
+            )
+            matches.append(WcSingleRecMatch(
+                fixture_id=fx.fixture_id,
+                home_team=fx.home_team,
+                away_team=fx.away_team,
+                kickoff_utc=fx.kickoff_utc,
+                handicap_home=fx.handicap_home,
+                p_1x2_blended=[p_h, p_d, p_a],
+                inferred_lambda_home=0.0,
+                inferred_lambda_away=0.0,
+                outcomes=[],
+            ))
+            continue
+
+        # ----- EV gate + Kelly per outcome -----
+        outcomes_out: list[WcRecommendationOutcome] = []
+        labels = ("H", "D", "A")
+        # Market p_market is NaN-tuple when no SP — surface as None.
+        p_market_tuple: tuple[Optional[float], Optional[float], Optional[float]] = (
+            None if np.isnan(rec.p_market_hc[0]) else float(rec.p_market_hc[0]),
+            None if np.isnan(rec.p_market_hc[1]) else float(rec.p_market_hc[1]),
+            None if np.isnan(rec.p_market_hc[2]) else float(rec.p_market_hc[2]),
+        )
+        for i, label in enumerate(labels):
+            p_final_i = float(rec.p_final_hc[i])
+            p_model_i = float(rec.p_model_hc[i])
+            ev_i = float(rec.ev_per_unit[i])
+            odds_i = float(rec.odds_hc[i])
+            full_kelly_i = float(rec.kelly_fraction[i])
+
+            if ev_i < req.min_ev:
+                # Below EV gate — surface diagnostics, no stake.
+                stake_i = 0.0
+                er_i = 0.0
+            else:
+                kr = fractional_kelly_stake(
+                    hit_probability=p_final_i,
+                    ev_per_unit=ev_i,
+                    bankroll=req.bankroll,
+                    kelly_fraction=req.kelly_fraction,
+                    max_stake_fraction=req.max_stake_fraction,
+                )
+                capped = cap_ticket_stake(kr.recommended_stake, rules)
+                stake_i = float(quantize_stake(capped, rules.stake_unit))
+                er_i = stake_i * ev_i
+
+            if stake_i > 0:
+                n_recs += 1
+                total_stake += stake_i
+                total_expected_return += er_i
+
+            outcomes_out.append(WcRecommendationOutcome(
+                outcome=label,
+                p_final=p_final_i,
+                p_model=p_model_i,
+                p_market=p_market_tuple[i],
+                odds=odds_i,
+                ev_per_unit=ev_i,
+                kelly_fraction=full_kelly_i,
+                stake=stake_i,
+                expected_return=er_i,
+            ))
+
+        matches.append(WcSingleRecMatch(
+            fixture_id=fx.fixture_id,
+            home_team=fx.home_team,
+            away_team=fx.away_team,
+            kickoff_utc=fx.kickoff_utc,
+            handicap_home=fx.handicap_home,
+            p_1x2_blended=[p_h, p_d, p_a],
+            inferred_lambda_home=float(rec.inferred_lambda_home),
+            inferred_lambda_away=float(rec.inferred_lambda_away),
+            outcomes=outcomes_out,
+        ))
+
+    return WcSingleRecResponse(
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
+        bankroll=req.bankroll,
+        n_fixtures=len(req.fixtures),
+        n_recommendations=n_recs,
+        matches=matches,
+        total_stake=total_stake,
+        total_expected_return=total_expected_return,
+        blend_alpha=req.blend_alpha,
+        lambda_total_prior=DEFAULT_WC_LAMBDA_TOTAL,
     )
