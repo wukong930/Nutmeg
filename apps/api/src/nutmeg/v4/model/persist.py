@@ -320,6 +320,24 @@ def build_features_for_fixtures(
     if not pd.api.types.is_datetime64_any_dtype(out["date"]):
         out["date"] = pd.to_datetime(out["date"])
 
+    # CRON FIX 2026-05-26 — schema alias.
+    # ``ingest_odds`` (V7 W1, API-Football source) emits ``handicap_home``;
+    # ``build_market_features`` expects ``ahch`` (football-data.co.uk
+    # historical column name). Without this alias the production daily
+    # cron crashes on a clean API-Football CSV with ``KeyError: 'ahch'``.
+    # If neither column is present (very old fixture CSV), default to NaN.
+    if "ahch" not in out.columns:
+        if "handicap_home" in out.columns:
+            out["ahch"] = out["handicap_home"]
+        else:
+            out["ahch"] = np.nan
+    # Same defensive aliases for over/under 2.5 (when only one source
+    # provides them); build_market_features needs both to compute the
+    # over-2.5 implied probability.
+    for col in ("psc_over25", "psc_under25"):
+        if col not in out.columns:
+            out[col] = np.nan
+
     # Market features: pure column transform
     out = build_market_features(out)
 

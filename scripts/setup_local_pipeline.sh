@@ -122,6 +122,20 @@ EOF
 # Common shell prefix for all jobs: cd + source .env so NUTMEG_API_FOOTBALL_KEY is set
 ENV_PREFIX="cd $REPO_ROOT && set -a && source .env && set +a"
 
+# Shared league list — both Job 1 (odds ingest) and Job 2 (recommend) must
+# see the same 13 leagues so the CSV handoff has full coverage.
+LEAGUES="EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,ENG_CHAMPIONSHIP,ESP_SEGUNDA_DIVISION,ITA_SERIE_B,GER_2_BUNDESLIGA,FRA_LIGUE_2,NED_EREDIVISIE,PRT_PRIMEIRA_LIGA,BEL_PRO_LEAGUE,JPN_J1"
+
+# Where Job 1 drops the daily CSV that Job 2 consumes. ``$(date +%Y-%m-%d)``
+# is expanded by /bin/bash at run time (not by setup_local_pipeline.sh),
+# so the plist content stays stable across days.
+DAILY_DIR="$REPO_ROOT/data/daily"
+mkdir -p "$DAILY_DIR"   # Job 1 / Job 2 don't bother re-creating per-run
+DAILY_CSV='$REPO_ROOT/data/daily/fixtures_$(date +%Y-%m-%d).csv'   # NOT expanded here — see /bin/bash -c below
+# NB: launchd plists use /bin/bash -c "<string>" so the shell will expand
+# $(date ...) and $REPO_ROOT at run time. We keep DAILY_CSV single-quoted
+# in setup so write_plist embeds the literal string.
+
 echo "Installing 7 launchd jobs into $PLIST_DIR ..."
 
 # Job 1: daily odds ingest (14:00 daily)
@@ -134,20 +148,33 @@ echo "Installing 7 launchd jobs into $PLIST_DIR ..."
 # post-v9 P1#20: UCL/UEL/UECL still excluded — cup ablation closed
 # negative (docs/post_v9_p1_20_cup_ablation_negative.md). Cups stay
 # out of cron until / unless a separate cup model ships.
+#
+# CRON FIX 2026-05-26: Job 1 now writes the CSV to a dated file so
+# Job 2 can find it. Previously the CSV went to stdout/log (unusable
+# as input). DAILY_CSV is single-quoted at install time; /bin/bash -c
+# expands $(date) + $REPO_ROOT at the 14:00 firing.
 install_job "com.nutmeg.daily_odds" \
   14 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,ENG_CHAMPIONSHIP,ESP_SEGUNDA_DIVISION,ITA_SERIE_B,GER_2_BUNDESLIGA,FRA_LIGUE_2,NED_EREDIVISIE,PRT_PRIMEIRA_LIGA,BEL_PRO_LEAGUE,JPN_J1"
+  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && mkdir -p $DAILY_DIR && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues $LEAGUES --out $DAILY_CSV"
 
-# Job 2: daily recommend + record (15:00 daily)
-# Generates recommendations using both default + lineup-aware models,
-# records each session into the observation DB. This is what populates
-# the data we need for the 4-week lineup ROI verdict + Layer A T
-# calibration.
-# post-V11 audit: expanded from EPL+La Liga to all 13 trained leagues
-# so Layer A's weekly calibration_check sees multi-league data.
+# Job 2: daily recommend + record (15:00 daily — 1h after Job 1)
+# Generates recommendations using the production model (V6 W7 lineup-aware
+# CatBoost since P1#18 ship), records each session into the observation
+# DB. This is what populates the data we need for the 4-week lineup ROI
+# verdict + Layer A T calibration.
+#
+# CRON FIX 2026-05-26: previously this called
+#   nutmeg.v4.cli.recommend --auto-fetch --leagues ...
+# which doesn't exist (recommend.py only takes --fixtures + --record-to;
+# --auto-fetch lives on nutmeg-rec which itself lacks --record-to).
+# Now: read the CSV Job 1 just wrote.
+#
+# If Job 1 failed earlier (API outage etc.), Job 2 will see "no such file"
+# and exit non-zero — the err log surfaces the upstream gap clearly
+# instead of producing silent bad data.
 install_job "com.nutmeg.daily_recommend" \
   15 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.recommend --auto-fetch --leagues EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,ENG_CHAMPIONSHIP,ESP_SEGUNDA_DIVISION,ITA_SERIE_B,GER_2_BUNDESLIGA,FRA_LIGUE_2,NED_EREDIVISIE,PRT_PRIMEIRA_LIGA,BEL_PRO_LEAGUE,JPN_J1 --record-to $DB_PATH"
+  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && $VENV_PY -m nutmeg.v4.cli.recommend --fixtures $DAILY_CSV --record-to $DB_PATH"
 
 # Job 3: weekly settle (Sunday 02:00)
 # Pulls past-week match results, settles open recommendations,
