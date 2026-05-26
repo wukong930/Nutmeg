@@ -123,6 +123,13 @@ _DOMESTIC_LEAGUE_IDS: dict[str, int] = {
     "FRA_LIGUE_2": 62,
     "NED_EREDIVISIE": 88,
     "PRT_PRIMEIRA_LIGA": 94,
+    # post-V12 audit (2026-05-26): BEL_PRO_LEAGUE was missing here despite
+    # being in our 14-league production training set (data/historical_sources
+    # /football_data_co_uk/europe/<YY>YY/B1.csv covers 5 seasons of Belgian
+    # Jupiler Pro League). The daily cron would silently skip every Belgian
+    # match with "no API-Football league ID for 'BEL_PRO_LEAGUE'" — see
+    # tests/v4/test_league_coverage.py for the guardrail.
+    "BEL_PRO_LEAGUE": 144,   # Jupiler Pro League (Belgium)
     "JPN_J1": 98,
 }
 
