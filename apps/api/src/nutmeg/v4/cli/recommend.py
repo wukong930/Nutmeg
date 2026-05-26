@@ -344,8 +344,18 @@ def main(argv: list[str] | None = None) -> int:
             })
         response_dict = {
             "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "model": {"training_cutoff": artifact.metadata.get("training_cutoff"),
-                      "trained_at_utc": artifact.metadata.get("trained_at_utc")},
+            # post-V11 audit 2026-05-26 — include model_type so the recorder
+            # tags each session with the actual artifact (catboost / lightgbm
+            # / xgboost). Without this key, recorder.py defaults the field
+            # to "lightgbm" — which silently mis-tagged every CLI-driven
+            # session (production cron uses `data/v4_model_cat_lineups`,
+            # a CatBoost artifact) and would break A/B reports that
+            # filter on `model_type`.
+            "model": {
+                "model_type": artifact.model_type,
+                "training_cutoff": artifact.metadata.get("training_cutoff"),
+                "trained_at_utc": artifact.metadata.get("trained_at_utc"),
+            },
             "bankroll": args.bankroll,
             "n_fixtures": len(fixtures),
             "n_recommendations": len(recs),
