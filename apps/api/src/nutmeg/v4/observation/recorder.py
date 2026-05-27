@@ -14,6 +14,40 @@ uniformly. Single tickets land as `k_legs=1, is_compound=False`; pool tickets
 land as `k_legs=N, is_compound=True`. WC handicap tickets land per-outcome
 as `k_legs=1, is_compound=False` with `league="WC"` so settlement picks them
 up once a WC match outcome lands in `match_outcomes`.
+
+⚠️ CRITICAL: ``stake_units`` semantics (2026-05-27 first-real-bet trap)
+=======================================================================
+``stake_units`` is the number of **atomic combinations** in the ticket,
+NOT a Chinese-lottery multiplier (倍数). Hand-rolled response payloads
+fed into ``record_session`` get this wrong on first try — including
+the project author on the first real bet recorded into prod (2026-05-27).
+
+Settlement (V4 W8) computes:
+    unit_money    = kelly_stake / stake_units
+    total_stake   = unit_money × stake_units  = kelly_stake  (always)
+    total_payout  = n_winning_combos × unit_money × odds_product
+
+Examples:
+
+  ┌──────────────────────────────┬─────────────┬──────────────┬─────────┐
+  │ Ticket                       │ stake_units │ kelly_stake  │ Real ¥  │
+  ├──────────────────────────────┼─────────────┼──────────────┼─────────┤
+  │ 单式 1 leg, ¥2               │     1       │      2.0     │  ¥2     │
+  │ 单式 2 串 1, ¥2              │     1       │      2.0     │  ¥2     │
+  │ 单式 2 串 1, **500 倍**      │     1       │   1000.0     │ ¥1000   │
+  │ 复式 1 leg × 3 内选, ¥6      │     3       │      6.0     │  ¥6     │
+  │ 复式 3 串 1, 2×2×2 = 8       │     8       │     16.0     │  ¥16    │
+  └──────────────────────────────┴─────────────┴──────────────┴─────────┘
+
+For 单式 with 倍数 multiplier: keep ``stake_units=1`` and put the full
+real-money amount in ``kelly_stake``. The combo engine (combo/enumerate.py
+``stake_units = product(leg.num_combinations())``) does this correctly for
+auto-generated recommendations; the trap is only for manual recordings.
+
+WRONG (fell into this 2026-05-27):
+    stake_units = 500   # ← treating it as 倍数
+    kelly_stake = 1000.0
+    # unit_money = 2  →  payout = 2 × odds  ❌ pays 1/500 of real
 """
 from __future__ import annotations
 

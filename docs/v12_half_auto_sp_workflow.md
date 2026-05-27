@@ -90,6 +90,45 @@ _2026-05-26 · 用户明确选择 "半自动 (手填 SP 数字)" 方案_
    [☑ 记录到观测库] [复制下注信息] [跳过]
 ```
 
+**第三态 — Directional signal (没过 +EV gate 但 model 有方向)**:
+
+_2026-05-26 V12 W0 第一笔真实下注后加入。原 V12 W3 设计只有 "+EV gate 通过 / 不通过" 两态, 实战发现用户会基于 "model 方向最强的几个 outcome" 下 directional combo, 系统需要识别这种行为并提供专用入口录入到 directional_combo arm._
+
+```
+① 法甲: Saint-Étienne vs Nice  ✓ 已计算 (19:23 输入)
+   Model: λ_h=1.31 λ_a=1.30
+   
+   ✗ 严格 +EV gate: 不下注 (6/6 outcome EV < 5%)
+   
+   ⚠️ Directional signal (model 最看好的 3 个 outcome, 但都 -EV):
+   ┌────────────────────────────────────────────────────────┐
+   │ 1. 让负   P=64.18%  SP=1.51   EV=-3.08%  ← 最强方向    │
+   │ 2. 客胜   P=35.35%  SP=2.75   EV=-2.78%                │
+   │ 3. 让平   P=28.45%  SP=3.40   EV=-3.27%                │
+   └────────────────────────────────────────────────────────┘
+   
+   [✗ 严格 +EV gate: 不下注]                ← 默认/推荐
+   [⚠️ Directional combo: 接受 -EV, 选 #1+#2 串关]   ← 知情用户选项
+                                                  ↓
+                                          点击后弹出确认:
+                                          "Combo P (indep) = 22.7%
+                                           Combo SP = 4.15
+                                           Combo EV = -5.8%  (long-term -¥58/¥1000)
+                                           
+                                           ⚠️ 这是 model 视角的 -EV 注.
+                                              Long-term 期望亏损.
+                                              要继续吗?"
+                                          [取消] [记录到 directional_combo arm]
+```
+
+**录入时**:
+- session `model_type = "user_directional_combo"`
+- 不算 +EV 推荐, 只记录 model 给出的 P + 用户选的 outcomes
+- 4 周后 `nutmeg-ab-report` 会显示 3 条 arm 的对照:
+  - `model_recommended` (严格 +EV gate 通过的)
+  - `user_directional_combo` (这条新 arm)
+  - `manual` (用户高级 tab 手填的其他 SP)
+
 ---
 
 ## 3. 工程量
@@ -206,6 +245,8 @@ cron 15:00:    recommend.py 试图算 → 但 CSV 缺竞彩 SP → 0 recommendat
 | inline 输入 SP → 算 EV → 显示推荐 | Playwright E2E |
 | `min_ev=5%` 门槛保护正确 (no-bet on negative EV) | unit + integration |
 | 记录到观测库 checkbox 工作 | integration |
+| **Directional signal 第三态卡片显示** (model 最强 K 个 -EV outcome) | unit |
+| **Directional combo 录入走 `model_type=user_directional_combo` arm** | integration |
 | 全套 1508 + N 新测试 | `pytest tests/v4/` |
 
 ---
@@ -215,8 +256,9 @@ cron 15:00:    recommend.py 试图算 → 但 CSV 缺竞彩 SP → 0 recommendat
 | 项 | 值 |
 |---|---|
 | 目标 | 半自动 — cron 预填 + 用户只输 SP |
-| 工程量 | 3-4 天 |
+| 工程量 | 3-4 天 (+ ~0.5 天 directional signal 第三态) |
 | 何时做 | 明天 cron 数据起来后 (5-30 之后) |
 | 设计 | 借鉴 V11 post-ship 的 WC 让球 form 模式 |
 | 影响范围 | dashboard 今日推荐 tab + 1 新 endpoint |
+| UX 状态 | 3 态: +EV 推荐 / 不下注 / **Directional signal (V12 W0 加)** |
 | 不做的事 | 爬虫 / 全自动 SP 抓取 |
