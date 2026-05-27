@@ -414,6 +414,26 @@ class TodaySummary(BaseModel):
         "Stake-weighted average EV. None if total_stake == 0.")
 
 
+class PlayoffWarning(BaseModel):
+    """V12 W0 — one fixture flagged as likely playoff/barrage context.
+
+    The model has no playoff feature; SP buyers (Pinnacle sharps) do
+    price-adjust but we can't decompose vig. Dashboard renders these as
+    a ⚠️ banner so the user knows model output is uncalibrated for
+    end-of-season high-stakes fixtures.
+    """
+    league: str = Field(..., description="V4 canonical league code, e.g. FRA_LIGUE_1")
+    home_team: str
+    away_team: str
+    date: str = Field(..., description="ISO YYYY-MM-DD")
+    context: str = Field(..., description=(
+        "Short human-readable label, e.g. 'Ligue 1 barrage de relegation'."
+    ))
+    model_bias_note: str = Field(..., description=(
+        "Why the model is wrong-for-this-context — surfaced in banner tooltip."
+    ))
+
+
 class TodayRecommendationsDiff(BaseModel):
     """V11 P1-FE#5 — describes what changed vs the caller's prev_version.
 
@@ -476,6 +496,18 @@ class TodayRecommendationsResponse(BaseModel):
     # server fills in a diff describing what changed (per-rec changed
     # selection_fingerprints + odds_changed flag).
     diff: Optional["TodayRecommendationsDiff"] = None
+    # V12 W0 (2026-05-27) — fixtures detected as falling within a known
+    # playoff / barrage / end-of-season high-stakes window. Model has no
+    # feature for this; banner alerts the user. See data/playoff_context.py.
+    # Empty list when no fixtures hit a window — banner stays hidden.
+    playoff_warnings: list[PlayoffWarning] = Field(
+        default_factory=list,
+        description=(
+            "Fixtures in a known playoff/barrage date window. Coarse "
+            "hard-coded heuristic — V13 P1 will replace with a real "
+            "training feature."
+        ),
+    )
 
 
 # ---------- /predictions/wc (V10 W1 Track B Day 5) ----------

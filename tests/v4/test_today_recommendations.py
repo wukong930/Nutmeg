@@ -247,6 +247,83 @@ class TestTodayRecommendationsDefaults:
         req = TodayRecommendationsRequest()
         assert req.bankroll == 1000.0
 
+
+class TestTodayRecommendationsPlayoffWarnings:
+    """V12 W0 (2026-05-27) — endpoint surfaces fixtures in playoff windows."""
+
+    def test_playoff_window_fixture_produces_warning(self, client):
+        """法甲 fixture on 2026-05-26 (Ligue 1 barrage window) → warning."""
+        fake_rows = [
+            _make_fixture_row("Saint Etienne", "Nice",
+                              league="FRA_LIGUE_1", dt="2026-05-26"),
+        ]
+        with patch(
+            "nutmeg.v4.cli.ingest_odds._gather_rows",
+            return_value=(fake_rows, 1, 0),
+        ):
+            resp = client.post(
+                "/api/v4/today-recommendations",
+                json={"leagues": ["FRA_LIGUE_1"], "bankroll": 1000.0,
+                      "date": "2026-05-26"},
+            )
+
+        if resp.status_code == 503:
+            pytest.skip("Production artifact not available")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        warnings = body.get("playoff_warnings", [])
+        assert len(warnings) == 1
+        w = warnings[0]
+        assert w["league"] == "FRA_LIGUE_1"
+        assert w["home_team"] == "Saint Etienne"
+        assert w["away_team"] == "Nice"
+        assert w["date"] == "2026-05-26"
+        assert "barrage" in w["context"].lower()
+        assert w["model_bias_note"].strip()
+
+    def test_non_playoff_window_produces_no_warning(self, client):
+        """EPL fixture (no playoff window configured for EPL) → empty list."""
+        fake_rows = [
+            _make_fixture_row("Arsenal", "Liverpool",
+                              league="EPL", dt="2026-05-26"),
+        ]
+        with patch(
+            "nutmeg.v4.cli.ingest_odds._gather_rows",
+            return_value=(fake_rows, 1, 0),
+        ):
+            resp = client.post(
+                "/api/v4/today-recommendations",
+                json={"leagues": ["EPL"], "bankroll": 1000.0,
+                      "date": "2026-05-26"},
+            )
+
+        if resp.status_code == 503:
+            pytest.skip("Production artifact not available")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("playoff_warnings", []) == []
+
+    def test_empty_fixtures_returns_empty_warnings(self, client):
+        """0 fixtures → playoff_warnings is [] (not missing, not null)."""
+        with patch(
+            "nutmeg.v4.cli.ingest_odds._gather_rows",
+            return_value=([], 0, 0),
+        ):
+            resp = client.post(
+                "/api/v4/today-recommendations",
+                json={"leagues": ["EPL"], "bankroll": 1000.0,
+                      "date": "2026-05-26"},
+            )
+
+        if resp.status_code == 503:
+            pytest.skip("Production artifact not available")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["playoff_warnings"] == []
+
     def test_default_include_is_all_four(self):
         """V11 P1-FE#4: pool added; V11 post-ship: 'wc' added.
         Default now covers single + parlay + pool + WC (informational)."""

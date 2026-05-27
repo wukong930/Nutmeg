@@ -366,6 +366,66 @@
     from { opacity: 0; transform: translateY(-8px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  /* ── V12 W0 (2026-05-27) — playoff/barrage warning banner ────────
+     Distinct from update-banner: amber/orange tone signals caution
+     ("model is uncalibrated for these fixtures"), not a positive
+     "推荐已更新" notice. */
+  .playoff-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(245,158,11,0.16), rgba(245,158,11,0.06));
+    border: 1px solid rgba(245,158,11,0.5);
+    color: var(--text-primary);
+    animation: update-banner-slidedown 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .playoff-banner-icon {
+    font-size: 20px;
+    line-height: 1.1;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .playoff-banner-body {
+    flex: 1;
+    min-width: 0;
+  }
+  .playoff-banner-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: #b45309;  /* amber-700 */
+    margin-bottom: 6px;
+  }
+  .playoff-banner-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .playoff-banner-list li {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+  .playoff-banner-list .playoff-fixture {
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .playoff-banner-list .playoff-context {
+    color: var(--accent-gold);
+    font-size: 12px;
+    margin-left: 6px;
+  }
+  .playoff-banner-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.45;
+  }
+
   /* Inline "已更新" badge next to a changed rec card. The card itself
      also gets a subtle gold outline on the right side. */
   .badge-updated {
@@ -622,6 +682,25 @@
       <span id="today-update-banner-text" class="update-banner-text" data-i18n="banner_updated">推荐已更新</span>
       <button id="today-update-banner-dismiss" type="button" class="update-banner-dismiss"
               aria-label="关闭通知">×</button>
+    </div>
+
+    <!-- V12 W0 (2026-05-27) — playoff/barrage warning banner.
+         Visible when at least one fixture falls in a known
+         playoff/barrage date window (server-side detect_playoff()).
+         Renders amber/orange to signal caution about model accuracy. -->
+    <div id="today-playoff-banner" class="hidden playoff-banner mb-6"
+         role="status" aria-live="polite">
+      <span class="playoff-banner-icon" aria-hidden="true">⚠️</span>
+      <div class="playoff-banner-body">
+        <div class="playoff-banner-title" data-i18n="playoff_banner_title">
+          检测到附加赛 — 模型未针对此类比赛校准
+        </div>
+        <ul id="today-playoff-list" class="playoff-banner-list"></ul>
+        <div class="playoff-banner-note" data-i18n="playoff_banner_note">
+          训练集只见过常规联赛, 没标记 "升降级附加赛 / 决胜战" 这种语境。
+          建议: 把模型 P 看作下限, 谨慎参考。
+        </div>
+      </div>
     </div>
 
     <!-- Summary card -->
@@ -1167,6 +1246,9 @@ const I18N = {
     risk_balanced:       '中',
     risk_aggressive:     '激进',
     h_today_pool:        '③ 复式推荐',
+    // V12 W0 (2026-05-27) — playoff/barrage warning banner
+    playoff_banner_title: '检测到附加赛 — 模型未针对此类比赛校准',
+    playoff_banner_note:  '训练集只见过常规联赛, 没标记 "升降级附加赛 / 决胜战" 这种语境。建议: 把模型 P 看作下限, 谨慎参考。',
     // V11 P1-FE#3 — 推荐追溯
     tab_history:         '📜 推荐追溯',
     h_history_title:     '推荐追溯',
@@ -1352,6 +1434,9 @@ const I18N = {
     risk_balanced:       'Balanced',
     risk_aggressive:     'Aggressive',
     h_today_pool:        '③ Pool bets',
+    // V12 W0 (2026-05-27) — playoff/barrage warning banner
+    playoff_banner_title: 'Playoff context detected — model is not calibrated for these',
+    playoff_banner_note:  'Training set only saw regular-season league matches; no feature flags promotion / relegation playoffs or barrage. Treat the model probability as a floor and exercise judgment.',
     // V11 P1-FE#3 — Recommendations history
     tab_history:         '📜 History',
     h_history_title:     'Recommendation history',
@@ -2204,6 +2289,28 @@ function renderTodayParlay(parlay) {
   }).join('');
 }
 
+// V12 W0 (2026-05-27) — playoff/barrage warning banner.
+// body.playoff_warnings is a list of {league, home_team, away_team,
+// date, context, model_bias_note}. Each fixture in a known playoff
+// date window appears once. Empty list → banner hidden.
+function renderTodayPlayoffWarnings(warnings) {
+  const banner = $('#today-playoff-banner');
+  const list = $('#today-playoff-list');
+  if (!warnings || warnings.length === 0) {
+    banner.classList.add('hidden');
+    return;
+  }
+  list.innerHTML = warnings.map(w => {
+    const home = (typeof zhTeam === 'function') ? zhTeam(w.home_team) : w.home_team;
+    const away = (typeof zhTeam === 'function') ? zhTeam(w.away_team) : w.away_team;
+    return `<li>
+      <span class="playoff-fixture">${home} vs ${away}</span>
+      <span class="playoff-context">— ${w.context}</span>
+    </li>`;
+  }).join('');
+  banner.classList.remove('hidden');
+}
+
 function renderTodaySummary(body) {
   const card = $('#today-summary');
   card.classList.remove('hidden');
@@ -2449,6 +2556,7 @@ async function loadTodayRecommendations() {
     _writeLastFingerprints(newFps);
 
     renderTodaySummary(body);
+    renderTodayPlayoffWarnings(body.playoff_warnings);
     renderTodaySingle(body.single);
     renderTodayParlay(body.parlay);
     renderTodayPool(body.pool);

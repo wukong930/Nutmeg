@@ -29,6 +29,7 @@ from nutmeg.v4.api.schemas import (
     ModelInfo,
     PoolFixturePick,
     PoolLegResponse,
+    PlayoffWarning,
     PoolRecommendRequest,
     PoolRecommendResponse,
     PoolTicketResponse,
@@ -316,7 +317,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v11-fe-wc-handicap-today';
+const CACHE_VERSION = 'nutmeg-v12-fe-w0-playoff-warning';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1177,6 +1178,28 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
     fixtures = _fixture_rows_to_inputs(rows)
     fixtures_fetched = len(fixtures)
 
+    # V12 W0 (2026-05-27) — flag fixtures in known playoff/barrage windows.
+    # Model has no playoff feature; dashboard renders these as ⚠️ banner.
+    # See apps/api/src/nutmeg/v4/data/playoff_context.py
+    from nutmeg.v4.data.playoff_context import detect_playoff
+
+    playoff_warnings: list[PlayoffWarning] = []
+    for f in fixtures:
+        w = detect_playoff(f.league, f.date)
+        if w is None:
+            continue
+        # f.date may be a datetime.date (Pydantic-parsed from ISO string);
+        # coerce to ISO string for the response model.
+        _date_str = f.date.isoformat() if hasattr(f.date, "isoformat") else str(f.date)
+        playoff_warnings.append(PlayoffWarning(
+            league=f.league,
+            home_team=f.home_team,
+            away_team=f.away_team,
+            date=_date_str,
+            context=w.context,
+            model_bias_note=w.model_bias_note,
+        ))
+
     single_resp: SingleRecommendResponse | None = None
     parlay_resp: RecommendResponse | None = None
     pool_resp: PoolRecommendResponse | None = None
@@ -1362,6 +1385,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
         ),
         version_hash=_top_hash,
         diff=diff_block,
+        playoff_warnings=playoff_warnings,
     )
 
 
