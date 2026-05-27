@@ -290,6 +290,13 @@ _2_BUNDESLIGA: Dict[str, str] = {
     "1. FC Nurnberg": "纽伦堡",
     "Greuther Furth": "菲尔特",
     "Greuther Fürth": "菲尔特",
+    "SpVgg Greuther Fürth": "菲尔特",
+    "SpVgg Greuther Furth": "菲尔特",
+    # 3.Liga / Relegations-Playoff opponents (2026-05-27 — Rot-Weiß Essen
+    # faced Greuther Fürth in the 2.BL↔3.Liga playoff)
+    "Rot-Weiß Essen": "红白埃森",
+    "Rot-Weiss Essen": "红白埃森",
+    "RW Essen": "红白埃森",
     "Fortuna Dusseldorf": "杜塞尔多夫",
     "Dusseldorf": "杜塞尔多夫",
     "Paderborn": "帕德博恩",
@@ -371,7 +378,9 @@ _EREDIVISIE: Dict[str, str] = {
 }
 
 
-# ============ Primeira Liga (葡超) — 2024-25 ==========================
+# ============ Primeira Liga (葡超) — 2024-25 / 2025-26 ==================
+# Also includes LigaPro (second tier) teams that surface via the
+# end-of-season Promotion Playoff (3rd-place LigaPro vs 14th-place Primeira).
 _PRIMEIRA: Dict[str, str] = {
     "Porto": "波尔图",
     "FC Porto": "波尔图",
@@ -390,15 +399,39 @@ _PRIMEIRA: Dict[str, str] = {
     "Estoril": "埃斯托里尔",
     "Estoril Praia": "埃斯托里尔",
     "Estrela Amadora": "阿马多拉之星",
+    "CF Estrela Amadora": "阿马多拉之星",
     "Casa Pia": "卡萨皮亚",
+    "Casa Pia AC": "卡萨皮亚",
     "Rio Ave": "里奥艾维",
     "Arouca": "阿罗卡",
     "Farense": "法伦塞",
     "AVS": "AVS 体育",  # club uses bare-initials brand; suffix added for zh consistency
+    "AVS Futebol SAD": "AVS 体育",
     "Gil Vicente": "维森特",
     "Nacional": "纳西奥纳",
+    "CD Nacional": "纳西奥纳",
     "Santa Clara": "圣克拉拉",
     "Maritimo": "马里迪莫",
+    # ── LigaPro Promotion Playoff opponents (2026-05-27 — Torreense
+    # faced Casa Pia in the 2025-26 Liga↔LigaPro playoff)
+    "Torreense": "托雷恩塞",
+    "SC Torreense": "托雷恩塞",
+    "Tondela": "通德拉",
+    "CD Tondela": "通德拉",
+    "Académico Viseu": "维塞乌学院",
+    "Academico Viseu": "维塞乌学院",
+    "AVS Viseu": "维塞乌学院",
+    "Vizela": "维泽拉",
+    "FC Vizela": "维泽拉",
+    "Penafiel": "佩纳菲尔",
+    "FC Penafiel": "佩纳菲尔",
+    "Chaves": "查韦斯",
+    "GD Chaves": "查韦斯",
+    "Mafra": "马夫拉",
+    "CD Mafra": "马夫拉",
+    "União de Leiria": "莱里亚",
+    "Uniao de Leiria": "莱里亚",
+    "Leiria": "莱里亚",
 }
 
 
