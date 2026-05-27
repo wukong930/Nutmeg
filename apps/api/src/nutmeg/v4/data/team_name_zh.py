@@ -496,6 +496,106 @@ _JPN_J1: Dict[str, str] = {
 }
 
 
+# ============ National teams (国家队 — WC / EURO / COPA America) ========
+# V12 W0 (2026-05-27) — added because WC tab was displaying raw English
+# names. Covers all 67 nations in NATION_CLUBELO_CODES (V8 W7) plus the
+# common API-Football spelling variants. Variants point at the same
+# Chinese name to keep lookup robust against source inconsistencies.
+_NATIONAL_TEAMS: Dict[str, str] = {
+    # ── UEFA ──────────────────────────────────────────────────
+    "England": "英格兰",
+    "France": "法国",
+    "Spain": "西班牙",
+    "Germany": "德国",
+    "Italy": "意大利",
+    "Netherlands": "荷兰",
+    "Holland": "荷兰",
+    "Portugal": "葡萄牙",
+    "Belgium": "比利时",
+    "Croatia": "克罗地亚",
+    "Switzerland": "瑞士",
+    "Austria": "奥地利",
+    "Poland": "波兰",
+    "Denmark": "丹麦",
+    "Sweden": "瑞典",
+    "Turkey": "土耳其",
+    "Türkiye": "土耳其",
+    "Russia": "俄罗斯",
+    "Ukraine": "乌克兰",
+    "Czech Republic": "捷克",
+    "Czechia": "捷克",
+    "Romania": "罗马尼亚",
+    "Scotland": "苏格兰",
+    "Wales": "威尔士",
+    "Republic of Ireland": "爱尔兰",
+    "Ireland": "爱尔兰",
+    "Rep. Of Ireland": "爱尔兰",
+    "Northern Ireland": "北爱尔兰",
+    "Serbia": "塞尔维亚",
+    "Greece": "希腊",
+    "Norway": "挪威",
+    "Hungary": "匈牙利",
+    "Slovakia": "斯洛伐克",
+    "Slovenia": "斯洛文尼亚",
+    "Albania": "阿尔巴尼亚",
+    "Bosnia and Herzegovina": "波黑",
+    "Bosnia": "波黑",
+    "Bosnia & Herzegovina": "波黑",
+    "Bulgaria": "保加利亚",
+    "Iceland": "冰岛",
+    "Finland": "芬兰",
+    "Georgia": "格鲁吉亚",
+    "North Macedonia": "北马其顿",
+    "Macedonia": "北马其顿",
+    "FYR Macedonia": "北马其顿",
+
+    # ── CONMEBOL ──────────────────────────────────────────────
+    "Brazil": "巴西",
+    "Argentina": "阿根廷",
+    "Uruguay": "乌拉圭",
+    "Colombia": "哥伦比亚",
+    "Chile": "智利",
+    "Peru": "秘鲁",
+    "Ecuador": "厄瓜多尔",
+    "Paraguay": "巴拉圭",
+    "Bolivia": "玻利维亚",
+    "Venezuela": "委内瑞拉",
+
+    # ── CONCACAF ──────────────────────────────────────────────
+    "USA": "美国",
+    "United States": "美国",
+    "Mexico": "墨西哥",
+    "Canada": "加拿大",
+    "Costa Rica": "哥斯达黎加",
+    "Jamaica": "牙买加",
+    "Honduras": "洪都拉斯",
+    "Panama": "巴拿马",
+
+    # ── AFC + AFC-cross ───────────────────────────────────────
+    "Japan": "日本",
+    "Korea Republic": "韩国",
+    "South Korea": "韩国",
+    "Australia": "澳大利亚",
+    "Iran": "伊朗",
+    "Saudi Arabia": "沙特阿拉伯",
+    "Qatar": "卡塔尔",
+    "China PR": "中国",
+    "China": "中国",
+
+    # ── CAF ───────────────────────────────────────────────────
+    "Morocco": "摩洛哥",
+    "Senegal": "塞内加尔",
+    "Egypt": "埃及",
+    "Tunisia": "突尼斯",
+    "Algeria": "阿尔及利亚",
+    "Nigeria": "尼日利亚",
+    "Cameroon": "喀麦隆",
+    "Ghana": "加纳",
+    "Ivory Coast": "科特迪瓦",
+    "Côte d'Ivoire": "科特迪瓦",
+}
+
+
 # ============ Combined lookup =========================================
 TEAM_NAME_ZH: Dict[str, str] = {}
 TEAM_NAME_ZH.update(_EPL)
@@ -513,6 +613,8 @@ TEAM_NAME_ZH.update(_EREDIVISIE)
 TEAM_NAME_ZH.update(_PRIMEIRA)
 TEAM_NAME_ZH.update(_BEL_PRO)
 TEAM_NAME_ZH.update(_JPN_J1)
+# V12 W0 (2026-05-27) — national teams (WC / EURO / Copa America)
+TEAM_NAME_ZH.update(_NATIONAL_TEAMS)
 
 
 def lookup_zh(team_name: str) -> str:
@@ -567,5 +669,7 @@ def coverage_by_league() -> Dict[str, int]:
         "PRT_PRIMEIRA_LIGA":       len(_PRIMEIRA),
         "BEL_PRO_LEAGUE":          len(_BEL_PRO),
         "JPN_J1":                  len(_JPN_J1),
+        # V12 W0 — WC / EURO / Copa America
+        "NATIONAL_TEAMS":          len(_NATIONAL_TEAMS),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }
