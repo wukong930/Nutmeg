@@ -317,7 +317,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v12-fe-w0-history-regex-fix';
+const CACHE_VERSION = 'nutmeg-v12-fe-w0-kickoff-filter';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1155,7 +1155,12 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
                 detail=f"date must be ISO YYYY-MM-DD: {exc}",
             )
 
-    # Fetch fixtures (uses API-Football; will use cache if available)
+    # Fetch fixtures (uses API-Football; will use cache if available).
+    # V12 W0 (2026-05-28) — auto-filter fixtures that have already kicked
+    # off (or are about to in next 5 min). This is what makes the morning
+    # + afternoon cron waves produce different optimal sets, AND what
+    # keeps the dashboard showing the *current* state (e.g., at 16:00
+    # J1 matches are filtered out because they're done).
     try:
         rows, _n_calls, _n_skipped = _gather_rows(
             req.leagues,
@@ -1164,6 +1169,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             bookmaker_id=PINNACLE_BOOKMAKER_ID,
             refresh_fixtures=False,
             refresh_odds=False,
+            min_kickoff_buffer_minutes=5,
         )
     except Exception as exc:  # noqa: BLE001
         # API-Football errors (rate limit, network, missing key) → return

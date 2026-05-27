@@ -2,13 +2,15 @@
 # post-v9 P1#16 — one-shot install of the local Nutmeg data pipeline (macOS).
 #
 # Installs 7 launchd jobs into ~/Library/LaunchAgents:
-#   1. com.nutmeg.daily_odds                  14:00 daily — fetch today's odds
-#   2. com.nutmeg.daily_recommend             15:00 daily — generate recommendations + record session
-#   3. com.nutmeg.weekly_settle               Sunday 02:00 — settle past-week outcomes + write ROI report
-#   4. com.nutmeg.weekly_gate                 Sunday 04:00 — P1#19 live-vs-backtest gate
-#   5. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
-#   6. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
-#   7. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
+#   1. com.nutmeg.morning_odds                09:00 daily — V12 W0 Plan A: fetch odds for Asian + future European
+#   2. com.nutmeg.morning_recommend           10:00 daily — V12 W0 Plan A: morning wave recommendations
+#   3. com.nutmeg.daily_odds                  14:00 daily — afternoon wave (European-only by kickoff filter)
+#   4. com.nutmeg.daily_recommend             15:00 daily — afternoon wave recommendations
+#   5. com.nutmeg.weekly_settle               Sunday 02:00 — settle past-week outcomes + write ROI report
+#   6. com.nutmeg.weekly_gate                 Sunday 04:00 — P1#19 live-vs-backtest gate
+#   7. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
+#   8. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
+#   9. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
 # (no plaintext key in plists). Logs go to logs/launchd/.
@@ -132,13 +134,43 @@ LEAGUES="EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,ENG_CHAMPIONSHIP
 DAILY_DIR="$REPO_ROOT/data/daily"
 mkdir -p "$DAILY_DIR"   # Job 1 / Job 2 don't bother re-creating per-run
 DAILY_CSV='$REPO_ROOT/data/daily/fixtures_$(date +%Y-%m-%d).csv'   # NOT expanded here — see /bin/bash -c below
+# V12 W0 Plan A — morning wave CSV (J1 + future European fixtures). The
+# afternoon CSV overwrites this 4 hours later (still same day file) with
+# the post-J1 European-only set.
+MORNING_CSV='$REPO_ROOT/data/daily/fixtures_$(date +%Y-%m-%d)_morning.csv'
 # NB: launchd plists use /bin/bash -c "<string>" so the shell will expand
 # $(date ...) and $REPO_ROOT at run time. We keep DAILY_CSV single-quoted
 # in setup so write_plist embeds the literal string.
 
-echo "Installing 7 launchd jobs into $PLIST_DIR ..."
+echo "Installing 9 launchd jobs into $PLIST_DIR ..."
 
-# Job 1: daily odds ingest (14:00 daily)
+# ── V12 W0 Plan A — Morning wave (09:00 + 10:00) ───────────────────────
+# Why: J1 has weekend kickoffs at 12:00-14:00 CST. The 14:00 cron is
+# already too late for those. By running the ingest at 09:00 (3+ hours
+# before earliest J1 kickoff) and recommending at 10:00, we capture
+# Pinnacle closing-line SP for Asian fixtures while it's still actionable.
+#
+# Filter: --min-kickoff-buffer-minutes 30 drops any fixture that's already
+# kicked off OR will kick off in < 30 min. So this CSV contains J1
+# 12:00+ matches + all future European fixtures.
+#
+# The afternoon cron at 14:00 (Job 1) re-runs the same filter, but by
+# then any J1 12:00/14:00 matches are inside the buffer (or finished),
+# so they're filtered out → afternoon CSV is European-only.
+#
+# Both waves write distinct sessions to the observation DB. Dashboard
+# /today-recommendations applies the same filter on each request, so
+# users always see "best combo over still-actionable fixtures right
+# now". 推荐追溯 surfaces both waves under the same date.
+install_job "com.nutmeg.morning_odds" \
+  9 0 "" \
+  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && mkdir -p $DAILY_DIR && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues $LEAGUES --min-kickoff-buffer-minutes 30 --out $MORNING_CSV"
+
+install_job "com.nutmeg.morning_recommend" \
+  10 0 "" \
+  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && $VENV_PY -m nutmeg.v4.cli.recommend --fixtures $MORNING_CSV --record-to $DB_PATH"
+
+# Job 1: daily odds ingest (14:00 daily) — afternoon European wave
 # Pulls today's odds across all 13 trained leagues (top 5 + 5 second-tier
 # + Eredivisie + Liga Portugal + Belgian Pro League + J League J1).
 # post-V11 audit (2026-05-25): the production model covers all 13 since
@@ -153,9 +185,13 @@ echo "Installing 7 launchd jobs into $PLIST_DIR ..."
 # Job 2 can find it. Previously the CSV went to stdout/log (unusable
 # as input). DAILY_CSV is single-quoted at install time; /bin/bash -c
 # expands $(date) + $REPO_ROOT at the 14:00 firing.
+#
+# V12 W0 Plan A: --min-kickoff-buffer-minutes 30 filters out already-
+# kicked-off Asian fixtures (J1 12:00 weekend matches finish around
+# 13:50 CST), so the afternoon CSV is naturally European-only.
 install_job "com.nutmeg.daily_odds" \
   14 0 "" \
-  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && mkdir -p $DAILY_DIR && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues $LEAGUES --out $DAILY_CSV"
+  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && mkdir -p $DAILY_DIR && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues $LEAGUES --min-kickoff-buffer-minutes 30 --out $DAILY_CSV"
 
 # Job 2: daily recommend + record (15:00 daily — 1h after Job 1)
 # Generates recommendations using the production model (V6 W7 lineup-aware
@@ -238,6 +274,8 @@ install_job "com.nutmeg.daily_wc_settle" \
 
 echo ""
 echo "✓ Done. Jobs are loaded. Logs:"
+echo "    $LOG_DIR/com.nutmeg.morning_odds.{out,err}.log"
+echo "    $LOG_DIR/com.nutmeg.morning_recommend.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_odds.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_recommend.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_settle.{out,err}.log"
@@ -249,7 +287,7 @@ echo ""
 echo "Next:"
 echo "  • Verify with: ./scripts/health_check.sh"
 echo "  • Inspect jobs: launchctl list | grep com.nutmeg"
-echo "  • Daily timeline: 02:00 wc_settle → 03:00 calibration → 09:00 wc_predict → 14:00 odds → 15:00 recommend"
+echo "  • Daily timeline: 02:00 wc_settle → 03:00 calibration → 09:00 morning_odds + wc_predict → 10:00 morning_recommend → 14:00 daily_odds → 15:00 daily_recommend"
 echo "  • Weekly gate reports land at: $GATE_OUT_DIR/p1_19_gate_<ISO-week>.md"
 echo "  • Weekly calibration reports land at: $CALIB_OUT_DIR/auto_calibration_<ISO-week>.md"
 echo "  • Daily WC reports land at: $WC_OUT_DIR/wc_report_<YYYY-MM-DD>.md"

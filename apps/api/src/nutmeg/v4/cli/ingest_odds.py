@@ -58,7 +58,20 @@ CSV_COLUMNS = [
     "handicap_home",
     "odds_1x2_H", "odds_1x2_D", "odds_1x2_A",
     "odds_handicap_H", "odds_handicap_D", "odds_handicap_A",
+    # V12 W0 (2026-05-28) — kickoff context for time-window filtering
+    # (Plan A: morning + afternoon waves can produce different optimal
+    # solutions because the set of "still-upcoming" fixtures differs).
+    "kickoff_utc",
+    "status_short",
 ]
+
+# Statuses meaning "fixture is upcoming, not yet started" (per API-Football):
+#   NS   = Not Started (the normal case)
+#   TBD  = To Be Defined (kickoff time unconfirmed)
+#   POSTP = Postponed (rescheduled, may move to later date)
+# Anything else (IN_PLAY, HT, FT, ABD, CANC, etc.) means the match is no
+# longer pre-game and the closing odds aren't actionable.
+_UPCOMING_STATUSES: frozenset[str] = frozenset({"NS", "TBD", "POSTP", ""})
 
 
 def _parse_date(s: str) -> dt.date:
@@ -73,14 +86,37 @@ def _gather_rows(
     bookmaker_id: int,
     refresh_fixtures: bool,
     refresh_odds: bool,
+    min_kickoff_buffer_minutes: int = 0,
+    now_utc: Optional[dt.datetime] = None,
 ) -> tuple[list[dict], int, int]:
     """Walk leagues × today's fixtures × /odds and produce CSV-ready rows.
 
     Returns (rows, n_api_calls, n_skipped_no_odds).
+
+    V12 W0 (2026-05-28) Plan A — pass ``min_kickoff_buffer_minutes`` > 0
+    to drop fixtures that are already kicked off (or about to kick off
+    within the buffer). This is what lets the morning + afternoon cron
+    waves produce different optimal recommendation sets: at 10:00 we
+    include J1 12:00 matches; by 14:00 those are filtered out (started
+    or already finished), leaving European fixtures only.
+
+    Filtering rules (a fixture is dropped if ANY is true):
+      - status_short ∉ {"NS", "TBD", "POSTP", ""}  (already kicked off
+        or finished — closing odds no longer actionable)
+      - kickoff_utc <= now_utc + buffer  (will start within buffer; too
+        late to act on this recommendation safely)
+
+    ``now_utc`` overrideable for tests; defaults to ``datetime.now(UTC)``.
     """
     rows: list[dict] = []
     api_calls = 0
     n_skipped = 0
+
+    if now_utc is None:
+        now_utc = dt.datetime.now(dt.UTC)
+    elif now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=dt.UTC)
+    cutoff_utc = now_utc + dt.timedelta(minutes=min_kickoff_buffer_minutes)
 
     for league in leagues:
         try:
@@ -101,6 +137,37 @@ def _gather_rows(
             fid = fixture.get("fixture", {}).get("id")
             if fid is None:
                 continue
+
+            # V12 W0 — pre-flight time-window filter (skip API /odds call
+            # for already-kicked-off fixtures to save quota).
+            if min_kickoff_buffer_minutes > 0:
+                f_payload = fixture.get("fixture", {})
+                status = f_payload.get("status", {}).get("short", "")
+                iso_date = f_payload.get("date", "")
+                if status not in _UPCOMING_STATUSES:
+                    log.debug(
+                        "skip fixture %s: status=%r (already kicked off)",
+                        fid, status,
+                    )
+                    n_skipped += 1
+                    continue
+                if iso_date:
+                    try:
+                        kickoff = dt.datetime.fromisoformat(iso_date)
+                        if kickoff.tzinfo is None:
+                            kickoff = kickoff.replace(tzinfo=dt.UTC)
+                        if kickoff <= cutoff_utc:
+                            log.debug(
+                                "skip fixture %s: kickoff %s <= cutoff %s",
+                                fid, iso_date, cutoff_utc.isoformat(),
+                            )
+                            n_skipped += 1
+                            continue
+                    except (ValueError, TypeError):
+                        # Bad/missing ISO timestamp — let it through, the
+                        # downstream model will deal with it
+                        pass
+
             try:
                 odds_payload = api_football.fetch_odds(
                     fid, cache_dir=cache_dir, refresh=refresh_odds,
@@ -190,6 +257,18 @@ def main(argv: list[str] | None = None) -> int:
         default="-",
         help="Output path; '-' for stdout (default)",
     )
+    p.add_argument(
+        "--min-kickoff-buffer-minutes",
+        type=int,
+        default=0,
+        help=(
+            "V12 W0 — drop fixtures whose kickoff is within this many "
+            "minutes from now (or already started). 0 disables (legacy). "
+            "Recommended for live cron: 30 (give ~30 min buffer to act). "
+            "When set, fixtures with status_short ∉ {NS,TBD,POSTP} are "
+            "also dropped pre-emptively (saves /odds API calls)."
+        ),
+    )
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
 
@@ -208,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         bookmaker_id=args.bookmaker_id,
         refresh_fixtures=args.refresh_fixtures,
         refresh_odds=args.refresh_odds,
+        min_kickoff_buffer_minutes=args.min_kickoff_buffer_minutes,
     )
 
     log.info(

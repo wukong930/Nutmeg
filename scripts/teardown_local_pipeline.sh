@@ -11,6 +11,8 @@ set -euo pipefail
 
 PLIST_DIR="$HOME/Library/LaunchAgents"
 JOBS=(
+  "com.nutmeg.morning_odds"           # V12 W0 Plan A — Asian + future EU
+  "com.nutmeg.morning_recommend"      # V12 W0 Plan A
   "com.nutmeg.daily_odds"
   "com.nutmeg.daily_recommend"
   "com.nutmeg.weekly_settle"

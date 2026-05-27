@@ -175,6 +175,11 @@ def fixture_envelope_to_csv_row(
     iso_date = f.get("date", "")
     # ISO timestamps like "2025-08-17T15:00:00+00:00" → "2025-08-17"
     date_only = iso_date[:10] if iso_date else ""
+    # V12 W0 (2026-05-28) — kickoff_utc + status_short let downstream
+    # filter out already-kicked-off fixtures (J1 has 12:00 weekend
+    # kickoffs that would otherwise leak into the 14:00 cron output
+    # with stale Pinnacle SP from before the match started).
+    status_short = f.get("status", {}).get("short", "")
 
     row: dict = {
         "date": date_only,
@@ -184,6 +189,8 @@ def fixture_envelope_to_csv_row(
         "psc_home": odds_1x2["H"],
         "psc_draw": odds_1x2["D"],
         "psc_away": odds_1x2["A"],
+        "kickoff_utc": iso_date,    # full ISO with TZ
+        "status_short": status_short,  # NS / IN_PLAY / FT / etc.
     }
     ou = extract_over_under_25(odds_envelope, sharp_bookmaker_id)
     if ou is not None:

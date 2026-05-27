@@ -335,6 +335,192 @@ class TestGatherRows:
         assert n_skipped == 1
 
 
+# ---------- V12 W0 Plan A: kickoff buffer filter ---------------------
+
+class TestKickoffBufferFilter:
+    """V12 W0 (2026-05-28) — `_gather_rows` filters out already-kicked-off
+    fixtures so the morning + afternoon cron waves produce different
+    optimal solutions. Without this, the 14:00 cron would still include
+    a J1 match that started at 12:00 (with stale closing odds).
+    """
+
+    def _patch_fixtures(self, by_league):
+        def fake(on_date, league_canonical=None, **kw):
+            return by_league.get(league_canonical, [])
+        return patch.object(
+            ingest_odds_mod.api_football,
+            "fetch_fixtures_for_date",
+            side_effect=fake,
+        )
+
+    def _patch_odds(self, by_fixture_id):
+        def fake(fixture_id, **kw):
+            env = by_fixture_id.get(fixture_id)
+            return [env] if env is not None else []
+        return patch.object(
+            ingest_odds_mod.api_football,
+            "fetch_odds",
+            side_effect=fake,
+        )
+
+    def _fixture(self, fid, hour_offset, status="NS", home="Home", away="Away"):
+        """Build a fixture dict with kickoff = now + hour_offset hours."""
+        now = dt.datetime(2026, 5, 28, 10, 0, 0, tzinfo=dt.UTC)  # fixed clock
+        kickoff = now + dt.timedelta(hours=hour_offset)
+        return {
+            "fixture": {
+                "id": fid,
+                "date": kickoff.isoformat(),
+                "status": {"short": status, "long": "..."},
+            },
+            "teams": {"home": {"name": home}, "away": {"name": away}},
+        }
+
+    def test_buffer_zero_disables_filter_legacy_behavior(self, tmp_path):
+        """min_kickoff_buffer_minutes=0 → all fixtures included (legacy)."""
+        fixtures = {
+            "EPL": [self._fixture(1, hour_offset=5, status="NS"),
+                    self._fixture(2, hour_offset=-2, status="FT")],  # already done
+        }
+        odds = {
+            1: _envelope(bookmakers=[_bookmaker_with_1x2()]),
+            2: _envelope(bookmakers=[_bookmaker_with_1x2()]),
+        }
+        now = dt.datetime(2026, 5, 28, 10, 0, 0, tzinfo=dt.UTC)
+        with self._patch_fixtures(fixtures), self._patch_odds(odds):
+            rows, _, _ = _gather_rows(
+                ["EPL"], dt.date(2026, 5, 28),
+                cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+                min_kickoff_buffer_minutes=0,
+                now_utc=now,
+            )
+        assert len(rows) == 2  # no filtering applied
+
+    def test_filter_drops_already_started_fixtures(self, tmp_path):
+        """status != NS/TBD/POSTP → dropped pre-emptively (saves /odds call)."""
+        fixtures = {
+            "EPL": [
+                self._fixture(1, hour_offset=5, status="NS",
+                              home="Future", away="Match"),
+                self._fixture(2, hour_offset=-2, status="FT",
+                              home="Already", away="Done"),
+                self._fixture(3, hour_offset=-0.5, status="IN_PLAY",
+                              home="In", away="Play"),
+            ],
+        }
+        odds = {1: _envelope(bookmakers=[_bookmaker_with_1x2()])}
+        now = dt.datetime(2026, 5, 28, 10, 0, 0, tzinfo=dt.UTC)
+        with self._patch_fixtures(fixtures), self._patch_odds(odds):
+            rows, n_calls, n_skipped = _gather_rows(
+                ["EPL"], dt.date(2026, 5, 28),
+                cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+                min_kickoff_buffer_minutes=30,
+                now_utc=now,
+            )
+        assert len(rows) == 1
+        assert rows[0]["home_team"] == "Future"
+        assert n_skipped == 2  # FT + IN_PLAY skipped pre-flight
+        # /odds API only called for the 1 viable fixture (saves quota)
+        # api_calls = 1 fixtures + 1 odds = 2
+        assert n_calls == 2
+
+    def test_filter_drops_kickoff_within_buffer(self, tmp_path):
+        """status=NS but kickoff is within buffer → still dropped.
+
+        Use case: 30 min buffer applied at 14:00 — a 14:15 kickoff with
+        status still "NS" is too close, drop it (no time to actually bet).
+        """
+        fixtures = {
+            "EPL": [
+                self._fixture(1, hour_offset=5, status="NS", home="Far"),
+                # 15 minutes from "now" — inside the 30-min buffer
+                self._fixture(2, hour_offset=0.25, status="NS", home="Imminent"),
+            ],
+        }
+        odds = {
+            1: _envelope(bookmakers=[_bookmaker_with_1x2()]),
+        }
+        now = dt.datetime(2026, 5, 28, 10, 0, 0, tzinfo=dt.UTC)
+        with self._patch_fixtures(fixtures), self._patch_odds(odds):
+            rows, _, n_skipped = _gather_rows(
+                ["EPL"], dt.date(2026, 5, 28),
+                cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+                min_kickoff_buffer_minutes=30,
+                now_utc=now,
+            )
+        assert len(rows) == 1
+        assert rows[0]["home_team"] == "Far"
+        assert n_skipped == 1
+
+    def test_morning_vs_afternoon_wave_scenario(self, tmp_path):
+        """E2E: same fixture set, two different `now_utc` → different output.
+
+        This is the V12 W0 Plan A core scenario:
+          - 10:00 morning wave: includes J1 12:00 + EU 20:00 (both upcoming)
+          - 15:00 afternoon wave: J1 already at FT, only EU 20:00 remains
+        """
+        j1_match = {
+            "fixture": {
+                "id": 100,
+                "date": "2026-05-28T12:00:00+00:00",
+                "status": {"short": "NS", "long": "Not Started"},
+            },
+            "teams": {"home": {"name": "Greuther Furth"},
+                      "away": {"name": "Tokyo"}},
+        }
+        eu_match = {
+            "fixture": {
+                "id": 200,
+                "date": "2026-05-28T20:00:00+00:00",
+                "status": {"short": "NS", "long": "Not Started"},
+            },
+            "teams": {"home": {"name": "Arsenal"},
+                      "away": {"name": "Liverpool"}},
+        }
+        odds = {
+            100: _envelope(bookmakers=[_bookmaker_with_1x2()]),
+            200: _envelope(bookmakers=[_bookmaker_with_1x2()]),
+        }
+
+        # MORNING WAVE — 10:00 UTC: both J1 + EU are upcoming
+        with self._patch_fixtures({"EPL": [j1_match, eu_match]}), \
+             self._patch_odds(odds):
+            morning_rows, _, _ = _gather_rows(
+                ["EPL"], dt.date(2026, 5, 28),
+                cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+                min_kickoff_buffer_minutes=30,
+                now_utc=dt.datetime(2026, 5, 28, 10, 0, 0, tzinfo=dt.UTC),
+            )
+        assert len(morning_rows) == 2
+        teams_morning = {r["home_team"] for r in morning_rows}
+        assert teams_morning == {"Greuther Furth", "Arsenal"}
+
+        # AFTERNOON WAVE — 15:00 UTC: J1 is at FT, only EU remains
+        j1_finished = dict(j1_match)
+        j1_finished["fixture"] = dict(j1_match["fixture"])
+        j1_finished["fixture"]["status"] = {"short": "FT", "long": "Match Finished"}
+        with self._patch_fixtures({"EPL": [j1_finished, eu_match]}), \
+             self._patch_odds(odds):
+            afternoon_rows, _, _ = _gather_rows(
+                ["EPL"], dt.date(2026, 5, 28),
+                cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+                min_kickoff_buffer_minutes=30,
+                now_utc=dt.datetime(2026, 5, 28, 15, 0, 0, tzinfo=dt.UTC),
+            )
+        assert len(afternoon_rows) == 1
+        assert afternoon_rows[0]["home_team"] == "Arsenal"
+
+
 # ---------- CSV roundtrip --------------------------------------------
 
 class TestCsvWrite:
