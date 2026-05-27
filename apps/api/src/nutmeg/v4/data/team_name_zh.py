@@ -599,6 +599,7 @@ _NATIONAL_TEAMS: Dict[str, str] = {
     "South Africa": "南非",
     "Cape Verde": "佛得角",
     "Cabo Verde": "佛得角",
+    "Cape Verde Islands": "佛得角",  # API-Football's WC 2026 spelling
     "DR Congo": "刚果民主共和国",
     "Congo DR": "刚果民主共和国",
     "Mali": "马里",

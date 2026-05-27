@@ -1,5 +1,26 @@
 """National-team Elo via clubelo's per-country endpoint — V8 W7.
 
+⚠️  STATUS (2026-05-28 audit): This module's clubelo-based path is
+    effectively dormant — clubelo.com returns CSV-header-only (no data
+    rows) for every national-team code we've tried (ENG, FRA, BRA, ZAF,
+    etc.). The infrastructure (`NATION_CLUBELO_CODES`, `fetch_nation_history`,
+    `build_nation_elo_lookup`, `lookup_nation_elo`) is kept because it's
+    still wired into `cross_league_state.py::seed_elo_value(nation_state=...)`
+    for cup-feature training, but in practice the dict is empty.
+
+    **For the WC predictor + dashboard**, the real Elo source is
+    `data/external/eloratings/eloratings_*.parquet` (244 nations,
+    2-letter codes from eloratings.net) joined via
+    `nutmeg.v4.data.national_team_name_to_elo.TEAM_NAME_TO_ELO_CODE`.
+    See `tests/v4/test_wc_2026_team_coverage.py` for the WC 2026
+    48-team guardrail.
+
+    Don't expand `NATION_CLUBELO_CODES` to cover new WC participants —
+    clubelo doesn't serve nation data, so adding entries here yields
+    nothing. Extend `TEAM_NAME_TO_ELO_CODE` instead.
+
+Historical context (kept for archaeology):
+
 V6 W11 registered 4 national-team competitions (WC, EURO, COPA_AMERICA,
 WC_QUAL_UEFA) but the model had no per-team signal for them — WC fixtures
 fell back to V4's "unknown team" path (zero form + 1500 default Elo).
