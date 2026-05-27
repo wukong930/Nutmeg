@@ -124,9 +124,22 @@ EOF
 # Common shell prefix for all jobs: cd + source .env so NUTMEG_API_FOOTBALL_KEY is set
 ENV_PREFIX="cd $REPO_ROOT && set -a && source .env && set +a"
 
-# Shared league list — both Job 1 (odds ingest) and Job 2 (recommend) must
-# see the same 13 leagues so the CSV handoff has full coverage.
-LEAGUES="EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,ENG_CHAMPIONSHIP,ESP_SEGUNDA_DIVISION,ITA_SERIE_B,GER_2_BUNDESLIGA,FRA_LIGUE_2,NED_EREDIVISIE,PRT_PRIMEIRA_LIGA,BEL_PRO_LEAGUE,JPN_J1"
+# V12 W0 Plan A (Option B variant) — split leagues by region so each
+# wave's Pinnacle SP is captured close to that region's closing line.
+#
+# WHY split: morning EU SP (09:00) is ~11h pre-kickoff = early/opening line,
+# far from closing. Our model was trained against closing odds, so using
+# opening lines introduces systematic noise. Asian leagues (J1 weekend
+# kickoffs at 12:00 CST) need a 09:00 pull to catch their closing window
+# — but European leagues do NOT need to be in that pull, they're better
+# served by the 14:00 cron (6h pre-kickoff = much closer to closing).
+#
+# Trade-off: cross-region combos (e.g., J1+EU 4-串-1) are impossible in
+# any single wave under this split. User picks J1 picks in the morning,
+# EU picks in the afternoon, as two separate bets. Per V12 W0 discussion
+# 2026-05-28 this matches the actual user workflow.
+LEAGUES_ASIAN="JPN_J1"
+LEAGUES_EUROPEAN="EPL,ESP_LA_LIGA,ITA_SERIE_A,GER_BUNDESLIGA,FRA_LIGUE_1,ENG_CHAMPIONSHIP,ESP_SEGUNDA_DIVISION,ITA_SERIE_B,GER_2_BUNDESLIGA,FRA_LIGUE_2,NED_EREDIVISIE,PRT_PRIMEIRA_LIGA,BEL_PRO_LEAGUE"
 
 # Where Job 1 drops the daily CSV that Job 2 consumes. ``$(date +%Y-%m-%d)``
 # is expanded by /bin/bash at run time (not by setup_local_pipeline.sh),
@@ -147,36 +160,38 @@ echo "Installing 9 launchd jobs into $PLIST_DIR ..."
 # ── V12 W0 Plan A — Morning wave (09:00 + 10:00) ───────────────────────
 # Why: J1 has weekend kickoffs at 12:00-14:00 CST. The 14:00 cron is
 # already too late for those. By running the ingest at 09:00 (3+ hours
-# before earliest J1 kickoff) and recommending at 10:00, we capture
-# Pinnacle closing-line SP for Asian fixtures while it's still actionable.
+# before earliest J1 kickoff), we capture Pinnacle SP near J1's closing
+# window. Job 2 (morning_recommend) at 10:00 generates Wave 1 picks.
 #
-# Filter: --min-kickoff-buffer-minutes 30 drops any fixture that's already
-# kicked off OR will kick off in < 30 min. So this CSV contains J1
-# 12:00+ matches + all future European fixtures.
+# Region split (Option B — locked 2026-05-28): morning_odds pulls
+# JPN_J1 ONLY, not EU. Reason: EU SP at 09:00 is ~11h pre-kickoff
+# (opening line). Our model is trained against closing line, so using
+# 09:00 EU SP introduces systematic noise. EU waits for the 14:00 cron
+# where its SP is ~6h pre-kickoff (closer to closing).
 #
-# The afternoon cron at 14:00 (Job 1) re-runs the same filter, but by
-# then any J1 12:00/14:00 matches are inside the buffer (or finished),
-# so they're filtered out → afternoon CSV is European-only.
+# Trade-off: cross-region combos (J1+EU 4-串-1) impossible in any single
+# wave. User makes J1 bets in the morning, EU bets in the afternoon.
 #
-# Both waves write distinct sessions to the observation DB. Dashboard
-# /today-recommendations applies the same filter on each request, so
-# users always see "best combo over still-actionable fixtures right
-# now". 推荐追溯 surfaces both waves under the same date.
+# Filter: --min-kickoff-buffer-minutes 30 drops fixtures already kicked
+# off OR kicking off in < 30 min. With $LEAGUES_ASIAN = "JPN_J1" the
+# filter mostly catches the FT case (defensive guard if cron retries
+# after kickoff).
+#
+# Both waves write distinct sessions to the observation DB. 推荐追溯
+# surfaces both under the same date.
 install_job "com.nutmeg.morning_odds" \
   9 0 "" \
-  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && mkdir -p $DAILY_DIR && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues $LEAGUES --min-kickoff-buffer-minutes 30 --out $MORNING_CSV"
+  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && mkdir -p $DAILY_DIR && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues $LEAGUES_ASIAN --min-kickoff-buffer-minutes 30 --out $MORNING_CSV"
 
 install_job "com.nutmeg.morning_recommend" \
   10 0 "" \
   "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && $VENV_PY -m nutmeg.v4.cli.recommend --fixtures $MORNING_CSV --record-to $DB_PATH"
 
 # Job 1: daily odds ingest (14:00 daily) — afternoon European wave
-# Pulls today's odds across all 13 trained leagues (top 5 + 5 second-tier
-# + Eredivisie + Liga Portugal + Belgian Pro League + J League J1).
-# post-V11 audit (2026-05-25): the production model covers all 13 since
-# the football-data.co.uk historical ingest predates V5; daily_odds was
-# stuck at 5 until this expansion. API budget: ~33 calls/day average,
-# well under free tier's 100/day.
+# V12 W0 Plan A (Option B): $LEAGUES_EUROPEAN = 13 European leagues
+# (top 5 + 5 second-tier + Eredivisie + Liga Portugal + Belgian Pro League).
+# JPN_J1 is now handled by the 09:00 morning_odds job, NOT here.
+#
 # post-v9 P1#20: UCL/UEL/UECL still excluded — cup ablation closed
 # negative (docs/post_v9_p1_20_cup_ablation_negative.md). Cups stay
 # out of cron until / unless a separate cup model ships.
@@ -186,12 +201,17 @@ install_job "com.nutmeg.morning_recommend" \
 # as input). DAILY_CSV is single-quoted at install time; /bin/bash -c
 # expands $(date) + $REPO_ROOT at the 14:00 firing.
 #
-# V12 W0 Plan A: --min-kickoff-buffer-minutes 30 filters out already-
-# kicked-off Asian fixtures (J1 12:00 weekend matches finish around
-# 13:50 CST), so the afternoon CSV is naturally European-only.
+# V12 W0 Plan A: --min-kickoff-buffer-minutes 30 filters out fixtures
+# within 30 min of kickoff (no time to act). Combined with the
+# European-only league list, the 14:00 CSV is naturally clean of any
+# Asian leftovers — they were already handled by the morning wave.
+#
+# API budget under Option B: ~22 calls/day (13 EU /fixtures + ~9 /odds).
+# Plus ~1-3 calls/day for the morning J1 wave. Total still well under
+# free tier's 100/day.
 install_job "com.nutmeg.daily_odds" \
   14 0 "" \
-  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && mkdir -p $DAILY_DIR && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues $LEAGUES --min-kickoff-buffer-minutes 30 --out $DAILY_CSV"
+  "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && mkdir -p $DAILY_DIR && $VENV_PY -m nutmeg.v4.cli.ingest_odds --leagues $LEAGUES_EUROPEAN --min-kickoff-buffer-minutes 30 --out $DAILY_CSV"
 
 # Job 2: daily recommend + record (15:00 daily — 1h after Job 1)
 # Generates recommendations using the production model (V6 W7 lineup-aware
