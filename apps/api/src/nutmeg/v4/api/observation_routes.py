@@ -377,9 +377,11 @@ def _parse_legs_json(raw: str | None) -> list[HistoryLeg]:
         # Fall back to parsing match_id "league_home_vs_away" if home/away missing
         if (not home or not away) and isinstance(match_id, str) and "_vs_" in match_id:
             stripped = match_id
-            # strip league prefix — the same regex the frontend uses
+            # strip league prefix — must include digits so codes like
+            # FRA_LIGUE_1 and GER_2_BUNDESLIGA are stripped fully (V12 W0
+            # bug: regex was [A-Z_]+_ which stopped at digits).
             import re as _re
-            stripped = _re.sub(r"^[A-Z_]+_", "", stripped, count=1)
+            stripped = _re.sub(r"^[A-Z0-9_]+_", "", stripped, count=1)
             parts = stripped.split("_vs_", 1)
             if len(parts) == 2:
                 home = home or parts[0]

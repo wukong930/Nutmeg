@@ -1871,7 +1871,7 @@ function renderRecommendations(body) {
         const market = leg.market_type === '1x2' ? '胜平负' : '让球';
         // V11 P1-FE#2: parse "league_home_vs_away" → translate via zhTeam
         // + render small team logos for visual context.
-        const raw = (leg.match_id || '').replace(/^[A-Z_]+_/, '');
+        const raw = (leg.match_id || '').replace(/^[A-Z0-9_]+_/, '');
         const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
         const matchHtml = parts[1]
           ? `<span class="inline-flex items-center gap-1.5 flex-wrap">${teamLogo(parts[0])}<span>${zhTeam(parts[0])}</span><span class="text-muted">vs</span>${teamLogo(parts[1])}<span>${zhTeam(parts[1])}</span></span>`
@@ -1974,7 +1974,7 @@ function renderSingleRecommendations(body) {
   // Kept: 比赛对阵, 玩法, 选项, 赔率, 建议投注, 期望值 (visual bar).
   list.innerHTML =
     body.tickets.map((t) => {
-      const match = t.match_id.replace(/^[A-Z_]+_/, '').replace('_vs_', ' vs ');
+      const match = t.match_id.replace(/^[A-Z0-9_]+_/, '').replace('_vs_', ' vs ');
       const [home, away] = match.includes(' vs ') ? match.split(' vs ') : [match, ''];
       const marketLabel = t.market_type === 'handicap_1x2' ? '让球' : '胜平负';
       return `<div class="card-rec">
@@ -2123,7 +2123,7 @@ function renderPoolRecommendations(body) {
       // so each leg shows match context (small team logos + names), not
       // just an opaque outcome+odds.
       const legsHtml = t.legs.map(l => {
-        const raw = (l.match_id || '').replace(/^[A-Z_]+_/, '');
+        const raw = (l.match_id || '').replace(/^[A-Z0-9_]+_/, '');
         const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
         const matchHtml = parts[1]
           ? `<span class="inline-flex items-center gap-1.5 flex-wrap">${teamLogo(parts[0])}<span>${zhTeam(parts[0])}</span><span class="text-muted">vs</span>${teamLogo(parts[1])}<span>${zhTeam(parts[1])}</span></span>`
@@ -2390,7 +2390,7 @@ function renderTodayPool(pool) {
   // Re-use the same card design as the dedicated 复式 tab for visual consistency
   list.innerHTML = selected.map((t, i) => {
     const legsHtml = t.legs.map(l => {
-      const raw = (l.match_id || '').replace(/^[A-Z_]+_/, '');
+      const raw = (l.match_id || '').replace(/^[A-Z0-9_]+_/, '');
       const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
       const matchHtml = parts[1]
         ? `<span class="inline-flex items-center gap-1.5 flex-wrap">${teamLogo(parts[0])}<span>${zhTeam(parts[0])}</span><span class="text-muted">vs</span>${teamLogo(parts[1])}<span>${zhTeam(parts[1])}</span></span>`

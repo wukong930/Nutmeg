@@ -258,6 +258,52 @@ class TestLegsParsing:
         assert legs[0].home_team == "Real Madrid"
         assert legs[0].away_team == "Barcelona"
 
+    def test_match_id_with_digits_in_league_code_v12_w0_regression(self):
+        """V12 W0 bug: league codes with digits (FRA_LIGUE_1, GER_2_BUNDESLIGA,
+        PRT_LIGA_PORTUGAL_2, etc.) caused the regex ^[A-Z_]+_ to stop at
+        the first digit, leaving e.g. "1_Saint Etienne" as the parsed
+        home team. Fixed to ^[A-Z0-9_]+_ which strips the league prefix
+        even when it contains digits.
+
+        Caught 2026-05-28 when the V12 W0 first-real-bet session's
+        Saint-Étienne and Greuther Fürth showed up in 推荐追溯 as
+        "1_Saint Etienne" and "2_BUNDESLIGA_SpVgg Greuther Fürth".
+        """
+        from nutmeg.v4.api.observation_routes import _parse_legs_json
+
+        # Ligue 1 — single trailing digit
+        raw = json.dumps([{
+            "match_id": "FRA_LIGUE_1_Saint Etienne_vs_Nice",
+            "market_type": "handicap_1x2",
+        }])
+        legs = _parse_legs_json(raw)
+        assert legs[0].home_team == "Saint Etienne", (
+            f"Ligue 1: got home={legs[0].home_team!r} — digit in league code "
+            "must not leak into team name"
+        )
+        assert legs[0].away_team == "Nice"
+
+        # 2.Bundesliga — digit in the middle of league code
+        raw2 = json.dumps([{
+            "match_id": "GER_2_BUNDESLIGA_SpVgg Greuther Fürth_vs_Rot-Weiß Essen",
+            "market_type": "handicap_1x2",
+        }])
+        legs2 = _parse_legs_json(raw2)
+        assert legs2[0].home_team == "SpVgg Greuther Fürth", (
+            f"2.BL: got home={legs2[0].home_team!r} — digits in middle "
+            "of league code must not leak"
+        )
+        assert legs2[0].away_team == "Rot-Weiß Essen"
+
+        # Sanity: digit-free league codes (EPL, La Liga) still work
+        raw3 = json.dumps([{
+            "match_id": "ESP_LA_LIGA_Real Madrid_vs_Barcelona",
+            "market_type": "1x2",
+        }])
+        legs3 = _parse_legs_json(raw3)
+        assert legs3[0].home_team == "Real Madrid"
+        assert legs3[0].away_team == "Barcelona"
+
 
 # ---------- Query bounds ---------------------------------------------
 
