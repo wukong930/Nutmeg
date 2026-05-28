@@ -238,7 +238,10 @@ the user explicitly asks.
 
 ## What's NOT in this backlog (intentional)
 
-- **Anything about V13/V14**. Too far away to plan.
+- **V14+**. Too far away to plan. _(Update 2026-05-29: V13 IS now scoped —
+  see `V13_ROADMAP.md` + `V13_CONTEXTUAL_FEATURES.md` / `V13_DATA_QUALITY_UPGRADE.md`
+  / `V13_EUROPEAN_EXPANSION.md` / `V13_PLAYOFF_AWARENESS.md`, all gated on the
+  4-week ROI verdict. This bullet predates those docs.)_
 - **New game types** (e.g., totals/over-under). User's stated scope is
   1X2 + handicap only. No expansion.
 - **Public deployment / multi-user**. Single-user-on-Mac is the

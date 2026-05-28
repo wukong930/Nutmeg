@@ -8,9 +8,10 @@ These tests verify the wiring added today:
   3. ``feature_columns_with_fatigue(...)`` returns the right column list
      for each lineup/cup combination
 
-Inference-path support (training a model with fatigue then loading it
-via load_artifact for inference) is deferred to Day 4 — see
-docs/v12_stadium_fatigue_day1_audit.md for the staging plan.
+Inference-path support is covered by
+``TestBuildFeaturesForFixturesFatigueInference`` below (V12 post-V11
+audit): ``build_features_for_fixtures`` now mirrors the training pipeline
+so a fatigue-trained artifact no longer KeyErrors at serving time.
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from nutmeg.v4.features.pipeline import (
     feature_columns_with_lineups,
 )
 from nutmeg.v4.features.cup_features import CUP_FEATURE_COLUMNS
+from nutmeg.v4.model.persist import V4Artifact, build_features_for_fixtures
 
 
 # ============ feature_columns_with_fatigue ============================
@@ -184,3 +186,108 @@ class TestTrainCliFatigueFlag:
         )
         # The help text must mention "fatigue" so users find it
         assert "fatigue" in result.stdout.lower()
+
+
+# ====== Inference-path fatigue support (V12 post-V11 audit) ===========
+# Closes the train/inference skew this file's header used to flag as
+# "deferred to Day 4". build_features_for_fixtures must emit the 12
+# fatigue columns when the artifact was trained with fatigue, else
+# predict_lambdas (which slices feature_df[artifact.feature_columns])
+# raises KeyError at serving time.
+
+def _bare_artifact(metadata: dict) -> V4Artifact:
+    """Minimal artifact for build_features_for_fixtures, which reads only
+    metadata / team_state / elo_*; the boosters are never invoked here."""
+    return V4Artifact(
+        metadata=metadata,
+        feature_columns=[],
+        booster_home=None,
+        booster_away=None,
+        temperature_T=None,
+        team_state={},
+        model_type="catboost",
+        cat_features=["league"],
+    )
+
+
+@pytest.fixture
+def tiny_fixtures() -> pd.DataFrame:
+    """Two upcoming fixtures with the minimum columns the inference path
+    needs (no prior history carried in the frame itself)."""
+    return pd.DataFrame({
+        "date": pd.to_datetime(["2024-09-21", "2024-09-21"]),
+        "league": ["EPL", "EPL"],
+        "home_team": ["Arsenal", "Chelsea"],
+        "away_team": ["Chelsea", "Arsenal"],
+        "psc_home": [1.80, 2.20],
+        "psc_draw": [3.60, 3.40],
+        "psc_away": [4.20, 3.10],
+    })
+
+
+class TestBuildFeaturesForFixturesFatigueInference:
+
+    def test_flagged_artifact_produces_all_12_fatigue_cols(self, tiny_fixtures):
+        """Regression guard: a fatigue-trained artifact (metadata flag) gets
+        all 12 fatigue columns at inference — no KeyError downstream."""
+        art = _bare_artifact({"with_fatigue": True})
+        out = build_features_for_fixtures(
+            art, tiny_fixtures, clubelo_history=pd.DataFrame()
+        )
+        for col in FATIGUE_FEATURE_COLUMNS:
+            assert col in out.columns, f"missing fatigue col at inference: {col}"
+        # The exact slice predict_lambdas performs must not raise.
+        out[FATIGUE_FEATURE_COLUMNS]  # noqa: B018 — KeyError guard
+
+    def test_default_artifact_has_no_fatigue_cols(self, tiny_fixtures):
+        """Backward-compat: artifacts without the flag (e.g. the current
+        production lineup-aware model) get NO fatigue columns."""
+        art = _bare_artifact({"with_lineups": True})  # deliberately no with_fatigue
+        out = build_features_for_fixtures(
+            art, tiny_fixtures, clubelo_history=pd.DataFrame()
+        )
+        for col in FATIGUE_FEATURE_COLUMNS:
+            assert col not in out.columns
+
+    def test_with_fatigue_param_forces_columns(self, tiny_fixtures):
+        """Explicit with_fatigue=True works even when metadata lacks it."""
+        art = _bare_artifact({})
+        out = build_features_for_fixtures(
+            art, tiny_fixtures, clubelo_history=pd.DataFrame(), with_fatigue=True
+        )
+        for col in FATIGUE_FEATURE_COLUMNS:
+            assert col in out.columns
+
+    def test_no_history_means_zero_flags_but_columns_present(self, tiny_fixtures):
+        """With no match_history the flags are 0 ('no signal'), but the
+        columns still exist (that's what prevents the KeyError)."""
+        art = _bare_artifact({"with_fatigue": True})
+        out = build_features_for_fixtures(
+            art, tiny_fixtures, clubelo_history=pd.DataFrame()
+        )
+        assert (out["fatigue_home_matches_in_30day"] == 0).all()
+        assert (out["fatigue_home_third_match_8day"] == 0).all()
+
+    def test_match_history_fires_congestion_flags(self, tiny_fixtures):
+        """Recent matches supplied → congestion flags fire. Arsenal played
+        twice in the 8 days before the 2024-09-21 fixture (one of them a
+        UCL midweek), so it's the 3rd match in 8 days with a euro-midweek
+        flag, and matches_in_30day >= 2."""
+        history = pd.DataFrame({
+            "date": pd.to_datetime(["2024-09-15", "2024-09-18"]),
+            "league": ["EPL", "UCL"],
+            "home_team": ["Arsenal", "Arsenal"],
+            "away_team": ["Everton", "Bayern"],
+        })
+        art = _bare_artifact({"with_fatigue": True})
+        out = build_features_for_fixtures(
+            art, tiny_fixtures, clubelo_history=pd.DataFrame(),
+            match_history=history,
+        )
+        # Row 0 = Arsenal at home with 2 prior matches in the window.
+        assert out.loc[0, "fatigue_home_matches_in_30day"] >= 2
+        assert out.loc[0, "fatigue_home_third_match_8day"] == 1
+        # UCL on 2024-09-18 (3 days prior) → euro-midweek flag fires.
+        assert out.loc[0, "fatigue_home_euro_midweek_4day"] == 1
+        # Row 1 = Arsenal away → its congestion shows on the away side.
+        assert out.loc[1, "fatigue_away_third_match_8day"] == 1

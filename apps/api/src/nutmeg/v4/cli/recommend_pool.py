@@ -57,13 +57,11 @@ VALID_PICKS = {"1x2_H", "1x2_D", "1x2_A", "hc_H", "hc_D", "hc_A"}
 
 
 def _read_pool_fixtures(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    required = ["date", "league", "home_team", "away_team",
-                "psc_home", "psc_draw", "psc_away", "pick"]
-    for c in required:
-        if c not in df.columns:
-            raise ValueError(f"pool CSV missing required column: {c}")
-    df["date"] = pd.to_datetime(df["date"])
+    # V12: shared base reader (cli/_shared.py) + pool-specific `pick` column
+    # and pick-value validation layered on top.
+    from nutmeg.v4.cli._shared import read_fixtures_csv
+
+    df = read_fixtures_csv(path, extra_required=["pick"], label="pool CSV")
     bad = df[~df["pick"].isin(VALID_PICKS)]
     if len(bad) > 0:
         raise ValueError(

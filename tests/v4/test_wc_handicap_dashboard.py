@@ -139,18 +139,23 @@ class TestI18nKeys:
 
 class TestSwCacheBust:
     def test_cache_version_bumped(self, sw_js):
-        """When dashboard.html changes, CACHE_VERSION must change so PWA
-        clients pick up the new version. v11-fe-wc-handicap was set
-        when this feature shipped."""
+        """The service-worker CACHE_VERSION must follow the
+        ``nutmeg-vN-fe-<slug>`` convention so PWA clients pick up new builds.
+
+        We assert the FORMAT, not a specific feature slug. The slug changes
+        on every frontend deploy by design — pinning it to one feature name
+        (it was ``wc-handicap``) made this test break on each later bump
+        (it did, silently, when WC-lookahead bumped it to
+        ``nutmeg-v12-fe-w0-wc-lookahead``)."""
         import re
-        # Pattern: nutmeg-vN-fe-something — the something must reference wc/handicap.
         m = re.search(r"'(nutmeg-v\d+-fe-[a-z0-9-]+)'", sw_js)
-        assert m is not None, "CACHE_VERSION constant missing"
+        assert m is not None, (
+            "CACHE_VERSION missing or not in 'nutmeg-vN-fe-<slug>' form"
+        )
         version = m.group(1)
-        # The current ship is wc-handicap — match prefix loosely so a later
-        # bump (e.g. nutmeg-v11-fe-wc-handicap-2) still passes.
-        assert "wc-handicap" in version, (
-            f"CACHE_VERSION = {version!r} doesn't mention wc-handicap"
+        slug = version.split("-fe-", 1)[1]
+        assert slug and re.fullmatch(r"[a-z0-9-]+", slug), (
+            f"CACHE_VERSION {version!r} has an empty / invalid kebab-case slug"
         )
 
 

@@ -68,20 +68,26 @@ PRODUCTION_LEAGUES_14 = frozenset({
 
 
 def _parse_setup_script_leagues() -> set[str]:
-    """Extract the LEAGUES env var value from setup_local_pipeline.sh.
+    """Union every ``LEAGUES*="..."`` list declared in setup_local_pipeline.sh.
 
-    The fix on 2026-05-26 introduced a `LEAGUES="..."` shell variable
-    that the daily_odds + daily_recommend plists consume. This parser
-    reads the literal value so the test stays in sync.
+    Originally there was a single ``LEAGUES="..."`` variable. V12 W0's
+    Option B region-split replaced it with ``LEAGUES_ASIAN="..."`` (J1,
+    09:00 morning wave) + ``LEAGUES_EUROPEAN="..."`` (13 EU leagues, 14:00
+    afternoon wave) so J1's noon kickoffs aren't missed. This parser unions
+    all ``LEAGUES*=`` assignments so the guardrail keeps covering the full
+    production set regardless of how the cron waves are partitioned.
     """
     script = REPO_ROOT / "scripts" / "setup_local_pipeline.sh"
     src = script.read_text()
-    m = re.search(r'^LEAGUES="([^"]+)"\s*$', src, re.M)
-    assert m is not None, (
-        f"could not locate LEAGUES=\"...\" in {script} — has the variable "
-        "name changed?"
+    matches = re.findall(r'^LEAGUES\w*="([^"]+)"\s*$', src, re.M)
+    assert matches, (
+        f"could not locate any LEAGUES*=\"...\" in {script} — has the "
+        "variable naming changed?"
     )
-    return set(s.strip() for s in m.group(1).split(",") if s.strip())
+    leagues: set[str] = set()
+    for group in matches:
+        leagues.update(s.strip() for s in group.split(",") if s.strip())
+    return leagues
 
 
 class TestProductionLeagueCoverage:

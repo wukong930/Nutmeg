@@ -1,6 +1,11 @@
 # Nutmeg 项目介绍报告
 
-_生成时间: 2026-05-26 · 基于 commit `fecd32f`，1493 V4 测试全绿_
+_首次生成: 2026-05-26 · 数字刷新: 2026-05-29 (post-V11 audit, V12 W0) · 1540 V4 测试全绿_
+
+> ⚠️ **数字时效性**: 本文是项目快照,计数会随开发漂移。截至 2026-05-29 的真值:
+> **1540 测试 / 87 测试文件 / 33 CLI / 52 git tags (6 个 `vX.0-shipped` + v4.0-frozen + 45 weekly) / 141 commits / dashboard 6 tabs / 10 launchd jobs**。
+> 没有 `v10.0-shipped` tag(V10 直接并入 V11 closeout)。要取实时真值:
+> `pytest tests/v4/ --collect-only -q | wc -l` · `grep -c nutmeg- pyproject.toml` · `git tag --list`。
 
 ---
 
@@ -42,7 +47,7 @@ _生成时间: 2026-05-26 · 基于 commit `fecd32f`，1493 V4 测试全绿_
 | **V10** | 2026 春 | WC 2026 准备 | 国家队模型 + WC predict/settle/report 全链 + 自校准 Layer A |
 | **V11** | 2026-05 | 用户体验 + Layer B | 中文名/logo/i18n/PWA + 季度自训 + Path A++ WC 让球 |
 
-**统计**: 52 git tags, 121 commits, 8 个 `vX.0-shipped` + 33 weekly + 11 milestone tags。
+**统计**: 52 git tags, 141 commits, 6 个 `vX.0-shipped` (v5–v9, v11) + `v4.0-frozen` + 45 weekly + milestone tags。**注意没有 `v10.0-shipped`** — V10 直接并入 V11 closeout。
 
 ---
 
@@ -66,10 +71,10 @@ nutmeg/                           ← repo root (~26.7k LoC code + 5.5k tests)
 │           ├── features/         ← elo/form/lineup/market/cup/xg-lite
 │           ├── model/            ← LightGBM/CatBoost/XGBoost + DC + NT
 │           └── observation/      ← SQLite 观测库 + auto-settle + ROI + Layer B
-├── tests/v4/                     ← 82 测试文件, 1493 测试
+├── tests/v4/                     ← 87 测试文件, 1540 测试
 ├── scripts/                      ← 7 个 shell 工具脚本
 ├── data/                         ← 数据资产（部分 gitignored）
-├── docs/                         ← 7,500+ 行文档（8 HANDOFF + 5 retrospective）
+├── docs/                         ← 文档（8 HANDOFF V4-V11 + 6 retrospective V6-V11）
 └── .github/workflows/            ← 5 个 CI workflow
 ```
 
@@ -77,7 +82,7 @@ nutmeg/                           ← repo root (~26.7k LoC code + 5.5k tests)
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  用户 Browser (PWA, i18n zh/en, dark mode, 9 tabs)   │
+│  用户 Browser (PWA, i18n zh/en, dark mode, 6 tabs)   │
 └─────────────────┬────────────────────────────────────┘
                   │ HTTP
 ┌─────────────────▼────────────────────────────────────┐
@@ -101,7 +106,7 @@ nutmeg/                           ← repo root (~26.7k LoC code + 5.5k tests)
                                         ▲
                                         │ launchd cron
                   ┌─────────────────────┴────────────┐
-                  │  7 daily/weekly jobs             │
+                  │  10 launchd jobs                 │
                   │  14:00 ingest_odds → CSV         │
                   │  15:00 recommend → record        │
                   │  Sun 02:00 settle + ab-report    │
@@ -172,8 +177,8 @@ mypy + ruff + pytest 8.2 + Playwright + axe-core（E2E + WCAG）
 | `market.py` | 市场 dewedge + over 2.5 + ahch handicap line |
 | `market_dynamics.py` | 开盘→闭盘漂移信号（V5 W5） |
 | `cup_features.py` | 杯赛 cross-league signals（V6 W11） |
-| `stadium_features.py` | ⚠️ 死码 — 写了但未接入训练 |
-| `fatigue_features.py` | ⚠️ 死码 — 写了但未接入训练 |
+| `stadium_features.py` | ⚠️ 死码 — 从未被 pipeline import（V12 待决: 接入 or 删） |
+| `fatigue_features.py` | 已接入 train (pipeline.py `--with-fatigue`) + inference (persist.py, V12 post-V11 audit)；等 ablation 决定是否进 production artifact |
 
 ### 6.3 `v4/model/` — ML 模型（10 文件，1891 LoC）
 
@@ -527,7 +532,7 @@ def _should_record_session(req_record_flag: bool) -> Optional[str]:
 - **PWA**: manifest + service worker + 离线 cache + 5 sec auto-refresh on focus
 - **A11Y**: viewport meta + aria + inputmode + live regions（pa11y/axe-core 通过）
 - **响应式**: 移动 card-list vs 桌面 table 自动切换
-- **9 tabs**:
+- **6 tabs**:
   1. 🎯 今日推荐（默认 landing，含 single/parlay/pool/WC 板块）
   2. 单关 / 串关 / 复式 高级模式（手动输入 fixtures）
   3. 🏆 WC 2026（含 Path A++ 让球推荐 inline form）
@@ -549,7 +554,7 @@ def _should_record_session(req_record_flag: bool) -> Optional[str]:
 
 ### 13.1 数字
 
-- **1493 tests** (82 文件)
+- **1540 tests** (87 文件)
 - **0 skipped** (所有 skipif gate 在本地都满足)
 - **0 deprecation warnings**（post-v9 P1#6 清理）
 - **Avg run time**: ~2 分钟全套
@@ -626,7 +631,7 @@ CI workflows (.github/)
 
 ### 15.1 当前生产部署：本地 macOS + launchd
 
-7 个 cron job（fixed today 2026-05-26）:
+10 个 launchd job (含 V12 W0 加的 morning_odds/morning_recommend + 常驻 api_server daemon):
 
 ```
 02:00 daily   com.nutmeg.daily_wc_settle             ← WC outcome + report
@@ -666,9 +671,9 @@ CI workflows (.github/)
 项目阶段:           V11 ship + 5 个 post-ship commits
                    (Path A++ + 今日整合 + recording + cron 修复 + model_type 修复)
 代码:               26.7k LoC 生产 + 5.5k LoC 测试
-测试:               1493/1493 pass, 0 skipped
+测试:               1540/1540 pass, 0 skipped
 默认模型:           V6 W7 lineup-aware CatBoost (P1#18 起)
-Cron 状态:          ✅ HEALTHY (7 jobs loaded, 0 exit)
+Cron 状态:          ✅ HEALTHY (10 jobs loaded, 0 exit)
 Observation DB:    1 session (今天 smoketest), 等明天 15:00 第一条真实数据
 真实下注 ROI:       0 数据点 → 4 周后第一份报告
 WC 2026 开幕:       2026-06-11 (16 天后)
@@ -681,13 +686,13 @@ WC 2026 开幕:       2026-06-11 (16 天后)
 | 🔴 P0 | 真实 ROI 4 周验证 | 等 cron 累积 |
 | 🔴 P0 | WC 2026 真实表现 | 等开赛 |
 | 🟠 P1 | Layer B 首次季度提议 | 2026-07-01 自动触发 |
-| 🟠 P1 | stadium/fatigue 死码决策 | V12 决定 ship or 删 |
+| 🟠 P1 | stadium 死码决策 (ship or 删) + fatigue ablation (代码已接 train+inference, 等跑 ablation) | V12 |
 | 🟡 P2 | routes.py 拆分 | V12 candidate |
 | 🟡 P2 | nutmeg-rec/recommend 合并 | V12 candidate |
 
 ### 16.3 已知良好
 
-- ✅ 全 1493 测试绿
+- ✅ 全 1540 测试绿
 - ✅ Cron 链路通畅（today fixed）
 - ✅ Observation DB 录入正确（model_type fixed）
 - ✅ Path A++ WC 让球全栈 ship
@@ -746,4 +751,5 @@ WC 2026 开幕:       2026-06-11 (16 天后)
 
 ## TL;DR — 一段话
 
-**Nutmeg 是一个 33 周演进而成的、面向中国竞彩足球的端到端预测推荐系统**。技术核心是 CatBoost 训练 Poisson λ + Dixon-Coles 比分网格 + Pinnacle 市场融合的双层概率模型；产品形态是 PWA dashboard + 9 个 tab 覆盖单关/串关/复式/WC 4 个玩法 + 中文 i18n；运维形态是 7 个 launchd cron 自动跑数据/推荐/结算/校准；质量保证是 1493 测试全绿 + 0 TODO/FIXME + Layer A/B 双层自校准。当前正等待 cron 累积第一份真实 4 周 ROI 数据 + WC 2026 开赛（16 天后）— 这俩数据点会决定项目是 ship-and-forget 还是进入 V12 新一轮迭代。
+**Nutmeg 是一个 33 周演进而成的、面向中国竞彩足球的端到端预测推荐系统**。技术核心是 CatBoost 训练 Poisson λ + Dixon-Coles 比分网格 + Pinnacle 市场融合的双层概率模型；产品形态是 PWA dashboard + 6 个 tab 覆盖单关/串关/复式/WC 4 个玩法 + 中文 i18n；运维形态是 10 个 launchd job 自动跑数据/推荐/结算/校准 + 常驻 dashboard daemon；质量保证是 1540 测试全绿 + 0 TODO/FIXME + Layer A/B 双层自校准。当前正等待 cron 累积第一份真实 4 周 ROI 数据 + WC 2026 开赛（2026-06-11）— 这俩数据点会决定 V12+ 的方向。
+ 

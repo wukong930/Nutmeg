@@ -298,6 +298,8 @@ def build_features_for_fixtures(
     lineup_lookup: dict | None = None,
     injury_lookup: dict | None = None,
     recent_injury_lookup: dict | None = None,
+    with_fatigue: bool = False,
+    match_history: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Given new fixtures (with odds), build the feature columns the GBM needs.
 
@@ -313,6 +315,19 @@ def build_features_for_fixtures(
     inference time. Without these the artifact will gracefully fall back
     to zero counts; lineup-trained models then see the inference-time
     rows as "no recent injuries" — biased toward conservative predictions.
+
+    V12 (post-V11 audit): ``with_fatigue`` / ``match_history`` mirror the
+    lineup hook so the inference path can produce the 12 ``fatigue_*``
+    columns a fatigue-trained artifact needs. Before this, the training
+    pipeline (features/pipeline.py) wired fatigue behind ``--with-fatigue``
+    but this serving function did not — a fatigue-trained artifact would
+    raise ``KeyError`` in ``predict_lambdas`` (which slices
+    ``feature_df[artifact.feature_columns]``). The block self-activates when
+    ``artifact.metadata["with_fatigue"]`` is set, so loading such an
+    artifact "just works". ``match_history`` (recent matches with
+    date/home_team/away_team/league) populates the rolling congestion
+    window; without it the flags default to 0 ("no signal"), the same
+    convention as the lineup zero-injury fallback.
     """
     out = fixtures.copy().reset_index(drop=True)
 
@@ -439,6 +454,34 @@ def build_features_for_fixtures(
             injury_lookup=injury_lookup,
             recent_injury_lookup=recent_injury_lookup or {},
         )
+
+    # V12 (post-V11 audit) — fatigue / fixture-congestion features.
+    # Symmetric with the lineup block above. The training pipeline wires
+    # ``build_fatigue_features`` behind ``--with-fatigue``; this serving
+    # path must produce the same 12 columns or a fatigue-trained artifact
+    # KeyErrors in ``predict_lambdas``. ``build_fatigue_features`` walks
+    # matches in time order, so to make the congestion/short-rest flags
+    # fire we prepend ``match_history`` (recent matches) and slice it back
+    # off. With no history every flag is 0 — a sane "no signal" default,
+    # and crucially the 12 columns still exist. (Assumes fixture rows are
+    # dated on/after the history, which holds for production "today"
+    # recommendations.)
+    if (artifact.metadata.get("with_fatigue", False)
+            or with_fatigue
+            or match_history is not None):
+        from nutmeg.v4.features import fatigue_features as _fat
+        if match_history is not None and not match_history.empty:
+            hist = match_history.copy()
+            if not pd.api.types.is_datetime64_any_dtype(hist["date"]):
+                hist["date"] = pd.to_datetime(hist["date"])
+            hist = hist.sort_values("date", kind="stable").reset_index(drop=True)
+            combined = pd.concat([hist, out], ignore_index=True, sort=False)
+            fat = _fat.build_fatigue_features(combined)
+            fat = fat.iloc[len(hist):].reset_index(drop=True)
+        else:
+            fat = _fat.build_fatigue_features(out)
+        for col in _fat.OUTPUT_COLUMNS:
+            out[col] = fat[col].to_numpy()
 
     return out
 

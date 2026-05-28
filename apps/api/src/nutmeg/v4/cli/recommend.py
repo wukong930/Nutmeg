@@ -48,14 +48,11 @@ from nutmeg.v4.model.persist import (
 
 
 def _read_fixtures(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    required = ["date", "league", "home_team", "away_team",
-                "psc_home", "psc_draw", "psc_away"]
-    for c in required:
-        if c not in df.columns:
-            raise ValueError(f"input CSV missing column: {c}")
-    df["date"] = pd.to_datetime(df["date"])
-    return df
+    # V12: delegates to the shared reader (see cli/_shared.py). Kept as a
+    # thin wrapper because cli/rec.py imports this name.
+    from nutmeg.v4.cli._shared import read_fixtures_csv
+
+    return read_fixtures_csv(path, label="input CSV")
 
 
 def _row_to_match_input(row, lambdas_h: float, lambdas_a: float, gbm_rho: float) -> MatchInput | None:

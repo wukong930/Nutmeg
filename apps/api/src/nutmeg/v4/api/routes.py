@@ -1789,15 +1789,15 @@ def predictions_wc_upcoming(
         ]:
             p = float(raw[p_key])
             sp = float(raw[sp_key])
-            ev = p * sp - 1.0
+            ev = p * sp - 1.0  # ev IS the edge here (p·SP − 1)
             if ev < min_ev:
                 continue
-            # Kelly fractional stake
-            edge = p * sp - 1.0
-            if sp <= 1.0 or edge <= 0:
+            # Kelly fractional stake. The ev>=min_ev gate above already
+            # implies ev>0; the sp<=1.0 guard covers degenerate odds.
+            if sp <= 1.0 or ev <= 0:
                 stake = 0.0
             else:
-                kelly_full = edge / (sp - 1.0)
+                kelly_full = ev / (sp - 1.0)
                 stake = round(bankroll * kelly_fraction * kelly_full, 2)
             picks.append(WcUpcomingPick(
                 fixture_id=raw["fixture_id"],

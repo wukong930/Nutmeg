@@ -227,12 +227,12 @@ No regressions. Zero V4 tests removed.
 
 | Tag | Date | Meaning |
 |-----|------|---------|
-| `v10.0-shipped` | 2026-05-25 | V10 closeout — WC sprint + Layer A live |
+| `v10.w4` | 2026-05-25 | last V10 sprint tag — WC sprint + Layer A live (⚠️ **no `v10.0-shipped` tag was ever cut**; V10 folded directly into the V11 closeout) |
 | `v11.0-shipped` | 2026-05-26 | V11 closeout (this handoff) — frontend refresh + backlog #2/#4/#5 |
 
 **No weekly tags within V11** — all work was issue-driven, not week-driven.
-Git log from `v10.0-shipped` to `v11.0-shipped` is the complete record (29
-commits in V11 + early V11 work that pre-dated the v10.0-shipped tag).
+Git log from `v10.w4` to `v11.0-shipped` is the complete record (29
+commits in V11 + early V11 work that pre-dated the `v10.w4` tag).
 
 ---
 
