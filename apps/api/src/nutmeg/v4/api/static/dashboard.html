@@ -445,6 +445,52 @@
     box-shadow: 0 0 0 1px var(--accent-gold);
   }
 
+  /* ── V12 W0 (2026-05-28) — Quick-mode tab buttons (risk/combo/pool-M) ──
+     Pill-style segmented buttons. `.active` is the selected option,
+     hover/non-active are subtle. */
+  .quick-risk-btn,
+  .quick-combo-btn,
+  .quick-pool-m-btn {
+    background: var(--bg-surface-1);
+    color: var(--text-secondary);
+    border-color: var(--border-subtle);
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+    cursor: pointer;
+  }
+  .quick-risk-btn:hover,
+  .quick-combo-btn:hover,
+  .quick-pool-m-btn:hover {
+    background: var(--bg-surface-2);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+  }
+  .quick-risk-btn.active,
+  .quick-combo-btn.active,
+  .quick-pool-m-btn.active {
+    background: var(--accent-gold);
+    color: #0a0e1a;
+    border-color: var(--accent-gold);
+    font-weight: 600;
+  }
+  [data-theme="dark"] .quick-risk-btn.active,
+  [data-theme="dark"] .quick-combo-btn.active,
+  [data-theme="dark"] .quick-pool-m-btn.active {
+    color: #0a0e1a;
+  }
+
+  /* "高级 ▾" fold styling — minimize visual weight so it doesn't compete
+     with the main quick-form. */
+  .quick-advanced-fold > summary {
+    list-style: none;
+    user-select: none;
+  }
+  .quick-advanced-fold > summary::-webkit-details-marker {
+    display: none;
+  }
+  .quick-advanced-fold[open] > summary {
+    color: var(--text-primary);
+  }
+
   /* ── 推荐追溯 outcome chips (V11 P1-FE#3) ────────────────────────── */
   /*
    * Per design doc: ✓ 命中 uses soft green tint + thin gold edge (premium
@@ -838,43 +884,119 @@
   </div>
 
   <!-- Tab: Single (单关) — V8 W6 -->
+  <!-- V12 W0 (2026-05-28) — simplified UX. JSON input + Kelly knobs
+       hidden under <details> "高级 ▾". Quick mode: budget → top-3
+       single recommendations sorted by hit_probability descending. -->
   <div id="tab-single" role="tabpanel" aria-labelledby="tab-single" class="tab-panel hidden">
-    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-3" data-i18n="h_single_rec">单关推荐</h2>
-      <p class="text-sm text-gray-500 mb-3" data-i18n="sub_single">单场比赛, 单注最低 ¥2; 系统从胜平负 + 让球胜平负 6 个候选里挑出 EV/单位最大的 1-2 注。</p>
-      <div class="flex space-x-2 mb-3">
-        <button id="btn-load-sample-single" data-i18n="btn_load_sample" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
-        <button id="btn-clear-single" data-i18n="btn_clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
-      </div>
-      <textarea id="single-fixtures-json" rows="14"
-        data-i18n-attr="aria-label:aria_single_json"
-        aria-label="单关 fixtures JSON 输入"
-        spellcheck="false" autocorrect="off" autocapitalize="off"
-        class="w-full p-3 border rounded font-mono text-xs sm:text-xs bg-gray-50 min-h-[200px]"></textarea>
-      <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
-        <label class="text-sm"><span data-i18n="lbl_bankroll">预算 ¥</span>
-          <input id="single-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h2 class="font-bold mb-2" data-i18n="h_single_rec">🎯 单关推荐</h2>
+      <p class="text-sm text-secondary mb-4" data-i18n="quick_single_sub">
+        输入预算, 生成今日最优单关推荐 (top-3, 按命中率排序)
+      </p>
+
+      <div class="flex items-end flex-wrap gap-3 mb-2">
+        <label class="text-sm">
+          <span class="block mb-1" data-i18n="lbl_bankroll">预算 ¥</span>
+          <input id="single-quick-bankroll" type="number" inputmode="numeric"
+                 value="1000" min="2" step="50"
+                 class="w-32 px-3 py-2 border rounded text-sm">
         </label>
-        <label class="text-sm" title="每场比赛最多推荐多少注 (默认 1 — 避免同场押两个对立结果)"><span data-i18n="lbl_top_per_match">每场最多</span>
-          <input id="single-top-per-match" type="number" inputmode="numeric" value="1" min="1" max="3" class="w-16 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm"><span data-i18n="lbl_kelly">凯利分数</span>
-          <input id="single-kelly-fraction" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm flex items-center"
-               data-i18n-attr="title:title_record_session"
-               title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
-          <input id="single-record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
-        </label>
-      </div>
-      <div class="mt-4">
-        <button id="btn-recommend-single" data-i18n="btn_recommend_single" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
-          生成单关推荐
+        <button id="btn-single-quick"
+                class="px-5 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium"
+                data-i18n="btn_quick_generate_single">
+          ✨ 生成最优单关推荐
         </button>
-        <span id="single-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
+        <span id="single-quick-status" role="status" aria-live="polite"
+              class="text-sm text-secondary"></span>
+      </div>
+
+      <details class="mt-4 quick-advanced-fold">
+        <summary class="cursor-pointer text-sm text-secondary py-2" data-i18n="advanced_fold">
+          高级 ▾
+        </summary>
+        <div class="mt-3 p-4 rounded" style="background-color: var(--bg-surface-2); border: 1px solid var(--border-subtle);">
+
+          <!-- Kelly risk preference with explanation -->
+          <div class="mb-4">
+            <div class="text-sm font-medium mb-1" data-i18n="kelly_tooltip_title">
+              凯利分数 (控制单注金额占预算的比例)
+            </div>
+            <div class="text-xs text-muted mb-2 leading-relaxed" data-i18n="kelly_tooltip_body">
+              • 保守 (0.15): 风险低 / 收益慢<br>
+              • 中 (0.25): 平衡 — 推荐 (默认)<br>
+              • 激进 (0.40): 高风险高收益, 适合资金充足
+            </div>
+            <div class="flex gap-2 quick-risk-row" data-target="single">
+              <button data-risk="conservative" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_conservative">保守</button>
+              <button data-risk="balanced" class="quick-risk-btn px-3 py-1 border rounded text-sm active" data-i18n="risk_balanced">中</button>
+              <button data-risk="aggressive" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_aggressive">激进</button>
+            </div>
+          </div>
+
+          <!-- Min EV slider -->
+          <div class="mb-4">
+            <label class="text-sm font-medium block mb-1">
+              <span data-i18n="lbl_min_ev">最低期望值</span>:
+              <span id="single-quick-min-ev-label" class="text-primary font-medium ml-1">+5%</span>
+            </label>
+            <input id="single-quick-min-ev" type="range" min="-0.05" max="0.10" step="0.05" value="0.05" class="w-full">
+            <div class="flex justify-between text-xs text-muted mt-0.5">
+              <span>-5%</span><span>0%</span><span>+5%</span><span>+10%</span>
+            </div>
+          </div>
+
+          <!-- Engineer mode: original JSON form -->
+          <details class="mt-2">
+            <summary class="cursor-pointer text-xs text-muted py-1" data-i18n="engineer_mode_fold">
+              手动输入 fixtures (工程模式) ▸
+            </summary>
+            <div class="mt-2">
+              <div class="flex space-x-2 mb-3">
+                <button id="btn-load-sample-single" data-i18n="btn_load_sample" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
+                <button id="btn-clear-single" data-i18n="btn_clear" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+              </div>
+              <textarea id="single-fixtures-json" rows="8"
+                data-i18n-attr="aria-label:aria_single_json"
+                aria-label="单关 fixtures JSON 输入"
+                spellcheck="false" autocorrect="off" autocapitalize="off"
+                class="w-full p-3 border rounded font-mono text-xs bg-gray-50 min-h-[160px]"></textarea>
+              <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2 text-xs">
+                <label><span data-i18n="lbl_bankroll">预算 ¥</span>
+                  <input id="single-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-20 px-2 py-1 border rounded">
+                </label>
+                <label title="每场比赛最多推荐多少注 (默认 1)"><span data-i18n="lbl_top_per_match">每场最多</span>
+                  <input id="single-top-per-match" type="number" inputmode="numeric" value="1" min="1" max="3" class="w-14 px-2 py-1 border rounded">
+                </label>
+                <label><span data-i18n="lbl_kelly">凯利分数</span>
+                  <input id="single-kelly-fraction" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05" max="1.0" class="w-16 px-2 py-1 border rounded">
+                </label>
+                <label class="flex items-center">
+                  <input id="single-record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
+                </label>
+              </div>
+              <button id="btn-recommend-single" class="mt-3 px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded" data-i18n="btn_recommend_single_json">
+                生成 (JSON 模式)
+              </button>
+              <span id="single-status" role="status" aria-live="polite" class="ml-2 text-xs text-secondary"></span>
+            </div>
+          </details>
+
+        </div>
+      </details>
+    </div>
+
+    <!-- Quick-mode output: top-3 cards sorted by hit_probability desc -->
+    <div id="single-quick-output" class="hidden">
+      <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6">
+        <h3 class="font-bold mb-3" data-i18n="h_quick_single_top3">今日最优单关 (top-3)</h3>
+        <div id="single-quick-list" class="space-y-2"></div>
+        <div id="single-quick-empty" class="hidden text-sm text-secondary" data-i18n="quick_no_recs">
+          今日无可推荐组合 — 所有候选未通过 EV 门槛
+        </div>
       </div>
     </div>
 
+    <!-- Legacy engineer-mode output (only used by btn-recommend-single in 工程模式) -->
     <div id="single-output" class="hidden">
       <div class="bg-white shadow-sm rounded-lg p-6">
         <h3 class="font-bold mb-3"><span data-i18n="h_tickets">推荐票</span> <span id="single-count" class="text-sm font-normal text-gray-500"></span></h3>
@@ -886,51 +1008,144 @@
     </div>
   </div>
 
+  <!-- V12 W0 (2026-05-28) — simplified 串关 UX. Budget + 串关大小 selector
+       (2-8 串 1) → top-3 N-leg parlay recommendations sorted by hit_probability
+       descending. Legacy JSON form hidden under <details> 高级 ▾ → 工程模式. -->
   <!-- Tab: Recommend (串关) -->
   <div id="tab-recommend" role="tabpanel" class="tab-panel hidden">
-    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-3" data-i18n="h_parlay_rec">串关推荐</h2>
-      <p class="text-sm text-gray-500 mb-3" data-i18n="sub_single">粘贴 JSON 数组（每场一对象，字段见
-        <code class="bg-gray-100 px-1 rounded">FixtureOddsInput</code> schema）。点击下方"使用示例"快速填入演示数据。</p>
-      <div class="flex space-x-2 mb-3">
-        <button id="btn-load-sample" data-i18n="btn_load_sample" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
-        <button id="btn-clear" data-i18n="btn_clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
-      </div>
-      <textarea id="fixtures-json" rows="14"
-        data-i18n-attr="aria-label:aria_parlay_json"
-        aria-label="串关 fixtures JSON 输入"
-        spellcheck="false" autocorrect="off" autocapitalize="off"
-        class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
-      <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
-        <label class="text-sm"><span data-i18n="lbl_bankroll">预算 ¥</span>
-          <input id="bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm" title="起投 ¥2，建议 2 的倍数">
-        </label>
-        <label class="text-sm"><span data-i18n="lbl_top_n">最大推荐数</span>
-          <input id="top-n" type="number" inputmode="numeric" value="10" min="1" max="50" class="w-16 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm" title="模型预测命中率下限；默认 5% (与派奖率匹配)"><span data-i18n="lbl_min_hit">最小命中率</span>
-          <input id="min-hit" type="number" inputmode="decimal" value="0.05" step="0.01" min="0" max="1" class="w-20 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm" title="凯利推荐金额下限；起投 ¥2 (步长 2)"><span data-i18n="lbl_min_kelly">最小凯利 ¥</span>
-          <input id="min-kelly" type="number" inputmode="numeric" value="2" min="2" step="2" class="w-20 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm flex items-center">
-          <input id="record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
-        </label>
-      </div>
-      <p id="rules-hint" class="mt-2 text-xs text-gray-500">
-        竞彩规则: 起投 <strong>¥2</strong>, 单注上限 <strong>¥20,000</strong>,
-        混合过关 <strong>≤8 串</strong>, 派奖率 <strong>68.5%</strong> (vig 31.5%)。
-        <a href="#" data-tab-link="rules" class="text-indigo-600 hover:underline">详细规则 →</a>
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h2 class="font-bold mb-2" data-i18n="h_parlay_rec">🚀 串关推荐</h2>
+      <p class="text-sm text-secondary mb-4" data-i18n="quick_parlay_sub">
+        输入预算 + 串关大小, 生成今日最优 N 串 1 推荐 (top-3, 按命中率排序)
       </p>
-      <div class="mt-4">
-        <button id="btn-recommend" data-i18n="btn_recommend_parlay" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
-          生成推荐
+
+      <div class="flex items-end flex-wrap gap-3 mb-3">
+        <label class="text-sm">
+          <span class="block mb-1" data-i18n="lbl_bankroll">预算 ¥</span>
+          <input id="parlay-quick-bankroll" type="number" inputmode="numeric"
+                 value="1000" min="2" step="50"
+                 class="w-32 px-3 py-2 border rounded text-sm">
+        </label>
+      </div>
+
+      <div class="mb-3">
+        <div class="text-sm mb-2" data-i18n="lbl_combo_size">串关大小</div>
+        <div class="flex flex-wrap gap-2 quick-combo-row" data-target="parlay">
+          <button data-k="2" class="quick-combo-btn px-3 py-2 border rounded text-sm">2串1</button>
+          <button data-k="3" class="quick-combo-btn px-3 py-2 border rounded text-sm">3串1</button>
+          <button data-k="4" class="quick-combo-btn px-3 py-2 border rounded text-sm active">4串1</button>
+          <button data-k="5" class="quick-combo-btn px-3 py-2 border rounded text-sm">5串1</button>
+          <button data-k="6" class="quick-combo-btn px-3 py-2 border rounded text-sm">6串1</button>
+          <button data-k="7" class="quick-combo-btn px-3 py-2 border rounded text-sm">7串1</button>
+          <button data-k="8" class="quick-combo-btn px-3 py-2 border rounded text-sm">8串1</button>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 mb-2">
+        <button id="btn-parlay-quick"
+                class="px-5 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium"
+                data-i18n="btn_quick_generate_parlay">
+          ✨ 生成最优 4串1 推荐
         </button>
-        <span id="recommend-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
+        <span id="parlay-quick-status" role="status" aria-live="polite"
+              class="text-sm text-secondary"></span>
+      </div>
+
+      <details class="mt-4 quick-advanced-fold">
+        <summary class="cursor-pointer text-sm text-secondary py-2" data-i18n="advanced_fold">
+          高级 ▾
+        </summary>
+        <div class="mt-3 p-4 rounded" style="background-color: var(--bg-surface-2); border: 1px solid var(--border-subtle);">
+
+          <!-- Kelly risk preference -->
+          <div class="mb-4">
+            <div class="text-sm font-medium mb-1" data-i18n="kelly_tooltip_title">
+              凯利分数 (控制单注金额占预算的比例)
+            </div>
+            <div class="text-xs text-muted mb-2 leading-relaxed" data-i18n="kelly_tooltip_body">
+              • 保守 (0.15): 风险低 / 收益慢<br>
+              • 中 (0.25): 平衡 — 推荐 (默认)<br>
+              • 激进 (0.40): 高风险高收益, 适合资金充足
+            </div>
+            <div class="flex gap-2 quick-risk-row" data-target="parlay">
+              <button data-risk="conservative" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_conservative">保守</button>
+              <button data-risk="balanced" class="quick-risk-btn px-3 py-1 border rounded text-sm active" data-i18n="risk_balanced">中</button>
+              <button data-risk="aggressive" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_aggressive">激进</button>
+            </div>
+          </div>
+
+          <!-- Min EV slider -->
+          <div class="mb-4">
+            <label class="text-sm font-medium block mb-1">
+              <span data-i18n="lbl_min_ev">最低期望值</span>:
+              <span id="parlay-quick-min-ev-label" class="text-primary font-medium ml-1">+5%</span>
+            </label>
+            <input id="parlay-quick-min-ev" type="range" min="-0.05" max="0.10" step="0.05" value="0.05" class="w-full">
+            <div class="flex justify-between text-xs text-muted mt-0.5">
+              <span>-5%</span><span>0%</span><span>+5%</span><span>+10%</span>
+            </div>
+          </div>
+
+          <!-- Engineer mode -->
+          <details class="mt-2">
+            <summary class="cursor-pointer text-xs text-muted py-1" data-i18n="engineer_mode_fold">
+              手动输入 fixtures (工程模式) ▸
+            </summary>
+            <div class="mt-2">
+              <div class="flex space-x-2 mb-3">
+                <button id="btn-load-sample" data-i18n="btn_load_sample" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (8 场)</button>
+                <button id="btn-clear" data-i18n="btn_clear" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+              </div>
+              <textarea id="fixtures-json" rows="8"
+                data-i18n-attr="aria-label:aria_parlay_json"
+                aria-label="串关 fixtures JSON 输入"
+                spellcheck="false" autocorrect="off" autocapitalize="off"
+                class="w-full p-3 border rounded text-xs bg-gray-50"></textarea>
+              <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2 text-xs">
+                <label><span data-i18n="lbl_bankroll">预算 ¥</span>
+                  <input id="bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-20 px-2 py-1 border rounded" title="起投 ¥2">
+                </label>
+                <label><span data-i18n="lbl_top_n">最大推荐数</span>
+                  <input id="top-n" type="number" inputmode="numeric" value="10" min="1" max="50" class="w-14 px-2 py-1 border rounded">
+                </label>
+                <label title="模型预测命中率下限"><span data-i18n="lbl_min_hit">最小命中率</span>
+                  <input id="min-hit" type="number" inputmode="decimal" value="0.05" step="0.01" min="0" max="1" class="w-16 px-2 py-1 border rounded">
+                </label>
+                <label><span data-i18n="lbl_min_kelly">最小凯利 ¥</span>
+                  <input id="min-kelly" type="number" inputmode="numeric" value="2" min="2" step="2" class="w-16 px-2 py-1 border rounded">
+                </label>
+                <label class="flex items-center">
+                  <input id="record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
+                </label>
+              </div>
+              <button id="btn-recommend" class="mt-3 px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded" data-i18n="btn_recommend_parlay_json">
+                生成 (JSON 模式)
+              </button>
+              <span id="recommend-status" role="status" aria-live="polite" class="ml-2 text-xs text-secondary"></span>
+              <p id="rules-hint" class="mt-2 text-xs text-muted">
+                竞彩规则: 起投 ¥2, 单注上限 ¥20,000, 混合过关 ≤8 串, 派奖率 68.5%。
+              </p>
+            </div>
+          </details>
+
+        </div>
+      </details>
+    </div>
+
+    <!-- Quick-mode output: top-3 cards sorted by hit_probability desc -->
+    <div id="parlay-quick-output" class="hidden">
+      <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6">
+        <h3 class="font-bold mb-3">
+          <span id="parlay-quick-h3-label" data-i18n="h_quick_parlay_top3">今日最优 4串1 (top-3)</span>
+        </h3>
+        <div id="parlay-quick-list" class="space-y-2"></div>
+        <div id="parlay-quick-empty" class="hidden text-sm text-secondary" data-i18n="quick_no_recs">
+          今日无可推荐组合 — 所有候选未通过 EV 门槛
+        </div>
       </div>
     </div>
 
+    <!-- Legacy engineer-mode output -->
     <div id="recommend-output" class="hidden">
       <!-- Single-match predictions -->
       <div class="bg-white shadow-sm rounded-lg p-3 sm:p-6 mb-6">
@@ -970,51 +1185,146 @@
     </div>
   </div>
 
-  <!-- Tab: Pool (复式) — V8 W6 -->
+  <!-- V12 W0 (2026-05-28) — simplified 复式 UX. Budget + 「选 M 场参赛」selector
+       → optimal 复式 pool. Legacy JSON form hidden under <details> 工程模式.
+       Phase 1: pool_n derived from server-side optimum (default 3 串 1 per
+       ticket); Phase 2 will add proper M-cap + N-selector. -->
+  <!-- Tab: Pool (复式) -->
   <div id="tab-pool" role="tabpanel" class="tab-panel hidden">
-    <div class="bg-white shadow-sm rounded-lg p-6 mb-6">
-      <h2 class="font-bold mb-3" data-i18n="h_pool_rec">复式过关推荐 (M 选 N)</h2>
-      <p class="text-sm text-gray-500 mb-3">
-        预选 M 场比赛, 每场指定 pick (1x2_H/D/A 或 hc_H/D/A), 系统枚举所有 C(M, N) 张子票,
-        独立凯利计算每张 ¥2 起投仓位。最终命中按子票数结算。
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h2 class="font-bold mb-2" data-i18n="h_pool_rec">💎 复式过关推荐</h2>
+      <p class="text-sm text-secondary mb-4" data-i18n="quick_pool_sub">
+        输入预算 + 选几场参赛, 生成今日最优复式 (1 套 = C(M, N) 张子票)
       </p>
-      <div class="flex space-x-2 mb-3">
-        <button id="btn-load-sample-pool" data-i18n="btn_load_sample" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (4 场, pick 已填)</button>
-        <button id="btn-clear-pool" data-i18n="btn_clear" class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">清空</button>
-      </div>
-      <textarea id="pool-fixtures-json" rows="14"
-        data-i18n-attr="aria-label:aria_pool_json"
-        aria-label="复式 fixtures JSON 输入"
-        spellcheck="false" autocorrect="off" autocapitalize="off"
-        class="w-full p-3 border rounded text-xs bg-gray-50"
-        placeholder='每场需含 pick 字段 — "1x2_H" / "1x2_D" / "1x2_A" / "hc_H" / "hc_D" / "hc_A"'></textarea>
-      <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2">
-        <label class="text-sm"><span data-i18n="lbl_bankroll">预算 ¥</span>
-          <input id="pool-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm" title="每张票串关数 (1-8, 受混合过关 8 串上限)"><span data-i18n="lbl_pool_n">N (串关数)</span>
-          <input id="pool-n" type="number" inputmode="numeric" value="3" min="1" max="8" class="w-16 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm" title="可选: 整个复式池子的总投注上限 ¥; 留空 = 无限制"><span data-i18n="lbl_pool_max_budget">总预算上限 ¥</span>
-          <input id="pool-max-budget" type="number" inputmode="numeric" placeholder="无限制" min="2" step="2" class="w-24 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm"><span data-i18n="lbl_kelly">凯利分数</span>
-          <input id="pool-kelly-fraction" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05" max="1.0" class="w-20 px-2 py-1 border rounded text-sm">
-        </label>
-        <label class="text-sm flex items-center"
-               data-i18n-attr="title:title_record_session"
-               title="需要服务器设 NUTMEG_V4_OBSERVATION_DB 环境变量才会真正落库">
-          <input id="pool-record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
+
+      <div class="flex items-end flex-wrap gap-3 mb-3">
+        <label class="text-sm">
+          <span class="block mb-1" data-i18n="lbl_bankroll">预算 ¥</span>
+          <input id="pool-quick-bankroll" type="number" inputmode="numeric"
+                 value="1000" min="2" step="50"
+                 class="w-32 px-3 py-2 border rounded text-sm">
         </label>
       </div>
-      <div class="mt-4">
-        <button id="btn-recommend-pool" data-i18n="btn_recommend_pool" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
-          生成复式推荐
+
+      <div class="mb-3">
+        <div class="text-sm mb-2" data-i18n="lbl_pool_m_count">选 M 场参赛</div>
+        <div class="flex flex-wrap gap-2 quick-pool-m-row">
+          <button data-m="3" class="quick-pool-m-btn px-3 py-2 border rounded text-sm">3 场</button>
+          <button data-m="4" class="quick-pool-m-btn px-3 py-2 border rounded text-sm">4 场</button>
+          <button data-m="5" class="quick-pool-m-btn px-3 py-2 border rounded text-sm active">5 场</button>
+          <button data-m="6" class="quick-pool-m-btn px-3 py-2 border rounded text-sm">6 场</button>
+          <button data-m="7" class="quick-pool-m-btn px-3 py-2 border rounded text-sm">7 场</button>
+          <button data-m="8" class="quick-pool-m-btn px-3 py-2 border rounded text-sm">8 场</button>
+        </div>
+        <div class="text-xs text-muted mt-1" data-i18n="pool_m_hint">
+          系统从今日可下注比赛里挑 EV 最好的 M 场, 自动配 C(M, 3) 张子票 (每张 3 串 1)
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 mb-2">
+        <button id="btn-pool-quick"
+                class="px-5 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium"
+                data-i18n="btn_quick_generate_pool">
+          ✨ 生成最优复式推荐
         </button>
-        <span id="pool-status" role="status" aria-live="polite" class="ml-3 text-sm text-gray-500"></span>
+        <span id="pool-quick-status" role="status" aria-live="polite"
+              class="text-sm text-secondary"></span>
+      </div>
+
+      <details class="mt-4 quick-advanced-fold">
+        <summary class="cursor-pointer text-sm text-secondary py-2" data-i18n="advanced_fold">
+          高级 ▾
+        </summary>
+        <div class="mt-3 p-4 rounded" style="background-color: var(--bg-surface-2); border: 1px solid var(--border-subtle);">
+
+          <!-- Kelly risk preference -->
+          <div class="mb-4">
+            <div class="text-sm font-medium mb-1" data-i18n="kelly_tooltip_title">
+              凯利分数 (控制单注金额占预算的比例)
+            </div>
+            <div class="text-xs text-muted mb-2 leading-relaxed" data-i18n="kelly_tooltip_body">
+              • 保守 (0.15): 风险低 / 收益慢<br>
+              • 中 (0.25): 平衡 — 推荐 (默认)<br>
+              • 激进 (0.40): 高风险高收益, 适合资金充足
+            </div>
+            <div class="flex gap-2 quick-risk-row" data-target="pool">
+              <button data-risk="conservative" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_conservative">保守</button>
+              <button data-risk="balanced" class="quick-risk-btn px-3 py-1 border rounded text-sm active" data-i18n="risk_balanced">中</button>
+              <button data-risk="aggressive" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_aggressive">激进</button>
+            </div>
+          </div>
+
+          <!-- Min EV slider -->
+          <div class="mb-4">
+            <label class="text-sm font-medium block mb-1">
+              <span data-i18n="lbl_min_ev">最低期望值</span>:
+              <span id="pool-quick-min-ev-label" class="text-primary font-medium ml-1">+5%</span>
+            </label>
+            <input id="pool-quick-min-ev" type="range" min="-0.05" max="0.10" step="0.05" value="0.05" class="w-full">
+            <div class="flex justify-between text-xs text-muted mt-0.5">
+              <span>-5%</span><span>0%</span><span>+5%</span><span>+10%</span>
+            </div>
+          </div>
+
+          <!-- Engineer mode -->
+          <details class="mt-2">
+            <summary class="cursor-pointer text-xs text-muted py-1" data-i18n="engineer_mode_fold">
+              手动输入 fixtures (工程模式) ▸
+            </summary>
+            <div class="mt-2">
+              <div class="flex space-x-2 mb-3">
+                <button id="btn-load-sample-pool" data-i18n="btn_load_sample" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">使用示例数据 (4 场)</button>
+                <button id="btn-clear-pool" data-i18n="btn_clear" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded">清空</button>
+              </div>
+              <textarea id="pool-fixtures-json" rows="8"
+                data-i18n-attr="aria-label:aria_pool_json"
+                aria-label="复式 fixtures JSON 输入"
+                spellcheck="false" autocorrect="off" autocapitalize="off"
+                class="w-full p-3 border rounded text-xs bg-gray-50"
+                placeholder='每场需含 pick 字段 — "1x2_H" / "1x2_D" / "1x2_A" / "hc_H" / "hc_D" / "hc_A"'></textarea>
+              <div class="mt-3 flex items-center flex-wrap gap-x-4 gap-y-2 text-xs">
+                <label><span data-i18n="lbl_bankroll">预算 ¥</span>
+                  <input id="pool-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2" class="w-20 px-2 py-1 border rounded">
+                </label>
+                <label title="每张票串关数"><span data-i18n="lbl_pool_n">N (串关数)</span>
+                  <input id="pool-n" type="number" inputmode="numeric" value="3" min="1" max="8" class="w-14 px-2 py-1 border rounded">
+                </label>
+                <label><span data-i18n="lbl_pool_max_budget">总预算上限 ¥</span>
+                  <input id="pool-max-budget" type="number" inputmode="numeric" placeholder="无限制" min="2" step="2" class="w-20 px-2 py-1 border rounded">
+                </label>
+                <label><span data-i18n="lbl_kelly">凯利分数</span>
+                  <input id="pool-kelly-fraction" type="number" inputmode="decimal" value="0.25" step="0.05" min="0.05" max="1.0" class="w-16 px-2 py-1 border rounded">
+                </label>
+                <label class="flex items-center">
+                  <input id="pool-record-session" type="checkbox" class="mr-1"> <span data-i18n="lbl_record_session">记录到观测库</span>
+                </label>
+              </div>
+              <button id="btn-recommend-pool" class="mt-3 px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded" data-i18n="btn_recommend_pool_json">
+                生成 (JSON 模式)
+              </button>
+              <span id="pool-status" role="status" aria-live="polite" class="ml-2 text-xs text-secondary"></span>
+            </div>
+          </details>
+
+        </div>
+      </details>
+    </div>
+
+    <!-- Quick-mode output: 1 complete pool with summary + ticket list -->
+    <div id="pool-quick-output" class="hidden">
+      <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6">
+        <h3 class="font-bold mb-3">
+          <span data-i18n="h_quick_pool_top">今日最优复式</span>
+          <span id="pool-quick-summary" class="text-sm font-normal text-secondary ml-2"></span>
+        </h3>
+        <div id="pool-quick-list" class="space-y-2"></div>
+        <div id="pool-quick-empty" class="hidden text-sm text-secondary" data-i18n="quick_no_recs">
+          今日无可推荐组合 — 所有候选未通过 EV 门槛
+        </div>
       </div>
     </div>
 
+    <!-- Legacy engineer-mode output -->
     <div id="pool-output" class="hidden">
       <div class="bg-white shadow-sm rounded-lg p-6">
         <h3 class="font-bold mb-3"><span data-i18n="h_tickets">推荐票</span> <span id="pool-count" class="text-sm font-normal text-gray-500"></span></h3>
@@ -1275,6 +1585,32 @@ const I18N = {
     // V12 W0 (2026-05-27) — playoff/barrage warning banner
     playoff_banner_title: '检测到附加赛 — 模型未针对此类比赛校准',
     playoff_banner_note:  '训练集只见过常规联赛, 没标记 "升降级附加赛 / 决胜战" 这种语境。建议: 把模型 P 看作下限, 谨慎参考。',
+    // V12 W0 (2026-05-28) — simplified 单关 / 串关 / 复式 quick UX
+    advanced_fold:           '高级 ▾',
+    engineer_mode_fold:      '手动输入 fixtures (工程模式) ▸',
+    quick_single_sub:        '输入预算, 生成今日最优单关推荐 (top-3, 按命中率排序)',
+    quick_parlay_sub:        '输入预算 + 串关大小, 生成今日最优 N 串 1 推荐 (top-3, 按命中率排序)',
+    quick_pool_sub:          '输入预算 + 选几场参赛, 生成今日最优复式 (1 套 = C(M, N) 张子票)',
+    btn_quick_generate_single: '✨ 生成最优单关推荐',
+    btn_quick_generate_parlay: '✨ 生成最优 4串1 推荐',
+    btn_quick_generate_parlay_template: '✨ 生成最优 {k}串1 推荐',
+    btn_quick_generate_pool: '✨ 生成最优复式推荐',
+    lbl_combo_size:          '串关大小',
+    lbl_pool_m_count:        '选 M 场参赛',
+    pool_m_hint:             '系统从今日可下注比赛里挑 EV 最好的 M 场, 自动配 C(M, 3) 张子票 (每张 3 串 1)',
+    h_quick_single_top3:     '今日最优单关 (top-3)',
+    h_quick_parlay_top3:     '今日最优 4串1 (top-3)',
+    h_quick_parlay_top3_template: '今日最优 {k}串1 (top-3)',
+    h_quick_pool_top:        '今日最优复式',
+    quick_no_recs:           '今日无可推荐组合 — 所有候选未通过 EV 门槛',
+    quick_no_recs_for_k:     '今日没有合适的 {k}串1 组合, 试试别的串关大小',
+    quick_loading:           '生成中...',
+    quick_api_error:         '生成失败 - 后端不可用',
+    kelly_tooltip_title:     '凯利分数 (控制单注金额占预算的比例)',
+    kelly_tooltip_body:      '• 保守 (0.15): 风险低 / 收益慢<br>• 中 (0.25): 平衡 — 推荐 (默认)<br>• 激进 (0.40): 高风险高收益, 适合资金充足',
+    btn_recommend_single_json: '生成 (JSON 模式)',
+    btn_recommend_parlay_json: '生成 (JSON 模式)',
+    btn_recommend_pool_json:   '生成 (JSON 模式)',
     // V11 P1-FE#3 — 推荐追溯
     tab_history:         '📜 推荐追溯',
     h_history_title:     '推荐追溯',
@@ -1463,6 +1799,32 @@ const I18N = {
     // V12 W0 (2026-05-27) — playoff/barrage warning banner
     playoff_banner_title: 'Playoff context detected — model is not calibrated for these',
     playoff_banner_note:  'Training set only saw regular-season league matches; no feature flags promotion / relegation playoffs or barrage. Treat the model probability as a floor and exercise judgment.',
+    // V12 W0 (2026-05-28) — simplified single / parlay / pool quick UX
+    advanced_fold:           'Advanced ▾',
+    engineer_mode_fold:      'Manual fixtures input (engineer mode) ▸',
+    quick_single_sub:        "Enter budget; generates today's best single picks (top-3, sorted by hit rate).",
+    quick_parlay_sub:        "Enter budget + combo size; generates today's best N-leg parlay (top-3, sorted by hit rate).",
+    quick_pool_sub:          "Enter budget + how many matches to include; generates today's best compound pool.",
+    btn_quick_generate_single: '✨ Generate best single picks',
+    btn_quick_generate_parlay: '✨ Generate best 4-leg parlay',
+    btn_quick_generate_parlay_template: '✨ Generate best {k}-leg parlay',
+    btn_quick_generate_pool: '✨ Generate best pool',
+    lbl_combo_size:          'Combo size',
+    lbl_pool_m_count:        'Matches to include (M)',
+    pool_m_hint:             "Picks top-M matches by EV and builds C(M, 3) sub-tickets (each is a 3-leg parlay).",
+    h_quick_single_top3:     "Today's best single picks (top-3)",
+    h_quick_parlay_top3:     "Today's best 4-leg parlay (top-3)",
+    h_quick_parlay_top3_template: "Today's best {k}-leg parlay (top-3)",
+    h_quick_pool_top:        "Today's best pool",
+    quick_no_recs:           'No qualifying combos today — all candidates fell short of the EV gate.',
+    quick_no_recs_for_k:     'No good {k}-leg combos today, try a different combo size.',
+    quick_loading:           'Generating...',
+    quick_api_error:         'Generation failed — backend unreachable',
+    kelly_tooltip_title:     'Kelly fraction (controls how much of your bankroll each bet uses)',
+    kelly_tooltip_body:      '• Conservative (0.15): low risk / slow growth<br>• Balanced (0.25): the recommended default<br>• Aggressive (0.40): higher risk + higher upside, for ample bankroll',
+    btn_recommend_single_json: 'Generate (JSON mode)',
+    btn_recommend_parlay_json: 'Generate (JSON mode)',
+    btn_recommend_pool_json:   'Generate (JSON mode)',
     // V11 P1-FE#3 — Recommendations history
     tab_history:         '📜 History',
     h_history_title:     'Recommendation history',
@@ -3181,6 +3543,309 @@ document.querySelectorAll('.history-range-btn').forEach(btn => {
     loadHistory();
   });
 });
+// =====================================================================
+// V12 W0 (2026-05-28) — Quick-mode handlers for 3 simplified tabs.
+// =====================================================================
+// Each tab has a top-level form (predicate + size + generate button).
+// Clicking 生成 calls /today-recommendations, filters/sorts the
+// response, and renders top-3 (single/parlay) or 1 set (pool) into
+// per-tab quick-output divs.
+// Risk preference + min_ev hidden in 高级 ▾, defaults sensible (中 +5%).
+// Engineer JSON mode still works in a nested <details>.
+// =====================================================================
+
+// State (per-tab risk preference + selected combo size)
+let _quickRisk = { single: 'balanced', parlay: 'balanced', pool: 'balanced' };
+let _quickComboK = 4;        // 串关 default 4 串 1
+let _quickPoolM = 5;         // 复式 default 5 场
+
+// Quick risk button toggles (used by all 3 tabs)
+document.querySelectorAll('.quick-risk-row').forEach(row => {
+  const target = row.dataset.target;
+  row.querySelectorAll('.quick-risk-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      row.querySelectorAll('.quick-risk-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _quickRisk[target] = btn.dataset.risk;
+    });
+  });
+});
+
+// Quick combo size toggle (parlay tab)
+document.querySelectorAll('.quick-combo-row .quick-combo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.quick-combo-row .quick-combo-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _quickComboK = parseInt(btn.dataset.k, 10);
+    // Update the button label to reflect the selection
+    const lbl = $('#parlay-quick-h3-label');
+    if (lbl) lbl.textContent = (t('h_quick_parlay_top3_template') || '今日最优 {k}串1 (top-3)')
+      .replace('{k}', _quickComboK);
+    const btnEl = $('#btn-parlay-quick');
+    if (btnEl) btnEl.textContent = (t('btn_quick_generate_parlay_template') || '✨ 生成最优 {k}串1 推荐')
+      .replace('{k}', _quickComboK);
+  });
+});
+
+// Quick pool-M toggle
+document.querySelectorAll('.quick-pool-m-row .quick-pool-m-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.quick-pool-m-row .quick-pool-m-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _quickPoolM = parseInt(btn.dataset.m, 10);
+  });
+});
+
+// Min-EV slider label updates (per-tab, mirror today-min-ev pattern)
+['single', 'parlay', 'pool'].forEach(target => {
+  const slider = $(`#${target}-quick-min-ev`);
+  const label = $(`#${target}-quick-min-ev-label`);
+  if (slider && label) {
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      label.textContent = (v >= 0 ? '+' : '') + (v * 100).toFixed(0) + '%';
+    });
+  }
+});
+
+const _RISK_TO_KELLY = { conservative: 0.15, balanced: 0.25, aggressive: 0.40 };
+
+async function _quickFetchTodayRecs({ bankroll, include, risk, minEv, poolN }) {
+  const body = {
+    bankroll,
+    include,
+    risk_preference: risk,
+    min_ev: minEv,
+    kelly_fraction: _RISK_TO_KELLY[risk] || 0.25,
+  };
+  if (poolN !== undefined) body.pool_n = poolN;
+  const resp = await fetch(API + '/today-recommendations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return await resp.json();
+}
+
+// Render top-3 single tickets sorted by hit_probability desc
+function _renderQuickSingleList(tickets) {
+  const list = $('#single-quick-list');
+  const output = $('#single-quick-output');
+  const empty = $('#single-quick-empty');
+  if (!tickets || tickets.length === 0) {
+    output.classList.remove('hidden');
+    list.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  output.classList.remove('hidden');
+  empty.classList.add('hidden');
+  const medals = ['🥇', '🥈', '🥉'];
+  list.innerHTML = tickets.map((tk, i) => {
+    const medal = medals[i] || '';
+    const marketLabel = tk.market_type === 'handicap_1x2' ? '让球' : '胜平负';
+    return `
+      <div class="card-rec mb-3">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div class="flex-1 min-w-0">
+            <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
+              <span class="text-lg">${medal}</span>
+              ${teamLogo(tk.home_team)} <span>${zhTeam(tk.home_team)}</span>
+              <span class="text-muted font-normal">vs</span>
+              ${teamLogo(tk.away_team)} <span>${zhTeam(tk.away_team)}</span>
+            </div>
+            <div class="text-xs text-muted mt-1">${tk.league} · ${tk.date}</div>
+          </div>
+          <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(tk.outcome)}</span>
+        </div>
+        <div class="flex items-end justify-between gap-3">
+          <div>
+            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(tk.stake)}</div>
+            <div class="text-xs text-muted mt-0.5">建议投注</div>
+          </div>
+          <div class="flex flex-col items-end gap-1 text-xs">
+            <div class="text-secondary">命中率 <span class="num-display text-primary">${(tk.hit_probability * 100).toFixed(1)}%</span></div>
+            <div class="text-secondary">赔率 <span class="num-display text-primary">${tk.odds.toFixed(2)}</span></div>
+            ${evBar(tk.ev_per_unit)}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Render top-3 N-leg parlay recommendations sorted by hit_probability desc
+function _renderQuickParlayList(recs, k_target) {
+  const list = $('#parlay-quick-list');
+  const output = $('#parlay-quick-output');
+  const empty = $('#parlay-quick-empty');
+  output.classList.remove('hidden');
+  if (!recs || recs.length === 0) {
+    list.innerHTML = '';
+    empty.classList.remove('hidden');
+    empty.textContent = (t('quick_no_recs_for_k') || '今日没有合适的 {k}串1 组合, 试试别的串关大小')
+      .replace('{k}', k_target);
+    return;
+  }
+  empty.classList.add('hidden');
+  const medals = ['🥇', '🥈', '🥉'];
+  list.innerHTML = recs.map((r, i) => {
+    const medal = medals[i] || '';
+    const legsHtml = r.legs.map(l => {
+      const sels = l.selections.map(s =>
+        `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
+      ).join('');
+      const raw = (l.match_id || '').replace(/^[A-Z0-9_]+_/, '');
+      const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
+      const matchHtml = parts[1]
+        ? `${zhTeam(parts[0])} <span class="text-muted">vs</span> ${zhTeam(parts[1])}`
+        : zhTeam(parts[0]);
+      return `<div class="text-sm py-1 text-primary">${matchHtml}${sels}</div>`;
+    }).join('');
+    return `
+      <div class="card-rec mb-3">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <div class="font-display font-semibold text-base text-primary">
+              <span class="text-lg">${medal}</span> ${r.legs.length} 串 1
+            </div>
+            <div class="text-xs text-muted mt-1">
+              联合赔率 <span class="num-display text-primary">${(r.combined_odds || 0).toFixed(2)}</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-end gap-1">
+            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(r.stake_units || 0)}</div>
+            <div class="text-xs text-muted">建议投注</div>
+          </div>
+        </div>
+        <div class="mb-3" style="border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">${legsHtml}</div>
+        <div class="flex items-center justify-between text-xs pt-1">
+          <span class="text-secondary">命中率 <span class="num-display text-primary">${(r.hit_probability * 100).toFixed(1)}%</span></span>
+          ${evBar(r.ev_per_unit)}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Render complete pool (1 set of tickets)
+function _renderQuickPoolList(pool) {
+  const list = $('#pool-quick-list');
+  const output = $('#pool-quick-output');
+  const empty = $('#pool-quick-empty');
+  const summary = $('#pool-quick-summary');
+  output.classList.remove('hidden');
+  if (!pool || !pool.tickets || pool.n_selected === 0) {
+    list.innerHTML = '';
+    summary.textContent = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  summary.textContent = ` · ${pool.m} 选 ${pool.n} · 共 ${pool.n_combinations} 张候选, 选中 ${pool.n_selected} 张, 总投注 ${fmtMoney(pool.total_stake)}`;
+  const selected = pool.tickets.filter(t => t.stake > 0);
+  list.innerHTML = selected.map((tk, i) => {
+    const legsHtml = tk.legs.map(l => {
+      const raw = (l.match_id || '').replace(/^[A-Z0-9_]+_/, '');
+      const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
+      const matchHtml = parts[1]
+        ? `${zhTeam(parts[0])} <span class="text-muted">vs</span> ${zhTeam(parts[1])}`
+        : zhTeam(parts[0]);
+      return `<div class="text-xs flex items-center justify-between gap-2 py-1">
+        <span class="text-secondary truncate">${matchHtml}</span>
+        <span class="badge-ok shrink-0">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+      </div>`;
+    }).join('');
+    return `<div class="card-rec mb-3">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div class="font-display font-semibold text-base text-primary">${pool.n} 串 1 · 第 ${i+1} 张</div>
+          <div class="text-xs text-muted mt-1">联合赔率 <span class="num-display text-primary">${tk.combined_odds.toFixed(2)}</span></div>
+        </div>
+        <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(tk.stake)}</div>
+      </div>
+      <div class="mb-2" style="border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">${legsHtml}</div>
+      <div class="flex items-center justify-between text-xs pt-1">
+        <span class="text-secondary">命中率 <span class="num-display text-primary">${(tk.hit_probability * 100).toFixed(1)}%</span></span>
+        ${evBar(tk.ev_per_unit)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// === Quick generate handlers ===
+$('#btn-single-quick')?.addEventListener('click', async () => {
+  const bankroll = parseFloat($('#single-quick-bankroll').value) || 1000;
+  const risk = _quickRisk.single;
+  const minEv = parseFloat($('#single-quick-min-ev').value) || 0.05;
+  setStatus('#single-quick-status', 'loading', t('quick_loading') || '生成中...');
+  try {
+    const body = await _quickFetchTodayRecs({
+      bankroll, include: ['single'], risk, minEv,
+    });
+    const tickets = (body.single?.tickets || [])
+      .slice()
+      .sort((a, b) => b.hit_probability - a.hit_probability)
+      .slice(0, 3);
+    _renderQuickSingleList(tickets);
+    setStatus('#single-quick-status', 'success',
+      tickets.length > 0
+        ? (t('quick_status_ok') || `已抓 ${body.fixtures_fetched} 场, top ${tickets.length}`).replace('{n}', body.fixtures_fetched).replace('{k}', tickets.length)
+        : `已抓 ${body.fixtures_fetched} 场, 0 推荐`);
+  } catch (err) {
+    console.warn('quick single failed:', err);
+    setStatus('#single-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
+  }
+});
+
+$('#btn-parlay-quick')?.addEventListener('click', async () => {
+  const bankroll = parseFloat($('#parlay-quick-bankroll').value) || 1000;
+  const risk = _quickRisk.parlay;
+  const minEv = parseFloat($('#parlay-quick-min-ev').value) || 0.05;
+  setStatus('#parlay-quick-status', 'loading', t('quick_loading') || '生成中...');
+  try {
+    const body = await _quickFetchTodayRecs({
+      bankroll, include: ['parlay'], risk, minEv,
+    });
+    const recs = (body.parlay?.recommendations || [])
+      .filter(r => (r.legs || []).length === _quickComboK)
+      .slice()
+      .sort((a, b) => b.hit_probability - a.hit_probability)
+      .slice(0, 3);
+    _renderQuickParlayList(recs, _quickComboK);
+    setStatus('#parlay-quick-status', 'success',
+      recs.length > 0
+        ? `已抓 ${body.fixtures_fetched} 场, ${_quickComboK} 串 1 top ${recs.length}`
+        : `已抓 ${body.fixtures_fetched} 场, 0 个 ${_quickComboK} 串 1 通过`);
+  } catch (err) {
+    console.warn('quick parlay failed:', err);
+    setStatus('#parlay-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
+  }
+});
+
+$('#btn-pool-quick')?.addEventListener('click', async () => {
+  const bankroll = parseFloat($('#pool-quick-bankroll').value) || 1000;
+  const risk = _quickRisk.pool;
+  const minEv = parseFloat($('#pool-quick-min-ev').value) || 0.05;
+  // Phase 1: poolN=3 (固定 3 串 1 per ticket). The M selector is a
+  // UI signal but the backend uses all passing fixtures; Phase 2 will
+  // add a server-side M cap.
+  const poolN = 3;
+  setStatus('#pool-quick-status', 'loading', t('quick_loading') || '生成中...');
+  try {
+    const body = await _quickFetchTodayRecs({
+      bankroll, include: ['pool'], risk, minEv, poolN,
+    });
+    _renderQuickPoolList(body.pool);
+    setStatus('#pool-quick-status', 'success',
+      body.pool && body.pool.n_selected > 0
+        ? `已抓 ${body.fixtures_fetched} 场, 选 M=${body.pool.m} 场配复式`
+        : `已抓 ${body.fixtures_fetched} 场, 0 张子票通过`);
+  } catch (err) {
+    console.warn('quick pool failed:', err);
+    setStatus('#pool-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
+  }
+});
+
 // V11 P1-FE#2 — fetch Chinese team name dict, then trigger initial today
 // recommendations load (V10 W1 default landing). Doing it after the fetch
 // means first paint already has Chinese names for known teams.
