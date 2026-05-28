@@ -319,7 +319,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v12-fe-w3-spcalc-14leagues';
+const CACHE_VERSION = 'nutmeg-v12-fe-w3-spcalc-refresh';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1170,7 +1170,9 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             cache_dir=_Path("data/external/api_football"),
             bookmaker_id=PINNACLE_BOOKMAKER_ID,
             refresh_fixtures=False,
-            refresh_odds=False,
+            # V12 W3 — 🔄 刷新盘口 sets req.refresh_odds=True to pull live
+            # near-kickoff Pinnacle (fixtures stay cached; only odds drift).
+            refresh_odds=req.refresh_odds,
             min_kickoff_buffer_minutes=5,
         )
     except Exception as exc:  # noqa: BLE001

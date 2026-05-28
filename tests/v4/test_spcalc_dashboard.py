@@ -55,6 +55,17 @@ class TestSpCalcMarkup:
         assert "bankroll * 0.05" in html
         assert "Math.floor(stake / 2) * 2" in html
 
+    def test_refresh_odds_button_wired(self, html):
+        # 🔄 刷新盘口: button + handler + client→server flag plumbing.
+        assert 'id="today-spcalc-refresh"' in html
+        assert "function _spcalcRefreshOdds(" in html
+        assert "refreshOdds: true" in html          # handler → loadToday
+        assert "refresh_odds: true" in html          # loadToday → request body
+
+    def test_typed_sp_preserved_across_rerender(self, html):
+        # renderTodaySpCalc snapshots/restores entered SP so 刷新 doesn't wipe it.
+        assert "_entered" in html
+
 
 class TestSpCalcI18n:
     REQUIRED_KEYS = [
@@ -62,6 +73,7 @@ class TestSpCalcI18n:
         "spcalc_enter_sp", "spcalc_record_btn", "spcalc_pick", "spcalc_suggest",
         "spcalc_nobet", "spcalc_recorded", "spcalc_recorded_btn",
         "spcalc_record_err", "spcalc_need_all_sp", "spcalc_jc", "spcalc_fair",
+        "spcalc_refresh_btn", "spcalc_refreshing",
     ]
 
     def test_each_key_defined_in_both_locales(self, html):

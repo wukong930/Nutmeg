@@ -386,6 +386,14 @@ class TodayRecommendationsRequest(BaseModel):
     min_kelly_stake: float = Field(2.0, ge=0.0)
     record_session: bool = Field(False, description=
         "Opt-in observation recording (see RecommendRequest.record_session).")
+    # V12 W3 — on-demand fresh-odds pull. Normal polls read the cron-cached
+    # Pinnacle odds (cheap). When the 竞彩 SP calculator's 🔄 刷新盘口 button
+    # is pressed, the client sets this True so the server re-fetches odds
+    # live (refresh_odds=True in _gather_rows) — capturing near-kickoff
+    # Pinnacle for the model's market feature. A handful of calls per press;
+    # well within the daily budget. Fixtures stay cached (only odds drift).
+    refresh_odds: bool = Field(False, description=
+        "Bypass the odds cache and pull live Pinnacle odds for this request.")
     # V11 P1-FE#4 — pool sizing (when "pool" in include)
     pool_n: int = Field(
         3,

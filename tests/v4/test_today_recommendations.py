@@ -14,7 +14,6 @@ We mock _gather_rows so tests don't hit API-Football. Three scenarios:
 """
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -52,8 +51,9 @@ def _make_fixture_row(home: str, away: str, league: str = "EPL",
 @pytest.fixture
 def client():
     """FastAPI test client with v4 router mounted."""
-    from nutmeg.v4.api import v4_router
     import os
+
+    from nutmeg.v4.api import v4_router
     # Point artifact path at production lineup-aware (default since P1#18).
     # Falls back gracefully if missing — service returns 503.
     os.environ.setdefault(
@@ -168,6 +168,32 @@ class TestTodayRecommendationsHappyPath:
         assert p0["psc_home"] == 1.90
         assert p0["psc_draw"] == 3.5
         assert p0["psc_away"] == 4.2
+
+    def test_refresh_odds_flag_forwarded_to_gather_rows(self, client):
+        """V12 W3 — 🔄 刷新盘口 sets refresh_odds=true; the today route must
+        forward it to _gather_rows so a live Pinnacle pull happens."""
+        from unittest.mock import MagicMock
+        mock = MagicMock(return_value=([], 0, 0))
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows", mock):
+            resp = client.post(
+                "/api/v4/today-recommendations",
+                json={"leagues": ["EPL"], "date": "2026-05-25", "refresh_odds": True},
+            )
+        assert resp.status_code == 200, resp.text
+        assert mock.called
+        assert mock.call_args.kwargs.get("refresh_odds") is True
+
+    def test_refresh_odds_defaults_false_for_normal_poll(self, client):
+        """Normal poll (no refresh_odds) reads the cron cache (refresh_odds=False)."""
+        from unittest.mock import MagicMock
+        mock = MagicMock(return_value=([], 0, 0))
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows", mock):
+            resp = client.post(
+                "/api/v4/today-recommendations",
+                json={"leagues": ["EPL"], "date": "2026-05-25"},
+            )
+        assert resp.status_code == 200, resp.text
+        assert mock.call_args.kwargs.get("refresh_odds") is False
 
     def test_empty_fixtures_returns_zero_summary(self, client):
         """No fixtures today → 200 OK, both arms None, summary zeros."""

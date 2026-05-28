@@ -818,10 +818,17 @@
 
     <!-- V12 W3 — 竞彩 SP 实时计算器 (semi-auto SP entry → live 竞彩-price EV) -->
     <div id="today-spcalc-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
-      <h3 class="font-bold mb-1">
-        <span data-i18n="h_today_spcalc">💴 竞彩 SP 实时计算</span>
-        <span id="today-spcalc-count" class="text-sm font-normal text-gray-500"></span>
-      </h3>
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <h3 class="font-bold">
+          <span data-i18n="h_today_spcalc">💴 竞彩 SP 实时计算</span>
+          <span id="today-spcalc-count" class="text-sm font-normal text-gray-500"></span>
+        </h3>
+        <button id="today-spcalc-refresh" onclick="_spcalcRefreshOdds()"
+                class="px-3 py-1 rounded text-sm border shrink-0"
+                style="white-space:nowrap"
+                title="拉临场 Pinnacle 盘口 (消耗少量 API)"
+                data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
+      </div>
       <div class="text-xs text-muted mb-3" data-i18n="today_spcalc_hint">
         输入你在竞彩终端看到的当前 SP → 立即按竞彩价算 EV / Kelly。SP 一变就改, 结果即时刷新。绿色 = 过 +EV 门槛。
       </div>
@@ -1687,6 +1694,8 @@ const I18N = {
     spcalc_recorded_btn:'已记录',
     spcalc_record_err:'记录失败, 请重试',
     spcalc_need_all_sp:'请先填好 胜/平/负 三个 SP',
+    spcalc_refresh_btn:'🔄 刷新盘口',
+    spcalc_refreshing: '刷新中…',
     today_wc_cta:     '🎯 前往 WC tab 输入让球盘口 →',
     today_wc_blend_ready: '让球可计算',
     today_wc_no_pin:  '需 Pinnacle 盘口',
@@ -1927,6 +1936,8 @@ const I18N = {
     spcalc_recorded_btn:'Recorded',
     spcalc_record_err:'Record failed, retry',
     spcalc_need_all_sp:'Fill all three SP (W/D/L) first',
+    spcalc_refresh_btn:'🔄 Refresh odds',
+    spcalc_refreshing: 'Refreshing…',
     today_wc_cta:     '🎯 Go to WC tab to enter handicap SP →',
     today_wc_blend_ready: 'Handicap ready',
     today_wc_no_pin:  'Needs Pinnacle 1X2',
@@ -3106,6 +3117,17 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
   const section = $('#today-spcalc-section');
   const list = $('#today-spcalc-list');
   if (!preds || preds.length === 0) { section.classList.add('hidden'); return; }
+  // Preserve any 竞彩 SP the user already typed, keyed by fixture identity,
+  // so a re-render (e.g. 🔄 刷新盘口) updates model P / Pinnacle odds WITHOUT
+  // wiping the entered SP. Read from the *previous* render's state + DOM.
+  const _entered = {};
+  (_SPCALC.preds || []).forEach((p, i) => {
+    const key = p.home_team + '|' + p.away_team + '|' + p.date;
+    ['H', 'D', 'A'].forEach(o => {
+      const el = document.querySelector(`.spcalc-sp[data-idx="${i}"][data-outcome="${o}"]`);
+      if (el && el.value) (_entered[key] = _entered[key] || {})[o] = el.value;
+    });
+  });
   _SPCALC = { preds, bankroll, kelly, minEv };
   section.classList.remove('hidden');
   $('#today-spcalc-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
@@ -3143,6 +3165,19 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
         </div>
       </div>`;
   }).join('');
+  // Restore preserved SP into the freshly-rendered inputs + recompute.
+  preds.forEach((pr, idx) => {
+    const saved = _entered[pr.home_team + '|' + pr.away_team + '|' + pr.date];
+    if (!saved) return;
+    let any = false;
+    ['H', 'D', 'A'].forEach(o => {
+      if (saved[o]) {
+        const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
+        if (el) { el.value = saved[o]; any = true; }
+      }
+    });
+    if (any) _spcalcRecalc(idx);
+  });
 }
 
 function _spcalcRecalc(idx) {
@@ -3223,7 +3258,27 @@ async function _spcalcRecord(idx) {
   }
 }
 
-async function loadTodayRecommendations() {
+// 🔄 刷新盘口 — one-off live Pinnacle pull (refresh_odds). Reloads the whole
+// today tab with fresh odds; renderTodaySpCalc preserves any 竞彩 SP already
+// typed and recomputes against the fresh model P.
+async function _spcalcRefreshOdds() {
+  const btn = $('#today-spcalc-refresh');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = '🔄 ' + t('spcalc_refreshing');
+  try {
+    await loadTodayRecommendations({ refreshOdds: true });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('spcalc_refresh_btn');
+  }
+}
+
+async function loadTodayRecommendations(opts = {}) {
+  // opts.refreshOdds=true → 🔄 刷新盘口: pull live near-kickoff Pinnacle for
+  // this one call (normal polls read the cron cache). opts may be a DOM
+  // Event when used directly as a click handler — Event.refreshOdds is
+  // undefined → falsy, so that path stays a normal cached load.
   const bankrollEl = $('#today-bankroll');
   const bankroll = Math.max(2, parseFloat(bankrollEl.value) || 1000);
   // V11 P1-FE#4 — pull slider state into the request body
@@ -3242,6 +3297,7 @@ async function loadTodayRecommendations() {
         include: ['single', 'parlay', 'pool'],
         risk_preference: risk,
         min_ev: minEv,
+        ...(opts.refreshOdds ? { refresh_odds: true } : {}),
         ...(prevVersion ? { prev_version: prevVersion } : {}),
       }),
     });
