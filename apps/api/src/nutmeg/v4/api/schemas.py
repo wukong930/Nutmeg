@@ -79,6 +79,12 @@ class SinglePrediction(BaseModel):
     p_home_1x2: float
     p_draw_1x2: float
     p_away_1x2: float
+    # V12 W3 — Pinnacle closing odds echoed back so the dashboard's 竞彩 SP
+    # calculator can pre-fill inputs and show the 竞彩-vs-Pinnacle soft-line
+    # gap. Optional: not every prediction path carries them (e.g. WC).
+    psc_home: float | None = None
+    psc_draw: float | None = None
+    psc_away: float | None = None
     # Optional handicap probs (present only when handicap_home was provided)
     handicap_home: Optional[int] = None
     p_home_handicap: Optional[float] = None
@@ -508,6 +514,12 @@ class TodayRecommendationsResponse(BaseModel):
             "training feature."
         ),
     )
+    # V12 W3 — model P(H/D/A) + Pinnacle odds for EVERY fetched fixture
+    # (not just the gate-passing ones in `single`), so the dashboard's
+    # 竞彩 SP calculator can compute live EV against user-entered 竞彩 SP.
+    # Probabilities are market-agnostic (Pinnacle-informed); the client
+    # multiplies P by the user's 竞彩 SP for EV. Empty when no fixtures.
+    single_match_predictions: list[SinglePrediction] = Field(default_factory=list)
 
 
 # ---------- /predictions/wc (V10 W1 Track B Day 5) ----------

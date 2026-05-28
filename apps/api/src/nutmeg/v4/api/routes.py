@@ -319,7 +319,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v12-fe-w0-wc-lookahead';
+const CACHE_VERSION = 'nutmeg-v12-fe-w3-spcalc';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1186,6 +1186,40 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
     fixtures = _fixture_rows_to_inputs(rows)
     fixtures_fetched = len(fixtures)
 
+    # V12 W3 — model P(H/D/A) + Pinnacle odds for ALL fetched fixtures, so the
+    # dashboard's 竞彩 SP calculator can compute live EV (P × 竞彩SP − 1) against
+    # user-entered 竞彩 odds, not just the gate-passing tickets in `single`.
+    # (One extra inference pass; acceptable for a local single-user dashboard.
+    # Could be shared with the single/parlay/pool sub-calls in a later refactor.)
+    single_match_predictions: list[SinglePrediction] = []
+    if fixtures_fetched > 0:
+        try:
+            _art = get_artifact()
+            if _art is not None:
+                _fdf = _fixtures_to_dataframe(fixtures)
+                _lambdas = predict_lambdas(_art, build_features_for_fixtures(_art, _fdf))
+                _rho = float(_art.metadata.get("gbm_rho", -0.10))
+                _corr = _load_correction()
+                for _i, _f in enumerate(fixtures):
+                    _lh, _la = _lambdas[_i]
+                    _grid = score_grid(_lh, _la, rho=_rho)
+                    _ph, _pd, _pa = tuple(
+                        apply_correction_to_probs(np.array(grid_to_1x2(_grid)), _corr)
+                    )
+                    single_match_predictions.append(SinglePrediction(
+                        home_team=_f.home_team, away_team=_f.away_team,
+                        league=_f.league, date=_f.date,
+                        lambda_home=float(_lh), lambda_away=float(_la),
+                        p_home_1x2=float(_ph), p_draw_1x2=float(_pd), p_away_1x2=float(_pa),
+                        psc_home=_f.psc_home, psc_draw=_f.psc_draw, psc_away=_f.psc_away,
+                    ))
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "today-recommendations: single_match_predictions pass failed",
+            )
+            single_match_predictions = []
+
     # V12 W0 (2026-05-27) — flag fixtures in known playoff/barrage windows.
     # Model has no playoff feature; dashboard renders these as ⚠️ banner.
     # See apps/api/src/nutmeg/v4/data/playoff_context.py
@@ -1394,6 +1428,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
         version_hash=_top_hash,
         diff=diff_block,
         playoff_warnings=playoff_warnings,
+        single_match_predictions=single_match_predictions,
     )
 
 

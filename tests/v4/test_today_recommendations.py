@@ -138,6 +138,37 @@ class TestTodayRecommendationsHappyPath:
         # Either single or parlay (or both) should have a result, OR both
         # None if EV gate filtered everything out. Both being None is valid.
 
+    def test_single_match_predictions_populated_for_spcalc(self, client):
+        """V12 W3 — every fetched fixture must appear in
+        single_match_predictions with model P + Pinnacle odds, so the
+        dashboard's 竞彩 SP calculator has client-side data for live EV."""
+        fake_rows = [
+            _make_fixture_row("Arsenal", "Liverpool", psc_h=1.90, psc_d=3.5, psc_a=4.2),
+            _make_fixture_row("Chelsea", "Spurs", psc_h=2.40, psc_d=3.3, psc_a=2.9),
+        ]
+        with patch(
+            "nutmeg.v4.cli.ingest_odds._gather_rows",
+            return_value=(fake_rows, 2, 0),
+        ):
+            resp = client.post(
+                "/api/v4/today-recommendations",
+                json={"leagues": ["EPL"], "bankroll": 1000.0, "date": "2026-05-25"},
+            )
+        if resp.status_code == 503:
+            pytest.skip("Production artifact not available")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        preds = body["single_match_predictions"]
+        assert len(preds) == 2, "all fetched fixtures must appear (not just gate-passers)"
+        p0 = preds[0]
+        for k in ("p_home_1x2", "p_draw_1x2", "p_away_1x2"):
+            assert 0.0 <= p0[k] <= 1.0
+        assert abs(p0["p_home_1x2"] + p0["p_draw_1x2"] + p0["p_away_1x2"] - 1.0) < 1e-3
+        # Pinnacle odds echoed back for the SP-input placeholders / soft-line.
+        assert p0["psc_home"] == 1.90
+        assert p0["psc_draw"] == 3.5
+        assert p0["psc_away"] == 4.2
+
     def test_empty_fixtures_returns_zero_summary(self, client):
         """No fixtures today → 200 OK, both arms None, summary zeros."""
         with patch(

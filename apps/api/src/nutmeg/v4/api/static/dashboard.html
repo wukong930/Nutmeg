@@ -816,6 +816,18 @@
       <div id="today-single-list" class="space-y-2"></div>
     </div>
 
+    <!-- V12 W3 — 竞彩 SP 实时计算器 (semi-auto SP entry → live 竞彩-price EV) -->
+    <div id="today-spcalc-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-1">
+        <span data-i18n="h_today_spcalc">💴 竞彩 SP 实时计算</span>
+        <span id="today-spcalc-count" class="text-sm font-normal text-gray-500"></span>
+      </h3>
+      <div class="text-xs text-muted mb-3" data-i18n="today_spcalc_hint">
+        输入你在竞彩终端看到的当前 SP → 立即按竞彩价算 EV / Kelly。SP 一变就改, 结果即时刷新。绿色 = 过 +EV 门槛。
+      </div>
+      <div id="today-spcalc-list" class="space-y-3"></div>
+    </div>
+
     <!-- 串关 section -->
     <div id="today-parlay-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h3 class="font-bold mb-3"><span data-i18n="h_today_parlay">② 串关推荐</span> <span id="today-parlay-count" class="text-sm font-normal text-gray-500"></span></h3>
@@ -1661,6 +1673,20 @@ const I18N = {
     // V11 post-ship — 今日推荐里的 🏆 WC 板块
     h_today_wc:       '🏆 WC 板块',
     today_wc_hint:    '想下 让球 推荐? 前往 🏆 WC 2026 tab 输入 SP 即可计算 (Path A++ 反推 λ + 市场融合).',
+    h_today_spcalc:   '💴 竞彩 SP 实时计算',
+    today_spcalc_hint:'输入你在竞彩终端看到的当前 SP → 立即按竞彩价算 EV / Kelly。SP 一变就改, 结果即时刷新。绿色 = 过 +EV 门槛。',
+    spcalc_n_matches: '场',
+    spcalc_enter_sp:  '输入竞彩 SP 看 EV',
+    spcalc_record_btn:'已下单',
+    spcalc_jc:        '竞彩',
+    spcalc_fair:      '公允',
+    spcalc_pick:      '建议',
+    spcalc_suggest:   '注额',
+    spcalc_nobet:     '无 +EV (建议 no-bet)',
+    spcalc_recorded:  '已记录到观测库',
+    spcalc_recorded_btn:'已记录',
+    spcalc_record_err:'记录失败, 请重试',
+    spcalc_need_all_sp:'请先填好 胜/平/负 三个 SP',
     today_wc_cta:     '🎯 前往 WC tab 输入让球盘口 →',
     today_wc_blend_ready: '让球可计算',
     today_wc_no_pin:  '需 Pinnacle 盘口',
@@ -1887,6 +1913,20 @@ const I18N = {
     // V11 post-ship — 🏆 WC block in today's recommendations
     h_today_wc:       '🏆 WC',
     today_wc_hint:    'Want handicap picks? Go to the 🏆 WC 2026 tab and enter SP — Path A++ infers λ and blends with the market.',
+    h_today_spcalc:   '💴 竞彩 SP live calc',
+    today_spcalc_hint:'Enter the current 竞彩 SP from your terminal → instant EV / Kelly at the 竞彩 price. Edit as SP drifts; result updates live. Green = clears the +EV gate.',
+    spcalc_n_matches: 'matches',
+    spcalc_enter_sp:  'Enter 竞彩 SP for EV',
+    spcalc_record_btn:'Placed',
+    spcalc_jc:        '竞彩',
+    spcalc_fair:      'fair',
+    spcalc_pick:      'Pick',
+    spcalc_suggest:   'stake',
+    spcalc_nobet:     'No +EV (no-bet)',
+    spcalc_recorded:  'Recorded to observation DB',
+    spcalc_recorded_btn:'Recorded',
+    spcalc_record_err:'Record failed, retry',
+    spcalc_need_all_sp:'Fill all three SP (W/D/L) first',
     today_wc_cta:     '🎯 Go to WC tab to enter handicap SP →',
     today_wc_blend_ready: 'Handicap ready',
     today_wc_no_pin:  'Needs Pinnacle 1X2',
@@ -3031,6 +3071,147 @@ function _hideUpdateBanner() {
   if (banner) banner.classList.add('hidden');
 }
 
+// ===== V12 W3 — 竞彩 SP 实时计算器 =====
+// The model probability P(H/D/A) is market-agnostic and already in the
+// today response (single_match_predictions). 竞彩 SP only enters at the
+// EV/Kelly layer, so every SP edit recomputes purely client-side (no
+// server round-trip until the user clicks 已下单 to record the placed bet).
+const _RISK_KELLY = { conservative: 0.15, balanced: 0.25, aggressive: 0.40 };
+let _SPCALC = { preds: [], bankroll: 1000, kelly: 0.25, minEv: 0.05 };
+
+function _kellyFor(risk) { return _RISK_KELLY[risk] || 0.25; }
+
+function _spcalcStake(p, sp, bankroll, kelly) {
+  // Fractional Kelly + 5%-of-bankroll cap + ¥2 quantize. Mirrors
+  // JINGCAI_DEFAULT; the server recomputes authoritatively on record.
+  const edge = p * sp - 1.0;
+  if (sp <= 1.0 || edge <= 0) return 0;
+  let stake = bankroll * kelly * (edge / (sp - 1.0));
+  stake = Math.min(stake, bankroll * 0.05);
+  return Math.floor(stake / 2) * 2;
+}
+
+function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
+  const section = $('#today-spcalc-section');
+  const list = $('#today-spcalc-list');
+  if (!preds || preds.length === 0) { section.classList.add('hidden'); return; }
+  _SPCALC = { preds, bankroll, kelly, minEv };
+  section.classList.remove('hidden');
+  $('#today-spcalc-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
+  const outcomes = ['H', 'D', 'A'];
+  list.innerHTML = preds.map((pr, idx) => {
+    const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
+    const psc = { H: pr.psc_home, D: pr.psc_draw, A: pr.psc_away };
+    const rows = outcomes.map(o => `
+      <div class="flex items-center gap-2 text-sm py-1">
+        <span class="w-12 shrink-0 text-secondary">${outcomeLabel(o)}</span>
+        <span class="w-16 shrink-0 num-display text-muted">P ${(P[o] * 100).toFixed(0)}%</span>
+        <input type="number" inputmode="decimal" step="0.01" min="1.01"
+               class="spcalc-sp w-20 px-2 py-1 border rounded num-display"
+               placeholder="${psc[o] ? psc[o].toFixed(2) : 'SP'}"
+               data-idx="${idx}" data-outcome="${o}"
+               aria-label="${zhTeam(pr.home_team)} ${outcomeLabel(o)} 竞彩 SP"
+               oninput="_spcalcRecalc(${idx})">
+        <span id="spcalc-ev-${idx}-${o}" class="flex-1 text-xs text-muted"></span>
+      </div>`).join('');
+    return `
+      <div class="card-rec" data-spcalc-card="${idx}">
+        <div class="font-display font-semibold text-sm text-primary flex items-center gap-2 flex-wrap mb-2">
+          ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
+          <span class="text-muted font-normal">vs</span>
+          ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
+          <span class="text-xs text-muted font-normal ml-auto">${pr.league} · ${pr.date}</span>
+        </div>
+        ${rows}
+        <div class="flex items-center justify-between gap-2 mt-2 pt-2" style="border-top:1px solid rgba(0,0,0,0.08)">
+          <span id="spcalc-verdict-${idx}" class="text-xs text-muted">${t('spcalc_enter_sp')}</span>
+          <button id="spcalc-record-${idx}" onclick="_spcalcRecord(${idx})" disabled
+                  class="px-3 py-1 rounded text-sm" style="background:#e5e7eb;color:#9ca3af;cursor:not-allowed">
+            ${t('spcalc_record_btn')}
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function _spcalcRecalc(idx) {
+  const pr = _SPCALC.preds[idx];
+  if (!pr) return;
+  const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
+  const { minEv, bankroll, kelly } = _SPCALC;
+  let best = null;
+  ['H', 'D', 'A'].forEach(o => {
+    const inp = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
+    const evSpan = $(`#spcalc-ev-${idx}-${o}`);
+    const sp = parseFloat(inp.value);
+    if (!sp || sp <= 1.0) { evSpan.textContent = ''; evSpan.removeAttribute('style'); evSpan.className = 'flex-1 text-xs text-muted'; return; }
+    const ev = P[o] * sp - 1.0;
+    const pass = ev >= minEv;
+    const jcImplied = (100 / sp).toFixed(0);
+    evSpan.textContent = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}% · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(P[o] * 100).toFixed(0)}%`;
+    evSpan.className = 'flex-1 text-xs';
+    evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
+    evSpan.style.fontWeight = pass ? '600' : '';
+    if (pass && (!best || ev > best.ev)) {
+      best = { o, ev, sp, stake: _spcalcStake(P[o], sp, bankroll, kelly) };
+    }
+  });
+  const verdict = $(`#spcalc-verdict-${idx}`);
+  const btn = $(`#spcalc-record-${idx}`);
+  if (best) {
+    verdict.textContent = `${t('spcalc_pick')}: ${outcomeLabel(best.o)} · EV +${(best.ev * 100).toFixed(1)}% · ${t('spcalc_suggest')} ${fmtMoney(best.stake)}`;
+    verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
+    btn.disabled = false;
+    btn.style.cssText = 'background:#059669;color:#fff;cursor:pointer';
+  } else {
+    verdict.textContent = t('spcalc_nobet');
+    verdict.removeAttribute('style');
+    btn.disabled = true;
+    btn.style.cssText = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed';
+  }
+}
+
+async function _spcalcRecord(idx) {
+  const pr = _SPCALC.preds[idx];
+  const btn = $(`#spcalc-record-${idx}`);
+  if (!pr || btn.disabled) return;
+  const get = (o) => {
+    const v = parseFloat(document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`).value);
+    return (v && v > 1.0) ? v : null;
+  };
+  const oh = get('H'), od = get('D'), oa = get('A');
+  if (!(oh && od && oa)) { alert(t('spcalc_need_all_sp')); return; }
+  const fixture = {
+    date: pr.date, league: pr.league,
+    home_team: pr.home_team, away_team: pr.away_team,
+    psc_home: pr.psc_home || oh, psc_draw: pr.psc_draw || od, psc_away: pr.psc_away || oa,
+    odds_1x2_H: oh, odds_1x2_D: od, odds_1x2_A: oa,
+  };
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await fetch(API + '/recommend/single', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fixtures: [fixture], bankroll: _SPCALC.bankroll,
+        top_per_match: 1, kelly_fraction: _SPCALC.kelly, record_session: true,
+      }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const verdict = $(`#spcalc-verdict-${idx}`);
+    verdict.textContent = '✓ ' + t('spcalc_recorded');
+    verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
+    btn.textContent = t('spcalc_recorded_btn');
+    btn.style.cssText = 'background:#f3f4f6;color:#6b7280';
+  } catch (err) {
+    console.warn('spcalc record failed:', err);
+    const verdict = $(`#spcalc-verdict-${idx}`);
+    verdict.textContent = t('spcalc_record_err');
+    verdict.style.color = '#e11d48';
+    btn.disabled = false; btn.textContent = t('spcalc_record_btn');
+    btn.style.cssText = 'background:#059669;color:#fff;cursor:pointer';
+  }
+}
+
 async function loadTodayRecommendations() {
   const bankrollEl = $('#today-bankroll');
   const bankroll = Math.max(2, parseFloat(bankrollEl.value) || 1000);
@@ -3085,6 +3266,8 @@ async function loadTodayRecommendations() {
     renderTodayParlay(body.parlay);
     renderTodayPool(body.pool);
     renderTodayWc(body.wc);
+    // V12 W3 — 竞彩 SP 实时计算器 (all fetched fixtures, model P + Pinnacle odds)
+    renderTodaySpCalc(body.single_match_predictions, bankroll, _kellyFor(risk), minEv);
     // Empty state — fold pool into the "no recs" check
     const noRecs = body.summary.total_recs === 0;
     const noFixtures = body.fixtures_fetched === 0;
@@ -3105,6 +3288,7 @@ async function loadTodayRecommendations() {
     setStatus('#today-status', 'error', t('today_api_error'));
     $('#today-summary').classList.add('hidden');
     $('#today-single-section').classList.add('hidden');
+    $('#today-spcalc-section').classList.add('hidden');
     $('#today-parlay-section').classList.add('hidden');
     $('#today-pool-section').classList.add('hidden');
     $('#today-wc-section').classList.add('hidden');
