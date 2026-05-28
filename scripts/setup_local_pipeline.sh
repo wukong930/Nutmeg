@@ -2,15 +2,16 @@
 # post-v9 P1#16 — one-shot install of the local Nutmeg data pipeline (macOS).
 #
 # Installs 7 launchd jobs into ~/Library/LaunchAgents:
-#   1. com.nutmeg.morning_odds                09:00 daily — V12 W0 Plan A: fetch odds for Asian + future European
-#   2. com.nutmeg.morning_recommend           10:00 daily — V12 W0 Plan A: morning wave recommendations
-#   3. com.nutmeg.daily_odds                  14:00 daily — afternoon wave (European-only by kickoff filter)
-#   4. com.nutmeg.daily_recommend             15:00 daily — afternoon wave recommendations
-#   5. com.nutmeg.weekly_settle               Sunday 02:00 — settle past-week outcomes + write ROI report
-#   6. com.nutmeg.weekly_gate                 Sunday 04:00 — P1#19 live-vs-backtest gate
-#   7. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
-#   8. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
-#   9. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
+#   1. com.nutmeg.api_server                  always-on daemon — FastAPI dashboard server on 127.0.0.1:8080
+#   2. com.nutmeg.morning_odds                09:00 daily — V12 W0 Plan A: fetch Asian (J1) odds
+#   3. com.nutmeg.morning_recommend           10:00 daily — V12 W0 Plan A: morning wave recommendations
+#   4. com.nutmeg.daily_odds                  14:00 daily — V12 W0 Plan A: afternoon European wave odds
+#   5. com.nutmeg.daily_recommend             15:00 daily — afternoon wave recommendations
+#   6. com.nutmeg.weekly_settle               Sunday 02:00 — settle past-week outcomes + write ROI report
+#   7. com.nutmeg.weekly_gate                 Sunday 04:00 — P1#19 live-vs-backtest gate
+#   8. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
+#   9. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
+#  10. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
 # (no plaintext key in plists). Logs go to logs/launchd/.
@@ -121,6 +122,70 @@ EOF
   fi
 }
 
+# V12 W0 (2026-05-28) — long-running daemon variant of install_job.
+# Used for the FastAPI server so the dashboard is reachable any time
+# without manual `uvicorn` invocations. KeepAlive=true means launchd
+# auto-restarts the process if it crashes; RunAtLoad=true means it
+# starts when the user logs in (and stays up across reboots once
+# bootstrap'd).
+#
+# Differences from install_job:
+#   - No StartCalendarInterval (it's a daemon, not a cron job)
+#   - KeepAlive=true (auto-restart on crash)
+#   - RunAtLoad=true (start immediately + on every user login)
+install_daemon() {
+  local label="$1"
+  local cmd="$2"
+
+  local plist="$PLIST_DIR/$label.plist"
+  local out_log="$LOG_DIR/$label.out.log"
+  local err_log="$LOG_DIR/$label.err.log"
+
+  cat > "$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$label</string>
+    <key>WorkingDirectory</key>
+    <string>$REPO_ROOT</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>$cmd</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>$out_log</string>
+    <key>StandardErrorPath</key>
+    <string>$err_log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>PYTHONPATH</key>
+        <string>$REPO_ROOT/apps/api/src</string>
+    </dict>
+</dict>
+</plist>
+EOF
+
+  launchctl bootout "gui/$UID/$label" 2>/dev/null || true
+  if launchctl bootstrap "gui/$UID" "$plist" 2>/dev/null; then
+    printf "  ✓ installed %s (daemon — RunAtLoad + KeepAlive)\n" "$label"
+  else
+    printf "  ✗ failed to bootstrap %s\n" "$label" >&2
+    exit 1
+  fi
+}
+
 # Common shell prefix for all jobs: cd + source .env so NUTMEG_API_FOOTBALL_KEY is set
 ENV_PREFIX="cd $REPO_ROOT && set -a && source .env && set +a"
 
@@ -155,7 +220,25 @@ MORNING_CSV='$REPO_ROOT/data/daily/fixtures_$(date +%Y-%m-%d)_morning.csv'
 # $(date ...) and $REPO_ROOT at run time. We keep DAILY_CSV single-quoted
 # in setup so write_plist embeds the literal string.
 
-echo "Installing 9 launchd jobs into $PLIST_DIR ..."
+echo "Installing 10 launchd jobs into $PLIST_DIR ..."
+
+# ── V12 W0 (2026-05-28) — Always-on FastAPI server (daemon) ────────────
+# Why: the dashboard needs the API server running 24/7 to load. Previously
+# the server was a manually-spawned uvicorn process that died when the
+# user's terminal closed / the sandbox cleaned up / the laptop slept.
+# Result: "❌ 抓取盘口失败 (API 暂不可用)" because the page can't reach 8080.
+#
+# Now: launchd manages it. RunAtLoad=true → starts at user login.
+# KeepAlive=true → auto-restart if it crashes. ThrottleInterval=10s → if
+# uvicorn fails to start (e.g., port in use), launchd waits 10s before
+# the next retry instead of busy-looping.
+#
+# Bind to 127.0.0.1:8080 (localhost only — no LAN exposure). For phone
+# access, separately run: `./scripts/run_local_server.sh 8080 lan` (this
+# will conflict with the daemon's port; stop the daemon first with
+# `launchctl bootout gui/$UID/com.nutmeg.api_server`).
+install_daemon "com.nutmeg.api_server" \
+  "cd $REPO_ROOT && set -a && source .env && set +a && $VENV_PY -m uvicorn nutmeg.main:app --host 127.0.0.1 --port 8080 --app-dir $REPO_ROOT/apps/api/src"
 
 # ── V12 W0 Plan A — Morning wave (09:00 + 10:00) ───────────────────────
 # Why: J1 has weekend kickoffs at 12:00-14:00 CST. The 14:00 cron is
@@ -294,6 +377,7 @@ install_job "com.nutmeg.daily_wc_settle" \
 
 echo ""
 echo "✓ Done. Jobs are loaded. Logs:"
+echo "    $LOG_DIR/com.nutmeg.api_server.{out,err}.log    ← always-on daemon"
 echo "    $LOG_DIR/com.nutmeg.morning_odds.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.morning_recommend.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_odds.{out,err}.log"
@@ -305,8 +389,10 @@ echo "    $LOG_DIR/com.nutmeg.daily_wc_predict.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_wc_settle.{out,err}.log"
 echo ""
 echo "Next:"
+echo "  • Dashboard now reachable 24/7 at: http://127.0.0.1:8080/api/v4/dashboard"
 echo "  • Verify with: ./scripts/health_check.sh"
 echo "  • Inspect jobs: launchctl list | grep com.nutmeg"
+echo "  • Stop the API server only: launchctl bootout gui/\$UID/com.nutmeg.api_server"
 echo "  • Daily timeline: 02:00 wc_settle → 03:00 calibration → 09:00 morning_odds + wc_predict → 10:00 morning_recommend → 14:00 daily_odds → 15:00 daily_recommend"
 echo "  • Weekly gate reports land at: $GATE_OUT_DIR/p1_19_gate_<ISO-week>.md"
 echo "  • Weekly calibration reports land at: $CALIB_OUT_DIR/auto_calibration_<ISO-week>.md"
