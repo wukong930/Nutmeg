@@ -554,6 +554,47 @@ class WcPredictionsResponse(BaseModel):
     generated_at_utc: str
 
 
+# ---------- /predictions/wc-upcoming (V12 W0 — 2026-05-28) ------------
+
+class WcUpcomingPick(BaseModel):
+    """One single-leg pick across the lookahead date window.
+
+    Format intentionally mirrors `SingleTicketResponse` for league
+    matches so the dashboard render helpers can be reused — but the
+    underlying model is the WC-specific Elo+Pinnacle blend
+    (NationalTeamModel α=0.4), not CatBoost.
+
+    Only 1X2 outcomes here; the existing Path A++ handicap form
+    handles 让球 on a per-match basis (the lookahead is a "show me
+    the best NEXT few days" feature, not an enumeration of every
+    market).
+    """
+    fixture_id: int
+    kickoff_utc: str        # ISO with timezone
+    days_until_kickoff: int  # 0 = today, 1 = tomorrow, etc.
+    home_team: str
+    away_team: str
+    outcome: str = Field(..., description="'H' / 'D' / 'A' — 1X2 selection")
+    hit_probability: float
+    odds: float = Field(..., description="Pinnacle decimal odds")
+    ev_per_unit: float
+    stake: float = Field(..., description="Kelly-sized recommended stake (¥)")
+    source: str = Field(..., description="'blend(α=0.4)' or 'lightgbm_only'")
+
+
+class WcUpcomingResponse(BaseModel):
+    """Top-N WC single-leg picks across the next N days, sorted by
+    hit_probability descending. See `predictions_wc_upcoming` endpoint."""
+    date_start: str        # ISO YYYY-MM-DD (today)
+    date_end: str          # ISO YYYY-MM-DD (today + days - 1)
+    days: int
+    n_fixtures_scanned: int
+    n_picks_after_ev_gate: int
+    picks: list[WcUpcomingPick]
+    blend_alpha: float
+    generated_at_utc: str
+
+
 # ---------- /recommend/wc/single (V11 post-ship — Path A++ hybrid) ----
 
 class WcFixtureRecInput(BaseModel):

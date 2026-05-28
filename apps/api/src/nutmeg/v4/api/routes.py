@@ -50,6 +50,8 @@ from nutmeg.v4.api.schemas import (
     WcSingleRecMatch,
     WcSingleRecRequest,
     WcSingleRecResponse,
+    WcUpcomingPick,
+    WcUpcomingResponse,
     UpcomingPredictionsRequest,
     UpcomingPredictionsResponse,
     WcMatchPrediction,
@@ -317,7 +319,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v12-fe-w0-simplified-tabs';
+const CACHE_VERSION = 'nutmeg-v12-fe-w0-wc-lookahead';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1599,6 +1601,230 @@ def predictions_wc(
         elo_snapshot=snapshots[-1].name,
         host_country_hint=season_hosts,
         predictions=preds,
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
+    )
+
+
+# ---------- /predictions/wc-upcoming (V12 W0 — 2026-05-28) --------------
+
+@router.get(
+    "/predictions/wc-upcoming",
+    response_model=WcUpcomingResponse,
+    summary="V12 W0 — top-N WC single-leg picks across the next N days, sorted by hit rate",
+)
+def predictions_wc_upcoming(
+    days: int = 5,
+    top_n: int = 5,
+    fetch_current_odds: bool = True,
+    min_ev: float = 0.05,
+    bankroll: float = 1000.0,
+    kelly_fraction: float = 0.25,
+    alpha: float = 0.4,
+) -> WcUpcomingResponse:
+    """V12 W0 (2026-05-28) — lookahead WC picker.
+
+    User feedback: a single day of WC has 4-6 matches, often not enough
+    for combo enumeration. But across a 5-day window we have ~20-30
+    matches, plenty of single-leg candidates.
+
+    For each fixture in `[today, today + days - 1]`:
+      1. Train/load NationalTeamModel
+      2. Predict 1X2 probabilities (Elo + Pinnacle blend if available)
+      3. Compute EV per outcome: ``model_P × SP - 1``
+      4. Keep outcomes with ``ev_per_unit >= min_ev``
+      5. Compute Kelly stake: ``bankroll × kelly_fraction × edge / (SP - 1)``
+
+    Sort all surviving picks by ``hit_probability`` descending,
+    return ``top_n``.
+
+    Parameters
+    ----------
+    days : Look-ahead window in days (1-14, default 5). >=14 raises 422
+        — anything longer is pre-tournament wishful thinking.
+    top_n : Number of picks to return (1-20, default 5).
+    fetch_current_odds : Pull live Pinnacle WC odds from The Odds API
+        (~10 quota per request). Default True because EV needs SP.
+    min_ev : EV per unit gate (default +5%, same as JINGCAI_DEFAULT).
+    bankroll : Budget for Kelly sizing.
+    kelly_fraction : Kelly fraction (0.15 / 0.25 / 0.40 standard).
+    alpha : Blend weight (default 0.4 per V10 W1 Track B Day 3 verdict).
+
+    Phase 1 scope (this endpoint):
+      - 1X2 outcomes only (H / D / A)
+      - No handicap (let user use the existing per-match Path A++ form)
+      - No parlay / pool (V8 W4 cup ablation NEGATIVE — multi-leg in WC
+        compounds errors; user previously locked "WC 单关 only")
+    """
+    import datetime as _dt
+    import logging
+    from pathlib import Path as _Path
+
+    _log = logging.getLogger(__name__)
+
+    # Validate
+    if not 1 <= days <= 14:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="days must be in [1, 14]",
+        )
+    if not 1 <= top_n <= 20:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="top_n must be in [1, 20]",
+        )
+
+    today = _dt.date.today()
+    date_end = today + _dt.timedelta(days=days - 1)
+
+    # Local imports (avoid top-level cost)
+    try:
+        from nutmeg.v4.cli.wc_predict import (
+            HOST_COUNTRIES,
+            _build_pinnacle_lookup_for_date,
+            _pinnacle_lookup_with_aliases,
+            _predict_one_fixture,
+            _train_combined_model,
+        )
+        from nutmeg.v4.data.sources.api_football import (
+            fetch_fixtures_for_league_season,
+        )
+        from nutmeg.v4.data.wc_training_frame import load_elo_snapshot
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"WC prediction module not loadable: {exc}",
+        )
+
+    snapshots = sorted(_Path("data/external/eloratings").glob("eloratings_*.parquet"))
+    if not snapshots:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No eloratings snapshot found.",
+        )
+
+    # Train model once (covers all fixtures in window)
+    try:
+        host_hint = HOST_COUNTRIES.get(2018)
+        model = _train_combined_model([2018, 2022], host_countries=host_hint)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"WC training data missing: {exc}",
+        )
+
+    elo = load_elo_snapshot(snapshots[-1])
+    season_resolved = today.year  # assume WC is in current year (2026)
+    season_hosts = HOST_COUNTRIES.get(season_resolved, {})
+
+    # Fetch all WC fixtures for the season once, then filter by date
+    try:
+        all_fx = fetch_fixtures_for_league_season("WC", season_resolved)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("WC fixture fetch failed: %s", exc)
+        all_fx = []
+
+    # Filter to date window
+    window_iso_prefixes = [
+        (today + _dt.timedelta(days=i)).isoformat()
+        for i in range(days)
+    ]
+    in_window_fx = [
+        f for f in all_fx
+        if any(
+            f.get("fixture", {}).get("date", "").startswith(p)
+            for p in window_iso_prefixes
+        )
+    ]
+
+    # Build Pinnacle lookup per-day if requested (each day = 1 Odds API call)
+    pinnacle_lookups_by_day: dict[str, dict] = {}
+    if fetch_current_odds and in_window_fx:
+        for i in range(days):
+            d = today + _dt.timedelta(days=i)
+            try:
+                pinnacle_lookups_by_day[d.isoformat()] = (
+                    _build_pinnacle_lookup_for_date(d)
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("Pinnacle fetch failed for %s: %s", d, exc)
+                pinnacle_lookups_by_day[d.isoformat()] = {}
+
+    # Iterate fixtures, compute single-leg picks
+    picks: list[WcUpcomingPick] = []
+    for fx in in_window_fx:
+        iso_date = fx.get("fixture", {}).get("date", "")
+        if not iso_date:
+            continue
+        day_key = iso_date[:10]
+        day_lookup = pinnacle_lookups_by_day.get(day_key, {})
+
+        home = fx["teams"]["home"]["name"]
+        away = fx["teams"]["away"]["name"]
+        pin = _pinnacle_lookup_with_aliases(home, away, day_lookup) if day_lookup else None
+
+        try:
+            raw = _predict_one_fixture(
+                fx, model, elo, season_hosts, pinnacle_h2h=pin, alpha=alpha,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("predict failed for fixture %s: %s", fx.get("fixture", {}).get("id"), exc)
+            continue
+
+        # Compute days_until_kickoff
+        try:
+            kickoff_dt = _dt.datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
+            days_until = (kickoff_dt.date() - today).days
+        except Exception:  # noqa: BLE001
+            days_until = 0
+
+        # Only score outcomes where Pinnacle SP exists (need SP for EV)
+        if not raw.get("has_pinnacle"):
+            continue
+
+        # Build picks for each of H / D / A
+        for outcome, p_key, sp_key in [
+            ("H", "p_home", "psc_home"),
+            ("D", "p_draw", "psc_draw"),
+            ("A", "p_away", "psc_away"),
+        ]:
+            p = float(raw[p_key])
+            sp = float(raw[sp_key])
+            ev = p * sp - 1.0
+            if ev < min_ev:
+                continue
+            # Kelly fractional stake
+            edge = p * sp - 1.0
+            if sp <= 1.0 or edge <= 0:
+                stake = 0.0
+            else:
+                kelly_full = edge / (sp - 1.0)
+                stake = round(bankroll * kelly_fraction * kelly_full, 2)
+            picks.append(WcUpcomingPick(
+                fixture_id=raw["fixture_id"],
+                kickoff_utc=raw["kickoff_utc"],
+                days_until_kickoff=days_until,
+                home_team=home,
+                away_team=away,
+                outcome=outcome,
+                hit_probability=p,
+                odds=sp,
+                ev_per_unit=ev,
+                stake=stake,
+                source=raw["source"],
+            ))
+
+    # Sort by hit_probability descending, take top_n
+    picks.sort(key=lambda p: p.hit_probability, reverse=True)
+    top_picks = picks[:top_n]
+
+    return WcUpcomingResponse(
+        date_start=today.isoformat(),
+        date_end=date_end.isoformat(),
+        days=days,
+        n_fixtures_scanned=len(in_window_fx),
+        n_picks_after_ev_gate=len(picks),
+        picks=top_picks,
+        blend_alpha=alpha,
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
     )
 

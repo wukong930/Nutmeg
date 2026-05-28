@@ -450,7 +450,9 @@
      hover/non-active are subtle. */
   .quick-risk-btn,
   .quick-combo-btn,
-  .quick-pool-m-btn {
+  .quick-pool-m-btn,
+  .quick-wc-window-btn,
+  .quick-wc-topn-btn {
     background: var(--bg-surface-1);
     color: var(--text-secondary);
     border-color: var(--border-subtle);
@@ -459,14 +461,18 @@
   }
   .quick-risk-btn:hover,
   .quick-combo-btn:hover,
-  .quick-pool-m-btn:hover {
+  .quick-pool-m-btn:hover,
+  .quick-wc-window-btn:hover,
+  .quick-wc-topn-btn:hover {
     background: var(--bg-surface-2);
     border-color: var(--border-strong);
     color: var(--text-primary);
   }
   .quick-risk-btn.active,
   .quick-combo-btn.active,
-  .quick-pool-m-btn.active {
+  .quick-pool-m-btn.active,
+  .quick-wc-window-btn.active,
+  .quick-wc-topn-btn.active {
     background: var(--accent-gold);
     color: #0a0e1a;
     border-color: var(--accent-gold);
@@ -474,7 +480,9 @@
   }
   [data-theme="dark"] .quick-risk-btn.active,
   [data-theme="dark"] .quick-combo-btn.active,
-  [data-theme="dark"] .quick-pool-m-btn.active {
+  [data-theme="dark"] .quick-pool-m-btn.active,
+  [data-theme="dark"] .quick-wc-window-btn.active,
+  [data-theme="dark"] .quick-wc-topn-btn.active {
     color: #0a0e1a;
   }
 
@@ -869,6 +877,107 @@
         </div>
       </div>
       <div id="wc-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
+    </div>
+
+    <!-- V12 W0 (2026-05-28) — Lookahead top-N single picks across N days.
+         Same UX pattern as the 3 simplified league tabs (budget + size +
+         ✨ generate, 高级 ▾ folds Kelly + min_ev). -->
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-2" data-i18n="h_wc_lookahead_title">
+        🔮 未来 N 天 最优单关推荐 (按命中率排序)
+      </h3>
+      <p class="text-sm text-secondary mb-4" data-i18n="wc_lookahead_sub">
+        WC 比赛少, 但跨日期范围里能挑出好场次。仅单关 (1X2) — WC 模型样本只有 128 场, 不做串关 / 复式。
+      </p>
+
+      <div class="flex items-end flex-wrap gap-3 mb-3">
+        <label class="text-sm">
+          <span class="block mb-1" data-i18n="lbl_bankroll">预算 ¥</span>
+          <input id="wc-up-bankroll" type="number" inputmode="numeric"
+                 value="1000" min="2" step="50"
+                 class="w-32 px-3 py-2 border rounded text-sm">
+        </label>
+      </div>
+
+      <div class="mb-3">
+        <div class="text-sm mb-2" data-i18n="lbl_wc_window">时间窗口</div>
+        <div class="flex flex-wrap gap-2 quick-wc-window-row">
+          <button data-days="3" class="quick-wc-window-btn px-3 py-2 border rounded text-sm">3 天</button>
+          <button data-days="5" class="quick-wc-window-btn px-3 py-2 border rounded text-sm active">5 天</button>
+          <button data-days="7" class="quick-wc-window-btn px-3 py-2 border rounded text-sm">7 天</button>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <div class="text-sm mb-2" data-i18n="lbl_wc_topn">推荐数</div>
+        <div class="flex flex-wrap gap-2 quick-wc-topn-row">
+          <button data-n="3" class="quick-wc-topn-btn px-3 py-2 border rounded text-sm">3 张</button>
+          <button data-n="5" class="quick-wc-topn-btn px-3 py-2 border rounded text-sm active">5 张</button>
+          <button data-n="8" class="quick-wc-topn-btn px-3 py-2 border rounded text-sm">8 张</button>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 mb-2">
+        <button id="btn-wc-up-quick"
+                class="px-5 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium"
+                data-i18n="btn_wc_up_generate">
+          ✨ 生成最优 WC 单关
+        </button>
+        <span id="wc-up-quick-status" role="status" aria-live="polite"
+              class="text-sm text-secondary"></span>
+      </div>
+
+      <details class="mt-4 quick-advanced-fold">
+        <summary class="cursor-pointer text-sm text-secondary py-2" data-i18n="advanced_fold">
+          高级 ▾
+        </summary>
+        <div class="mt-3 p-4 rounded" style="background-color: var(--bg-surface-2); border: 1px solid var(--border-subtle);">
+          <div class="mb-4">
+            <div class="text-sm font-medium mb-1" data-i18n="kelly_tooltip_title">
+              凯利分数 (控制单注金额占预算的比例)
+            </div>
+            <div class="text-xs text-muted mb-2 leading-relaxed" data-i18n="kelly_tooltip_body">
+              • 保守 (0.15): 风险低 / 收益慢<br>
+              • 中 (0.25): 平衡 — 推荐 (默认)<br>
+              • 激进 (0.40): 高风险高收益, 适合资金充足
+            </div>
+            <div class="flex gap-2 quick-risk-row" data-target="wc">
+              <button data-risk="conservative" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_conservative">保守</button>
+              <button data-risk="balanced" class="quick-risk-btn px-3 py-1 border rounded text-sm active" data-i18n="risk_balanced">中</button>
+              <button data-risk="aggressive" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_aggressive">激进</button>
+            </div>
+          </div>
+          <div class="mb-4">
+            <label class="text-sm font-medium block mb-1">
+              <span data-i18n="lbl_min_ev">最低期望值</span>:
+              <span id="wc-up-quick-min-ev-label" class="text-primary font-medium ml-1">+5%</span>
+            </label>
+            <input id="wc-up-quick-min-ev" type="range" min="-0.05" max="0.10" step="0.05" value="0.05" class="w-full">
+            <div class="flex justify-between text-xs text-muted mt-0.5">
+              <span>-5%</span><span>0%</span><span>+5%</span><span>+10%</span>
+            </div>
+          </div>
+          <div class="text-xs text-muted">
+            <span data-i18n="wc_lookahead_quota_note">
+              ⚠️ 每次"生成" 消耗 Pinnacle SP quota: 1 call × 时间窗口天数 (5 天 = ~50 quota). 没 SP 的 fixture (Pinnacle 还没挂盘) 会被跳过。
+            </span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Top-N picks output -->
+    <div id="wc-up-quick-output" class="hidden">
+      <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+        <h3 class="font-bold mb-3">
+          <span id="wc-up-quick-h3-label" data-i18n="h_wc_up_results">未来 5 天最优单关 (top-5)</span>
+          <span id="wc-up-quick-summary" class="text-sm font-normal text-secondary ml-2"></span>
+        </h3>
+        <div id="wc-up-quick-list" class="space-y-2"></div>
+        <div id="wc-up-quick-empty" class="hidden text-sm text-secondary" data-i18n="wc_up_no_recs">
+          时间范围内无可推荐组合 — 可能 Pinnacle 还未挂盘, 或所有候选未通过 EV 门槛。
+        </div>
+      </div>
     </div>
 
     <!-- WC predictions list -->
@@ -1611,6 +1720,16 @@ const I18N = {
     btn_recommend_single_json: '生成 (JSON 模式)',
     btn_recommend_parlay_json: '生成 (JSON 模式)',
     btn_recommend_pool_json:   '生成 (JSON 模式)',
+    // V12 W0 (2026-05-28) — WC lookahead top-N picks
+    h_wc_lookahead_title:    '🔮 未来 N 天 最优单关推荐 (按命中率排序)',
+    wc_lookahead_sub:        'WC 比赛少, 但跨日期范围里能挑出好场次。仅单关 (1X2) — WC 模型样本只有 128 场, 不做串关 / 复式。',
+    lbl_wc_window:           '时间窗口',
+    lbl_wc_topn:             '推荐数',
+    btn_wc_up_generate:      '✨ 生成最优 WC 单关',
+    h_wc_up_results:         '未来 5 天最优单关 (top-5)',
+    h_wc_up_results_template: '未来 {d} 天最优单关 (top-{n})',
+    wc_up_no_recs:           '时间范围内无可推荐组合 — 可能 Pinnacle 还未挂盘, 或所有候选未通过 EV 门槛。',
+    wc_lookahead_quota_note: '⚠️ 每次"生成"消耗 Pinnacle SP quota: 1 call × 时间窗口天数 (5 天 = ~50 quota). 没 SP 的 fixture (Pinnacle 还没挂盘) 会被跳过。',
     // V11 P1-FE#3 — 推荐追溯
     tab_history:         '📜 推荐追溯',
     h_history_title:     '推荐追溯',
@@ -1825,6 +1944,16 @@ const I18N = {
     btn_recommend_single_json: 'Generate (JSON mode)',
     btn_recommend_parlay_json: 'Generate (JSON mode)',
     btn_recommend_pool_json:   'Generate (JSON mode)',
+    // V12 W0 (2026-05-28) — WC lookahead top-N picks
+    h_wc_lookahead_title:    '🔮 Best WC single picks (next N days, sorted by hit rate)',
+    wc_lookahead_sub:        "WC has few matches per day, but across a date window we can pick the best. 1X2 only — WC model has only 128 training matches, so no parlay/pool.",
+    lbl_wc_window:           'Date window',
+    lbl_wc_topn:             'Top N',
+    btn_wc_up_generate:      '✨ Generate best WC single picks',
+    h_wc_up_results:         'Best WC single picks · next 5 days (top-5)',
+    h_wc_up_results_template: 'Best WC single picks · next {d} days (top-{n})',
+    wc_up_no_recs:           "No qualifying picks in this window — Pinnacle may not have opened yet, or candidates didn't pass the EV gate.",
+    wc_lookahead_quota_note: '⚠️ Each "Generate" costs Pinnacle SP quota: 1 call × window days (5d = ~50 quota). Fixtures without SP (Pinnacle not yet open) are skipped.',
     // V11 P1-FE#3 — Recommendations history
     tab_history:         '📜 History',
     h_history_title:     'Recommendation history',
@@ -3555,9 +3684,11 @@ document.querySelectorAll('.history-range-btn').forEach(btn => {
 // =====================================================================
 
 // State (per-tab risk preference + selected combo size)
-let _quickRisk = { single: 'balanced', parlay: 'balanced', pool: 'balanced' };
+let _quickRisk = { single: 'balanced', parlay: 'balanced', pool: 'balanced', wc: 'balanced' };
 let _quickComboK = 4;        // 串关 default 4 串 1
 let _quickPoolM = 5;         // 复式 default 5 场
+let _quickWcDays = 5;        // WC lookahead default 5 天
+let _quickWcTopN = 5;        // WC top-N default 5 张
 
 // Quick risk button toggles (used by all 3 tabs)
 document.querySelectorAll('.quick-risk-row').forEach(row => {
@@ -3596,8 +3727,32 @@ document.querySelectorAll('.quick-pool-m-row .quick-pool-m-btn').forEach(btn => 
   });
 });
 
+// WC lookahead window toggle (3/5/7 天)
+document.querySelectorAll('.quick-wc-window-row .quick-wc-window-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.quick-wc-window-row .quick-wc-window-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _quickWcDays = parseInt(btn.dataset.days, 10);
+    const lbl = $('#wc-up-quick-h3-label');
+    if (lbl) lbl.textContent = (t('h_wc_up_results_template') || '未来 {d} 天最优单关 (top-{n})')
+      .replace('{d}', _quickWcDays).replace('{n}', _quickWcTopN);
+  });
+});
+
+// WC top-N toggle (3/5/8 张)
+document.querySelectorAll('.quick-wc-topn-row .quick-wc-topn-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.quick-wc-topn-row .quick-wc-topn-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _quickWcTopN = parseInt(btn.dataset.n, 10);
+    const lbl = $('#wc-up-quick-h3-label');
+    if (lbl) lbl.textContent = (t('h_wc_up_results_template') || '未来 {d} 天最优单关 (top-{n})')
+      .replace('{d}', _quickWcDays).replace('{n}', _quickWcTopN);
+  });
+});
+
 // Min-EV slider label updates (per-tab, mirror today-min-ev pattern)
-['single', 'parlay', 'pool'].forEach(target => {
+['single', 'parlay', 'pool', 'wc-up'].forEach(target => {
   const slider = $(`#${target}-quick-min-ev`);
   const label = $(`#${target}-quick-min-ev-label`);
   if (slider && label) {
@@ -3819,6 +3974,95 @@ $('#btn-parlay-quick')?.addEventListener('click', async () => {
   } catch (err) {
     console.warn('quick parlay failed:', err);
     setStatus('#parlay-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
+  }
+});
+
+// V12 W0 — WC lookahead render + handler
+function _renderQuickWcUpcoming(picks) {
+  const list = $('#wc-up-quick-list');
+  const output = $('#wc-up-quick-output');
+  const empty = $('#wc-up-quick-empty');
+  output.classList.remove('hidden');
+  if (!picks || picks.length === 0) {
+    list.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  const medals = ['🥇', '🥈', '🥉', '🏅', '🏅', '🏅', '🏅', '🏅'];
+  const outcomeMap = { H: '主胜', D: '平局', A: '客胜' };
+  list.innerHTML = picks.map((p, i) => {
+    const medal = medals[i] || '';
+    const dayLbl = p.days_until_kickoff === 0 ? '今天' :
+                   p.days_until_kickoff === 1 ? '明天' :
+                   `+${p.days_until_kickoff} 天`;
+    // Format kickoff: 2026-06-11T19:00:00 → "06-11 19:00"
+    const kickoff = p.kickoff_utc
+      ? p.kickoff_utc.slice(5, 16).replace('T', ' ')
+      : '';
+    return `
+      <div class="card-rec mb-3">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div class="flex-1 min-w-0">
+            <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
+              <span class="text-lg">${medal}</span>
+              ${teamLogo(p.home_team)} <span>${zhTeam(p.home_team)}</span>
+              <span class="text-muted font-normal">vs</span>
+              ${teamLogo(p.away_team)} <span>${zhTeam(p.away_team)}</span>
+            </div>
+            <div class="text-xs text-muted mt-1">${kickoff} · ${dayLbl}</div>
+          </div>
+          <span class="badge-gold whitespace-nowrap">${outcomeMap[p.outcome] || p.outcome}</span>
+        </div>
+        <div class="flex items-end justify-between gap-3">
+          <div>
+            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(p.stake)}</div>
+            <div class="text-xs text-muted mt-0.5">建议投注</div>
+          </div>
+          <div class="flex flex-col items-end gap-1 text-xs">
+            <div class="text-secondary">命中率 <span class="num-display text-primary">${(p.hit_probability * 100).toFixed(1)}%</span></div>
+            <div class="text-secondary">赔率 <span class="num-display text-primary">${p.odds.toFixed(2)}</span></div>
+            ${evBar(p.ev_per_unit)}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+$('#btn-wc-up-quick')?.addEventListener('click', async () => {
+  const bankroll = parseFloat($('#wc-up-bankroll').value) || 1000;
+  const risk = _quickRisk.wc;
+  const minEv = parseFloat($('#wc-up-quick-min-ev').value) || 0.05;
+  const days = _quickWcDays;
+  const topN = _quickWcTopN;
+  setStatus('#wc-up-quick-status', 'loading', t('quick_loading') || '生成中...');
+  try {
+    const params = new URLSearchParams({
+      days: String(days),
+      top_n: String(topN),
+      fetch_current_odds: 'true',  // EV gate needs SP
+      min_ev: String(minEv),
+      bankroll: String(bankroll),
+      kelly_fraction: String(_RISK_TO_KELLY[risk] || 0.25),
+    });
+    const resp = await fetch(API + '/predictions/wc-upcoming?' + params.toString());
+    if (!resp.ok) {
+      setStatus('#wc-up-quick-status', 'error', `HTTP ${resp.status}`);
+      return;
+    }
+    const body = await resp.json();
+    _renderQuickWcUpcoming(body.picks);
+    const summary = $('#wc-up-quick-summary');
+    if (summary) {
+      summary.textContent = ` · 扫了 ${body.n_fixtures_scanned} 场, 通过 EV 门槛 ${body.n_picks_after_ev_gate} 张`;
+    }
+    setStatus('#wc-up-quick-status', 'success',
+      body.picks.length > 0
+        ? `${body.date_start} → ${body.date_end} · top ${body.picks.length}`
+        : `${body.date_start} → ${body.date_end} · 0 张通过`);
+  } catch (err) {
+    console.warn('quick WC upcoming failed:', err);
+    setStatus('#wc-up-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
   }
 });
 
