@@ -35,16 +35,23 @@ log = logging.getLogger("refresh_lineups")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
-def _seasons_in_window(start_date: dt.date, end_date: dt.date) -> list[int]:
+def _seasons_in_window(
+    start_date: dt.date, end_date: dt.date, leagues: list[str] | None = None
+) -> list[int]:
     """Football seasons whose calendar dates overlap [start, end].
 
-    A 2024/25 season runs Aug 2024 - May 2025; its season-start year is 2024.
-    For any date in (Aug..Jul) the season-start is the calendar year if month
-    >= 7, else previous year.
+    European leagues' 2024/25 season runs Aug 2024 - May 2025 (season-start
+    year 2024). Calendar-year leagues (J-League etc.) run within one year, so
+    their season-start year is just the date's year — handled by
+    ``season_for_date``. Without ``leagues`` this falls back to the European
+    heuristic (back-compatible).
     """
-    seasons = set()
-    for d in (start_date, end_date):
-        seasons.add(d.year if d.month >= 7 else d.year - 1)
+    from nutmeg.v4.data.sources.api_football import season_for_date
+
+    seasons: set[int] = set()
+    for lg in (leagues or [None]):
+        for d in (start_date, end_date):
+            seasons.add(season_for_date(d, lg))
     return sorted(seasons)
 
 
@@ -84,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     leagues = [s.strip() for s in args.leagues.split(",") if s.strip()]
     today = dt.date.today()
     earliest = today - dt.timedelta(days=args.days)
-    seasons = _seasons_in_window(earliest, today)
+    seasons = _seasons_in_window(earliest, today, leagues)
     cache_dir = Path(args.cache_dir)
     throttle = args.throttle_ms / 1000.0
 

@@ -161,3 +161,45 @@ class TestFetchersUseCache:
         )
         result = api_football.fetch_lineups(1208620, cache_dir=tmp_path)
         assert result == [{"team": {"id": 42}}]
+
+
+class TestSeasonForDate:
+    """V12 W4 fix — calendar-year leagues (J1) vs European Aug–Jul leagues.
+
+    The bug: J1 (calendar-year) spring dates were queried under the European
+    heuristic (year-1), asking API-Football for the prior finished season →
+    0 fixtures → next-day J1 matches went undetected.
+    """
+
+    def test_european_spring_uses_prev_year(self):
+        import datetime as dt
+        # 2026-05 belongs to the 2025/26 season → season start 2025
+        assert api_football.season_for_date(dt.date(2026, 5, 30), "EPL") == 2025
+        assert api_football.season_for_date(dt.date(2026, 5, 30), "ESP_SEGUNDA_DIVISION") == 2025
+
+    def test_european_autumn_uses_current_year(self):
+        import datetime as dt
+        assert api_football.season_for_date(dt.date(2025, 9, 1), "EPL") == 2025
+
+    def test_calendar_year_league_uses_date_year(self):
+        import datetime as dt
+        # J1 runs Feb–Dec within one year → season is the date's year, NOT 2025
+        assert api_football.season_for_date(dt.date(2026, 5, 30), "JPN_J1") == 2026
+        assert api_football.season_for_date(dt.date(2026, 2, 20), "JPN_J1") == 2026
+        assert "JPN_J1" in api_football.CALENDAR_YEAR_LEAGUES
+
+    def test_none_league_falls_back_to_european(self):
+        import datetime as dt
+        assert api_football.season_for_date(dt.date(2026, 5, 30), None) == 2025
+
+    def test_fetch_fixtures_for_date_uses_calendar_season_for_j1(self, tmp_path, monkeypatch):
+        import datetime as dt
+        captured = {}
+
+        def fake_request(endpoint, params, **kw):
+            captured.update(params)
+            return []
+
+        monkeypatch.setattr(api_football, "_request", fake_request)
+        api_football.fetch_fixtures_for_date(dt.date(2026, 5, 30), "JPN_J1", cache_dir=tmp_path)
+        assert captured["season"] == 2026   # not 2025

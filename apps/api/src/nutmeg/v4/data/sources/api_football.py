@@ -154,6 +154,30 @@ def league_id(canonical: str) -> int:
     return API_FOOTBALL_LEAGUE_IDS[canonical]
 
 
+# Calendar-year leagues run within ONE calendar year (≈Feb–Dec), so the
+# API-Football ``season`` param is the date's calendar year — NOT the European
+# Aug–Jul "year the season started" convention. Add codes here as more
+# calendar-year leagues (other Asian / Nordic / Americas) enter the set.
+CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({"JPN_J1"})
+
+
+def season_for_date(on_date: date, league_canonical: str | None = None) -> int:
+    """API-Football ``season`` (the year a season started) for a date.
+
+    European leagues run Aug–May, so a Jan–Jul date belongs to the *previous*
+    year's season (2026-05 → 2025). Calendar-year leagues (J-League etc.) run
+    within one calendar year, so the season is simply the date's year
+    (2026-05 → 2026).
+
+    Getting this wrong silently returns 0 fixtures: querying a J1 spring date
+    under the European heuristic asks for the prior, already-finished season —
+    which is exactly why next-day J1 fixtures went undetected (V12 W4 bug).
+    """
+    if league_canonical in CALENDAR_YEAR_LEAGUES:
+        return on_date.year
+    return on_date.year if on_date.month >= 7 else on_date.year - 1
+
+
 # ----- fetchers ---------------------------------------------------------
 
 def fetch_fixtures_for_date(
@@ -167,11 +191,10 @@ def fetch_fixtures_for_date(
     params: dict[str, Any] = {"date": on_date.isoformat()}
     if league_canonical:
         params["league"] = league_id(league_canonical)
-        # season heuristic: a fixture in Aug-Dec uses calendar year as start;
-        # Jan-Jul uses previous calendar year. API-Football's `season` param
-        # is the year the season started in. 2024-08-01 → season=2024.
-        season = on_date.year if on_date.month >= 7 else on_date.year - 1
-        params["season"] = season
+        # Season is league-aware: European leagues use the Aug–Jul heuristic,
+        # calendar-year leagues (J1 etc.) use the date's year. See
+        # season_for_date — getting this wrong returns 0 fixtures.
+        params["season"] = season_for_date(on_date, league_canonical)
     return _request("/fixtures", params, cache_dir=cache_dir, refresh=refresh)
 
 
