@@ -41,6 +41,7 @@ from nutmeg.v4.api.schemas import (
     SingleRecommendResponse,
     HandicapLineProb,
     SinglePrediction,
+    SpCalcResponse,
     SingleTicketResponse,
     TodayRecommendationsDiff,
     TodayRecommendationsRequest,
@@ -320,7 +321,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v12-fe-w3-handicap';
+const CACHE_VERSION = 'nutmeg-v12-fe-w3-playoff-blend';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1102,6 +1103,140 @@ def _fixture_rows_to_inputs(rows: list[dict]) -> list[FixtureOddsInput]:
     return out
 
 
+# ── V12 W3 — 竞彩 SP calculator data (近期赛事 tab) ─────────────────────
+# The full 14-league production set (matches TodayRecommendationsRequest's
+# default + the dashboard TODAY_DEFAULT_LEAGUES). Kept here so the sp-calc
+# endpoint covers every league the user bets.
+_SP_CALC_LEAGUES = [
+    "EPL", "ESP_LA_LIGA", "ITA_SERIE_A", "GER_BUNDESLIGA", "FRA_LIGUE_1",
+    "ENG_CHAMPIONSHIP", "ESP_SEGUNDA_DIVISION", "ITA_SERIE_B", "GER_2_BUNDESLIGA",
+    "FRA_LIGUE_2", "NED_EREDIVISIE", "PRT_PRIMEIRA_LIGA", "BEL_PRO_LEAGUE", "JPN_J1",
+]
+# Playoff/barrage: how much to keep the model's own 1X2 P vs the Pinnacle
+# de-vig P. <1 leans on the market (which prices the high-stakes context the
+# model never learned). 0.3 = mostly market, a little model.
+_PLAYOFF_BLEND_ALPHA = 0.3
+
+
+def _pinnacle_devig_1x2(h, d, a):
+    """Normalize 1/odds over H/D/A → fair (de-vig) market probabilities.
+    Returns None if any leg is missing."""
+    if h is None or d is None or a is None or pd.isna(h) or pd.isna(d) or pd.isna(a):
+        return None
+    inv = [1.0 / float(h), 1.0 / float(d), 1.0 / float(a)]
+    s = sum(inv)
+    return [x / s for x in inv] if s > 0 else None
+
+
+def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
+    """V12 W3 — per-fixture model output for the 竞彩 SP calculator: 1X2 P,
+    Pinnacle-odds echo, and handicap P across integer lines −3..+3 (all from
+    one Dixon-Coles grid → instant client-side EV).
+
+    Playoff/barrage adjustment: the model's learned feature→λ map is
+    unreliable for these rare high-stakes matches, but Pinnacle prices the
+    context — so for flagged fixtures we blend the served 1X2 P toward the
+    Pinnacle de-vig P (lean on market). Handicap P stays grid-based.
+
+    Defensive: returns [] on missing artifact / any failure so the dashboard
+    degrades gracefully instead of 500-ing.
+    """
+    if art is None or not fixtures:
+        return []
+    from nutmeg.v4.data.playoff_context import detect_playoff
+    try:
+        rho = float(art.metadata.get("gbm_rho", -0.10))
+        corr = _load_correction()
+        lambdas = predict_lambdas(
+            art, build_features_for_fixtures(art, _fixtures_to_dataframe(fixtures))
+        )
+        preds: list[SinglePrediction] = []
+        for i, f in enumerate(fixtures):
+            lh, la = lambdas[i]
+            grid = score_grid(lh, la, rho=rho)
+            ph, pd_, pa = tuple(apply_correction_to_probs(np.array(grid_to_1x2(grid)), corr))
+            if detect_playoff(f.league, f.date) is not None:
+                pin = _pinnacle_devig_1x2(f.psc_home, f.psc_draw, f.psc_away)
+                if pin is not None:
+                    a = _PLAYOFF_BLEND_ALPHA
+                    ph, pd_, pa = (
+                        a * ph + (1 - a) * pin[0],
+                        a * pd_ + (1 - a) * pin[1],
+                        a * pa + (1 - a) * pin[2],
+                    )
+            hc_lines = []
+            for line in range(-3, 4):
+                hh, hd, ha = tuple(apply_correction_to_probs(
+                    np.array(grid_to_handicap_1x2(grid, handicap_home=line)), corr))
+                hc_lines.append(HandicapLineProb(
+                    line=line, p_home=float(hh), p_draw=float(hd), p_away=float(ha)))
+            preds.append(SinglePrediction(
+                home_team=f.home_team, away_team=f.away_team,
+                league=f.league, date=f.date,
+                lambda_home=float(lh), lambda_away=float(la),
+                p_home_1x2=float(ph), p_draw_1x2=float(pd_), p_away_1x2=float(pa),
+                psc_home=f.psc_home, psc_draw=f.psc_draw, psc_away=f.psc_away,
+                handicap_lines=hc_lines,
+            ))
+        return preds
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).exception("_calc_predictions failed")
+        return []
+
+
+@router.get(
+    "/predictions/sp-calc",
+    response_model=SpCalcResponse,
+    summary="V12 W3 — N-day fixtures + model P for the 竞彩 SP calculator",
+)
+def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResponse:
+    import datetime as _dt
+    from pathlib import Path as _Path
+
+    from nutmeg.v4.cli.ingest_odds import PINNACLE_BOOKMAKER_ID, _gather_rows
+
+    if not 1 <= days <= 7:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="days must be in [1, 7]",
+        )
+    art = get_artifact()
+    if art is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"V4 model artifact not loaded; expected at {_artifact_path()}",
+        )
+    today = _dt.date.today()
+    all_preds: list[SinglePrediction] = []
+    fetched = 0
+    for d in range(days):
+        on_date = today + _dt.timedelta(days=d)
+        try:
+            rows, _n, _s = _gather_rows(
+                _SP_CALC_LEAGUES, on_date,
+                cache_dir=_Path("data/external/api_football"),
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=refresh_odds,
+                min_kickoff_buffer_minutes=5,
+            )
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning("sp-calc fetch failed for %s", on_date)
+            rows = []
+        fx = _fixture_rows_to_inputs(rows)
+        fetched += len(fx)
+        all_preds.extend(_calc_predictions(art, fx))
+    return SpCalcResponse(
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
+        date_start=today.isoformat(),
+        date_end=(today + _dt.timedelta(days=days - 1)).isoformat(),
+        days=days,
+        fixtures_fetched=fetched,
+        predictions=all_preds,
+    )
+
+
 @router.post(
     "/today-recommendations",
     response_model=TodayRecommendationsResponse,
@@ -1189,55 +1324,11 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
     fixtures = _fixture_rows_to_inputs(rows)
     fixtures_fetched = len(fixtures)
 
-    # V12 W3 — model P(H/D/A) + Pinnacle odds for ALL fetched fixtures, so the
-    # dashboard's 竞彩 SP calculator can compute live EV (P × 竞彩SP − 1) against
-    # user-entered 竞彩 odds, not just the gate-passing tickets in `single`.
-    # (One extra inference pass; acceptable for a local single-user dashboard.
-    # Could be shared with the single/parlay/pool sub-calls in a later refactor.)
-    single_match_predictions: list[SinglePrediction] = []
-    if fixtures_fetched > 0:
-        try:
-            _art = get_artifact()
-            if _art is not None:
-                _fdf = _fixtures_to_dataframe(fixtures)
-                _lambdas = predict_lambdas(_art, build_features_for_fixtures(_art, _fdf))
-                _rho = float(_art.metadata.get("gbm_rho", -0.10))
-                _corr = _load_correction()
-                for _i, _f in enumerate(fixtures):
-                    _lh, _la = _lambdas[_i]
-                    _grid = score_grid(_lh, _la, rho=_rho)
-                    _ph, _pd, _pa = tuple(
-                        apply_correction_to_probs(np.array(grid_to_1x2(_grid)), _corr)
-                    )
-                    # V12 W3 — handicap P across integer lines −3..+3 from the
-                    # same grid, so the calculator computes 让球 EV for any 竞彩
-                    # 让球线 client-side. Cheap: one grid projection per line.
-                    _hc_lines = []
-                    for _line in range(-3, 4):
-                        _hh, _hd, _ha = tuple(
-                            apply_correction_to_probs(
-                                np.array(grid_to_handicap_1x2(_grid, handicap_home=_line)),
-                                _corr,
-                            )
-                        )
-                        _hc_lines.append(HandicapLineProb(
-                            line=_line, p_home=float(_hh),
-                            p_draw=float(_hd), p_away=float(_ha),
-                        ))
-                    single_match_predictions.append(SinglePrediction(
-                        home_team=_f.home_team, away_team=_f.away_team,
-                        league=_f.league, date=_f.date,
-                        lambda_home=float(_lh), lambda_away=float(_la),
-                        p_home_1x2=float(_ph), p_draw_1x2=float(_pd), p_away_1x2=float(_pa),
-                        psc_home=_f.psc_home, psc_draw=_f.psc_draw, psc_away=_f.psc_away,
-                        handicap_lines=_hc_lines,
-                    ))
-        except Exception:  # noqa: BLE001
-            import logging
-            logging.getLogger(__name__).exception(
-                "today-recommendations: single_match_predictions pass failed",
-            )
-            single_match_predictions = []
+    # V12 W3 — per-fixture model output for the 竞彩 SP calculator, via the
+    # shared _calc_predictions helper (1X2 P + Pinnacle echo + handicap-line
+    # P + playoff→market blend). The 近期赛事 tab uses the SAME helper via
+    # /predictions/sp-calc across a 3-day window.
+    single_match_predictions = _calc_predictions(get_artifact(), fixtures)
 
     # V12 W0 (2026-05-27) — flag fixtures in known playoff/barrage windows.
     # Model has no playoff feature; dashboard renders these as ⚠️ banner.

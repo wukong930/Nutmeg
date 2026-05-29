@@ -2893,22 +2893,14 @@ function renderTodayParlay(parlay) {
 // body.playoff_warnings is a list of {league, home_team, away_team,
 // date, context, model_bias_note}. Each fixture in a known playoff
 // date window appears once. Empty list → banner hidden.
-function renderTodayPlayoffWarnings(warnings) {
+function renderTodayPlayoffWarnings(_warnings) {
+  // V12 W3 — banner intentionally NOT shown on the frontend (user request).
+  // The model now handles playoff/barrage fixtures by blending the served
+  // 1X2 P toward the Pinnacle de-vig price (see _calc_predictions in
+  // routes.py), so a separate alarmist banner is redundant. Backend still
+  // returns playoff_warnings for callers/tests; we just keep it hidden.
   const banner = $('#today-playoff-banner');
-  const list = $('#today-playoff-list');
-  if (!warnings || warnings.length === 0) {
-    banner.classList.add('hidden');
-    return;
-  }
-  list.innerHTML = warnings.map(w => {
-    const home = (typeof zhTeam === 'function') ? zhTeam(w.home_team) : w.home_team;
-    const away = (typeof zhTeam === 'function') ? zhTeam(w.away_team) : w.away_team;
-    return `<li>
-      <span class="playoff-fixture">${home} vs ${away}</span>
-      <span class="playoff-context">— ${w.context}</span>
-    </li>`;
-  }).join('');
-  banner.classList.remove('hidden');
+  if (banner) banner.classList.add('hidden');
 }
 
 function renderTodaySummary(body) {

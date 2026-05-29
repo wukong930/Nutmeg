@@ -107,6 +107,20 @@ class SinglePrediction(BaseModel):
     handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
 
 
+class SpCalcResponse(BaseModel):
+    """V12 W3 — data for the 近期赛事 tab's 竞彩 SP calculator: model output
+    for every fixture across a multi-day window (default 3 days). Each
+    prediction carries 1X2 P + Pinnacle odds + handicap-line P so the client
+    computes live 竞彩 EV. Separate from /today-recommendations (the auto
+    'best recommendation' surface), to avoid mixing the two."""
+    generated_at_utc: str
+    date_start: str
+    date_end: str
+    days: int
+    fixtures_fetched: int
+    predictions: list[SinglePrediction] = Field(default_factory=list)
+
+
 class SelectionResponse(BaseModel):
     outcome: Literal["H", "D", "A"]
     odds: float
