@@ -244,6 +244,46 @@ class TestP1FE7NewLeagues:
         assert lookup_zh("PSV") == lookup_zh("PSV Eindhoven") == "埃因霍温"
 
 
+class TestV12W7CupAndVariants:
+    """V12 W7 — gaps found by scanning cached API-Football fixtures for the
+    names the API actually returns (short J1 names, league variants, cup clubs).
+    Triggered by the live '神户胜利船 vs Kashima' half-translated card."""
+
+    def test_j1_short_names(self):
+        """API returns short J1 names the dict only had under full names."""
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Kashima") == "鹿岛鹿角"          # was "Kashima Antlers"
+        assert lookup_zh("Urawa") == "浦和红钻"
+        assert lookup_zh("V-varen Nagasaki") == "V法伦长崎"
+        assert lookup_zh("Shimizu S-pulse") == "清水心跳"
+        assert lookup_zh("Fagiano Okayama") == "冈山绿雉"
+
+    def test_core_league_api_variants(self):
+        """API spellings the canonical dict didn't key (and _zhFold can't
+        bridge: AS / VfL / Hellas / München / Utd / Athletic Club)."""
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("AS Roma") == "罗马"
+        assert lookup_zh("Hellas Verona") == "维罗纳"
+        assert lookup_zh("VfL Wolfsburg") == "沃尔夫斯堡"
+        assert lookup_zh("Sheffield Utd") == "谢菲尔德联"
+        assert lookup_zh("Athletic Club") == "毕尔巴鄂竞技"  # Athletic Bilbao
+        assert lookup_zh("Bayern München") == "拜仁慕尼黑"
+
+    def test_cup_clubs_and_euro_nations(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Galatasaray") == "加拉塔萨雷"
+        assert lookup_zh("Celtic") == "凯尔特人"
+        assert lookup_zh("Shakhtar Donetsk") == "顿涅茨克矿工"
+        assert lookup_zh("Kosovo") == "科索沃"  # WC/Euro qualifier nation
+
+    def test_crvena_zvezda_not_paris_red_star(self):
+        """Trap guard: the dict's 'Red Star' is Paris Red Star (巴黎红星).
+        Crvena Zvezda is Belgrade Red Star — must NOT collide."""
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("FK Crvena Zvezda") == "贝尔格莱德红星"
+        assert lookup_zh("Red Star") == "巴黎红星"  # unchanged
+
+
 # ---------- /api/v4/team-name-zh endpoint --------------------------------
 
 class TestTeamNameZhEndpoint:

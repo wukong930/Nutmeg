@@ -668,6 +668,82 @@ TEAM_NAME_ZH.update(_JPN_J1)
 # V12 W0 (2026-05-27) — national teams (WC / EURO / Copa America)
 TEAM_NAME_ZH.update(_NATIONAL_TEAMS)
 
+# V12 W7 (2026-05-30) — gaps surfaced by a full scan of cached API-Football
+# fixtures (the names API-Football actually returns). Three buckets:
+#   1. J1 short names API returns that the dict only had under full names
+#      (e.g. "Kashima" vs "Kashima Antlers") — the reported 神户 vs Kashima bug.
+#   2. Core-league name VARIANTS the dict keys only canonically (e.g. "AS Roma"
+#      vs "Roma", "VfL Wolfsburg" vs "Wolfsburg") — _zhFold can't bridge the
+#      AS/VfL/Hellas/München/Utd prefixes, so add the exact API spelling.
+#   3. UEFA cup clubs + Euro national teams now surfaced by the 杯赛市场模式 +
+#      WC/EURO qualifiers. Famous/likely-to-appear sides only; the long tail of
+#      obscure qualifying minnows falls back to the Latin name (acceptable —
+#      they rarely have a Pinnacle line so rarely surface).
+# NB: keys MUST be the exact strings API-Football returns (incl. accents) — the
+# frontend looks up the raw name first. Do NOT alias to "Red Star" (the dict's
+# "Red Star" is Paris Red Star, NOT Crvena Zvezda).
+_V12_W7_CUP_AND_VARIANTS = {
+    # ── J1 (short names) ──
+    "Kashima": "鹿岛鹿角",
+    "Fagiano Okayama": "冈山绿雉",
+    "JEF United Chiba": "千叶联",
+    "Mito Hollyhock": "水户蜀葵",
+    "Shimizu S-pulse": "清水心跳",
+    "Urawa": "浦和红钻",
+    "V-varen Nagasaki": "V法伦长崎",
+    # ── Core-14 league variants (alias to the canonical zh already in dict) ──
+    "AS Roma": "罗马",
+    "Hellas Verona": "维罗纳",
+    "Sheffield Utd": "谢菲尔德联",
+    "VfL Wolfsburg": "沃尔夫斯堡",
+    "SC Paderborn 07": "帕德博恩",
+    "FC Andorra": "安道尔",
+    "Athletic Club": "毕尔巴鄂竞技",  # La Liga — API "Athletic Club" vs dict "Athletic Bilbao"
+    # ── Euro / WC qualifier national teams ──
+    "Armenia": "亚美尼亚", "Azerbaijan": "阿塞拜疆", "Belarus": "白俄罗斯",
+    "Cyprus": "塞浦路斯", "Estonia": "爱沙尼亚", "Faroe Islands": "法罗群岛",
+    "Gibraltar": "直布罗陀", "Israel": "以色列", "Kazakhstan": "哈萨克斯坦",
+    "Kosovo": "科索沃", "Latvia": "拉脱维亚", "Liechtenstein": "列支敦士登",
+    "Lithuania": "立陶宛", "Luxembourg": "卢森堡", "Malta": "马耳他",
+    "Moldova": "摩尔多瓦", "Montenegro": "黑山", "San Marino": "圣马力诺",
+    "andorra": "安道尔",
+    # ── UEFA club competitions (famous / likely-to-appear) ──
+    "Bayern München": "拜仁慕尼黑", "1899 Hoffenheim": "霍芬海姆",
+    "Celtic": "凯尔特人", "Rangers": "格拉斯哥流浪者",
+    "Heart Of Midlothian": "哈茨", "Aberdeen": "阿伯丁",
+    "Galatasaray": "加拉塔萨雷", "Fenerbahçe": "费内巴切",
+    "Beşiktaş": "贝西克塔斯", "Trabzonspor": "特拉布宗体育",
+    "Sivasspor": "锡瓦斯体育",
+    "PAOK": "塞萨洛尼基", "Panathinaikos": "帕纳辛奈科斯",
+    "Olympiakos Piraeus": "奥林匹亚科斯", "AEK Athens FC": "雅典AEK",
+    "Aris": "阿里斯",
+    "Shakhtar Donetsk": "顿涅茨克矿工", "Dynamo Kyiv": "基辅迪纳摩",
+    "Zorya Luhansk": "卢甘斯克黎明",
+    "Zenit Saint Petersburg": "圣彼得堡泽尼特", "Spartak Moscow": "莫斯科斯巴达克",
+    "Lokomotiv Moscow": "莫斯科火车头",
+    "Red Bull Salzburg": "萨尔茨堡红牛", "Sturm Graz": "格拉茨风暴",
+    "Rapid Vienna": "维也纳快速", "Austria Vienna": "维也纳奥地利",
+    "BSC Young Boys": "伯尔尼年轻人", "FC Basel 1893": "巴塞尔",
+    "Servette FC": "塞尔维特", "FC Zurich": "苏黎世", "FC Lugano": "卢加诺",
+    "Slavia Praha": "布拉格斯拉维亚", "Sparta Praha": "布拉格斯巴达",
+    "Plzen": "比尔森胜利",
+    "Dinamo Zagreb": "萨格勒布迪纳摩", "HNK Rijeka": "里耶卡",
+    "FK Crvena Zvezda": "贝尔格莱德红星", "FK Partizan": "贝尔格莱德游击队",
+    "Qarabag": "卡拉巴赫", "Ludogorets": "卢多戈雷茨",
+    "FC Copenhagen": "哥本哈根", "FC Midtjylland": "中日德兰",
+    "Brondby": "布隆德比", "Malmo FF": "马尔默",
+    "Molde": "莫尔德", "Bodo/Glimt": "博德闪耀", "Brann": "布兰",
+    "Club Brugge KV": "布鲁日",
+    "Maccabi Tel Aviv": "特拉维夫马卡比", "Maccabi Haifa": "海法马卡比",
+    "Ferencvarosi TC": "费伦茨瓦罗斯",
+    "Legia Warszawa": "华沙莱吉亚", "Lech Poznan": "波兹南莱赫",
+    "Slovan Bratislava": "布拉迪斯拉发斯洛万",
+    "HJK Helsinki": "赫尔辛基HJK", "Kairat Almaty": "阿拉木图凯拉特",
+    "FC Astana": "阿斯塔纳", "Sheriff Tiraspol": "蒂拉斯波尔治安官",
+    "Shamrock Rovers": "三叶草流浪者", "The New Saints": "新圣徒",
+}
+TEAM_NAME_ZH.update(_V12_W7_CUP_AND_VARIANTS)
+
 
 def lookup_zh(team_name: str) -> str:
     """Return Chinese name for a canonical team, else input unchanged.
@@ -723,5 +799,8 @@ def coverage_by_league() -> Dict[str, int]:
         "JPN_J1":                  len(_JPN_J1),
         # V12 W0 — WC / EURO / Copa America
         "NATIONAL_TEAMS":          len(_NATIONAL_TEAMS),
+        # V12 W7 — UEFA cup clubs + Euro nations + core-league API spelling
+        # variants (not attributable to one of the 14 leagues).
+        "CUP_AND_VARIANTS":        len(_V12_W7_CUP_AND_VARIANTS),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }
