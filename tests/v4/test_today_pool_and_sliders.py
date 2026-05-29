@@ -272,7 +272,9 @@ class TestDashboardSliderWiring:
         assert 'id="today-pool-summary"' in html
 
     def test_renderTodayPool_defined(self, html):
-        assert "function renderTodayPool(pool)" in html
+        # V12 W5 — parameterized by a DOM prefix so it serves both the
+        # 🌍 国际盘口 (pfx='today') and 💴 竞彩盘口 (pfx='jc') boards.
+        assert "function renderTodayPool(pool, pfx = 'today')" in html
 
     def test_load_today_sends_new_params(self, html):
         """JS body must include risk_preference + min_ev in the request body."""

@@ -811,6 +811,11 @@
       </div>
     </div>
 
+    <!-- V12 W5 — 🌍 国际盘口推荐: Pinnacle-priced, all identifiable matches, auto -->
+    <h2 class="font-display font-bold text-base text-primary mt-2 mb-3 flex items-center gap-2 flex-wrap">
+      <span data-i18n="board_intl">🌍 国际盘口推荐</span>
+      <span class="text-xs font-normal text-muted" data-i18n="board_intl_hint">对 Pinnacle 算 · 所有可识别比赛</span>
+    </h2>
     <!-- 单关 section -->
     <div id="today-single-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h3 class="font-bold mb-3"><span data-i18n="h_today_single">① 单关推荐</span> <span id="today-single-count" class="text-sm font-normal text-gray-500"></span></h3>
@@ -828,6 +833,33 @@
       <h3 class="font-bold mb-3"><span data-i18n="h_today_pool">③ 复式推荐</span> <span id="today-pool-count" class="text-sm font-normal text-gray-500"></span></h3>
       <div id="today-pool-summary" class="text-sm text-muted mb-3"></div>
       <div id="today-pool-list" class="space-y-2"></div>
+    </div>
+
+    <!-- V12 W5 — 💴 竞彩盘口推荐: priced at the 竞彩 SP you filled in 近期赛事 -->
+    <div class="mt-8 mb-3">
+      <h2 class="font-display font-bold text-base text-primary flex items-center gap-2 flex-wrap">
+        <span data-i18n="board_jc">💴 竞彩盘口推荐</span>
+        <button id="jc-generate" onclick="loadJingcaiBoard()"
+                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
+                data-i18n="jc_generate">用竞彩 SP 生成</button>
+        <span id="jc-status" class="text-xs text-muted" role="status" aria-live="polite"></span>
+      </h2>
+      <div class="text-xs text-muted mt-1" data-i18n="board_jc_hint">
+        在「📅 近期赛事」填入竞彩 SP / 让球后,点上方按钮 → 按竞彩价算最优单关/串关/复式。
+      </div>
+    </div>
+    <div id="jc-single-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-3"><span data-i18n="h_today_single">① 单关推荐</span> <span id="jc-single-count" class="text-sm font-normal text-gray-500"></span></h3>
+      <div id="jc-single-list" class="space-y-2"></div>
+    </div>
+    <div id="jc-parlay-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-3"><span data-i18n="h_today_parlay">② 串关推荐</span> <span id="jc-parlay-count" class="text-sm font-normal text-gray-500"></span></h3>
+      <div id="jc-parlay-list" class="space-y-2"></div>
+    </div>
+    <div id="jc-pool-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-3"><span data-i18n="h_today_pool">③ 复式推荐</span> <span id="jc-pool-count" class="text-sm font-normal text-gray-500"></span></h3>
+      <div id="jc-pool-summary" class="text-sm text-muted mb-3"></div>
+      <div id="jc-pool-list" class="space-y-2"></div>
     </div>
 
     <!-- V11 post-ship — 🏆 WC block (informational, includes deep-link to WC tab) -->
@@ -1724,6 +1756,15 @@ const I18N = {
     parlay_recorded:  '已记录串关',
     parlay_add:       '加入串关',
     parlay_cb:        '串',
+    board_intl:       '🌍 国际盘口推荐',
+    board_intl_hint:  '对 Pinnacle 算 · 所有可识别比赛',
+    board_jc:         '💴 竞彩盘口推荐',
+    board_jc_hint:    '在近期赛事填竞彩 SP / 让球后,点按钮按竞彩价算',
+    jc_generate:      '用竞彩 SP 生成',
+    jc_need_sp:       '先去「📅 近期赛事」填入竞彩 SP',
+    jc_computing:     '计算中…',
+    jc_recs:          '条推荐',
+    jc_none:          '无 +EV 推荐',
     spcalc_jc:        '竞彩',
     spcalc_fair:      '公允',
     spcalc_pick:      '建议',
@@ -1986,6 +2027,15 @@ const I18N = {
     parlay_recorded:  'Parlay recorded',
     parlay_add:       'Add to parlay',
     parlay_cb:        '+',
+    board_intl:       '🌍 International odds',
+    board_intl_hint:  'vs Pinnacle · all identifiable matches',
+    board_jc:         '💴 竞彩 odds board',
+    board_jc_hint:    'Fill 竞彩 SP / 让球 in 近期赛事, then click to price vs 竞彩',
+    jc_generate:      'Generate from 竞彩 SP',
+    jc_need_sp:       'Fill 竞彩 SP in 📅 近期赛事 first',
+    jc_computing:     'computing…',
+    jc_recs:          'recs',
+    jc_none:          'no +EV recs',
     spcalc_jc:        '竞彩',
     spcalc_fair:      'fair',
     spcalc_pick:      'Pick',
@@ -2900,15 +2950,15 @@ const TODAY_DEFAULT_LEAGUES = [
 ];
 let _todayDebounce = null;
 
-function renderTodaySingle(single) {
-  const list = $('#today-single-list');
-  const section = $('#today-single-section');
+function renderTodaySingle(single, pfx = 'today') {
+  const list = $('#' + pfx + '-single-list');
+  const section = $('#' + pfx + '-single-section');
   if (!single || !single.tickets || single.tickets.length === 0) {
     section.classList.add('hidden');
     return;
   }
   section.classList.remove('hidden');
-  $('#today-single-count').textContent =
+  $('#' + pfx + '-single-count').textContent =
     ` · ${single.n_recommendations} 注 · 总投注 ${fmtMoney(single.total_stake)}`;
   // V11 P1-FE#1 Day 2: card-rec style with mono-display numbers + EV bar.
   // Engineer info (probability %, "停"短语) hidden; replaced with visual
@@ -2953,16 +3003,16 @@ function renderTodaySingle(single) {
   }).join('');
 }
 
-function renderTodayParlay(parlay) {
-  const list = $('#today-parlay-list');
-  const section = $('#today-parlay-section');
+function renderTodayParlay(parlay, pfx = 'today') {
+  const list = $('#' + pfx + '-parlay-list');
+  const section = $('#' + pfx + '-parlay-section');
   if (!parlay || !parlay.recommendations || parlay.recommendations.length === 0) {
     section.classList.add('hidden');
     return;
   }
   section.classList.remove('hidden');
   const totalStake = parlay.recommendations.reduce((s, r) => s + (r.stake_units || 0), 0);
-  $('#today-parlay-count').textContent =
+  $('#' + pfx + '-parlay-count').textContent =
     ` · ${parlay.recommendations.length} 注 · 总投注 ${fmtMoney(totalStake)}`;
   // V11 P1-FE#1 Day 2: card-rec parlay style.
   // V11 P1-FE#5: 已更新 badge label captured outside the map.
@@ -3043,20 +3093,20 @@ function _readMinEv() {
 }
 
 // V11 P1-FE#4 — render the third option (pool / 复式).
-function renderTodayPool(pool) {
-  const section = $('#today-pool-section');
+function renderTodayPool(pool, pfx = 'today') {
+  const section = $('#' + pfx + '-pool-section');
   if (!pool || pool.n_selected === 0) {
     section.classList.add('hidden');
     return;
   }
   section.classList.remove('hidden');
-  $('#today-pool-count').textContent =
+  $('#' + pfx + '-pool-count').textContent =
     `(${pool.n_selected}/${pool.n_combinations})`;
-  $('#today-pool-summary').innerHTML =
+  $('#' + pfx + '-pool-summary').innerHTML =
     `${pool.m} 选 ${pool.n} · 共 <span class="num-display text-primary">${pool.n_combinations}</span> 张候选, ` +
     `选中 <span class="num-display text-gold">${pool.n_selected}</span> 张, ` +
     `总投注 <span class="num-display text-primary">${fmtMoney(pool.total_stake)}</span>`;
-  const list = $('#today-pool-list');
+  const list = $('#' + pfx + '-pool-list');
   list.innerHTML = '';
   const selected = pool.tickets.filter(t => t.stake > 0);
   // V11 P1-FE#5 — i18n label captured outside the map (parameter `t` shadows).
@@ -3743,6 +3793,73 @@ async function loadSpCalc(opts = {}) {
     if (emptyEl) emptyEl.classList.add('hidden');
     const sec = $('#today-spcalc-section');
     if (sec) sec.classList.add('hidden');
+  }
+}
+
+// V12 W5 — 💴 竞彩盘口推荐: collect the fixtures the user filled with 竞彩 SP
+// (1X2 + 让球) in 近期赛事, POST /recommend/jingcai (same engine, 竞彩 odds drive
+// the EV), render into the jc-* board with the shared renderers (pfx='jc').
+function _collectJingcaiFixtures() {
+  const out = [];
+  (_SPCALC.preds || []).forEach((pr, idx) => {
+    const g = (o) => {
+      const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
+      const v = el ? parseFloat(el.value) : NaN;
+      return (v && v > 1.0) ? v : null;
+    };
+    const oh = g('H'), od = g('D'), oa = g('A');
+    const fx = {
+      date: pr.date, league: pr.league,
+      home_team: pr.home_team, away_team: pr.away_team,
+      kickoff_utc: pr.kickoff_utc || null,
+      psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
+    };
+    let any = false;
+    if (oh && od && oa) { fx.odds_1x2_H = oh; fx.odds_1x2_D = od; fx.odds_1x2_A = oa; any = true; }
+    const lsel = document.querySelector(`#spcalc-hcline-${idx}`);
+    if (lsel && lsel.value !== '') {
+      const hg = (o) => {
+        const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+        const v = el ? parseFloat(el.value) : NaN;
+        return (v && v > 1.0) ? v : null;
+      };
+      const hh = hg('H'), hd = hg('D'), ha = hg('A');
+      if (hh && hd && ha) {
+        fx.handicap_home = parseInt(lsel.value, 10);
+        fx.odds_handicap_H = hh; fx.odds_handicap_D = hd; fx.odds_handicap_A = ha;
+        any = true;
+      }
+    }
+    if (any) out.push(fx);
+  });
+  return out;
+}
+
+async function loadJingcaiBoard() {
+  const fixtures = _collectJingcaiFixtures();
+  if (fixtures.length === 0) {
+    setStatus('#jc-status', 'error', t('jc_need_sp'));
+    ['single', 'parlay', 'pool'].forEach(s => $('#jc-' + s + '-section').classList.add('hidden'));
+    return;
+  }
+  setStatus('#jc-status', 'loading', t('jc_computing'));
+  const bankroll = Math.max(2, parseFloat(($('#today-bankroll') || {}).value) || 1000);
+  try {
+    const res = await fetch(API + '/recommend/jingcai', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fixtures, bankroll, min_ev: 0.05, record_session: false }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || ('HTTP ' + res.status));
+    renderTodaySingle(body.single, 'jc');
+    renderTodayParlay(body.parlay, 'jc');
+    renderTodayPool(body.pool, 'jc');
+    const n = (body.summary && body.summary.total_recs) || 0;
+    setStatus('#jc-status', n > 0 ? 'success' : '',
+      n > 0 ? `${fixtures.length} ${t('spcalc_n_matches')} → ${n} ${t('jc_recs')}`
+            : `${fixtures.length} ${t('spcalc_n_matches')} · ${t('jc_none')}`);
+  } catch (e) {
+    setStatus('#jc-status', 'error', t('spcalc_record_err') + ': ' + e.message);
   }
 }
 

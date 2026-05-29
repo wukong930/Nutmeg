@@ -206,3 +206,42 @@ class TestParlayBasket:
                   "parlay_legs", "parlay_combined_p", "parlay_combined_odds",
                   "parlay_recorded", "parlay_add", "parlay_cb"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestTwoBoardToday:
+    """V12 W5 — 今日推荐 split into 🌍 国际盘口推荐 (Pinnacle, auto) + 💴 竞彩盘口
+    推荐 (priced at the 竞彩 SP filled in 近期赛事). Same engine, two odds sources;
+    the today renderers are parameterized by a DOM prefix to serve both boards."""
+
+    def test_board_headers_present(self, html):
+        assert 'data-i18n="board_intl"' in html
+        assert 'data-i18n="board_jc"' in html
+
+    def test_jc_board_sections(self, html):
+        for s in ('id="jc-single-section"', 'id="jc-parlay-section"', 'id="jc-pool-section"',
+                  'id="jc-single-list"', 'id="jc-parlay-list"', 'id="jc-pool-list"',
+                  'id="jc-generate"', 'id="jc-status"'):
+            assert s in html, f"missing 竞彩 board markup: {s}"
+
+    def test_renderers_parameterized_by_prefix(self, html):
+        assert "function renderTodaySingle(single, pfx = 'today')" in html
+        assert "function renderTodayParlay(parlay, pfx = 'today')" in html
+        assert "function renderTodayPool(pool, pfx = 'today')" in html
+        assert "$('#' + pfx + '-single-list')" in html
+
+    def test_jc_loader_wired(self, html):
+        assert "function loadJingcaiBoard(" in html
+        assert "function _collectJingcaiFixtures(" in html
+        assert "/recommend/jingcai" in html
+        # 竞彩 board reuses the shared renderers with pfx='jc'
+        assert "renderTodaySingle(body.single, 'jc')" in html
+        assert "renderTodayParlay(body.parlay, 'jc')" in html
+        assert "renderTodayPool(body.pool, 'jc')" in html
+        # collects 竞彩 odds_1x2 + 让球 from the 近期赛事 calculator state
+        assert "fx.odds_1x2_H = oh" in html
+        assert "fx.odds_handicap_H = hh" in html
+
+    def test_two_board_i18n_keys(self, html):
+        for k in ("board_intl", "board_intl_hint", "board_jc", "board_jc_hint",
+                  "jc_generate", "jc_need_sp", "jc_computing", "jc_recs", "jc_none"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
