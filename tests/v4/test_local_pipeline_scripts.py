@@ -103,6 +103,23 @@ class TestSetupScriptContent:
     def test_macos_only_guard(self, setup_body):
         assert "Darwin" in setup_body, "setup should refuse to run on non-macOS"
 
+    def test_daily_settle_wires_log_rotation(self, setup_body):
+        """2026-05-29: daily_settle appends `; rotate_logs.sh || true` so the
+        always-on api_server daemon's logs stay bounded. Must use `;` (not
+        `&&`) so rotation runs even if settle/report short-circuited."""
+        assert "rotate_logs.sh" in setup_body, \
+            "daily_settle must invoke scripts/rotate_logs.sh"
+        # The rotation call must sit on the daily_settle command line, after
+        # the settle/report chain, joined with `;` (always-run). Anchor on the
+        # install_job invocation (not the header summary line that also names
+        # the job).
+        idx = setup_body.index('install_job "com.nutmeg.daily_settle"')
+        block = setup_body[idx:idx + 700]
+        assert "rotate_logs.sh" in block, \
+            "rotate_logs.sh must be wired into the daily_settle job specifically"
+        assert "; $REPO_ROOT/scripts/rotate_logs.sh" in block, \
+            "rotation must be `;`-joined (run regardless of settle/report exit)"
+
 
 class TestHealthCheckScriptContent:
     @pytest.fixture
@@ -142,6 +159,97 @@ class TestRunLocalServerScriptContent:
 
     def test_sources_env(self, srv_body):
         assert "source .env" in srv_body
+
+
+class TestRotateLogsScript:
+    """2026-05-29 — scripts/rotate_logs.sh keeps launchd logs bounded.
+
+    Deliberately NOT added to the SCRIPTS parametrize list (that would couple
+    it to TestDocPresent's deployment-guide check); covered standalone here.
+    """
+
+    @pytest.fixture
+    def path(self) -> Path:
+        return SCRIPTS_DIR / "rotate_logs.sh"
+
+    def test_exists_and_executable(self, path):
+        assert path.exists(), "rotate_logs.sh missing"
+        assert path.stat().st_mode & stat.S_IXUSR, "rotate_logs.sh not executable"
+
+    def test_shebang_and_header(self, path):
+        body = path.read_text()
+        assert body.startswith("#!/usr/bin/env bash")
+        assert "P1#16" in body, "missing P1#16 header reference"
+
+    def test_strict_mode(self, path):
+        # Uses `set -uo pipefail` (NOT -e: it must continue past a failed
+        # tail on one file to rotate the rest).
+        body = path.read_text()
+        assert "set -uo pipefail" in body
+
+    def test_only_touches_logs_launchd(self, path):
+        body = path.read_text()
+        assert "logs/launchd" in body
+        # Must never `rm` a log file outright — copytruncate only.
+        assert "rm -f \"$f\"" not in body and "rm \"$f\"" not in body
+
+    def test_documents_copytruncate_rationale(self, path):
+        """The daemon-fd reasoning is the whole point — keep it documented."""
+        body = path.read_text()
+        assert "copytruncate" in body
+        assert "inode" in body
+
+    def test_functional_rotation_keeps_tail(self, tmp_path):
+        """End-to-end: a >max log is truncated to keep_lines, keeping the
+        most-recent lines; a small log is left untouched."""
+        # rotate_logs.sh derives LOG_DIR from its own location's ../logs/launchd,
+        # so stage a mini repo-root layout in tmp_path.
+        scripts_dir = tmp_path / "scripts"
+        log_dir = tmp_path / "logs" / "launchd"
+        scripts_dir.mkdir(parents=True)
+        log_dir.mkdir(parents=True)
+        (scripts_dir / "rotate_logs.sh").write_bytes(
+            (SCRIPTS_DIR / "rotate_logs.sh").read_bytes()
+        )
+        (scripts_dir / "rotate_logs.sh").chmod(0o755)
+
+        big = log_dir / "com.nutmeg.api_server.err.log"
+        big.write_text("\n".join(f"line {i}" for i in range(6000)) + "\n")
+        small = log_dir / "daily_odds.out.log"
+        small.write_text("a\nb\n")
+        big_inode_before = big.stat().st_ino
+
+        proc = subprocess.run(
+            [str(scripts_dir / "rotate_logs.sh"), "5000", "2000"],
+            capture_output=True, text=True, timeout=15,
+        )
+        assert proc.returncode == 0, proc.stderr
+
+        kept = big.read_text().splitlines()
+        assert len(kept) == 2000, f"expected 2000 kept lines, got {len(kept)}"
+        # Tail preserved (recent lines), head dropped.
+        assert kept[-1] == "line 5999"
+        assert kept[0] == "line 4000"
+        # copytruncate preserves the inode (daemon fd stays valid).
+        assert big.stat().st_ino == big_inode_before, \
+            "rotation must preserve inode (copytruncate, not mv)"
+        # Small log untouched.
+        assert small.read_text() == "a\nb\n"
+
+    def test_refuses_bad_bounds(self, tmp_path):
+        """keep_lines >= max_lines is a footgun → non-zero exit, no-op."""
+        scripts_dir = tmp_path / "scripts"
+        (tmp_path / "logs" / "launchd").mkdir(parents=True)
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "rotate_logs.sh").write_bytes(
+            (SCRIPTS_DIR / "rotate_logs.sh").read_bytes()
+        )
+        (scripts_dir / "rotate_logs.sh").chmod(0o755)
+        proc = subprocess.run(
+            [str(scripts_dir / "rotate_logs.sh"), "2000", "5000"],
+            capture_output=True, text=True, timeout=15,
+        )
+        assert proc.returncode != 0
 
 
 class TestHealthCheckRunsSuccessfully:

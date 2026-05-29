@@ -7,7 +7,7 @@
 #   3. com.nutmeg.morning_recommend           10:00 daily — V12 W0 Plan A: morning wave recommendations
 #   4. com.nutmeg.daily_odds                  14:00 daily — V12 W0 Plan A: afternoon European wave odds
 #   5. com.nutmeg.daily_recommend             15:00 daily — afternoon wave recommendations
-#   6. com.nutmeg.daily_settle                02:00 daily — settle finished-match outcomes + write ROI report
+#   6. com.nutmeg.daily_settle                02:00 daily — settle finished-match outcomes + write ROI report + rotate logs
 #   7. com.nutmeg.weekly_gate                 Sunday 04:00 — P1#19 live-vs-backtest gate
 #   8. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
 #   9. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
@@ -321,9 +321,16 @@ install_job "com.nutmeg.daily_recommend" \
 # 2026-05-29 for faster 推荐追溯 verification — auto_settle is cheap and only
 # touches finished fixtures. Still runs at 02:00, so it lands BEFORE the Sunday
 # 04:00 gate and the Monday 03:00 calibration, which read freshly-settled rows.)
+#
+# LOG ROTATION (2026-05-29): a trailing `; rotate_logs.sh` keeps the launchd
+# logs bounded. The always-on api_server daemon logs every request, so its
+# err/out log grows without limit otherwise. rotate_logs.sh copytruncates any
+# log over 5000 lines down to its last 2000 (inode-preserving — safe for the
+# daemon's open fd). The leading `;` (not `&&`) runs it regardless of whether
+# settle/report succeeded; its own `|| true` keeps the job's exit code clean.
 install_job "com.nutmeg.daily_settle" \
   2 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true"
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $REPO_ROOT/scripts/rotate_logs.sh || true"
 
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
 # post-v9 P1#24: automate the P1#19 cross-source-aware gate.
