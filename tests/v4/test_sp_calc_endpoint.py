@@ -70,6 +70,7 @@ class TestSpCalcHappyPath:
         return {
             "date": _date.today().isoformat(), "league": "EPL",
             "home_team": home, "away_team": away,
+            "kickoff_utc": _date.today().isoformat() + "T19:00:00+00:00",
             "psc_home": 1.90, "psc_draw": 3.5, "psc_away": 4.2,
         }
 
@@ -89,6 +90,9 @@ class TestSpCalcHappyPath:
         p = body["predictions"][0]
         assert {h["line"] for h in p["handicap_lines"]} == {-3, -2, -1, 0, 1, 2, 3}
         assert p["psc_home"] == 1.90
+        # V12 W4 — kickoff_utc threads from the odds row → FixtureOddsInput →
+        # SinglePrediction so the 近期赛事 cards can show + sort by time.
+        assert p["kickoff_utc"] == rows[0]["kickoff_utc"]
 
 
 # ============ Playoff→market blend (needs artifact) ===================

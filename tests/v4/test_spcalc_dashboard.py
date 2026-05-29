@@ -109,11 +109,56 @@ class TestSpCalcI18n:
 
 
 class TestSpCalcCacheBust:
-    def test_cache_version_in_w3_calculator_family(self):
-        # Assert the W3-calculator era prefix, not a specific feature slug —
-        # the slug changes on every bump (spcalc → -refresh → -handicap …),
-        # so pinning it makes the test break on each ship (it did once).
+    def test_cache_version_in_v12_fe_family(self):
+        # Assert the V12 front-end weekly family prefix, not a specific week or
+        # feature slug — the slug changes on every bump (w3-spcalc →
+        # w3-upcoming-tab → w4-upcoming-polish …), so pinning the week/slug
+        # makes the test break on each ship (it did, twice).
         src = ROUTES.read_text(encoding="utf-8")
-        assert "nutmeg-v12-fe-w3-" in src, (
-            "SW CACHE_VERSION not in the V12 W3 calculator family"
+        assert "nutmeg-v12-fe-w" in src, (
+            "SW CACHE_VERSION not in the V12 front-end (nutmeg-v12-fe-w*) family"
         )
+
+
+class TestSpCalcPolish:
+    """V12 W4 — 近期赛事 card polish: league 中文 label + accent color,
+    group-by-league, kickoff date+time + chronological sort, team-name
+    accent/affix fold for API-spelling variants."""
+
+    def test_league_label_helpers(self, html):
+        assert "const LEAGUE_ZH" in html
+        assert "function zhLeague(" in html
+        # all 14 trained leagues' 中文 labels present in the map
+        for zh in ("英超", "西甲", "意甲", "德甲", "法甲", "英冠", "西乙",
+                   "意乙", "德乙", "法乙", "荷甲", "葡超", "比甲", "日职联"):
+            assert zh in html, f"LEAGUE_ZH missing {zh}"
+
+    def test_league_color_helpers(self, html):
+        assert "const LEAGUE_COLOR" in html
+        assert "function leagueColor(" in html
+
+    def test_group_by_league_render(self, html):
+        # Cards group under colored league headers, ordered + sorted by kickoff.
+        for s in ("spcalc-lg-group", "spcalc-lg-head", "byLeague",
+                  "zhLeague(lg)", "leagueColor(lg)", "cardHtml(o.pr, o.idx)"):
+            assert s in html, f"grouping markup missing: {s}"
+
+    def test_kickoff_display_and_sort(self, html):
+        assert "function _fmtKickoff(" in html
+        assert "function _kickoffMs(" in html
+        # card top-right now shows kickoff (date+time); old "league · date"
+        # span removed (league moved to the group header).
+        assert "${_fmtKickoff(pr)}" in html
+        assert "${pr.league} · ${pr.date}" not in html
+
+    def test_team_name_accent_affix_fold(self, html):
+        # zhTeam falls back to a folded key on exact miss (e.g. "Granada CF" →
+        # "Granada", "Castellón" → "Castellon") so API-spelling variants resolve.
+        assert "function _zhFold(" in html
+        assert "_zhFold(name)" in html
+
+    def test_missing_teams_added_to_dict(self):
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH as D
+        assert D.get("Ceuta") == "休达"
+        assert D.get("Cultural Leonesa")          # present (non-empty)
+        assert D.get("Real Sociedad II")          # reserve side mapped

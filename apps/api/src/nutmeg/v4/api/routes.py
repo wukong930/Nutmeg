@@ -321,7 +321,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v12-fe-w3-upcoming-tab';
+const CACHE_VERSION = 'nutmeg-v12-fe-w4-upcoming-polish';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1079,6 +1079,7 @@ def _fixture_rows_to_inputs(rows: list[dict]) -> list[FixtureOddsInput]:
                 league=r["league"],
                 home_team=r["home_team"],
                 away_team=r["away_team"],
+                kickoff_utc=(r.get("kickoff_utc") or None),
                 psc_home=psc_h,
                 psc_draw=psc_d,
                 psc_away=psc_a,
@@ -1173,6 +1174,7 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
             preds.append(SinglePrediction(
                 home_team=f.home_team, away_team=f.away_team,
                 league=f.league, date=f.date,
+                kickoff_utc=getattr(f, "kickoff_utc", None),
                 lambda_home=float(lh), lambda_away=float(la),
                 p_home_1x2=float(ph), p_draw_1x2=float(pd_), p_away_1x2=float(pa),
                 psc_home=f.psc_home, psc_draw=f.psc_draw, psc_away=f.psc_away,

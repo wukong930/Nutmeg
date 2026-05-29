@@ -368,7 +368,11 @@ class TestDashboardHistoryTab:
     def test_switchTab_triggers_load(self, html):
         """switchTab should call loadHistory when name === 'history'."""
         idx = html.index("function switchTab(name)")
-        block = html[idx:idx+800]
+        # Read the whole switchTab body (up to its column-0 closing brace) —
+        # not a fixed char window. switchTab now has 3 tab auto-loaders
+        # (wc / upcoming / history) so a hard-coded window false-failed once.
+        end = html.index("\n}", idx)
+        block = html[idx:end]
         assert "loadHistory" in block
 
     def test_endpoint_url_used(self, html):

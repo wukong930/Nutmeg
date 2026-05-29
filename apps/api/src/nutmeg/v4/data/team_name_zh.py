@@ -233,6 +233,13 @@ _SEGUNDA: Dict[str, str] = {
     "Cartagena": "卡塔赫纳",
     "Castellon": "卡斯特利翁",
     "Cordoba": "科尔多瓦",
+    # V12 W4 — teams seen live that the dict missed (promotion/reserve sides).
+    # The frontend's accent/affix fold catches "Granada CF"/"Castellón"; these
+    # three have no fold path (new team or reserve marker), so map explicitly.
+    "Ceuta": "休达",
+    "AD Ceuta": "休达",
+    "Cultural Leonesa": "莱昂内萨",
+    "Real Sociedad II": "皇家社会 B",
     "Deportivo La Coruna": "拉科鲁尼亚",
     "Deportivo": "拉科鲁尼亚",
     "Eibar": "埃瓦尔",

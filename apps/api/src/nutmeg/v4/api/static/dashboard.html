@@ -2188,7 +2188,65 @@ async function loadTeamZhDict() {
 function zhTeam(name) {
   if (!name) return '';
   if (_LOCALE !== 'zh') return name;
-  return TEAM_ZH_DICT[name] || name;
+  if (TEAM_ZH_DICT[name]) return TEAM_ZH_DICT[name];
+  // Tolerate API-Football spelling variants the dict doesn't key verbatim:
+  // fold accents + strip club-type affixes so "Granada CF" → "Granada" and
+  // "Castellón" → "Castellon" resolve. Reserve markers (B / II) are kept, so
+  // reserve sides still need explicit dict entries. Never overrides an exact
+  // hit (checked above) → can only improve, never mis-map a known team.
+  const folded = _zhFold(name);
+  if (folded && folded !== name && TEAM_ZH_DICT[folded]) return TEAM_ZH_DICT[folded];
+  return name;
+}
+function _zhFold(name) {
+  let s = String(name).normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const AFFIX = /^(?:AD|CD|SD|UD|CA|SC|AC|RC|RCD|CF|FC|AFC|CP|Club)\s+|\s+(?:CF|FC|AFC|CP|SAD|SD)$/i;
+  let prev = null;
+  while (prev !== s) { prev = s; s = s.replace(AFFIX, '').trim(); }
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+// V12 W4 — league code → Chinese label + accent color, for the 近期赛事
+// cards' league grouping. Covers the 14 trained leagues + WC/Euro/cups.
+// Codes outside the map fall back to the raw code / a neutral slate color.
+const LEAGUE_ZH = {
+  EPL: '英超', ESP_LA_LIGA: '西甲', ITA_SERIE_A: '意甲', GER_BUNDESLIGA: '德甲', FRA_LIGUE_1: '法甲',
+  ENG_CHAMPIONSHIP: '英冠', ESP_SEGUNDA_DIVISION: '西乙', ITA_SERIE_B: '意乙', GER_2_BUNDESLIGA: '德乙',
+  FRA_LIGUE_2: '法乙', NED_EREDIVISIE: '荷甲', PRT_PRIMEIRA_LIGA: '葡超', BEL_PRO_LEAGUE: '比甲', JPN_J1: '日职联',
+  WC: '世界杯', EURO: '欧洲杯', COPA_AMERICA: '美洲杯', UCL: '欧冠', UEL: '欧联', UECL: '欧会',
+};
+const LEAGUE_COLOR = {
+  EPL: '#3d195b', ESP_LA_LIGA: '#e35a00', ITA_SERIE_A: '#0072b9', GER_BUNDESLIGA: '#d20515', FRA_LIGUE_1: '#1a2a6c',
+  ENG_CHAMPIONSHIP: '#2563eb', ESP_SEGUNDA_DIVISION: '#c2410c', ITA_SERIE_B: '#0e7490', GER_2_BUNDESLIGA: '#b91c1c',
+  FRA_LIGUE_2: '#3730a3', NED_EREDIVISIE: '#ea580c', PRT_PRIMEIRA_LIGA: '#15803d', BEL_PRO_LEAGUE: '#854d0e', JPN_J1: '#be123c',
+  WC: '#4338ca', EURO: '#0369a1', COPA_AMERICA: '#0d9488', UCL: '#1e1b4b', UEL: '#c2410c', UECL: '#047857',
+};
+function zhLeague(code) {
+  if (_LOCALE === 'zh' && LEAGUE_ZH[code]) return LEAGUE_ZH[code];
+  return code;
+}
+function leagueColor(code) { return LEAGUE_COLOR[code] || '#64748b'; }
+
+// V12 W4 — kickoff display + sort key for the 近期赛事 cards. kickoff_utc is
+// ISO-with-tz; rendered in the viewer's local time as "MM-DD HH:mm". Falls
+// back to the date (no time) when the odds row lacked a kickoff.
+function _fmtKickoff(pr) {
+  if (pr && pr.kickoff_utc) {
+    const d = new Date(pr.kickoff_utc);
+    if (!isNaN(d.getTime())) {
+      const p2 = n => String(n).padStart(2, '0');
+      return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    }
+  }
+  return pr ? pr.date : '';
+}
+function _kickoffMs(pr) {
+  if (pr && pr.kickoff_utc) {
+    const d = new Date(pr.kickoff_utc);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  // No time → sort by end-of-day so any timed match on the same date leads.
+  return (pr && pr.date) ? new Date(pr.date + 'T23:59:59').getTime() : Infinity;
 }
 
 // V11 P1-FE#2 Day 2 — team logo circle.
@@ -3162,7 +3220,10 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
   section.classList.remove('hidden');
   $('#today-spcalc-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
   const outcomes = ['H', 'D', 'A'];
-  list.innerHTML = preds.map((pr, idx) => {
+  // V12 W4 — one card's HTML. Uses the fixture's *global* index `idx` for all
+  // hook ids, so grouping/reordering the cards below never desyncs the JS
+  // hooks (_spcalcRecalc(idx) etc. all index into _SPCALC.preds).
+  const cardHtml = (pr, idx) => {
     const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
     const psc = { H: pr.psc_home, D: pr.psc_draw, A: pr.psc_away };
     const rows = outcomes.map(o => `
@@ -3183,7 +3244,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
           ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
           <span class="text-muted font-normal">vs</span>
           ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
-          <span class="text-xs text-muted font-normal ml-auto">${pr.league} · ${pr.date}</span>
+          <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}</span>
         </div>
         ${rows}
         <div class="flex items-center justify-between gap-2 mt-2 pt-2" style="border-top:1px solid rgba(0,0,0,0.08)">
@@ -3223,6 +3284,28 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
             </div>
           </div>
         </details>
+      </div>`;
+  };
+  // V12 W4 — group cards by league, sort each group by kickoff, and order the
+  // groups by their earliest kickoff. Each group gets a colored header
+  // (zhLeague label + leagueColor accent) so leagues are visually distinct
+  // and matches read chronologically within a league.
+  const byLeague = {};
+  preds.forEach((pr, idx) => { (byLeague[pr.league] = byLeague[pr.league] || []).push({ pr, idx }); });
+  const order = Object.keys(byLeague).sort((a, b) =>
+    Math.min(...byLeague[a].map(o => _kickoffMs(o.pr))) -
+    Math.min(...byLeague[b].map(o => _kickoffMs(o.pr))));
+  list.innerHTML = order.map(lg => {
+    const items = byLeague[lg].slice().sort((x, y) => _kickoffMs(x.pr) - _kickoffMs(y.pr));
+    const col = leagueColor(lg);
+    return `
+      <div class="spcalc-lg-group mb-4">
+        <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded"
+             style="border-left:4px solid ${col};background:${col}1a">
+          <span class="font-display font-semibold text-sm" style="color:${col}">${zhLeague(lg)}</span>
+          <span class="text-xs text-muted">· ${items.length}</span>
+        </div>
+        ${items.map(o => cardHtml(o.pr, o.idx)).join('')}
       </div>`;
   }).join('');
   // Restore preserved SP into the freshly-rendered inputs + recompute.

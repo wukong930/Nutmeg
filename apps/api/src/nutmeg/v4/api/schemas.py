@@ -20,6 +20,9 @@ class FixtureOddsInput(BaseModel):
     league: str = Field(..., description="Canonical league code, e.g. 'EPL', 'ESP_LA_LIGA'")
     home_team: str = Field(..., description="Must match training-set team spelling")
     away_team: str
+    # V12 W4 — ISO kickoff time (with tz) from the odds cache, threaded through
+    # to SinglePrediction so the 近期赛事 cards can show + sort by time.
+    kickoff_utc: str | None = None
 
     # Required: model needs these to construct market features
     psc_home: float = Field(..., gt=1.0, description="Pinnacle (or sharp) closing 1X2 home odds")
@@ -85,6 +88,10 @@ class SinglePrediction(BaseModel):
     away_team: str
     league: str
     date: date
+    # V12 W4 — ISO kickoff time (with tz) when known, so the 近期赛事 cards can
+    # show date+time and sort chronologically within a league. Optional: the
+    # odds cache row may omit it; the client falls back to `date`.
+    kickoff_utc: str | None = None
     lambda_home: float
     lambda_away: float
     p_home_1x2: float
