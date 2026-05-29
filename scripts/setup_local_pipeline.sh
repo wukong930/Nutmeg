@@ -7,7 +7,7 @@
 #   3. com.nutmeg.morning_recommend           10:00 daily — V12 W0 Plan A: morning wave recommendations
 #   4. com.nutmeg.daily_odds                  14:00 daily — V12 W0 Plan A: afternoon European wave odds
 #   5. com.nutmeg.daily_recommend             15:00 daily — afternoon wave recommendations
-#   6. com.nutmeg.weekly_settle               Sunday 02:00 — settle past-week outcomes + write ROI report
+#   6. com.nutmeg.daily_settle                02:00 daily — settle finished-match outcomes + write ROI report
 #   7. com.nutmeg.weekly_gate                 Sunday 04:00 — P1#19 live-vs-backtest gate
 #   8. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
 #   9. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
@@ -315,11 +315,14 @@ install_job "com.nutmeg.daily_recommend" \
   15 0 "" \
   "$ENV_PREFIX && REPO_ROOT=$REPO_ROOT && $VENV_PY -m nutmeg.v4.cli.recommend --fixtures $DAILY_CSV --record-to $DB_PATH"
 
-# Job 3: weekly settle (Sunday 02:00)
-# Pulls past-week match results, settles open recommendations,
-# refreshes the ROI report file.
-install_job "com.nutmeg.weekly_settle" \
-  2 0 0 \
+# Job 3: daily settle (02:00 every day)
+# Pulls finished-match results, settles open recommendations, refreshes the
+# 4-week ROI report. (Was Sunday-only `weekly_settle`; switched to DAILY on
+# 2026-05-29 for faster 推荐追溯 verification — auto_settle is cheap and only
+# touches finished fixtures. Still runs at 02:00, so it lands BEFORE the Sunday
+# 04:00 gate and the Monday 03:00 calibration, which read freshly-settled rows.)
+install_job "com.nutmeg.daily_settle" \
+  2 0 "" \
   "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true"
 
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
@@ -382,7 +385,7 @@ echo "    $LOG_DIR/com.nutmeg.morning_odds.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.morning_recommend.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_odds.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_recommend.{out,err}.log"
-echo "    $LOG_DIR/com.nutmeg.weekly_settle.{out,err}.log"
+echo "    $LOG_DIR/com.nutmeg.daily_settle.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_gate.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.weekly_calibration_check.{out,err}.log"
 echo "    $LOG_DIR/com.nutmeg.daily_wc_predict.{out,err}.log"
@@ -393,7 +396,7 @@ echo "  • Dashboard now reachable 24/7 at: http://127.0.0.1:8080/api/v4/dashbo
 echo "  • Verify with: ./scripts/health_check.sh"
 echo "  • Inspect jobs: launchctl list | grep com.nutmeg"
 echo "  • Stop the API server only: launchctl bootout gui/\$UID/com.nutmeg.api_server"
-echo "  • Daily timeline: 02:00 wc_settle → 03:00 calibration → 09:00 morning_odds + wc_predict → 10:00 morning_recommend → 14:00 daily_odds → 15:00 daily_recommend"
+echo "  • Daily timeline: 02:00 settle + wc_settle → 03:00 calibration → 09:00 morning_odds + wc_predict → 10:00 morning_recommend → 14:00 daily_odds → 15:00 daily_recommend"
 echo "  • Weekly gate reports land at: $GATE_OUT_DIR/p1_19_gate_<ISO-week>.md"
 echo "  • Weekly calibration reports land at: $CALIB_OUT_DIR/auto_calibration_<ISO-week>.md"
 echo "  • Daily WC reports land at: $WC_OUT_DIR/wc_report_<YYYY-MM-DD>.md"

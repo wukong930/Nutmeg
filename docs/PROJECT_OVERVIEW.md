@@ -637,7 +637,7 @@ CI workflows (.github/)
 02:00 daily   com.nutmeg.daily_wc_settle             ← WC outcome + report
 03:00 Mon     com.nutmeg.weekly_calibration_check    ← Layer A T 校准
 04:00 Sun     com.nutmeg.weekly_gate                 ← P1#19 live-vs-backtest
-04:00 Sun     com.nutmeg.weekly_settle               ← 上周结算 + ROI
+04:00 Sun     com.nutmeg.daily_settle               ← 上周结算 + ROI
 09:00 daily   com.nutmeg.daily_wc_predict            ← WC predict（WC 期间）
 14:00 daily   com.nutmeg.daily_odds                  ← 写今日 CSV
 15:00 daily   com.nutmeg.daily_recommend             ← 读 CSV + record session

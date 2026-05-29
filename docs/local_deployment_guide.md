@@ -27,7 +27,7 @@ Local launchd jobs:
 |---|---|---|---|
 | 1 | `com.nutmeg.daily_odds` | 14:00 daily | Fetch today's odds for 5 domestic leagues (post-P1#20: UCL/UEL removed since cup ablation closed negative) |
 | 2 | `com.nutmeg.daily_recommend` | 15:00 daily | Generate EPL + La Liga recommendations, record session into observation DB |
-| 3 | `com.nutmeg.weekly_settle` | Sunday 02:00 | Settle past-week match outcomes + refresh `docs/local_ab_report_latest.md` |
+| 3 | `com.nutmeg.daily_settle` | 02:00 daily | Settle finished-match outcomes + refresh `docs/local_ab_report_latest.md` (was Sunday-only `weekly_settle`; daily since 2026-05-29) |
 | 4 | `com.nutmeg.weekly_gate` | Sunday 04:00 | Run P1#19 live-vs-backtest gate (cross-source-aware, `--tolerance-pp 50` per P1#22 noise floor); write report to `docs/weekly/p1_19_gate_<ISO-week>.md` |
 | 5 | `com.nutmeg.weekly_calibration_check` | Monday 03:00 | **V10 W2** Layer A drift check + auto-rollback. Runs `nutmeg-auto-calibration --apply --auto-rollback --deploy-artifact data/v4_model`. If a deployed correction is hurting log-loss → revert; otherwise propose a fresh T. Writes `docs/weekly/auto_calibration_<ISO-week>.md`. |
 | 6 | `com.nutmeg.daily_wc_predict` | 09:00 daily | **V10 W4** WC predictions for today, pulls Pinnacle odds when available, upserts into `wc_predictions` table. Writes `docs/wc/wc_<YYYY-MM-DD>.json`. |
@@ -40,10 +40,10 @@ if `--fetch-current-odds` is on (silently skipped when not set).
 ### Daily schedule (post-installation)
 
 ```
-02:00  daily_wc_settle      (V10 W4 — pull WC outcomes + write report)
+02:00  daily_settle         (settle finished outcomes + ROI report — daily)
+       daily_wc_settle      (V10 W4 — pull WC outcomes + write report)
 03:00  weekly_calibration_check  (Monday only — Layer A T drift check)
 04:00  weekly_gate          (Sunday only — P1#19 live-vs-backtest)
-       weekly_settle        (Sunday only — see above)
 09:00  daily_wc_predict     (V10 W4 — predict today's WC matches)
 14:00  daily_odds           (fetch domestic odds)
 15:00  daily_recommend      (generate domestic recs + record session)
@@ -78,7 +78,7 @@ cron has fired):
 ━━ 2. launchd jobs ━━
   ✓ com.nutmeg.daily_odds loaded (last exit=0, pid=-)
   ✓ com.nutmeg.daily_recommend loaded (last exit=0, pid=-)
-  ✓ com.nutmeg.weekly_settle loaded (last exit=0, pid=-)
+  ✓ com.nutmeg.daily_settle loaded (last exit=0, pid=-)
   ✓ com.nutmeg.weekly_gate loaded (last exit=0, pid=-)
   ✓ com.nutmeg.weekly_calibration_check loaded (last exit=0, pid=-)
   ✓ com.nutmeg.daily_wc_predict loaded (last exit=0, pid=-)
@@ -177,8 +177,8 @@ PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.ab_report \
   --weeks 4 --db data/v4_observation.db
 ```
 
-(The weekly_settle job also writes `docs/local_ab_report_latest.md`
-automatically every Sunday — just open that file.)
+(The daily_settle job also writes `docs/local_ab_report_latest.md`
+automatically every day at 02:00 — just open that file.)
 
 ## Operating Layer A (V10 W2 — post-hoc T calibration)
 
@@ -322,7 +322,7 @@ scripts/
 
 docs/
   local_deployment_guide.md      # this file
-  local_ab_report_latest.md      # written by weekly_settle each Sun 02:00
+  local_ab_report_latest.md      # written by daily_settle each day 02:00
   weekly/p1_19_gate_<YYYY-Www>.md       # written by weekly_gate each Sun 04:00
   weekly/auto_calibration_<YYYY-Www>.md # V10 W2 — written by weekly_calibration_check each Mon 03:00
   wc/wc_<YYYY-MM-DD>.json               # V10 W4 — written by daily_wc_predict each 09:00
@@ -331,7 +331,7 @@ docs/
 logs/launchd/                    # per-job stdout + stderr (auto-created)
   com.nutmeg.daily_odds.{out,err}.log
   com.nutmeg.daily_recommend.{out,err}.log
-  com.nutmeg.weekly_settle.{out,err}.log
+  com.nutmeg.daily_settle.{out,err}.log
   com.nutmeg.weekly_gate.{out,err}.log
   com.nutmeg.weekly_calibration_check.{out,err}.log
   com.nutmeg.daily_wc_predict.{out,err}.log
@@ -340,7 +340,7 @@ logs/launchd/                    # per-job stdout + stderr (auto-created)
 ~/Library/LaunchAgents/          # the actual plists (installed)
   com.nutmeg.daily_odds.plist
   com.nutmeg.daily_recommend.plist
-  com.nutmeg.weekly_settle.plist
+  com.nutmeg.daily_settle.plist
   com.nutmeg.weekly_gate.plist
   com.nutmeg.weekly_calibration_check.plist
   com.nutmeg.daily_wc_predict.plist

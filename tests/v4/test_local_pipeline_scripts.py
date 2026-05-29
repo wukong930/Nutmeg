@@ -72,7 +72,7 @@ class TestSetupScriptContent:
         # post-v9 P1#24: added com.nutmeg.weekly_gate (4th job)
         for label in ("com.nutmeg.daily_odds",
                       "com.nutmeg.daily_recommend",
-                      "com.nutmeg.weekly_settle",
+                      "com.nutmeg.daily_settle",   # renamed from weekly_settle (now daily)
                       "com.nutmeg.weekly_gate"):
             assert label in setup_body, f"setup missing job label: {label}"
 

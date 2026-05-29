@@ -56,7 +56,7 @@ section "2. launchd jobs"
 JOBS=(
   "com.nutmeg.daily_odds"
   "com.nutmeg.daily_recommend"
-  "com.nutmeg.weekly_settle"
+  "com.nutmeg.daily_settle"
   "com.nutmeg.weekly_gate"
   "com.nutmeg.weekly_calibration_check"
   "com.nutmeg.daily_wc_predict"
