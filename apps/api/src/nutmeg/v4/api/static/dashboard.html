@@ -878,6 +878,25 @@
     </div>
     <div id="spcalc-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
          data-i18n="upcoming_empty">未来 3 天暂无可识别的比赛 (或盘口未开)。</div>
+    <!-- V12 W5 — 串关篮子: tick 「串」 on outcomes across matches → combined EV/Kelly + 记录串关. -->
+    <div id="parlay-basket" class="hidden" style="position:sticky;bottom:0;z-index:20">
+      <div class="bg-white shadow-lg rounded-lg p-3 sm:p-4 mt-2" style="border-top:4px solid #059669">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="font-bold text-sm" data-i18n="parlay_title">🎰 串关篮子</span>
+          <span id="parlay-count" class="text-xs text-muted"></span>
+          <button onclick="_parlayClear()" class="text-xs text-secondary underline ml-auto"
+                  data-i18n="parlay_clear">清空</button>
+        </div>
+        <ul id="parlay-legs" class="text-xs text-secondary space-y-1 mb-2"></ul>
+        <div class="flex items-center justify-between gap-2">
+          <span id="parlay-summary" class="text-xs text-muted flex-1" role="status" aria-live="polite"></span>
+          <button id="parlay-record-btn" onclick="_parlayRecord()" disabled
+                  class="px-3 py-1 rounded text-sm shrink-0"
+                  style="background:#e5e7eb;color:#9ca3af;cursor:not-allowed"
+                  data-i18n="parlay_record_btn">记录串关</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Tab: WC 2026 (V10 W1 Day 5) -->
@@ -1695,6 +1714,16 @@ const I18N = {
     spcalc_n_matches: '场',
     spcalc_enter_sp:  '输入竞彩 SP 看 EV',
     spcalc_record_btn:'已下单',
+    parlay_title:     '🎰 串关篮子',
+    parlay_clear:     '清空',
+    parlay_record_btn:'记录串关',
+    parlay_need_2:    '勾选 ≥2 场比赛、并填好各腿 SP',
+    parlay_legs:      '关',
+    parlay_combined_p:'命中率',
+    parlay_combined_odds:'串赔',
+    parlay_recorded:  '已记录串关',
+    parlay_add:       '加入串关',
+    parlay_cb:        '串',
     spcalc_jc:        '竞彩',
     spcalc_fair:      '公允',
     spcalc_pick:      '建议',
@@ -1947,6 +1976,16 @@ const I18N = {
     spcalc_n_matches: 'matches',
     spcalc_enter_sp:  'Enter 竞彩 SP for EV',
     spcalc_record_btn:'Placed',
+    parlay_title:     '🎰 Parlay basket',
+    parlay_clear:     'Clear',
+    parlay_record_btn:'Record parlay',
+    parlay_need_2:    'Tick ≥2 matches & fill each leg SP',
+    parlay_legs:      'legs',
+    parlay_combined_p:'Hit',
+    parlay_combined_odds:'Odds',
+    parlay_recorded:  'Parlay recorded',
+    parlay_add:       'Add to parlay',
+    parlay_cb:        '+',
     spcalc_jc:        '竞彩',
     spcalc_fair:      'fair',
     spcalc_pick:      'Pick',
@@ -3195,6 +3234,149 @@ function _spcalcStake(p, sp, bankroll, kelly) {
   return Math.floor(stake / 2) * 2;
 }
 
+// V12 W5 — 串关篮子 (hand-picked parlay). Tick 「串」 on 1X2 outcomes across
+// matches → combined ∏P × ∏SP → EV / fractional Kelly; 记录串关 POSTs the exact
+// legs to /recommend/parlay (server recomputes + records, double-gated). Keyed
+// by match identity (one leg per match) so it survives re-render / 🔄刷新.
+let _PARLAY = {};   // matchKey -> outcome ('H'|'D'|'A')
+
+function _parlayKey(pr) { return pr.home_team + '|' + pr.away_team + '|' + pr.date; }
+function _parlayIdxFor(key) {
+  return (_SPCALC.preds || []).findIndex(p => _parlayKey(p) === key);
+}
+function _parlaySpFor(idx, outcome) {
+  const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${outcome}"]`);
+  const v = el ? parseFloat(el.value) : NaN;
+  return (v && v > 1.0) ? v : null;
+}
+
+function _parlayToggle(idx, outcome, checked) {
+  const pr = _SPCALC.preds[idx];
+  if (!pr) return;
+  const key = _parlayKey(pr);
+  if (checked) {
+    // one leg per match — uncheck this match's other outcomes
+    document.querySelectorAll(`.spcalc-parlay-cb[data-idx="${idx}"]`).forEach(cb => {
+      if (cb.dataset.outcome !== outcome) cb.checked = false;
+    });
+    _PARLAY[key] = outcome;
+  } else {
+    delete _PARLAY[key];
+  }
+  _parlayRender();
+}
+
+function _parlayClear() {
+  _PARLAY = {};
+  document.querySelectorAll('.spcalc-parlay-cb').forEach(cb => { cb.checked = false; });
+  _parlayRender();
+}
+
+// After a re-render, re-check boxes + drop legs whose match left the list.
+function _parlayRestore() {
+  Object.keys(_PARLAY).forEach(key => {
+    const idx = _parlayIdxFor(key);
+    if (idx < 0) { delete _PARLAY[key]; return; }
+    const cb = document.querySelector(`.spcalc-parlay-cb[data-idx="${idx}"][data-outcome="${_PARLAY[key]}"]`);
+    if (cb) cb.checked = true;
+  });
+  _parlayRender();
+}
+
+function _parlayRender() {
+  const bar = $('#parlay-basket');
+  if (!bar) return;
+  const keys = Object.keys(_PARLAY);
+  if (keys.length === 0) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  const { bankroll, kelly, minEv } = _SPCALC;
+  let prodP = 1.0, prodSP = 1.0, allSp = true;
+  const lis = [];
+  keys.forEach(key => {
+    const idx = _parlayIdxFor(key);
+    if (idx < 0) return;
+    const pr = _SPCALC.preds[idx];
+    const o = _PARLAY[key];
+    const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 }[o];
+    const sp = _parlaySpFor(idx, o);
+    prodP *= P;
+    if (sp) prodSP *= sp; else allSp = false;
+    lis.push(`<li class="flex items-center gap-2">
+      <span>${zhTeam(pr.home_team)} <span class="text-muted">vs</span> ${zhTeam(pr.away_team)}</span>
+      <span class="font-semibold">${outcomeLabel(o)}</span>
+      <span class="num-display text-muted ml-auto">@ ${sp ? sp.toFixed(2) : '—'}</span>
+      <span class="num-display text-muted">P ${(P * 100).toFixed(0)}%</span></li>`);
+  });
+  $('#parlay-legs').innerHTML = lis.join('');
+  $('#parlay-count').textContent = `· ${keys.length} ${t('parlay_legs')}`;
+  const summary = $('#parlay-summary');
+  const btn = $('#parlay-record-btn');
+  const disable = () => {
+    btn.disabled = true;
+    btn.style.cssText = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed';
+  };
+  if (keys.length < 2 || !allSp) {
+    summary.textContent = t('parlay_need_2');
+    disable();
+    return;
+  }
+  const ev = prodP * prodSP - 1.0;
+  const pass = ev >= minEv;
+  const stake = _spcalcStake(prodP, prodSP, bankroll, kelly);
+  const color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
+  summary.innerHTML =
+    `${t('parlay_combined_p')} ${(prodP * 100).toFixed(1)}% · ${t('parlay_combined_odds')} ${prodSP.toFixed(2)} · `
+    + `EV <b style="color:${color}">${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%</b>`
+    + (pass ? ` · ${t('spcalc_suggest')} ${fmtMoney(stake)}` : ` · ${t('spcalc_nobet')}`);
+  if (pass && stake > 0) {
+    btn.disabled = false;
+    btn.style.cssText = 'background:#059669;color:#fff;cursor:pointer';
+  } else {
+    disable();
+  }
+}
+
+async function _parlayRecord() {
+  const btn = $('#parlay-record-btn');
+  if (btn.disabled) return;
+  const { bankroll, kelly } = _SPCALC;
+  const legs = [];
+  for (const key of Object.keys(_PARLAY)) {
+    const idx = _parlayIdxFor(key);
+    if (idx < 0) continue;
+    const pr = _SPCALC.preds[idx];
+    const o = _PARLAY[key];
+    const sp = _parlaySpFor(idx, o);
+    if (!sp) { alert(t('parlay_need_2')); return; }
+    legs.push({
+      date: pr.date, league: pr.league, home_team: pr.home_team, away_team: pr.away_team,
+      kickoff_utc: pr.kickoff_utc || null, market_type: '1x2', outcome: o, sp,
+      psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
+    });
+  }
+  if (legs.length < 2) { alert(t('parlay_need_2')); return; }
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await fetch(API + '/recommend/parlay', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        legs, bankroll, kelly_fraction: kelly,
+        max_stake_fraction: 0.05, record_session: true,
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || ('HTTP ' + res.status));
+    const ev = body.ev_per_unit;
+    $('#parlay-summary').innerHTML =
+      `✓ ${t('parlay_recorded')} · EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}% · ${fmtMoney(body.stake)}`;
+    btn.textContent = t('spcalc_recorded_btn');
+  } catch (e) {
+    alert(t('spcalc_record_err') + ': ' + e.message);
+    btn.disabled = false; btn.textContent = old;
+  }
+}
+
 function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
   const section = $('#today-spcalc-section');
   const list = $('#today-spcalc-list');
@@ -3237,6 +3419,10 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
                aria-label="${zhTeam(pr.home_team)} ${outcomeLabel(o)} 竞彩 SP"
                oninput="_spcalcRecalc(${idx})">
         <span id="spcalc-ev-${idx}-${o}" class="flex-1 text-xs text-muted"></span>
+        <label class="shrink-0 text-xs text-secondary flex items-center gap-1 cursor-pointer select-none" title="${t('parlay_add')}">
+          <input type="checkbox" class="spcalc-parlay-cb" data-idx="${idx}" data-outcome="${o}"
+                 onchange="_parlayToggle(${idx}, '${o}', this.checked)"
+                 aria-label="${zhTeam(pr.home_team)} ${outcomeLabel(o)} ${t('parlay_add')}">${t('parlay_cb')}</label>
       </div>`).join('');
     return `
       <div class="card-rec" data-spcalc-card="${idx}">
@@ -3335,6 +3521,8 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
     }
     if (saved.hcline || saved.hc) _spcalcHcLine(idx);
   });
+  // V12 W5 — re-check parlay legs + refresh the 串关篮子 after a re-render.
+  _parlayRestore();
 }
 
 function _spcalcRecalc(idx) {
@@ -3372,6 +3560,8 @@ function _spcalcRecalc(idx) {
     btn.disabled = true;
     btn.style.cssText = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed';
   }
+  // V12 W5 — keep the 串关篮子 in sync when a leg's SP changes.
+  if (typeof _parlayRender === 'function') _parlayRender();
 }
 
 async function _spcalcRecord(idx) {

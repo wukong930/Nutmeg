@@ -162,3 +162,47 @@ class TestSpCalcPolish:
         assert D.get("Ceuta") == "休达"
         assert D.get("Cultural Leonesa")          # present (non-empty)
         assert D.get("Real Sociedad II")          # reserve side mapped
+
+
+class TestParlayBasket:
+    """V12 W5 — 串关篮子: tick 「串」 across matches → combined EV/Kelly →
+    记录串关 POSTs the exact legs to /recommend/parlay (double-gated)."""
+
+    def test_basket_markup_present(self, html):
+        for s in ('id="parlay-basket"', 'id="parlay-legs"', 'id="parlay-summary"',
+                  'id="parlay-record-btn"', 'class="spcalc-parlay-cb"'):
+            assert s in html, f"missing basket markup: {s}"
+
+    def test_basket_js_hooks(self, html):
+        for fn in ("function _parlayToggle(", "function _parlayRender(",
+                   "async function _parlayRecord(", "function _parlayClear(",
+                   "function _parlayRestore("):
+            assert fn in html, f"missing parlay fn: {fn}"
+
+    def test_checkbox_on_1x2_rows(self, html):
+        # Each 1X2 outcome row carries the parlay toggle wired to _parlayToggle.
+        assert 'onchange="_parlayToggle(${idx}' in html
+
+    def test_records_to_parlay_endpoint(self, html):
+        assert "/recommend/parlay" in html
+        # explicit legs + double-gate flag
+        assert "market_type: '1x2'" in html
+        assert "record_session: true" in html
+
+    def test_wired_into_calculator(self, html):
+        # SP edits refresh the basket; re-render re-checks legs.
+        assert "_parlayRestore();" in html
+        assert "if (typeof _parlayRender === 'function') _parlayRender();" in html
+
+    def test_combined_math_is_product(self, html):
+        # ∏P and ∏SP (parlay hit prob + odds) computed client-side for display.
+        assert "prodP *= P" in html
+        assert "prodSP *= sp" in html
+        # stake reuses the single-leg Kelly helper on the combined P + odds
+        assert "_spcalcStake(prodP, prodSP, bankroll, kelly)" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("parlay_title", "parlay_clear", "parlay_record_btn", "parlay_need_2",
+                  "parlay_legs", "parlay_combined_p", "parlay_combined_odds",
+                  "parlay_recorded", "parlay_add", "parlay_cb"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
