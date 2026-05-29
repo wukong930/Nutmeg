@@ -24,6 +24,7 @@ from fastapi.responses import HTMLResponse, Response
 from nutmeg.v4.api.schemas import (
     FixtureOddsInput,
     HealthResponse,
+    JingcaiRecommendRequest,
     LegResponse,
     LotteryRulesResponse,
     ModelInfo,
@@ -1583,12 +1584,16 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
                 kept = [r for r in parlay_resp.recommendations if r.ev_per_unit >= req.min_ev]
                 parlay_resp.recommendations = kept
                 parlay_resp.n_recommendations = len(kept)
-                parlay_resp.total_stake = float(sum(r.stake_units for r in kept))
             if parlay_resp.n_recommendations > 0:
                 total_recs += parlay_resp.n_recommendations
-                total_stake += parlay_resp.total_stake
+                # RecommendResponse has no total_stake field — sum per-ticket
+                # kelly_recommended_stake (real ¥). (Pre-V12-W5 this assigned a
+                # nonexistent attribute → raised → the 串关 board was silently
+                # dropped whenever min_ev>0. Now it shows.)
+                total_stake += float(sum(
+                    r.kelly_recommended_stake for r in parlay_resp.recommendations))
                 for r in parlay_resp.recommendations:
-                    stake_weighted_ev_sum += r.stake_units * 1.0 * r.ev_per_unit
+                    stake_weighted_ev_sum += r.kelly_recommended_stake * r.ev_per_unit
             else:
                 parlay_resp = None
         except Exception:  # noqa: BLE001
@@ -1711,6 +1716,129 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
         version_hash=_top_hash,
         diff=diff_block,
         playoff_warnings=playoff_warnings,
+        single_match_predictions=single_match_predictions,
+    )
+
+
+@router.post("/recommend/jingcai", response_model=TodayRecommendationsResponse)
+def recommend_jingcai(req: JingcaiRecommendRequest) -> TodayRecommendationsResponse:
+    """V12 W5 — 💴 竞彩盘口推荐: single + parlay + pool over the fixtures the user
+    filled with 竞彩 SP (+ 让球) in 近期赛事.
+
+    Same engine + same three pipelines as /today-recommendations (国际盘口,
+    odds=Pinnacle), but here each fixture's ``odds_1x2`` / handicap odds (= the
+    竞彩 SP) drive the EV, so this is the 竞彩 frame. Model P still uses psc as a
+    feature. Kept as its own endpoint (rather than refactoring the auto-fetch
+    Pinnacle path) so the working today flow is untouched.
+    """
+    import datetime as _dt
+
+    art = get_artifact()
+    if art is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"V4 model artifact not loaded; expected at {_artifact_path()}",
+        )
+
+    _RISK_TO_KELLY = {"conservative": 0.15, "balanced": 0.25, "aggressive": 0.40}
+    effective_kelly = (
+        _RISK_TO_KELLY[req.risk_preference]
+        if abs(req.kelly_fraction - 0.25) < 1e-9 else req.kelly_fraction
+    )
+
+    fixtures = req.fixtures
+    n = len(fixtures)
+    single_match_predictions = _calc_predictions(art, fixtures)
+
+    single_resp: SingleRecommendResponse | None = None
+    parlay_resp: RecommendResponse | None = None
+    pool_resp: PoolRecommendResponse | None = None
+    total_recs = 0
+    total_stake = 0.0
+    stake_weighted_ev_sum = 0.0
+
+    if n > 0 and "single" in req.include:
+        try:
+            sr = recommend_single(SingleRecommendRequest(
+                fixtures=fixtures, bankroll=req.bankroll,
+                kelly_fraction=effective_kelly, record_session=req.record_session,
+            ))
+            if sr.n_recommendations > 0 and req.min_ev > 0:
+                kept = [t for t in sr.tickets if t.ev_per_unit >= req.min_ev]
+                sr.tickets = kept
+                sr.n_recommendations = len(kept)
+                sr.total_stake = float(sum(t.stake for t in kept))
+                sr.total_expected_return = float(sum(t.expected_return for t in kept))
+            if sr.n_recommendations > 0:
+                single_resp = sr
+                total_recs += sr.n_recommendations
+                total_stake += sr.total_stake
+                for t in sr.tickets:
+                    stake_weighted_ev_sum += t.stake * t.ev_per_unit
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("jingcai: single pipeline failed")
+
+    if n >= 2 and "parlay" in req.include:
+        try:
+            pr = recommend(RecommendRequest(
+                fixtures=fixtures, bankroll=req.bankroll, top_n=10, k_min=2,
+                k_max=min(8, n), min_hit_probability=req.min_hit_probability,
+                min_kelly_stake=req.min_kelly_stake, kelly_fraction=effective_kelly,
+                include_compound=False, record_session=req.record_session,
+            ))
+            if pr.n_recommendations > 0 and req.min_ev > 0:
+                kept = [r for r in pr.recommendations if r.ev_per_unit >= req.min_ev]
+                pr.recommendations = kept
+                pr.n_recommendations = len(kept)
+            if pr.n_recommendations > 0:
+                parlay_resp = pr
+                total_recs += pr.n_recommendations
+                # RecommendResponse has no total_stake field; sum the per-ticket
+                # kelly_recommended_stake (real ¥) for the board total.
+                _p_stake = float(sum(r.kelly_recommended_stake for r in pr.recommendations))
+                total_stake += _p_stake
+                for r in pr.recommendations:
+                    stake_weighted_ev_sum += r.kelly_recommended_stake * r.ev_per_unit
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("jingcai: parlay pipeline failed")
+
+    if n >= req.pool_n and "pool" in req.include:
+        try:
+            po = _build_today_pool(
+                fixtures=fixtures, bankroll=req.bankroll,
+                kelly_fraction=effective_kelly, min_ev=req.min_ev,
+                pool_n=req.pool_n, record_session=req.record_session,
+            )
+            if po is not None and po.n_selected > 0:
+                pool_resp = po
+                total_recs += po.n_selected
+                total_stake += po.total_stake
+                for t in po.tickets:
+                    if t.stake > 0:
+                        stake_weighted_ev_sum += t.stake * t.ev_per_unit
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("jingcai: pool pipeline failed")
+
+    weighted_ev = (stake_weighted_ev_sum / total_stake) if total_stake > 0 else None
+    return TodayRecommendationsResponse(
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
+        date=_dt.date.today().isoformat(),
+        leagues=sorted({f.league for f in fixtures}),
+        bankroll=req.bankroll,
+        fixtures_fetched=n,
+        single=single_resp,
+        parlay=parlay_resp,
+        pool=pool_resp,
+        wc=None,
+        summary=TodaySummary(
+            total_recs=total_recs, total_stake=total_stake, weighted_ev=weighted_ev,
+        ),
+        version_hash=None,
+        diff=None,
+        playoff_warnings=[],
         single_match_predictions=single_match_predictions,
     )
 

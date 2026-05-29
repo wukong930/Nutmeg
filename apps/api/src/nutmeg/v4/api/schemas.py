@@ -257,6 +257,29 @@ class ParlayRecordResponse(BaseModel):
     single_match_predictions: list[SinglePrediction] = Field(default_factory=list)
 
 
+class JingcaiRecommendRequest(BaseModel):
+    """V12 W5 — 竞彩盘口推荐: run single + parlay + pool over the fixtures the
+    user filled with 竞彩 SP (+ 让球) in 近期赛事.
+
+    Same engine as /today-recommendations, but each fixture's ``odds_1x2`` /
+    ``odds_handicap_*`` (= the 竞彩 SP the user typed) drive the EV instead of
+    Pinnacle. Model P still uses psc (Pinnacle) as a feature. The caller should
+    only include fixtures it actually filled 竞彩 odds for — fixtures missing
+    ``odds_1x2`` would fall back to Pinnacle inside the engine, which is NOT the
+    竞彩 frame. Returns a TodayRecommendationsResponse (the 💴 竞彩 board)."""
+    fixtures: list[FixtureOddsInput] = Field(..., min_length=1)
+    bankroll: float = Field(1000.0, gt=0)
+    include: list[Literal["single", "parlay", "pool"]] = Field(
+        default_factory=lambda: ["single", "parlay", "pool"])
+    risk_preference: Literal["conservative", "balanced", "aggressive"] = "balanced"
+    min_ev: float = Field(0.05, ge=-0.20, le=0.50)
+    kelly_fraction: float = Field(0.25, gt=0.0, le=1.0)
+    min_hit_probability: float = Field(0.05, ge=0.0, le=1.0)
+    min_kelly_stake: float = Field(2.0, ge=0.0)
+    pool_n: int = Field(3, ge=2, le=8)
+    record_session: bool = False
+
+
 # ---------- Health ----------
 
 class HealthResponse(BaseModel):
