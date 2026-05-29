@@ -161,6 +161,65 @@ class TestSpCalcPendingFixtures:
         assert gr.call_args.kwargs.get("require_odds") is False
 
 
+# ============ Cup market mode (V12 W7) ================================
+
+class TestCupMarket:
+    """V12 W7 — /predictions/cup-market: Tier-1 cups priced off Pinnacle de-vig
+    (market mode), NOT the model. No-line fixtures → 待开盘."""
+
+    @pytest.mark.parametrize("days", [0, 8, -1])
+    def test_days_out_of_range_422(self, client, days):
+        r = client.get(f"/api/v4/predictions/cup-market?days={days}")
+        assert r.status_code == 422, r.text
+
+    def test_devig_drives_probability_not_model(self, client):
+        from unittest.mock import patch
+        # PSG–Arsenal UCL final Pinnacle line → de-vig ≈ 41.0 / 28.7 / 30.3
+        rows = [{
+            "date": "2026-05-30", "league": "UCL",
+            "home_team": "Paris Saint Germain", "away_team": "Arsenal",
+            "kickoff_utc": "2026-05-30T16:00:00+00:00",
+            "psc_home": 2.36, "psc_draw": 3.37, "psc_away": 3.20,
+        }]
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows", return_value=(rows, 1, 0)):
+            r = client.get("/api/v4/predictions/cup-market?days=1")
+        assert r.status_code == 200, r.text
+        p = r.json()["predictions"][0]
+        assert p["market_mode"] is True
+        assert p["handicap_lines"] == []        # no model grid
+        assert p["lambda_home"] == 0.0          # not a model prediction
+        # de-vig of 2.36 / 3.37 / 3.20 (sums to 1.0)
+        assert abs(p["p_home_1x2"] - 0.410) < 0.005
+        assert abs(p["p_draw_1x2"] - 0.287) < 0.005
+        assert abs(p["p_away_1x2"] - 0.303) < 0.005
+        assert abs(sum((p["p_home_1x2"], p["p_draw_1x2"], p["p_away_1x2"])) - 1.0) < 1e-6
+        assert p["psc_home"] == 2.36            # echoes Pinnacle odds
+
+    def test_no_line_cup_is_pending(self, client):
+        from unittest.mock import patch
+        rows = [{
+            "date": "2026-05-31", "league": "FAC",
+            "home_team": "Lower Club", "away_team": "Other Club",
+            "kickoff_utc": "2026-05-31T14:00:00+00:00",
+            "psc_home": None, "psc_draw": None, "psc_away": None,
+        }]
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows", return_value=(rows, 1, 0)):
+            r = client.get("/api/v4/predictions/cup-market?days=1")
+        body = r.json()
+        assert body["predictions"] == []
+        assert len(body["pending_fixtures"]) == 1
+        assert body["pending_fixtures"][0]["league"] == "FAC"
+
+    def test_tier1_competition_set(self):
+        from nutmeg.v4.api.routes import _CUP_MARKET_COMPETITIONS
+        for c in ("UCL", "UEL", "UECL", "FAC", "COPA_DEL_REY", "COPPA_ITALIA",
+                  "DFB_POKAL", "COUPE_DE_FRANCE", "WC", "EURO", "WC_QUAL_UEFA"):
+            assert c in _CUP_MARKET_COMPETITIONS, f"{c} missing from Tier-1 cups"
+        # must NOT include leagues, nor excluded (Asian/SA) competitions
+        assert "EPL" not in _CUP_MARKET_COMPETITIONS
+        assert "COPA_AMERICA" not in _CUP_MARKET_COMPETITIONS
+
+
 # ============ Playoff→market blend (needs artifact) ===================
 
 class TestPlayoffBlend:

@@ -333,7 +333,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w6-pending-fixtures';
+const CACHE_VERSION = 'nutmeg-v12-fe-w7-cup-market';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1424,6 +1424,103 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
         days=days,
         fixtures_fetched=len(all_preds) + len(pending),
         predictions=all_preds,
+        pending_fixtures=pending,
+    )
+
+
+# ── V12 W7 — 杯赛市场模式 (Tier 1: UCL/UEL/UECL + 五大联赛国内杯 + WC/EURO) ──────
+# The model is out-of-distribution for cups: the cup ablation was NEGATIVE, and
+# neutral-venue finals break its home-advantage assumption. Cups are also the
+# sharpest, most-liquid markets in football. So we DON'T model them — we serve
+# Pinnacle's de-vig fair 1X2 as the probability and let the user price 竞彩 SP
+# against it (市场模式). Cups never enter the model-driven 国际盘口 auto board;
+# this is a manual, market-anchored surface only.
+_CUP_MARKET_COMPETITIONS = [
+    "UCL", "UEL", "UECL",
+    "FAC", "COPA_DEL_REY", "COPPA_ITALIA", "DFB_POKAL", "COUPE_DE_FRANCE",
+    "WC", "EURO", "WC_QUAL_UEFA",
+]
+
+
+def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
+    """Build a market-mode SinglePrediction: 1X2 P = Pinnacle de-vig (NOT
+    model). Returns None when the row has no Pinnacle 1X2 quote (caller routes
+    those to pending_fixtures / 待开盘)."""
+    fair = _pinnacle_devig_1x2(r.get("psc_home"), r.get("psc_draw"), r.get("psc_away"))
+    if fair is None:
+        return None
+    return SinglePrediction(
+        home_team=r["home_team"], away_team=r["away_team"],
+        league=r["league"], date=r["date"],
+        kickoff_utc=(r.get("kickoff_utc") or None),
+        lambda_home=0.0, lambda_away=0.0,
+        p_home_1x2=float(fair[0]), p_draw_1x2=float(fair[1]), p_away_1x2=float(fair[2]),
+        psc_home=r.get("psc_home"), psc_draw=r.get("psc_draw"), psc_away=r.get("psc_away"),
+        handicap_lines=[],
+        market_mode=True,
+    )
+
+
+@router.get(
+    "/predictions/cup-market",
+    response_model=SpCalcResponse,
+    summary="V12 W7 — Tier-1 cup fixtures priced off Pinnacle de-vig (市场模式)",
+)
+def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcResponse:
+    """市场模式: Tier-1 cups (UCL/UEL/UECL + big domestic cups + WC/EURO) over an
+    N-day window, each carrying Pinnacle de-vig fair 1X2 as its probability — NO
+    model (it's OOD for cups). Fixtures with no Pinnacle line yet → 待开盘.
+
+    Reuses _gather_rows(require_odds=False). No artifact needed (pure market).
+    Cup competitions are sparse — on most days discovery returns 0 fixtures — so
+    this is meant to be user-triggered (not on every page load) to keep API
+    usage low.
+    """
+    import datetime as _dt
+    from pathlib import Path as _Path
+
+    from nutmeg.v4.cli.ingest_odds import PINNACLE_BOOKMAKER_ID, _gather_rows
+
+    if not 1 <= days <= 7:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="days must be in [1, 7]",
+        )
+    today = _dt.date.today()
+    preds: list[SinglePrediction] = []
+    pending: list[PendingFixture] = []
+    for d in range(days):
+        on_date = today + _dt.timedelta(days=d)
+        try:
+            rows, _n, _s = _gather_rows(
+                _CUP_MARKET_COMPETITIONS, on_date,
+                cache_dir=_Path("data/external/api_football"),
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=refresh_odds,
+                require_odds=False,
+                min_kickoff_buffer_minutes=5,
+            )
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning("cup-market fetch failed for %s", on_date)
+            rows = []
+        for r in rows:
+            mp = _row_to_market_prediction(r)
+            if mp is not None:
+                preds.append(mp)
+            elif r.get("home_team") and r.get("away_team"):
+                pending.append(PendingFixture(
+                    home_team=r["home_team"], away_team=r["away_team"],
+                    league=r["league"], date=r["date"],
+                    kickoff_utc=(r.get("kickoff_utc") or None),
+                ))
+    return SpCalcResponse(
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
+        date_start=today.isoformat(),
+        date_end=(today + _dt.timedelta(days=days - 1)).isoformat(),
+        days=days,
+        fixtures_fetched=len(preds) + len(pending),
+        predictions=preds,
         pending_fixtures=pending,
     )
 

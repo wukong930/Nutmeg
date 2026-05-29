@@ -43,6 +43,19 @@ class TestSpCalcMarkup:
         # Loader threads body.pending_fixtures into the renderer.
         assert "body.pending_fixtures" in html
 
+    def test_cup_market_section_present(self, html):
+        # V12 W7 — 🏆 杯赛市场模式: user-triggered, Pinnacle de-vig priced.
+        assert 'id="cupmkt-section"' in html
+        assert 'id="cupmkt-list"' in html
+        assert 'onclick="loadCupMarket()"' in html
+        assert "async function loadCupMarket" in html
+        assert "function renderCupMarket" in html
+        assert "function _cupRecalc" in html
+        assert "/predictions/cup-market" in html
+        # market-mode badge (NOT model P) + 90-min settle caveat in the hint
+        assert "cupmkt_badge" in html
+        assert "90 分钟" in html
+
     def test_js_hooks_present(self, html):
         for fn in (
             "function renderTodaySpCalc(",
@@ -109,6 +122,8 @@ class TestSpCalcI18n:
         "spcalc_hc_h", "spcalc_hc_d", "spcalc_hc_a", "spcalc_hc_pickline",
         # V12 W6 — 待开盘 (Pinnacle not open)
         "spcalc_pending_title", "spcalc_pending_hint", "spcalc_pending_badge",
+        # V12 W7 — 🏆 杯赛市场模式
+        "cupmkt_load_btn", "cupmkt_hint", "h_cupmkt", "cupmkt_empty", "cupmkt_badge",
     ]
 
     def test_each_key_defined_in_both_locales(self, html):

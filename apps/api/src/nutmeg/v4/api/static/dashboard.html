@@ -910,6 +910,30 @@
     </div>
     <div id="spcalc-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
          data-i18n="upcoming_empty">未来 3 天暂无可识别的比赛 (或盘口未开)。</div>
+    <!-- V12 W7 — 🏆 杯赛市场模式: UCL/UEL/UECL + 国内杯 + WC/EURO, priced off Pinnacle de-vig.
+         User-triggered (cups are sparse → don't fetch on every load). Model is OOD for cups,
+         so we show Pinnacle 公允价 (NOT model P) and price 竞彩 SP against it. -->
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #b8860b">
+      <div class="flex items-center gap-3 flex-wrap">
+        <button id="cupmkt-load" onclick="loadCupMarket()"
+                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
+                title="拉欧战/杯赛 Pinnacle 盘口 (消耗少量 API)"
+                data-i18n="cupmkt_load_btn">🏆 加载杯赛盘口</button>
+        <span id="cupmkt-status" class="text-xs text-muted ml-auto"></span>
+      </div>
+      <div class="text-xs text-muted mt-2" data-i18n="cupmkt_hint">
+        欧冠/欧联/欧协联 + 五大联赛国内杯 + 世界杯/欧洲杯。杯赛以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。
+      </div>
+    </div>
+    <div id="cupmkt-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-1">
+        <span data-i18n="h_cupmkt">🏆 杯赛 · 市场模式</span>
+        <span id="cupmkt-count" class="text-sm font-normal text-gray-500"></span>
+      </h3>
+      <div id="cupmkt-list" class="space-y-3"></div>
+    </div>
+    <div id="cupmkt-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
+         data-i18n="cupmkt_empty">近 3 天暂无开盘的杯赛 (或盘口未开)。</div>
     <!-- V12 W5 — 串关篮子: tick 「串」 on outcomes across matches → combined EV/Kelly + 记录串关. -->
     <div id="parlay-basket" class="hidden" style="position:sticky;bottom:0;z-index:20">
       <div class="bg-white shadow-lg rounded-lg p-3 sm:p-4 mt-2" style="border-top:4px solid #059669">
@@ -1778,6 +1802,11 @@ const I18N = {
     spcalc_pending_title:'⏳ 待开盘 (Pinnacle 未开盘)',
     spcalc_pending_hint:'Pinnacle 尚未开出盘口 → 模型缺少关键先验, 暂不计算 EV (避免误导)。开盘后这些比赛会自动出现在上方可计算列表。',
     spcalc_pending_badge:'⏳ 待开盘',
+    cupmkt_load_btn:'🏆 加载杯赛盘口',
+    cupmkt_hint:'欧冠/欧联/欧协联 + 五大联赛国内杯 + 世界杯/欧洲杯。杯赛以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。',
+    h_cupmkt:'🏆 杯赛 · 市场模式',
+    cupmkt_empty:'近 3 天暂无开盘的杯赛 (或盘口未开)。',
+    cupmkt_badge:'市场模式',
     spcalc_refreshing: '刷新中…',
     spcalc_hc_toggle: '▸ 让球 (handicap)',
     spcalc_hc_line:   '让球线',
@@ -2052,6 +2081,11 @@ const I18N = {
     spcalc_pending_title:'⏳ Awaiting Pinnacle line',
     spcalc_pending_hint:'Pinnacle has not opened a line yet → the model lacks a key prior, so EV is not computed (avoids misleading picks). These fixtures move to the calculable list above once the line opens.',
     spcalc_pending_badge:'⏳ no line yet',
+    cupmkt_load_btn:'🏆 Load cup odds',
+    cupmkt_hint:'UCL/UEL/UECL + big domestic cups + World Cup/Euro. Cups are priced off Pinnacle fair value (NOT the model); enter 竞彩 SP for EV. ⚠️ 竞彩 1X2 settles on the 90-min result (ET/penalties excluded).',
+    h_cupmkt:'🏆 Cups · market mode',
+    cupmkt_empty:'No cup fixtures with an open line in the next 3 days.',
+    cupmkt_badge:'market',
     spcalc_refreshing: 'Refreshing…',
     spcalc_hc_toggle: '▸ Handicap (让球)',
     spcalc_hc_line:   'Line',
@@ -2309,12 +2343,16 @@ const LEAGUE_ZH = {
   ENG_CHAMPIONSHIP: '英冠', ESP_SEGUNDA_DIVISION: '西乙', ITA_SERIE_B: '意乙', GER_2_BUNDESLIGA: '德乙',
   FRA_LIGUE_2: '法乙', NED_EREDIVISIE: '荷甲', PRT_PRIMEIRA_LIGA: '葡超', BEL_PRO_LEAGUE: '比甲', JPN_J1: '日职联',
   WC: '世界杯', EURO: '欧洲杯', COPA_AMERICA: '美洲杯', UCL: '欧冠', UEL: '欧联', UECL: '欧会',
+  FAC: '足总杯', COPA_DEL_REY: '国王杯', COPPA_ITALIA: '意大利杯', DFB_POKAL: '德国杯',
+  COUPE_DE_FRANCE: '法国杯', WC_QUAL_UEFA: '世预赛欧洲区',
 };
 const LEAGUE_COLOR = {
   EPL: '#3d195b', ESP_LA_LIGA: '#e35a00', ITA_SERIE_A: '#0072b9', GER_BUNDESLIGA: '#d20515', FRA_LIGUE_1: '#1a2a6c',
   ENG_CHAMPIONSHIP: '#2563eb', ESP_SEGUNDA_DIVISION: '#c2410c', ITA_SERIE_B: '#0e7490', GER_2_BUNDESLIGA: '#b91c1c',
   FRA_LIGUE_2: '#3730a3', NED_EREDIVISIE: '#ea580c', PRT_PRIMEIRA_LIGA: '#15803d', BEL_PRO_LEAGUE: '#854d0e', JPN_J1: '#be123c',
   WC: '#4338ca', EURO: '#0369a1', COPA_AMERICA: '#0d9488', UCL: '#1e1b4b', UEL: '#c2410c', UECL: '#047857',
+  FAC: '#9d174d', COPA_DEL_REY: '#b45309', COPPA_ITALIA: '#1d4ed8', DFB_POKAL: '#991b1b',
+  COUPE_DE_FRANCE: '#3730a3', WC_QUAL_UEFA: '#0f766e',
 };
 function zhLeague(code) {
   if (_LOCALE === 'zh' && LEAGUE_ZH[code]) return LEAGUE_ZH[code];
@@ -3277,6 +3315,7 @@ function _hideUpdateBanner() {
 // server round-trip until the user clicks 已下单 to record the placed bet).
 const _RISK_KELLY = { conservative: 0.15, balanced: 0.25, aggressive: 0.40 };
 let _SPCALC = { preds: [], bankroll: 1000, kelly: 0.25, minEv: 0.05 };
+let _CUPMKT = { preds: [] };  // V12 W7 — 杯赛市场模式 (Pinnacle de-vig P)
 
 function _kellyFor(risk) { return _RISK_KELLY[risk] || 0.25; }
 
@@ -3848,6 +3887,128 @@ async function loadSpCalc(opts = {}) {
     if (emptyEl) emptyEl.classList.add('hidden');
     const sec = $('#today-spcalc-section');
     if (sec) sec.classList.add('hidden');
+  }
+}
+
+// ── V12 W7 — 🏆 杯赛市场模式 loader/renderer ─────────────────────────────
+// Cups are out-of-distribution for the model, so /predictions/cup-market
+// serves Pinnacle de-vig fair P (market_mode=true). We render a 1X2-only card:
+// 公允概率 + 公允赔率 + 竞彩 SP input → live EV (green = +EV). No 让球/Kelly here
+// — it's a value-check surface. No-line fixtures → 待开盘. User-triggered only.
+function _cupCardHtml(pr, idx) {
+  const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
+  const rows = ['H', 'D', 'A'].map(o => {
+    const fairOdds = P[o] > 0 ? (1 / P[o]) : 0;
+    return `<div class="flex items-center gap-2 py-1 text-sm flex-wrap">
+        <span class="w-10 shrink-0 text-secondary">${outcomeLabel(o)}</span>
+        <span class="text-xs text-muted shrink-0">公允 ${(P[o] * 100).toFixed(1)}% · @<span class="num-display">${fairOdds.toFixed(2)}</span></span>
+        <span class="text-xs text-muted ml-auto">竞彩</span>
+        <input type="number" inputmode="decimal" step="0.01" min="1.01"
+               class="cupsp w-20 px-2 py-1 border rounded num-display" data-idx="${idx}" data-outcome="${o}"
+               oninput="_cupRecalc(${idx})" placeholder="SP"
+               aria-label="${zhTeam(pr.home_team)} ${outcomeLabel(o)} 竞彩 SP">
+        <span class="cupev text-xs text-muted shrink-0" data-idx="${idx}" data-outcome="${o}">—</span>
+      </div>`;
+  }).join('');
+  return `<div class="card-rec">
+      <div class="flex items-start justify-between gap-3 mb-2">
+        <span class="inline-flex items-center gap-1.5 flex-wrap font-medium">
+          ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
+          <span class="text-muted">vs</span>
+          ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
+        </span>
+        <span class="shrink-0 flex items-center gap-2">
+          <span class="text-xs text-muted">${_fmtKickoff(pr)}</span>
+          <span class="badge-gold text-xs whitespace-nowrap">${t('cupmkt_badge')}</span>
+        </span>
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function _cupRecalc(idx) {
+  const pr = _CUPMKT.preds[idx];
+  if (!pr) return;
+  const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
+  ['H', 'D', 'A'].forEach(o => {
+    const el = document.querySelector(`.cupsp[data-idx="${idx}"][data-outcome="${o}"]`);
+    const evEl = document.querySelector(`.cupev[data-idx="${idx}"][data-outcome="${o}"]`);
+    if (!evEl) return;
+    const sp = el ? parseFloat(el.value) : NaN;
+    if (sp && sp > 1.0) {
+      const ev = P[o] * sp - 1;
+      evEl.textContent = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '%';
+      evEl.className = 'cupev text-xs font-medium shrink-0 ' + (ev >= 0 ? 'text-pos' : 'text-muted');
+    } else {
+      evEl.textContent = '—';
+      evEl.className = 'cupev text-xs text-muted shrink-0';
+    }
+  });
+}
+
+function renderCupMarket(preds, pending) {
+  preds = preds || []; pending = pending || [];
+  _CUPMKT.preds = preds;
+  const sec = $('#cupmkt-section'), list = $('#cupmkt-list'), empty = $('#cupmkt-empty');
+  if (preds.length === 0 && pending.length === 0) {
+    sec.classList.add('hidden'); empty.classList.remove('hidden'); return;
+  }
+  empty.classList.add('hidden'); sec.classList.remove('hidden');
+  $('#cupmkt-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
+  const byC = {};
+  preds.forEach((pr, idx) => { (byC[pr.league] = byC[pr.league] || []).push({ pr, idx }); });
+  const order = Object.keys(byC).sort((a, b) =>
+    Math.min(...byC[a].map(o => _kickoffMs(o.pr))) - Math.min(...byC[b].map(o => _kickoffMs(o.pr))));
+  let html = order.map(lg => {
+    const items = byC[lg].slice().sort((x, y) => _kickoffMs(x.pr) - _kickoffMs(y.pr));
+    const col = leagueColor(lg);
+    return `<div class="spcalc-lg-group mb-4">
+        <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded"
+             style="border-left:4px solid ${col};background:${col}1a">
+          <span class="font-display font-semibold text-sm" style="color:${col}">${zhLeague(lg)}</span>
+          <span class="text-xs text-muted">· ${items.length}</span>
+        </div>
+        ${items.map(o => _cupCardHtml(o.pr, o.idx)).join('')}
+      </div>`;
+  }).join('');
+  if (pending.length) {
+    html += `<div class="mt-6 pt-4" style="border-top:1px dashed var(--border-subtle)">
+        <div class="flex items-center gap-2 mb-3">
+          <h3 class="font-display font-semibold text-base text-secondary">${t('spcalc_pending_title')}</h3>
+          <span class="text-xs text-muted">· ${pending.length}</span>
+        </div>
+        ${pending.map(pf => `<div class="flex items-center justify-between gap-2 py-2 px-3 rounded mb-1.5"
+             style="border:1px dashed var(--border-subtle);opacity:.85">
+            <span class="inline-flex items-center gap-1.5 flex-wrap text-sm text-secondary">
+              ${teamLogo(pf.home_team)}<span>${zhTeam(pf.home_team)}</span>
+              <span class="text-muted">vs</span>
+              ${teamLogo(pf.away_team)}<span>${zhTeam(pf.away_team)}</span>
+            </span>
+            <span class="shrink-0 flex items-center gap-2">
+              <span class="text-xs text-muted">${_fmtKickoff(pf)}</span>
+              <span class="chip-outcome chip-outcome-pending text-xs whitespace-nowrap">${t('spcalc_pending_badge')}</span>
+            </span>
+          </div>`).join('')}
+      </div>`;
+  }
+  list.innerHTML = html;
+}
+
+async function loadCupMarket() {
+  const btn = $('#cupmkt-load'), statusEl = $('#cupmkt-status');
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = t('today_loading');
+  try {
+    const r = await fetch(API + '/predictions/cup-market?days=3');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const body = await r.json();
+    renderCupMarket(body.predictions, body.pending_fixtures);
+    if (statusEl) statusEl.textContent =
+      `${body.date_start} ~ ${body.date_end} · ${body.fixtures_fetched} ${t('spcalc_n_matches')}`;
+  } catch (err) {
+    if (statusEl) statusEl.textContent = (t('today_api_error') || '加载失败') + ': ' + err.message;
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

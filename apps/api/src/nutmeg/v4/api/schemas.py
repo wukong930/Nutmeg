@@ -112,6 +112,11 @@ class SinglePrediction(BaseModel):
     # calculator computes live 让球 EV for any 竞彩 让球线 without a round-trip.
     # Empty when not computed (e.g. WC predictions).
     handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
+    # V12 W7 — 杯赛市场模式: when True, p_*_1x2 are NOT model output — they are
+    # the Pinnacle de-vig fair probabilities (the model is out-of-distribution
+    # for cups, so we lean 100% on the sharp market). lambda_* are 0 and
+    # handicap_lines empty. The UI labels these "市场模式·Pinnacle 公允价".
+    market_mode: bool = False
 
 
 class PendingFixture(BaseModel):
