@@ -218,6 +218,15 @@ class TestServiceWorkerEndpoint:
         # Old caches deleted on activate
         assert "caches.delete" in body
 
+    def test_dashboard_is_network_first(self, client):
+        # V12 W4 — the dashboard shell switched cache-first → network-first so
+        # a shipped dashboard.html update shows on the next normal reload (the
+        # old cache-first served the stale page until a manual hard-refresh).
+        # manifest + icon stay cache-first (truly static).
+        body = client.get("/api/v4/sw.js").text
+        assert "STATIC_SHELL" in body                      # static assets cache-first
+        assert "Network-first for the dashboard" in body   # dashboard network-first branch
+
 
 class TestDashboardLinksToPWA:
     def test_manifest_link(self, html):

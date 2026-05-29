@@ -306,24 +306,35 @@ def app_icon() -> Response:
 
 @router.get("/sw.js", include_in_schema=False)
 def service_worker() -> Response:
-    """post-v9 P1#14: minimal service worker.
+    """post-v9 P1#14 + V12 W4: minimal service worker.
 
-    Strategy: cache-first for the dashboard shell + manifest + icon,
-    network-first (with cache fallback) for everything else. This
-    gives offline-launch capability for the dashboard UI; API endpoints
-    will still fail offline (intentional — predictions need fresh data).
+    Strategy: NETWORK-first for the dashboard + all API data (always fresh
+    when online; the dashboard falls back to cache for offline launch).
+    Cache-first only for the truly-static manifest + icon.
 
-    Versioned cache name forces refresh when dashboard.html ships an
-    update; bump CACHE_VERSION below when shell-cached files change.
+    V12 W4 flipped the dashboard from cache-first → network-first: cache-first
+    meant a shipped dashboard.html update kept serving the stale cached page
+    until a manual hard-refresh / two reloads. Network-first shows the new
+    page on the next normal reload, while the precache + catch-fallback keep
+    offline launch working.
+
+    Versioned cache name + activate-purge still force a clean slate; bump
+    CACHE_VERSION when the static shell (manifest/icon) changes.
     """
     sw_js = """
-// Bumped 2026-05-25 V11 P1-FE#1 — forces SW to re-fetch dashboard.html
-// after design-system refresh. The activate handler below deletes any
-// cache named differently from this constant, so the next page load
-// auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v12-fe-w4-upcoming-polish';
+// V12 W4 — dashboard is now NETWORK-first (was cache-first), so a shipped
+// dashboard.html update shows on the next normal reload instead of needing a
+// hard-refresh / two reloads. The dashboard is still precached + used as an
+// offline fallback. Only manifest + icon stay cache-first (truly static).
+// The activate handler deletes any cache != this constant, so a CACHE_VERSION
+// bump still auto-purges old caches on the next load.
+const CACHE_VERSION = 'nutmeg-v12-fe-w4-netfirst-shell';
 const SHELL_URLS = [
   '/api/v4/dashboard',
+  '/api/v4/manifest.json',
+  '/api/v4/icon.svg',
+];
+const STATIC_SHELL = [
   '/api/v4/manifest.json',
   '/api/v4/icon.svg',
 ];
@@ -346,18 +357,31 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // Cache-first for shell URLs
-  if (SHELL_URLS.some((u) => url.pathname === u || url.pathname.endsWith(u))) {
+  // Cache-first for the truly-static shell (manifest + icon).
+  if (STATIC_SHELL.some((u) => url.pathname === u || url.pathname.endsWith(u))) {
     event.respondWith(
       caches.match(event.request).then((cached) => cached || fetch(event.request).then((resp) => {
         const respClone = resp.clone();
         caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, respClone));
         return resp;
-      }).catch(() => cached))
+      }))
     );
     return;
   }
-  // Network-first for everything else (API calls etc.)
+  // Network-first for the dashboard: always fresh online; cache it so an
+  // offline launch still works.
+  if (url.pathname === '/api/v4/dashboard' || url.pathname.endsWith('/api/v4/dashboard')) {
+    event.respondWith(
+      fetch(event.request).then((resp) => {
+        const respClone = resp.clone();
+        caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, respClone));
+        return resp;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+  // Network-first, no cache, for everything else (API data must be fresh;
+  // offline = fail, intentional).
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
