@@ -66,6 +66,17 @@ class TestSpCalcMarkup:
         # renderTodaySpCalc snapshots/restores entered SP so 刷新 doesn't wipe it.
         assert "_entered" in html
 
+    def test_handicap_block_wired(self, html):
+        # V12 W3 让球: line selector + per-line P + handicap SP inputs + record.
+        assert 'id="spcalc-hcline-${idx}"' in html
+        assert "class=\"spcalc-hcsp" in html
+        for fn in ("function _spcalcHcLine(", "function _spcalcHcRecalc(",
+                   "async function _spcalcHcRecord(", "function _spcalcHcP("):
+            assert fn in html, f"missing handicap fn: {fn}"
+        # handicap record posts handicap_home + odds_handicap_* (not odds_1x2).
+        assert "handicap_home: line" in html
+        assert "odds_handicap_H: oh" in html
+
 
 class TestSpCalcI18n:
     REQUIRED_KEYS = [
@@ -74,6 +85,8 @@ class TestSpCalcI18n:
         "spcalc_nobet", "spcalc_recorded", "spcalc_recorded_btn",
         "spcalc_record_err", "spcalc_need_all_sp", "spcalc_jc", "spcalc_fair",
         "spcalc_refresh_btn", "spcalc_refreshing",
+        "spcalc_hc_toggle", "spcalc_hc_line", "spcalc_hc_level",
+        "spcalc_hc_h", "spcalc_hc_d", "spcalc_hc_a", "spcalc_hc_pickline",
     ]
 
     def test_each_key_defined_in_both_locales(self, html):
@@ -87,8 +100,11 @@ class TestSpCalcI18n:
 
 
 class TestSpCalcCacheBust:
-    def test_cache_version_bumped_for_spcalc(self):
+    def test_cache_version_in_w3_calculator_family(self):
+        # Assert the W3-calculator era prefix, not a specific feature slug —
+        # the slug changes on every bump (spcalc → -refresh → -handicap …),
+        # so pinning it makes the test break on each ship (it did once).
         src = ROUTES.read_text(encoding="utf-8")
-        assert "nutmeg-v12-fe-w3-spcalc" in src, (
-            "SW CACHE_VERSION not bumped for the SP-calc frontend change"
+        assert "nutmeg-v12-fe-w3-" in src, (
+            "SW CACHE_VERSION not in the V12 W3 calculator family"
         )

@@ -1696,6 +1696,13 @@ const I18N = {
     spcalc_need_all_sp:'请先填好 胜/平/负 三个 SP',
     spcalc_refresh_btn:'🔄 刷新盘口',
     spcalc_refreshing: '刷新中…',
+    spcalc_hc_toggle: '▸ 让球 (handicap)',
+    spcalc_hc_line:   '让球线',
+    spcalc_hc_level:  '平手',
+    spcalc_hc_h:      '让胜',
+    spcalc_hc_d:      '让平',
+    spcalc_hc_a:      '让负',
+    spcalc_hc_pickline:'先选让球线',
     today_wc_cta:     '🎯 前往 WC tab 输入让球盘口 →',
     today_wc_blend_ready: '让球可计算',
     today_wc_no_pin:  '需 Pinnacle 盘口',
@@ -1938,6 +1945,13 @@ const I18N = {
     spcalc_need_all_sp:'Fill all three SP (W/D/L) first',
     spcalc_refresh_btn:'🔄 Refresh odds',
     spcalc_refreshing: 'Refreshing…',
+    spcalc_hc_toggle: '▸ Handicap (让球)',
+    spcalc_hc_line:   'Line',
+    spcalc_hc_level:  'Level',
+    spcalc_hc_h:      'HC win',
+    spcalc_hc_d:      'HC push',
+    spcalc_hc_a:      'HC loss',
+    spcalc_hc_pickline:'Pick a line first',
     today_wc_cta:     '🎯 Go to WC tab to enter handicap SP →',
     today_wc_blend_ready: 'Handicap ready',
     today_wc_no_pin:  'Needs Pinnacle 1X2',
@@ -3123,10 +3137,16 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
   const _entered = {};
   (_SPCALC.preds || []).forEach((p, i) => {
     const key = p.home_team + '|' + p.away_team + '|' + p.date;
+    const bucket = {};
     ['H', 'D', 'A'].forEach(o => {
       const el = document.querySelector(`.spcalc-sp[data-idx="${i}"][data-outcome="${o}"]`);
-      if (el && el.value) (_entered[key] = _entered[key] || {})[o] = el.value;
+      if (el && el.value) bucket[o] = el.value;
+      const hel = document.querySelector(`.spcalc-hcsp[data-idx="${i}"][data-outcome="${o}"]`);
+      if (hel && hel.value) { bucket.hc = bucket.hc || {}; bucket.hc[o] = hel.value; }
     });
+    const lsel = document.querySelector(`#spcalc-hcline-${i}`);
+    if (lsel && lsel.value !== '') bucket.hcline = lsel.value;
+    if (Object.keys(bucket).length) _entered[key] = bucket;
   });
   _SPCALC = { preds, bankroll, kelly, minEv };
   section.classList.remove('hidden');
@@ -3163,6 +3183,36 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
             ${t('spcalc_record_btn')}
           </button>
         </div>
+        <details class="mt-2">
+          <summary class="text-xs text-secondary cursor-pointer select-none">${t('spcalc_hc_toggle')}</summary>
+          <div class="mt-2">
+            <div class="flex items-center gap-2 text-sm mb-1">
+              <span class="text-secondary">${t('spcalc_hc_line')}</span>
+              <select id="spcalc-hcline-${idx}" onchange="_spcalcHcLine(${idx})"
+                      class="px-2 py-1 border rounded text-sm num-display">
+                <option value="">—</option>
+                ${[-3, -2, -1, 0, 1, 2, 3].map(l => `<option value="${l}">${_hcLineLabel(l)}</option>`).join('')}
+              </select>
+            </div>
+            ${['H', 'D', 'A'].map(o => `
+              <div class="flex items-center gap-2 text-sm py-1">
+                <span class="w-12 shrink-0 text-secondary">${_hcOutcomeLabel(o)}</span>
+                <span id="spcalc-hcp-${idx}-${o}" class="w-16 shrink-0 num-display text-muted">P —</span>
+                <input type="number" inputmode="decimal" step="0.01" min="1.01"
+                       class="spcalc-hcsp w-20 px-2 py-1 border rounded num-display"
+                       placeholder="SP" data-idx="${idx}" data-outcome="${o}"
+                       oninput="_spcalcHcRecalc(${idx})">
+                <span id="spcalc-hcev-${idx}-${o}" class="flex-1 text-xs text-muted"></span>
+              </div>`).join('')}
+            <div class="flex items-center justify-between gap-2 mt-1 pt-1">
+              <span id="spcalc-hcverdict-${idx}" class="text-xs text-muted">${t('spcalc_hc_pickline')}</span>
+              <button id="spcalc-hcrecord-${idx}" onclick="_spcalcHcRecord(${idx})" disabled
+                      class="px-3 py-1 rounded text-sm" style="background:#e5e7eb;color:#9ca3af;cursor:not-allowed">
+                ${t('spcalc_record_btn')}
+              </button>
+            </div>
+          </div>
+        </details>
       </div>`;
   }).join('');
   // Restore preserved SP into the freshly-rendered inputs + recompute.
@@ -3177,6 +3227,20 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
       }
     });
     if (any) _spcalcRecalc(idx);
+    // Restore handicap line + SP, then repopulate P labels & recompute.
+    if (saved.hcline) {
+      const lsel = $(`#spcalc-hcline-${idx}`);
+      if (lsel) lsel.value = saved.hcline;
+    }
+    if (saved.hc) {
+      ['H', 'D', 'A'].forEach(o => {
+        if (saved.hc[o]) {
+          const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+          if (el) el.value = saved.hc[o];
+        }
+      });
+    }
+    if (saved.hcline || saved.hc) _spcalcHcLine(idx);
   });
 }
 
@@ -3251,6 +3315,106 @@ async function _spcalcRecord(idx) {
   } catch (err) {
     console.warn('spcalc record failed:', err);
     const verdict = $(`#spcalc-verdict-${idx}`);
+    verdict.textContent = t('spcalc_record_err');
+    verdict.style.color = '#e11d48';
+    btn.disabled = false; btn.textContent = t('spcalc_record_btn');
+    btn.style.cssText = 'background:#059669;color:#fff;cursor:pointer';
+  }
+}
+
+// ===== 让球 (handicap) — same live-EV model, line-selected P from grid =====
+function _hcLineLabel(l) {
+  if (l === 0) return t('spcalc_hc_level');
+  return l < 0 ? '主 ' + l : '主 +' + l;  // 主-1 = home gives 1; 主+1 = receives 1
+}
+function _hcOutcomeLabel(o) {
+  return o === 'H' ? t('spcalc_hc_h') : o === 'D' ? t('spcalc_hc_d') : t('spcalc_hc_a');
+}
+function _spcalcHcP(idx) {
+  // Model P(让胜/让平/让负) for the currently-selected line, or null.
+  const pr = _SPCALC.preds[idx];
+  const sel = $(`#spcalc-hcline-${idx}`);
+  if (!pr || !sel || sel.value === '' || !pr.handicap_lines) return null;
+  const line = parseInt(sel.value, 10);
+  const lp = pr.handicap_lines.find(l => l.line === line);
+  return lp ? { H: lp.p_home, D: lp.p_draw, A: lp.p_away } : null;
+}
+function _spcalcHcLine(idx) {
+  const P = _spcalcHcP(idx);
+  ['H', 'D', 'A'].forEach(o => {
+    const el = $(`#spcalc-hcp-${idx}-${o}`);
+    if (el) el.textContent = P ? `P ${(P[o] * 100).toFixed(0)}%` : 'P —';
+  });
+  _spcalcHcRecalc(idx);
+}
+function _spcalcHcRecalc(idx) {
+  const P = _spcalcHcP(idx);
+  const { minEv, bankroll, kelly } = _SPCALC;
+  let best = null;
+  ['H', 'D', 'A'].forEach(o => {
+    const inp = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+    const evSpan = $(`#spcalc-hcev-${idx}-${o}`);
+    const sp = parseFloat(inp.value);
+    if (!P || !sp || sp <= 1.0) { evSpan.textContent = ''; evSpan.removeAttribute('style'); evSpan.className = 'flex-1 text-xs text-muted'; return; }
+    const ev = P[o] * sp - 1.0;
+    const pass = ev >= minEv;
+    evSpan.textContent = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%`;
+    evSpan.className = 'flex-1 text-xs';
+    evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
+    evSpan.style.fontWeight = pass ? '600' : '';
+    if (pass && (!best || ev > best.ev)) best = { o, ev, sp, stake: _spcalcStake(P[o], sp, bankroll, kelly) };
+  });
+  const verdict = $(`#spcalc-hcverdict-${idx}`);
+  const btn = $(`#spcalc-hcrecord-${idx}`);
+  if (best) {
+    verdict.textContent = `${t('spcalc_pick')}: ${_hcOutcomeLabel(best.o)} · EV +${(best.ev * 100).toFixed(1)}% · ${t('spcalc_suggest')} ${fmtMoney(best.stake)}`;
+    verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
+    btn.disabled = false; btn.style.cssText = 'background:#059669;color:#fff;cursor:pointer';
+  } else {
+    verdict.textContent = P ? t('spcalc_nobet') : t('spcalc_hc_pickline');
+    verdict.removeAttribute('style');
+    btn.disabled = true; btn.style.cssText = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed';
+  }
+}
+async function _spcalcHcRecord(idx) {
+  const pr = _SPCALC.preds[idx];
+  const btn = $(`#spcalc-hcrecord-${idx}`);
+  const sel = $(`#spcalc-hcline-${idx}`);
+  if (!pr || btn.disabled || !sel || sel.value === '') return;
+  const line = parseInt(sel.value, 10);
+  const get = (o) => {
+    const v = parseFloat(document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`).value);
+    return (v && v > 1.0) ? v : null;
+  };
+  const oh = get('H'), od = get('D'), oa = get('A');
+  if (!(oh && od && oa)) { alert(t('spcalc_need_all_sp')); return; }
+  // Send handicap odds (+ psc for model features); omit odds_1x2 so the
+  // recommender records the 让球 pick, not a psc-derived 1X2 one.
+  const fixture = {
+    date: pr.date, league: pr.league,
+    home_team: pr.home_team, away_team: pr.away_team,
+    psc_home: pr.psc_home || oh, psc_draw: pr.psc_draw || od, psc_away: pr.psc_away || oa,
+    handicap_home: line,
+    odds_handicap_H: oh, odds_handicap_D: od, odds_handicap_A: oa,
+  };
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await fetch(API + '/recommend/single', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fixtures: [fixture], bankroll: _SPCALC.bankroll,
+        top_per_match: 1, kelly_fraction: _SPCALC.kelly, record_session: true,
+      }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const verdict = $(`#spcalc-hcverdict-${idx}`);
+    verdict.textContent = '✓ ' + t('spcalc_recorded');
+    verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
+    btn.textContent = t('spcalc_recorded_btn');
+    btn.style.cssText = 'background:#f3f4f6;color:#6b7280';
+  } catch (err) {
+    console.warn('spcalc hc record failed:', err);
+    const verdict = $(`#spcalc-hcverdict-${idx}`);
     verdict.textContent = t('spcalc_record_err');
     verdict.style.color = '#e11d48';
     btn.disabled = false; btn.textContent = t('spcalc_record_btn');

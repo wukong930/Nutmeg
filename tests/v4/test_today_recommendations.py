@@ -168,6 +168,13 @@ class TestTodayRecommendationsHappyPath:
         assert p0["psc_home"] == 1.90
         assert p0["psc_draw"] == 3.5
         assert p0["psc_away"] == 4.2
+        # V12 W3 让球 — handicap P across integer lines −3..+3 for the calculator.
+        hl = {h["line"]: h for h in p0["handicap_lines"]}
+        assert set(hl) == {-3, -2, -1, 0, 1, 2, 3}
+        for h in p0["handicap_lines"]:
+            assert abs(h["p_home"] + h["p_draw"] + h["p_away"] - 1.0) < 1e-3
+        # Bigger home handicap (主队让更多) → lower 让胜 prob (monotone sanity).
+        assert hl[-2]["p_home"] <= hl[-1]["p_home"] + 1e-9
 
     def test_refresh_odds_flag_forwarded_to_gather_rows(self, client):
         """V12 W3 — 🔄 刷新盘口 sets refresh_odds=true; the today route must

@@ -69,6 +69,17 @@ class RecommendRequest(BaseModel):
 
 # ---------- Response body ----------
 
+class HandicapLineProb(BaseModel):
+    """V12 W3 — model P(让胜/让平/让负) for one integer handicap line,
+    derived from the same Dixon-Coles score grid. The 竞彩 SP calculator
+    looks up the line matching the user's 竞彩 让球线 and computes live EV
+    client-side (no server round-trip)."""
+    line: int  # handicap_home: −1 = 主队让1球, +1 = 主队受让1球
+    p_home: float
+    p_draw: float
+    p_away: float
+
+
 class SinglePrediction(BaseModel):
     home_team: str
     away_team: str
@@ -90,6 +101,10 @@ class SinglePrediction(BaseModel):
     p_home_handicap: Optional[float] = None
     p_draw_handicap: Optional[float] = None
     p_away_handicap: Optional[float] = None
+    # V12 W3 — model handicap P across integer lines (−3..+3) so the 竞彩 SP
+    # calculator computes live 让球 EV for any 竞彩 让球线 without a round-trip.
+    # Empty when not computed (e.g. WC predictions).
+    handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
 
 
 class SelectionResponse(BaseModel):

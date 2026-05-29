@@ -39,6 +39,7 @@ from nutmeg.v4.api.schemas import (
     SelectionResponse,
     SingleRecommendRequest,
     SingleRecommendResponse,
+    HandicapLineProb,
     SinglePrediction,
     SingleTicketResponse,
     TodayRecommendationsDiff,
@@ -319,7 +320,7 @@ def service_worker() -> Response:
 // after design-system refresh. The activate handler below deletes any
 // cache named differently from this constant, so the next page load
 // auto-purges the old shell + grabs the new HTML.
-const CACHE_VERSION = 'nutmeg-v12-fe-w3-spcalc-refresh';
+const CACHE_VERSION = 'nutmeg-v12-fe-w3-handicap';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1208,12 +1209,28 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
                     _ph, _pd, _pa = tuple(
                         apply_correction_to_probs(np.array(grid_to_1x2(_grid)), _corr)
                     )
+                    # V12 W3 — handicap P across integer lines −3..+3 from the
+                    # same grid, so the calculator computes 让球 EV for any 竞彩
+                    # 让球线 client-side. Cheap: one grid projection per line.
+                    _hc_lines = []
+                    for _line in range(-3, 4):
+                        _hh, _hd, _ha = tuple(
+                            apply_correction_to_probs(
+                                np.array(grid_to_handicap_1x2(_grid, handicap_home=_line)),
+                                _corr,
+                            )
+                        )
+                        _hc_lines.append(HandicapLineProb(
+                            line=_line, p_home=float(_hh),
+                            p_draw=float(_hd), p_away=float(_ha),
+                        ))
                     single_match_predictions.append(SinglePrediction(
                         home_team=_f.home_team, away_team=_f.away_team,
                         league=_f.league, date=_f.date,
                         lambda_home=float(_lh), lambda_away=float(_la),
                         p_home_1x2=float(_ph), p_draw_1x2=float(_pd), p_away_1x2=float(_pa),
                         psc_home=_f.psc_home, psc_draw=_f.psc_draw, psc_away=_f.psc_away,
+                        handicap_lines=_hc_lines,
                     ))
         except Exception:  # noqa: BLE001
             import logging
