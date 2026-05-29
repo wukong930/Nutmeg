@@ -27,6 +27,9 @@ from nutmeg.v4.api.schemas import (
     LegResponse,
     LotteryRulesResponse,
     ModelInfo,
+    ParlayLegEcho,
+    ParlayRecordRequest,
+    ParlayRecordResponse,
     PoolFixturePick,
     PoolLegResponse,
     PlayoffWarning,
@@ -881,6 +884,150 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
             import logging
             logging.getLogger(__name__).exception(
                 "record_single_session failed (db=%s); recommendation returned anyway",
+                db_path,
+            )
+    return response
+
+
+# ---------- /v4/recommend/parlay (V12 W5 — hand-picked 串关) ----------
+
+def _leg_model_p(pred: SinglePrediction, market_type: str, outcome: str,
+                 handicap_home: int | None) -> float | None:
+    """Pull the model P for one parlay leg's pick from a SinglePrediction.
+
+    1x2 → p_{home,draw,away}_1x2; handicap → the matching handicap_lines row.
+    Returns None if the pick can't be scored (e.g. handicap line not computed).
+    """
+    if market_type == "handicap":
+        if handicap_home is None:
+            return None
+        for hl in pred.handicap_lines:
+            if hl.line == handicap_home:
+                return {"H": hl.p_home, "D": hl.p_draw, "A": hl.p_away}.get(outcome)
+        return None
+    return {"H": pred.p_home_1x2, "D": pred.p_draw_1x2,
+            "A": pred.p_away_1x2}.get(outcome)
+
+
+@router.post("/recommend/parlay", response_model=ParlayRecordResponse)
+def recommend_parlay(req: ParlayRecordRequest) -> ParlayRecordResponse:
+    """V12 W5 — score + (optionally) record a HAND-PICKED 竞彩 串关.
+
+    Server recomputes each leg's model P (authoritative), products them into
+    the parlay hit probability, products the entered 竞彩 SPs into the parlay
+    odds, then sizes the stake with the SAME kelly.py + lottery_rules pipeline
+    as 单关/复式. Records (when double-gated) as one settlement-compatible
+    单式 parlay row.
+    """
+    import datetime as _dt
+
+    from nutmeg.v4.combo.compound_pool import quantize_stake
+    from nutmeg.v4.combo.kelly import fractional_kelly_stake
+    from nutmeg.v4.combo.lottery_rules import (
+        cap_ticket_stake,
+        passes_recommendation_thresholds,
+    )
+
+    art = get_artifact()
+    if art is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"V4 model artifact not loaded; expected at {_artifact_path()}",
+        )
+
+    # A parlay must combine DISTINCT matches (can't parlay two picks of one game).
+    keys = [(leg.home_team, leg.away_team, str(leg.date)) for leg in req.legs]
+    if len(set(keys)) != len(keys):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="parlay legs must be distinct matches",
+        )
+
+    fixtures = [
+        FixtureOddsInput(
+            date=leg.date, league=leg.league,
+            home_team=leg.home_team, away_team=leg.away_team,
+            kickoff_utc=leg.kickoff_utc,
+            psc_home=leg.psc_home or leg.sp,
+            psc_draw=leg.psc_draw or leg.sp,
+            psc_away=leg.psc_away or leg.sp,
+        )
+        for leg in req.legs
+    ]
+    preds = _calc_predictions(get_artifact(), fixtures)
+    if len(preds) != len(req.legs):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="could not score all parlay legs",
+        )
+
+    legs_echo: list[ParlayLegEcho] = []
+    hit_p = 1.0
+    odds = 1.0
+    for leg, pred in zip(req.legs, preds, strict=True):
+        p = _leg_model_p(pred, leg.market_type, leg.outcome, leg.handicap_home)
+        if p is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"leg {leg.home_team} vs {leg.away_team}: no model P for "
+                    f"{leg.market_type}/{leg.outcome} (handicap_home={leg.handicap_home})"
+                ),
+            )
+        hit_p *= float(p)
+        odds *= float(leg.sp)
+        # Stamp the per-match prediction with THIS leg's chosen handicap line so
+        # the recorded single_prediction lets V4 settlement resolve the handicap
+        # leg (settlement reads handicap_home off single_predictions).
+        if leg.market_type == "handicap":
+            pred.handicap_home = leg.handicap_home
+        legs_echo.append(ParlayLegEcho(
+            match_id=f"{leg.league}_{leg.home_team}_vs_{leg.away_team}",
+            league=leg.league, market_type=leg.market_type, outcome=leg.outcome,
+            handicap_home=leg.handicap_home, sp=float(leg.sp), model_p=float(p),
+        ))
+
+    ev = hit_p * odds - 1.0
+    kr = fractional_kelly_stake(
+        hit_probability=hit_p, ev_per_unit=ev, bankroll=req.bankroll,
+        kelly_fraction=req.kelly_fraction, max_stake_fraction=req.max_stake_fraction,
+    )
+    raw = float(kr.recommended_stake)
+    stake = float(quantize_stake(cap_ticket_stake(raw)))
+    passes = passes_recommendation_thresholds(hit_probability=hit_p, ev_per_unit=ev)
+
+    response = ParlayRecordResponse(
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
+        model=_model_info_from_artifact(art),
+        bankroll=req.bankroll,
+        legs=legs_echo,
+        k_legs=len(req.legs),
+        hit_probability=hit_p,
+        odds=odds,
+        ev_per_unit=ev,
+        raw_kelly_stake=raw,
+        stake=stake,
+        passes_gate=passes,
+        recorded=False,
+        single_match_predictions=preds,
+    )
+
+    # V9 W3 double-gate: server env + request flag. Records the EXACT
+    # hand-picked combo (not an engine pick) as one 单式 parlay row.
+    db_path = _should_record_session(req.record_session)
+    if db_path:
+        from nutmeg.v4.observation.recorder import record_parlay_session
+        try:
+            record_parlay_session(
+                db_path,
+                request=req.model_dump(mode="json"),
+                response=response.model_dump(mode="json"),
+            )
+            response.recorded = True
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "record_parlay_session failed (db=%s); recommendation returned anyway",
                 db_path,
             )
     return response

@@ -185,6 +185,78 @@ class RecommendResponse(BaseModel):
     version_hash: str | None = None
 
 
+# ---------- /v4/recommend/parlay (V12 W5 — hand-picked 串关) ----------
+
+class ParlayLegInput(BaseModel):
+    """One hand-picked leg of a 竞彩 parlay, from the 近期赛事 calculator.
+
+    Carries the fixture identity (so the server can recompute the model P and
+    the leg is settleable) + the user's pick + the 竞彩 SP for this leg.
+    """
+    date: date
+    league: str
+    home_team: str
+    away_team: str
+    kickoff_utc: str | None = None
+    market_type: Literal["1x2", "handicap"] = "1x2"
+    outcome: Literal["H", "D", "A"]
+    # Required when market_type == "handicap" (China integer handicap line).
+    handicap_home: int | None = Field(None, ge=-5, le=5)
+    # The 竞彩 SP the user is betting this leg into.
+    sp: float = Field(..., gt=1.0, description="竞彩 SP for this leg")
+    # Pinnacle closing odds (a model feature; the 近期赛事 cards carry these).
+    # Fall back to `sp` server-side if absent so the leg can still be scored.
+    psc_home: float | None = Field(None, gt=1.0)
+    psc_draw: float | None = Field(None, gt=1.0)
+    psc_away: float | None = Field(None, gt=1.0)
+
+
+class ParlayLegEcho(BaseModel):
+    """Server-recomputed view of one leg (model P is authoritative)."""
+    match_id: str
+    league: str
+    market_type: str
+    outcome: str
+    handicap_home: int | None = None
+    sp: float
+    model_p: float
+
+
+class ParlayRecordRequest(BaseModel):
+    """V12 W5 — compute (and optionally record) a HAND-PICKED 竞彩 串关.
+
+    Unlike /recommend (engine auto-generates combos), this scores the exact
+    legs the user selected: server recomputes each leg's model P → parlay hit
+    P = ∏P, parlay odds = ∏ 竞彩 SP, EV, fractional Kelly stake (same kelly.py
+    + lottery_rules pipeline as 单关/复式 so stakes are consistent). Distinct
+    matches only; 2–8 legs (混合过关).
+    """
+    legs: list[ParlayLegInput] = Field(..., min_length=2, max_length=8)
+    bankroll: float = Field(..., gt=0)
+    kelly_fraction: float = Field(0.25, ge=0.0, le=1.0)
+    max_stake_fraction: float = Field(0.05, gt=0.0, le=1.0)
+    record_session: bool = False
+
+
+class ParlayRecordResponse(BaseModel):
+    generated_at_utc: str
+    model: ModelInfo
+    bankroll: float
+    legs: list[ParlayLegEcho]
+    k_legs: int
+    hit_probability: float       # ∏ model_p
+    odds: float                  # ∏ sp (竞彩 parlay payout multiplier)
+    ev_per_unit: float           # hit_probability * odds - 1
+    raw_kelly_stake: float       # pre-quantization
+    stake: float                 # ¥2-quantized, ticket-capped
+    passes_gate: bool            # meets JINGCAI thresholds (hit% + EV)
+    recorded: bool
+    # Per-leg full predictions (match identity + 1X2 P + handicap_home for the
+    # picked line). Recorded into single_predictions so V4 settlement can
+    # bridge each leg's match_id → match_outcome (it keys off this table).
+    single_match_predictions: list[SinglePrediction] = Field(default_factory=list)
+
+
 # ---------- Health ----------
 
 class HealthResponse(BaseModel):
