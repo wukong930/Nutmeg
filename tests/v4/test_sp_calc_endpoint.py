@@ -95,6 +95,72 @@ class TestSpCalcHappyPath:
         assert p["kickoff_utc"] == rows[0]["kickoff_utc"]
 
 
+# ============ Pending fixtures (V12 W6 — 待开盘) =======================
+
+class TestSpCalcPendingFixtures:
+    """V12 W6 — fixtures whose Pinnacle line hasn't opened (psc_* = None) are
+    returned as `pending_fixtures` (待开盘), NOT scored — psc is a strong model
+    feature, so a psc-free P would mislead."""
+
+    def _scored(self, home, away):
+        from datetime import date as _date
+        return {
+            "date": _date.today().isoformat(), "league": "JPN_J1",
+            "home_team": home, "away_team": away,
+            "kickoff_utc": _date.today().isoformat() + "T05:00:00+00:00",
+            "psc_home": 2.34, "psc_draw": 3.21, "psc_away": 3.33,
+        }
+
+    def _pending(self, home, away):
+        from datetime import date as _date
+        return {
+            "date": _date.today().isoformat(), "league": "JPN_J1",
+            "home_team": home, "away_team": away,
+            "kickoff_utc": _date.today().isoformat() + "T06:00:00+00:00",
+            "psc_home": None, "psc_draw": None, "psc_away": None,
+        }
+
+    def test_no_pinnacle_fixtures_are_pending_not_scored(self, client):
+        from unittest.mock import patch
+        rows = [
+            self._scored("Vissel Kobe", "Kashima"),
+            self._pending("Sanfrecce Hiroshima", "Kawasaki Frontale"),
+            self._pending("Nagoya Grampus", "Machida Zelvia"),
+        ]
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows",
+                   return_value=(rows, 3, 0)):
+            r = client.get("/api/v4/predictions/sp-calc?days=1")
+        if r.status_code == 503:
+            pytest.skip("production artifact not available")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # 1 scored (has psc), 2 待开盘
+        assert len(body["predictions"]) == 1
+        assert body["predictions"][0]["home_team"] == "Vissel Kobe"
+        assert len(body["pending_fixtures"]) == 2
+        assert {p["home_team"] for p in body["pending_fixtures"]} == {
+            "Sanfrecce Hiroshima", "Nagoya Grampus"}
+        # pending carry metadata but NO probabilities
+        pf = body["pending_fixtures"][0]
+        assert pf["league"] == "JPN_J1"
+        assert pf["reason"] == "pinnacle_not_open"
+        assert "p_home_1x2" not in pf
+        # fixtures_fetched counts BOTH scored + pending
+        assert body["fixtures_fetched"] == 3
+
+    def test_endpoint_calls_gather_with_require_odds_false(self, client):
+        """The endpoint must pass require_odds=False, else no-Pinnacle fixtures
+        are dropped before we can list them as 待开盘."""
+        from unittest.mock import patch
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows",
+                   return_value=([], 0, 0)) as gr:
+            r = client.get("/api/v4/predictions/sp-calc?days=1")
+        if r.status_code == 503:
+            pytest.skip("production artifact not available")
+        assert gr.called
+        assert gr.call_args.kwargs.get("require_odds") is False
+
+
 # ============ Playoff→market blend (needs artifact) ===================
 
 class TestPlayoffBlend:

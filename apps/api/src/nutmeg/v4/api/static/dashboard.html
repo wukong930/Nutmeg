@@ -1775,6 +1775,9 @@ const I18N = {
     spcalc_record_err:'记录失败, 请重试',
     spcalc_need_all_sp:'请先填好 胜/平/负 三个 SP',
     spcalc_refresh_btn:'🔄 刷新盘口',
+    spcalc_pending_title:'⏳ 待开盘 (Pinnacle 未开盘)',
+    spcalc_pending_hint:'Pinnacle 尚未开出盘口 → 模型缺少关键先验, 暂不计算 EV (避免误导)。开盘后这些比赛会自动出现在上方可计算列表。',
+    spcalc_pending_badge:'⏳ 待开盘',
     spcalc_refreshing: '刷新中…',
     spcalc_hc_toggle: '▸ 让球 (handicap)',
     spcalc_hc_line:   '让球线',
@@ -2046,6 +2049,9 @@ const I18N = {
     spcalc_record_err:'Record failed, retry',
     spcalc_need_all_sp:'Fill all three SP (W/D/L) first',
     spcalc_refresh_btn:'🔄 Refresh odds',
+    spcalc_pending_title:'⏳ Awaiting Pinnacle line',
+    spcalc_pending_hint:'Pinnacle has not opened a line yet → the model lacks a key prior, so EV is not computed (avoids misleading picks). These fixtures move to the calculable list above once the line opens.',
+    spcalc_pending_badge:'⏳ no line yet',
     spcalc_refreshing: 'Refreshing…',
     spcalc_hc_toggle: '▸ Handicap (让球)',
     spcalc_hc_line:   'Line',
@@ -3427,10 +3433,13 @@ async function _parlayRecord() {
   }
 }
 
-function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
+function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   const section = $('#today-spcalc-section');
   const list = $('#today-spcalc-list');
-  if (!preds || preds.length === 0) { section.classList.add('hidden'); return; }
+  preds = preds || [];
+  pending = pending || [];
+  // V12 W6 — show the section if EITHER scored fixtures OR 待开盘 fixtures exist.
+  if (preds.length === 0 && pending.length === 0) { section.classList.add('hidden'); return; }
   // Preserve any 竞彩 SP the user already typed, keyed by fixture identity,
   // so a re-render (e.g. 🔄 刷新盘口) updates model P / Pinnacle odds WITHOUT
   // wiping the entered SP. Read from the *previous* render's state + DOM.
@@ -3531,7 +3540,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
   const order = Object.keys(byLeague).sort((a, b) =>
     Math.min(...byLeague[a].map(o => _kickoffMs(o.pr))) -
     Math.min(...byLeague[b].map(o => _kickoffMs(o.pr))));
-  list.innerHTML = order.map(lg => {
+  const scoredHtml = order.map(lg => {
     const items = byLeague[lg].slice().sort((x, y) => _kickoffMs(x.pr) - _kickoffMs(y.pr));
     const col = leagueColor(lg);
     return `
@@ -3544,6 +3553,52 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv) {
         ${items.map(o => cardHtml(o.pr, o.idx)).join('')}
       </div>`;
   }).join('');
+  // V12 W6 — 待开盘 section: fixtures whose Pinnacle line hasn't opened yet.
+  // Listed so the user sees the full slate, but NOT scored (a psc-free model P
+  // would mislead). Each auto-promotes to a scored card once Pinnacle opens.
+  const pendingCardHtml = (pf) => `
+    <div class="flex items-center justify-between gap-2 py-2 px-3 rounded mb-1.5"
+         style="border:1px dashed var(--border-subtle);opacity:.85">
+      <span class="inline-flex items-center gap-1.5 flex-wrap text-sm text-secondary">
+        ${teamLogo(pf.home_team)}<span>${zhTeam(pf.home_team)}</span>
+        <span class="text-muted">vs</span>
+        ${teamLogo(pf.away_team)}<span>${zhTeam(pf.away_team)}</span>
+      </span>
+      <span class="shrink-0 flex items-center gap-2">
+        <span class="text-xs text-muted">${_fmtKickoff(pf)}</span>
+        <span class="chip-outcome chip-outcome-pending text-xs whitespace-nowrap">${t('spcalc_pending_badge')}</span>
+      </span>
+    </div>`;
+  let pendingHtml = '';
+  if (pending.length) {
+    const byLeagueP = {};
+    pending.forEach(pf => { (byLeagueP[pf.league] = byLeagueP[pf.league] || []).push(pf); });
+    const orderP = Object.keys(byLeagueP).sort((a, b) =>
+      Math.min(...byLeagueP[a].map(_kickoffMs)) - Math.min(...byLeagueP[b].map(_kickoffMs)));
+    const groupsP = orderP.map(lg => {
+      const items = byLeagueP[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y));
+      const col = leagueColor(lg);
+      return `
+        <div class="spcalc-lg-group mb-3">
+          <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded"
+               style="border-left:4px solid ${col};background:${col}1a">
+            <span class="font-display font-semibold text-sm" style="color:${col}">${zhLeague(lg)}</span>
+            <span class="text-xs text-muted">· ${items.length}</span>
+          </div>
+          ${items.map(pendingCardHtml).join('')}
+        </div>`;
+    }).join('');
+    pendingHtml = `
+      <div class="spcalc-pending-section mt-6 pt-4" style="border-top:1px dashed var(--border-subtle)">
+        <div class="flex items-center gap-2 mb-1">
+          <h3 class="font-display font-semibold text-base text-secondary">${t('spcalc_pending_title')}</h3>
+          <span class="text-xs text-muted">· ${pending.length}</span>
+        </div>
+        <p class="text-xs text-muted mb-3">${t('spcalc_pending_hint')}</p>
+        ${groupsP}
+      </div>`;
+  }
+  list.innerHTML = scoredHtml + pendingHtml;
   // Restore preserved SP into the freshly-rendered inputs + recompute.
   preds.forEach((pr, idx) => {
     const saved = _entered[pr.home_team + '|' + pr.away_team + '|' + pr.date];
@@ -3783,8 +3838,8 @@ async function loadSpCalc(opts = {}) {
     const resp = await fetch(API + '/predictions/sp-calc' + qs);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const body = await resp.json();
-    renderTodaySpCalc(body.predictions, bankroll, 0.25, 0.05);
-    const n = (body.predictions || []).length;
+    renderTodaySpCalc(body.predictions, bankroll, 0.25, 0.05, body.pending_fixtures);
+    const n = (body.predictions || []).length + (body.pending_fixtures || []).length;
     if (emptyEl) emptyEl.classList.toggle('hidden', n > 0);
     if (statusEl) statusEl.textContent = `${body.date_start} ~ ${body.date_end} · ${body.fixtures_fetched} ${t('spcalc_n_matches')}`;
   } catch (err) {

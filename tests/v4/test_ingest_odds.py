@@ -234,6 +234,34 @@ class TestFixtureEnvelopeToRow:
         assert "psc_over25" not in row
         assert "psc_under25" not in row
 
+    def test_no_1x2_emits_pending_row_when_not_required(self):
+        # V12 W6 — require_1x2_odds=False keeps the fixture as a 待开盘 row
+        # (psc_* = None + metadata) instead of dropping it, so 近期赛事 can
+        # list it until Pinnacle opens.
+        bm = {"id": PINNACLE_BOOKMAKER_ID, "name": "Pinnacle",
+              "bets": [{"id": 99, "name": "Other", "values": []}]}
+        env = _envelope(bookmakers=[bm])
+        fixture_record = {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+                          "teams": {"home": {"name": "A"}, "away": {"name": "B"}}}
+        row = fixture_envelope_to_csv_row(
+            fixture_record, env, "EPL", require_1x2_odds=False)
+        assert row is not None
+        assert row["home_team"] == "A" and row["away_team"] == "B"
+        assert row["psc_home"] is None
+        assert row["psc_draw"] is None
+        assert row["psc_away"] is None
+        assert row["kickoff_utc"] == "2025-08-17T15:00:00+00:00"
+
+    def test_none_envelope_emits_pending_row_when_not_required(self):
+        fixture_record = {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+                          "teams": {"home": {"name": "A"}, "away": {"name": "B"}}}
+        row = fixture_envelope_to_csv_row(
+            fixture_record, None, "EPL", require_1x2_odds=False)
+        assert row is not None
+        assert row["psc_home"] is None
+        # Default (require_1x2_odds=True) still drops it.
+        assert fixture_envelope_to_csv_row(fixture_record, None, "EPL") is None
+
 
 # ---------- CLI _gather_rows (mocked api_football) -----------------
 

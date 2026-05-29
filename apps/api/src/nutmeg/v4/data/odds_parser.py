@@ -147,11 +147,18 @@ def fixture_envelope_to_csv_row(
     league_code: str,
     *,
     sharp_bookmaker_id: int = PINNACLE_BOOKMAKER_ID,
+    require_1x2_odds: bool = True,
 ) -> Optional[dict]:
     """Combine /fixtures record + /odds envelope → one CSV row dict.
 
-    Returns None when 1X2 odds can't be resolved (we don't surface
-    odds-less fixtures — `nutmeg-recommend` will reject them anyway).
+    Returns None when 1X2 odds can't be resolved AND ``require_1x2_odds`` is
+    True (the default — `nutmeg-recommend` and the 国际盘口 board reject
+    odds-less fixtures anyway).
+
+    Pass ``require_1x2_odds=False`` (V12 W6 — 近期赛事 tab) to still emit the
+    row with ``psc_*`` = None when Pinnacle hasn't opened a line. The model
+    treats psc as a strong feature, so such a fixture is surfaced as '待开盘'
+    (NOT scored) rather than fed a misleading psc-free probability.
 
     `fixture_record` shape (subset we use):
         {"fixture": {"id": ..., "date": "2025-08-17T15:00:00+00:00"},
@@ -162,10 +169,11 @@ def fixture_envelope_to_csv_row(
     expects (date, league, home_team, away_team, psc_*, optional
     psc_over25 / psc_under25).
     """
-    if odds_envelope is None:
-        return None
-    odds_1x2 = extract_1x2_odds(odds_envelope, sharp_bookmaker_id)
-    if odds_1x2 is None:
+    odds_1x2 = (
+        extract_1x2_odds(odds_envelope, sharp_bookmaker_id)
+        if odds_envelope is not None else None
+    )
+    if odds_1x2 is None and require_1x2_odds:
         return None
 
     f = fixture_record.get("fixture", {})
@@ -186,16 +194,19 @@ def fixture_envelope_to_csv_row(
         "league": league_code,
         "home_team": home,
         "away_team": away,
-        "psc_home": odds_1x2["H"],
-        "psc_draw": odds_1x2["D"],
-        "psc_away": odds_1x2["A"],
+        # psc_* are None when Pinnacle hasn't quoted (only reachable with
+        # require_1x2_odds=False — the 待开盘 path).
+        "psc_home": odds_1x2["H"] if odds_1x2 else None,
+        "psc_draw": odds_1x2["D"] if odds_1x2 else None,
+        "psc_away": odds_1x2["A"] if odds_1x2 else None,
         "kickoff_utc": iso_date,    # full ISO with TZ
         "status_short": status_short,  # NS / IN_PLAY / FT / etc.
     }
-    ou = extract_over_under_25(odds_envelope, sharp_bookmaker_id)
-    if ou is not None:
-        row["psc_over25"] = ou[0]
-        row["psc_under25"] = ou[1]
+    if odds_envelope is not None:
+        ou = extract_over_under_25(odds_envelope, sharp_bookmaker_id)
+        if ou is not None:
+            row["psc_over25"] = ou[0]
+            row["psc_under25"] = ou[1]
     return row
 
 

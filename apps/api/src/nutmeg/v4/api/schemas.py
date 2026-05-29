@@ -114,6 +114,23 @@ class SinglePrediction(BaseModel):
     handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
 
 
+class PendingFixture(BaseModel):
+    """V12 W6 — an upcoming fixture whose Pinnacle 1X2 line has NOT opened yet.
+
+    The model treats Pinnacle (psc) as a STRONG feature — empirically, without
+    it the served λ/P shifts materially (the favorite can flip), so a psc-free
+    probability would be unreliable. Rather than surface a misleading P/EV, the
+    近期赛事 tab lists these as '待开盘' cards so the user still sees the full
+    slate; each is auto-promoted into `predictions` (full calc) once Pinnacle
+    opens that line."""
+    home_team: str
+    away_team: str
+    league: str
+    date: date
+    kickoff_utc: str | None = None
+    reason: str = "pinnacle_not_open"
+
+
 class SpCalcResponse(BaseModel):
     """V12 W3 — data for the 近期赛事 tab's 竞彩 SP calculator: model output
     for every fixture across a multi-day window (default 3 days). Each
@@ -126,6 +143,10 @@ class SpCalcResponse(BaseModel):
     days: int
     fixtures_fetched: int
     predictions: list[SinglePrediction] = Field(default_factory=list)
+    # V12 W6 — upcoming fixtures with no Pinnacle line yet (model P would be
+    # unreliable without its psc feature). Listed as 待开盘 in the UI, NOT
+    # scored. Auto-promoted to `predictions` once Pinnacle opens that line.
+    pending_fixtures: list[PendingFixture] = Field(default_factory=list)
 
 
 class SelectionResponse(BaseModel):

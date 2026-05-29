@@ -32,6 +32,17 @@ class TestSpCalcMarkup:
         assert 'id="today-spcalc-section"' in html
         assert 'id="today-spcalc-list"' in html
 
+    def test_pending_fixtures_render(self, html):
+        # V12 W6 — 待开盘 section: renderTodaySpCalc takes a `pending` arg and
+        # builds non-interactive 待开盘 cards (no SP inputs) for fixtures whose
+        # Pinnacle line hasn't opened.
+        assert "renderTodaySpCalc(preds, bankroll, kelly, minEv, pending)" in html
+        assert "pendingCardHtml" in html
+        assert "spcalc_pending_title" in html
+        assert "spcalc_pending_badge" in html
+        # Loader threads body.pending_fixtures into the renderer.
+        assert "body.pending_fixtures" in html
+
     def test_js_hooks_present(self, html):
         for fn in (
             "function renderTodaySpCalc(",
@@ -96,6 +107,8 @@ class TestSpCalcI18n:
         "spcalc_refresh_btn", "spcalc_refreshing",
         "spcalc_hc_toggle", "spcalc_hc_line", "spcalc_hc_level",
         "spcalc_hc_h", "spcalc_hc_d", "spcalc_hc_a", "spcalc_hc_pickline",
+        # V12 W6 — 待开盘 (Pinnacle not open)
+        "spcalc_pending_title", "spcalc_pending_hint", "spcalc_pending_badge",
     ]
 
     def test_each_key_defined_in_both_locales(self, html):

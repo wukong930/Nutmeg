@@ -86,12 +86,18 @@ def _gather_rows(
     bookmaker_id: int,
     refresh_fixtures: bool,
     refresh_odds: bool,
+    require_odds: bool = True,
     min_kickoff_buffer_minutes: int = 0,
     now_utc: Optional[dt.datetime] = None,
 ) -> tuple[list[dict], int, int]:
     """Walk leagues × today's fixtures × /odds and produce CSV-ready rows.
 
     Returns (rows, n_api_calls, n_skipped_no_odds).
+
+    ``require_odds`` (default True) drops fixtures without a sharp 1X2 quote —
+    correct for the cron / 国际盘口 board, which can't score odds-less fixtures.
+    Pass False (V12 W6 — 近期赛事 tab) to KEEP them as rows with psc_* = None so
+    the UI can list them as '待开盘' until Pinnacle opens the line.
 
     V12 W0 (2026-05-28) Plan A — pass ``min_kickoff_buffer_minutes`` > 0
     to drop fixtures that are already kicked off (or about to kick off
@@ -175,14 +181,19 @@ def _gather_rows(
                 api_calls += 1
             except api_football.ApiFootballError as exc:
                 log.warning("fixture %s odds error: %s", fid, exc)
-                n_skipped += 1
-                continue
+                if require_odds:
+                    n_skipped += 1
+                    continue
+                # V12 W6 — 近期赛事 still lists the fixture (as 待开盘); the
+                # row gets psc_* = None from the empty envelope below.
+                odds_payload = []
 
             # /odds returns a list; take the first envelope (one per fixture).
             envelope = odds_payload[0] if odds_payload else None
             row = fixture_envelope_to_csv_row(
                 fixture, envelope, league,
                 sharp_bookmaker_id=bookmaker_id,
+                require_1x2_odds=require_odds,
             )
             if row is None:
                 n_skipped += 1

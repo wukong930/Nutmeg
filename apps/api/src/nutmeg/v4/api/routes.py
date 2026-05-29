@@ -44,6 +44,7 @@ from nutmeg.v4.api.schemas import (
     SingleRecommendRequest,
     SingleRecommendResponse,
     HandicapLineProb,
+    PendingFixture,
     SinglePrediction,
     SpCalcResponse,
     SingleTicketResponse,
@@ -332,7 +333,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w6-history-legs';
+const CACHE_VERSION = 'nutmeg-v12-fe-w6-pending-fixtures';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1383,31 +1384,47 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
         )
     today = _dt.date.today()
     all_preds: list[SinglePrediction] = []
-    fetched = 0
+    pending: list[PendingFixture] = []
     for d in range(days):
         on_date = today + _dt.timedelta(days=d)
         try:
+            # V12 W6 — require_odds=False keeps fixtures whose Pinnacle line
+            # isn't open yet (psc_* = None) so we can list them as 待开盘.
             rows, _n, _s = _gather_rows(
                 _SP_CALC_LEAGUES, on_date,
                 cache_dir=_Path("data/external/api_football"),
                 bookmaker_id=PINNACLE_BOOKMAKER_ID,
                 refresh_fixtures=False, refresh_odds=refresh_odds,
+                require_odds=False,
                 min_kickoff_buffer_minutes=5,
             )
         except Exception:  # noqa: BLE001
             import logging
             logging.getLogger(__name__).warning("sp-calc fetch failed for %s", on_date)
             rows = []
-        fx = _fixture_rows_to_inputs(rows)
-        fetched += len(fx)
-        all_preds.extend(_calc_predictions(art, fx))
+        # Split: a Pinnacle 1X2 quote → scored (model P reliable); no quote →
+        # 待开盘 (psc is a strong feature, so a psc-free P would mislead).
+        scored_rows = [r for r in rows if r.get("psc_home") is not None]
+        pending_rows = [r for r in rows if r.get("psc_home") is None]
+        all_preds.extend(_calc_predictions(art, _fixture_rows_to_inputs(scored_rows)))
+        for r in pending_rows:
+            if not r.get("home_team") or not r.get("away_team"):
+                continue
+            pending.append(PendingFixture(
+                home_team=r["home_team"],
+                away_team=r["away_team"],
+                league=r["league"],
+                date=r["date"],
+                kickoff_utc=(r.get("kickoff_utc") or None),
+            ))
     return SpCalcResponse(
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
         date_start=today.isoformat(),
         date_end=(today + _dt.timedelta(days=days - 1)).isoformat(),
         days=days,
-        fixtures_fetched=fetched,
+        fixtures_fetched=len(all_preds) + len(pending),
         predictions=all_preds,
+        pending_fixtures=pending,
     )
 
 
