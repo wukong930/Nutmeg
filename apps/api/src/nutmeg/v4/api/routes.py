@@ -333,7 +333,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w7-cup-market';
+const CACHE_VERSION = 'nutmeg-v12-fe-w7-single-teams';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -837,10 +837,21 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
         version_hash as _vh,
         fixtures_odds_digest,
     )
+    # V12 W7 — match_id → fixture, so each ticket carries its team/league/date.
+    # The 今日推荐 single board renders these directly; without them the card
+    # showed "VS · undefined · undefined" (match_id alone isn't parsed there).
+    _fx_by_match = {
+        f"{fx.league}_{fx.home_team}_vs_{fx.away_team}": fx for fx in req.fixtures
+    }
     tickets_out: list[SingleTicketResponse] = []
     for t in rec.selected_tickets:
+        _fx = _fx_by_match.get(t.selection.match_id)
         tk = SingleTicketResponse(
             match_id=t.selection.match_id,
+            league=(_fx.league if _fx else None),
+            date=(str(_fx.date) if _fx else None),
+            home_team=(_fx.home_team if _fx else None),
+            away_team=(_fx.away_team if _fx else None),
             market_type=t.selection.market_type,
             outcome=t.selection.outcome,
             odds=float(t.selection.odds),

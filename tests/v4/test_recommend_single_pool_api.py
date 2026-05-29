@@ -153,6 +153,33 @@ class TestSingleEndpointE2E:
             assert t["expected_return"] == pytest.approx(
                 t["stake"] * t["ev_per_unit"]
             )
+            # V12 W7 — ticket carries match identity (today single board reads
+            # these directly, doesn't parse match_id).
+            assert t["home_team"] and t["away_team"] and t["league"] and t["date"]
+            assert t["match_id"] == (
+                f"{t['league']}_{t['home_team']}_vs_{t['away_team']}"
+            )
+
+    def test_tickets_carry_match_identity_v12_w7(self, client):
+        """V12 W7 regression: the 今日推荐 single board renders home_team/league/
+        date straight off each ticket — before the fix they were absent and the
+        card showed 'VS · undefined · undefined'. An inflated +EV outcome
+        guarantees ≥1 ticket so this always exercises the path."""
+        fx = _good_fixture("Vissel Kobe", "Kashima", "JPN_J1")
+        fx["psc_away"] = 6.0      # model P × 6.0 clears the EV gate → guaranteed
+        fx["odds_1x2_A"] = 6.0
+        r = client.post("/api/v4/recommend/single", json={
+            "fixtures": [fx], "bankroll": 1000.0, "top_per_match": 3,
+        })
+        assert r.status_code == 200, r.text
+        tickets = r.json()["tickets"]
+        assert tickets, "inflated +EV outcome should yield ≥1 ticket"
+        for t in tickets:
+            assert t["home_team"] == "Vissel Kobe"
+            assert t["away_team"] == "Kashima"
+            assert t["league"] == "JPN_J1"
+            assert t["date"] == "2025-08-17"
+            assert t["match_id"] == "JPN_J1_Vissel Kobe_vs_Kashima"
 
 
 @pytest.mark.skipif(not ARTIFACT_PATH.exists(), reason="v4 artifact not present")

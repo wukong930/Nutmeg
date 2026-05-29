@@ -368,6 +368,14 @@ class SingleRecommendRequest(BaseModel):
 
 class SingleTicketResponse(BaseModel):
     match_id: str
+    # V12 W7 — match identity so the 今日推荐 single board renders
+    # "home vs away · league · date" directly (it reads these fields, unlike
+    # the parlay/history renderers which parse match_id). Without them the
+    # card showed "VS · undefined · undefined". Optional for back-compat.
+    league: str | None = None
+    date: str | None = None
+    home_team: str | None = None
+    away_team: str | None = None
     market_type: Literal["1x2", "handicap_1x2"]
     outcome: Literal["H", "D", "A"]
     odds: float
