@@ -118,7 +118,7 @@ class TestPageLoadsAndRenders:
         page.goto(f"{server}/api/v4/dashboard")
         page.wait_for_load_state("networkidle")
         tabs = page.locator("button.tab-btn")
-        assert tabs.count() == 6
+        assert tabs.count() == 7  # V12 W3 added 近期赛事 (6→7)
 
 
 class TestTabSwitching:

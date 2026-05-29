@@ -683,6 +683,7 @@
          class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px">
       <!-- V10 W1: 今日推荐 is the default landing tab. Auto-loads on open. -->
       <button data-tab="today"     role="tab" aria-controls="tab-today"     aria-selected="true"  data-i18n="tab_today"  class="tab-btn active whitespace-nowrap px-4 py-3 text-sm font-medium">🎯 今日推荐</button>
+      <button data-tab="upcoming"  role="tab" aria-controls="tab-upcoming"  aria-selected="false" data-i18n="tab_upcoming" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">📅 近期赛事</button>
       <!-- V10 W1 Day 5: WC 2026 special tab (visible during tournament window). -->
       <button data-tab="wc"        role="tab" aria-controls="tab-wc"        aria-selected="false" data-i18n="tab_wc"     class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">🏆 WC 2026</button>
       <!-- 3 retained 玩法 tabs (engineer tabs removed in P1-FE#1). -->
@@ -816,25 +817,6 @@
       <div id="today-single-list" class="space-y-2"></div>
     </div>
 
-    <!-- V12 W3 — 竞彩 SP 实时计算器 (semi-auto SP entry → live 竞彩-price EV) -->
-    <div id="today-spcalc-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
-      <div class="flex items-center justify-between gap-2 mb-1">
-        <h3 class="font-bold">
-          <span data-i18n="h_today_spcalc">💴 竞彩 SP 实时计算</span>
-          <span id="today-spcalc-count" class="text-sm font-normal text-gray-500"></span>
-        </h3>
-        <button id="today-spcalc-refresh" onclick="_spcalcRefreshOdds()"
-                class="px-3 py-1 rounded text-sm border shrink-0"
-                style="white-space:nowrap"
-                title="拉临场 Pinnacle 盘口 (消耗少量 API)"
-                data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
-      </div>
-      <div class="text-xs text-muted mb-3" data-i18n="today_spcalc_hint">
-        输入你在竞彩终端看到的当前 SP → 立即按竞彩价算 EV / Kelly。SP 一变就改, 结果即时刷新。绿色 = 过 +EV 门槛。
-      </div>
-      <div id="today-spcalc-list" class="space-y-3"></div>
-    </div>
-
     <!-- 串关 section -->
     <div id="today-parlay-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h3 class="font-bold mb-3"><span data-i18n="h_today_parlay">② 串关推荐</span> <span id="today-parlay-count" class="text-sm font-normal text-gray-500"></span></h3>
@@ -868,6 +850,34 @@
         或前往 <a href="#" data-tab-link="single" class="text-indigo-600 hover:underline">高级模式 →</a> 手动输入场次。
       </p>
     </div>
+  </div>
+
+  <!-- V12 W3 — Tab: 近期赛事 (3-day fixtures + 竞彩 SP calculator) -->
+  <div id="tab-upcoming" role="tabpanel" aria-labelledby="tab-upcoming" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4">
+      <div class="flex items-center gap-3 flex-wrap">
+        <label class="text-sm"><span data-i18n="lbl_bankroll">预算 ¥</span>
+          <input id="spcalc-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2"
+                 class="w-24 px-2 py-1 border rounded num-display"></label>
+        <button id="today-spcalc-refresh" onclick="_spcalcRefreshOdds()"
+                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
+                title="拉临场 Pinnacle 盘口 (消耗少量 API)"
+                data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
+        <span id="spcalc-status" class="text-xs text-muted ml-auto"></span>
+      </div>
+      <div class="text-xs text-muted mt-2" data-i18n="upcoming_hint">
+        未来 3 天的可投注比赛。填入你在竞彩终端看到的 SP → 即时按竞彩价算 EV / Kelly。绿色 = 过 +EV 门槛。
+      </div>
+    </div>
+    <div id="today-spcalc-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-1">
+        <span data-i18n="h_today_spcalc">💴 竞彩 SP 实时计算</span>
+        <span id="today-spcalc-count" class="text-sm font-normal text-gray-500"></span>
+      </h3>
+      <div id="today-spcalc-list" class="space-y-3"></div>
+    </div>
+    <div id="spcalc-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
+         data-i18n="upcoming_empty">未来 3 天暂无可识别的比赛 (或盘口未开)。</div>
   </div>
 
   <!-- Tab: WC 2026 (V10 W1 Day 5) -->
@@ -1703,6 +1713,9 @@ const I18N = {
     spcalc_hc_d:      '让平',
     spcalc_hc_a:      '让负',
     spcalc_hc_pickline:'先选让球线',
+    tab_upcoming:     '📅 近期赛事',
+    upcoming_hint:    '未来 3 天的可投注比赛。填入你在竞彩终端看到的 SP → 即时按竞彩价算 EV / Kelly。绿色 = 过 +EV 门槛。',
+    upcoming_empty:   '未来 3 天暂无可识别的比赛 (或盘口未开)。',
     today_wc_cta:     '🎯 前往 WC tab 输入让球盘口 →',
     today_wc_blend_ready: '让球可计算',
     today_wc_no_pin:  '需 Pinnacle 盘口',
@@ -1952,6 +1965,9 @@ const I18N = {
     spcalc_hc_d:      'HC push',
     spcalc_hc_a:      'HC loss',
     spcalc_hc_pickline:'Pick a line first',
+    tab_upcoming:     '📅 Upcoming',
+    upcoming_hint:    'Bettable fixtures over the next 3 days. Enter the 竞彩 SP you see → instant EV / Kelly at the 竞彩 price. Green = clears the +EV gate.',
+    upcoming_empty:   'No recognized fixtures in the next 3 days (or odds not open yet).',
     today_wc_cta:     '🎯 Go to WC tab to enter handicap SP →',
     today_wc_blend_ready: 'Handicap ready',
     today_wc_no_pin:  'Needs Pinnacle 1X2',
@@ -2257,6 +2273,8 @@ function switchTab(name) {
   const panel = $('#tab-' + name);
   if (panel) panel.classList.remove('hidden');
   if (name === 'wc') loadWcPredictions();
+  // V12 W3 — auto-load the 近期赛事 (3-day SP calculator) tab on open.
+  if (name === 'upcoming' && typeof loadSpCalc === 'function') loadSpCalc();
   // V11 P1-FE#3 — auto-load history on tab open (no manual refresh needed).
   if (name === 'history' && typeof loadHistory === 'function') loadHistory();
 }
@@ -3423,10 +3441,35 @@ async function _spcalcRefreshOdds() {
   btn.disabled = true;
   btn.textContent = '🔄 ' + t('spcalc_refreshing');
   try {
-    await loadTodayRecommendations({ refreshOdds: true });
+    await loadSpCalc({ refreshOdds: true });
   } finally {
     btn.disabled = false;
     btn.textContent = t('spcalc_refresh_btn');
+  }
+}
+
+// V12 W3 — 近期赛事 tab loader: GET /predictions/sp-calc (3-day window) and
+// render the 竞彩 SP calculator. Kelly fixed at 0.25 (中), min_ev +5%.
+async function loadSpCalc(opts = {}) {
+  const bankroll = Math.max(2, parseFloat(($('#spcalc-bankroll') || {}).value) || 1000);
+  const statusEl = $('#spcalc-status');
+  const emptyEl = $('#spcalc-empty');
+  if (statusEl) statusEl.textContent = t('today_loading');
+  try {
+    const qs = opts.refreshOdds ? '?days=3&refresh_odds=true' : '?days=3';
+    const resp = await fetch(API + '/predictions/sp-calc' + qs);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const body = await resp.json();
+    renderTodaySpCalc(body.predictions, bankroll, 0.25, 0.05);
+    const n = (body.predictions || []).length;
+    if (emptyEl) emptyEl.classList.toggle('hidden', n > 0);
+    if (statusEl) statusEl.textContent = `${body.date_start} ~ ${body.date_end} · ${body.fixtures_fetched} ${t('spcalc_n_matches')}`;
+  } catch (err) {
+    console.warn('sp-calc load failed:', err);
+    if (statusEl) statusEl.textContent = t('today_api_error');
+    if (emptyEl) emptyEl.classList.add('hidden');
+    const sec = $('#today-spcalc-section');
+    if (sec) sec.classList.add('hidden');
   }
 }
 
@@ -3489,8 +3532,7 @@ async function loadTodayRecommendations(opts = {}) {
     renderTodayParlay(body.parlay);
     renderTodayPool(body.pool);
     renderTodayWc(body.wc);
-    // V12 W3 — 竞彩 SP 实时计算器 (all fetched fixtures, model P + Pinnacle odds)
-    renderTodaySpCalc(body.single_match_predictions, bankroll, _kellyFor(risk), minEv);
+    // V12 W3 — the 竞彩 SP calculator moved to its own 近期赛事 tab (loadSpCalc).
     // Empty state — fold pool into the "no recs" check
     const noRecs = body.summary.total_recs === 0;
     const noFixtures = body.fixtures_fetched === 0;
@@ -3511,7 +3553,6 @@ async function loadTodayRecommendations(opts = {}) {
     setStatus('#today-status', 'error', t('today_api_error'));
     $('#today-summary').classList.add('hidden');
     $('#today-single-section').classList.add('hidden');
-    $('#today-spcalc-section').classList.add('hidden');
     $('#today-parlay-section').classList.add('hidden');
     $('#today-pool-section').classList.add('hidden');
     $('#today-wc-section').classList.add('hidden');

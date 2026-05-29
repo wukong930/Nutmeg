@@ -155,7 +155,7 @@ class TestAriaSemantics:
     def test_tabpanels_have_role(self, html):
         # V11 P1-FE#1: 4 engineer tabpanels removed. 5 remain:
         # 今日推荐 + WC 2026 + 单关 + 串关 + 复式.
-        assert html.count('role="tabpanel"') == 6  # V11 P1-FE#3 added 推荐追溯
+        assert html.count('role="tabpanel"') == 7  # V12 W3 added 近期赛事 (6→7)
 
     def test_status_spans_have_aria_live(self, html):
         # V11 P1-FE#1: outcomes-status removed (engineer tab gone).

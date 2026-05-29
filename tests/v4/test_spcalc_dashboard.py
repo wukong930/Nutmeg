@@ -41,8 +41,17 @@ class TestSpCalcMarkup:
         ):
             assert fn in html, f"missing JS function: {fn}"
 
-    def test_wired_into_today_loader(self, html):
-        assert "renderTodaySpCalc(body.single_match_predictions" in html
+    def test_hosted_in_upcoming_tab(self, html):
+        # V12 W3 — the calculator moved to its own 近期赛事 tab, fed by
+        # loadSpCalc → GET /predictions/sp-calc (3-day window), NOT the
+        # today-recommendations loader.
+        assert 'data-tab="upcoming"' in html          # nav button
+        assert 'id="tab-upcoming"' in html            # tab panel
+        assert "function loadSpCalc(" in html
+        assert "/predictions/sp-calc" in html
+        assert "renderTodaySpCalc(body.predictions" in html
+        # and it's NO LONGER rendered from the today loader
+        assert "renderTodaySpCalc(body.single_match_predictions" not in html
 
     def test_record_posts_to_single_with_record_session(self, html):
         # 已下单 records the placed bet (once) via /recommend/single.
