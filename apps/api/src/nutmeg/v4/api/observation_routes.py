@@ -352,9 +352,19 @@ def _outcome_label(hit: int | None) -> Literal["hit", "miss", "partial", "pendin
     return "partial"  # -1
 
 
-def _parse_legs_json(raw: str | None) -> list[HistoryLeg]:
+def _parse_legs_json(
+    raw: str | None,
+    session_meta: dict[str, dict[str, Any]] | None = None,
+) -> list[HistoryLeg]:
     """Be liberal in what we accept — older rows may have slightly different
-    leg shapes. Return [] on any parse error so the UI never crashes."""
+    leg shapes. Return [] on any parse error so the UI never crashes.
+
+    ``session_meta`` maps ``match_id`` → ``{league, match_date, home_team,
+    away_team}`` from the SAME session's ``single_predictions`` bridge rows
+    (built by the caller). It supplies league / match_date / clean team names
+    that the leg JSON itself does not carry.
+    """
+    session_meta = session_meta or {}
     if not raw:
         return []
     try:
@@ -368,33 +378,56 @@ def _parse_legs_json(raw: str | None) -> list[HistoryLeg]:
     for d in data:
         if not isinstance(d, dict):
             continue
-        # parlay_recommendations.legs_json shape (from recorder.py):
-        #   {match_id, market_type, outcome, odds, selections: [...]}
-        # plus optionally home_team/away_team/league/match_date
+        # parlay_recommendations.legs_json shape (from recorder.py /
+        # record_parlay_session):
+        #   {match_id, market_type, selections: [{outcome, odds, ...}]}
+        # The picked side + its odds live in selections[0] — NOT at the top
+        # level (V12 W6 bug: this projection read d["outcome"]/d["odds"],
+        # which are absent, so every history leg rendered null outcome/odds).
+        # league / match_date are not in the leg JSON at all; recover them
+        # from the session's single_predictions bridge rows.
         match_id = d.get("match_id")
-        home = d.get("home_team")
-        away = d.get("away_team")
-        # Fall back to parsing match_id "league_home_vs_away" if home/away missing
-        if (not home or not away) and isinstance(match_id, str) and "_vs_" in match_id:
-            stripped = match_id
-            # strip league prefix — must include digits so codes like
-            # FRA_LIGUE_1 and GER_2_BUNDESLIGA are stripped fully (V12 W0
-            # bug: regex was [A-Z_]+_ which stopped at digits).
+        meta = session_meta.get(match_id, {}) if isinstance(match_id, str) else {}
+        home = d.get("home_team") or meta.get("home_team")
+        away = d.get("away_team") or meta.get("away_team")
+        league = d.get("league") or meta.get("league")
+        match_date = d.get("match_date") or meta.get("match_date")
+        # Picked outcome + odds: prefer a top-level value (future-proof) then
+        # fall back to the first selection (the current recorder shape).
+        sels = d.get("selections")
+        sel0 = (
+            sels[0]
+            if isinstance(sels, list) and sels and isinstance(sels[0], dict)
+            else {}
+        )
+        outcome = d.get("outcome")
+        if outcome is None:
+            outcome = sel0.get("outcome")
+        odds = d.get("odds")
+        if odds is None:
+            odds = sel0.get("odds")
+        # Last-resort: parse match_id "league_home_vs_away" for any field the
+        # bridge map didn't supply (older rows / missing bridge). The greedy
+        # league prefix backtracks at the first lowercase/space in the home
+        # team; it must include digits (FRA_LIGUE_1, GER_2_BUNDESLIGA — V12 W0
+        # bug: regex was [A-Z_]+_ which stopped at the digit).
+        if (not home or not away or not league) and \
+                isinstance(match_id, str) and "_vs_" in match_id:
             import re as _re
-            stripped = _re.sub(r"^[A-Z0-9_]+_", "", stripped, count=1)
-            parts = stripped.split("_vs_", 1)
-            if len(parts) == 2:
-                home = home or parts[0]
-                away = away or parts[1]
+            m = _re.match(r"^([A-Z0-9_]+)_(.+)_vs_(.+)$", match_id)
+            if m:
+                league = league or m.group(1)
+                home = home or m.group(2)
+                away = away or m.group(3)
         out.append(HistoryLeg(
             match_id=match_id,
             home_team=home,
             away_team=away,
-            league=d.get("league"),
-            match_date=d.get("match_date"),
+            league=league,
+            match_date=match_date,
             market_type=d.get("market_type"),
-            outcome=d.get("outcome"),
-            odds=d.get("odds"),
+            outcome=outcome,
+            odds=float(odds) if isinstance(odds, (int, float)) else None,
         ))
     return out
 
@@ -442,6 +475,30 @@ def recommendations_history(days: int = 30) -> HistoryResponse:
             """,
             (cutoff_utc,),
         ).fetchall()
+        # Bridge metadata: each leg's league / match_date / clean team names
+        # live in single_predictions (keyed exactly like settlement.py:
+        # f"{league}_{home}_vs_{away}"), NOT in the leg JSON. Scope by
+        # session_id so a fixture key recurring across seasons can't bleed a
+        # stale date into an unrelated leg.
+        bridge_rows = conn.execute(
+            "SELECT session_id, league, match_date, home_team, away_team "
+            "FROM single_predictions"
+        ).fetchall()
+
+    # session_id → { match_id → {league, match_date, home_team, away_team} }
+    meta_by_session: dict[int, dict[str, dict[str, Any]]] = {}
+    for b in bridge_rows:
+        mid = f"{b['league']}_{b['home_team']}_vs_{b['away_team']}"
+        (
+            meta_by_session
+            .setdefault(int(b["session_id"]), {})
+            .setdefault(mid, {
+                "league": b["league"],
+                "match_date": b["match_date"],
+                "home_team": b["home_team"],
+                "away_team": b["away_team"],
+            })
+        )
 
     # Group by date (UTC) — derive YYYY-MM-DD from session_created_at
     groups: dict[str, list[HistoryRecommendation]] = {}
@@ -461,7 +518,10 @@ def recommendations_history(days: int = 30) -> HistoryResponse:
             stake_units=float(row["stake_units"]),
             hit_probability=float(row["hit_probability"]),
             ev_per_unit=float(row["ev_per_unit"]),
-            legs=_parse_legs_json(row["legs_json"]),
+            legs=_parse_legs_json(
+                row["legs_json"],
+                meta_by_session.get(int(row["session_id"]), {}),
+            ),
             outcome=outcome,
             profit_loss=float(row["s_pl"]) if row["s_pl"] is not None else None,
             settled_at=row["s_settled_at"],

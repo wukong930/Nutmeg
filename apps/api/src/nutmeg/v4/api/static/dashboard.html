@@ -4419,9 +4419,15 @@ function _historyLegsHtml(legs) {
       : (l.match_id || '');
     const oddsStr = (typeof l.odds === 'number') ? l.odds.toFixed(2) : '—';
     const outcomeLbl = l.outcome ? outcomeLabel(l.outcome) : '';
+    // Market badge mirrors renderTodayParlay so a 让球 leg isn't mistaken
+    // for a 胜平负 pick (both use H/D/A codes → 主胜/平局/客胜 labels).
+    const market = l.market_type === 'handicap_1x2' ? '让球' : '胜平负';
     return `<div class="text-xs flex items-center justify-between gap-2 py-1">
       <span class="text-secondary truncate">${matchHtml}</span>
-      <span class="badge-ok shrink-0">${outcomeLbl} @ <span class="num-display">${oddsStr}</span></span>
+      <span class="shrink-0 flex items-center gap-1">
+        <span class="text-muted">[${market}]</span>
+        <span class="badge-ok">${outcomeLbl} @ <span class="num-display">${oddsStr}</span></span>
+      </span>
     </div>`;
   }).join('');
 }

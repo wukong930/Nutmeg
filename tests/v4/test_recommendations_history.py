@@ -304,6 +304,126 @@ class TestLegsParsing:
         assert legs3[0].home_team == "Real Madrid"
         assert legs3[0].away_team == "Barcelona"
 
+    def test_outcome_odds_read_from_selections_v12_w6_regression(self):
+        """V12 W6 bug: recorder.py / record_parlay_session store the picked
+        side + its odds under selections[0] — NOT at the leg top level.
+        The history projection read d['outcome']/d['odds'] (both absent), so
+        every 推荐追溯 leg rendered null outcome ('') and null odds ('—').
+        Fixed to fall back to selections[0]."""
+        from nutmeg.v4.api.observation_routes import _parse_legs_json
+        raw = json.dumps([{
+            "match_id": "FRA_LIGUE_1_Saint Etienne_vs_Nice",
+            "market_type": "handicap_1x2",
+            "selections": [
+                {"outcome": "A", "odds": 1.51, "probability": 0.6418,
+                 "edge": -0.031},
+            ],
+        }])
+        legs = _parse_legs_json(raw)
+        assert len(legs) == 1
+        assert legs[0].outcome == "A", "picked side must come from selections[0]"
+        assert legs[0].odds == 1.51, "odds must come from selections[0]"
+        assert legs[0].market_type == "handicap_1x2"
+        # league still recovered from the match_id prefix (no bridge map here)
+        assert legs[0].league == "FRA_LIGUE_1"
+
+    def test_top_level_outcome_odds_still_win_over_selections(self):
+        """Backward-compat: a top-level outcome/odds (older rows / stubs)
+        takes precedence over selections[0]."""
+        from nutmeg.v4.api.observation_routes import _parse_legs_json
+        raw = json.dumps([{
+            "match_id": "EPL_Arsenal_vs_Liverpool",
+            "market_type": "1x2",
+            "outcome": "H",
+            "odds": 1.85,
+            "selections": [{"outcome": "A", "odds": 9.99}],
+        }])
+        legs = _parse_legs_json(raw)
+        assert legs[0].outcome == "H"
+        assert legs[0].odds == 1.85
+
+    def test_session_meta_supplies_league_and_match_date(self):
+        """league + match_date are NOT in the leg JSON; they come from the
+        session's single_predictions bridge map passed by the caller (keyed
+        f'{league}_{home}_vs_{away}', exactly like settlement.py)."""
+        from nutmeg.v4.api.observation_routes import _parse_legs_json
+        raw = json.dumps([{
+            "match_id": "FRA_LIGUE_1_Saint Etienne_vs_Nice",
+            "market_type": "handicap_1x2",
+            "selections": [{"outcome": "A", "odds": 1.51}],
+        }])
+        meta = {
+            "FRA_LIGUE_1_Saint Etienne_vs_Nice": {
+                "league": "FRA_LIGUE_1",
+                "match_date": "2026-05-26",
+                "home_team": "Saint Etienne",
+                "away_team": "Nice",
+            }
+        }
+        legs = _parse_legs_json(raw, meta)
+        assert legs[0].league == "FRA_LIGUE_1"
+        assert legs[0].match_date == "2026-05-26"
+        assert legs[0].home_team == "Saint Etienne"
+        assert legs[0].away_team == "Nice"
+        assert legs[0].outcome == "A"
+        assert legs[0].odds == 1.51
+
+
+# ---------- Leg enrichment end-to-end (V12 W6) ------------------------
+
+class TestLegEnrichmentEndToEnd:
+    """The history endpoint must enrich each leg with the picked outcome/odds
+    (from selections[0]) AND league/match_date (from the session's
+    single_predictions bridge), reproducing the exact shape the daily cron +
+    /recommend/parlay recorder writes."""
+
+    def test_legs_enriched_from_selections_and_bridge(self, temp_db, client):
+        from nutmeg.v4.observation.store import (
+            insert_single_prediction,
+            open_db,
+        )
+        with open_db(temp_db["path"]) as conn:
+            sid = temp_db["insert_session"](
+                conn, bankroll=1000, model_cutoff=None, model_trained_at=None,
+                n_fixtures=1, n_recommendations=1, request={},
+            )
+            # Bridge row — settlement keys it f"{league}_{home}_vs_{away}".
+            insert_single_prediction(
+                conn, sid, match_date="2026-05-26", league="FRA_LIGUE_1",
+                home_team="Saint Etienne", away_team="Nice",
+                lambda_home=1.1, lambda_away=1.3,
+                p_home_1x2=0.30, p_draw_1x2=0.25, p_away_1x2=0.45,
+                handicap_home=-1,
+                p_home_handicap=0.30, p_draw_handicap=0.10,
+                p_away_handicap=0.60,
+            )
+            # Parlay leg in the REAL recorder shape: selections-only, with NO
+            # top-level outcome/odds/league/match_date.
+            legs = [{
+                "match_id": "FRA_LIGUE_1_Saint Etienne_vs_Nice",
+                "market_type": "handicap_1x2",
+                "selections": [
+                    {"outcome": "A", "odds": 1.51,
+                     "probability": 0.6418, "edge": -0.031},
+                ],
+            }]
+            temp_db["insert_parlay"](
+                conn, sid, rank=1, k_legs=1, is_compound=False,
+                stake_units=10, kelly_stake=10.0, expected_return=15.1,
+                hit_probability=0.64, ev_per_unit=-0.03, log_growth=0.0,
+                legs=legs,
+            )
+        body = client.get(
+            "/api/v4/observation/recommendations-history").json()
+        leg = body["days"][0]["recommendations"][0]["legs"][0]
+        assert leg["outcome"] == "A"             # from selections[0]
+        assert leg["odds"] == 1.51               # from selections[0]
+        assert leg["league"] == "FRA_LIGUE_1"    # from bridge
+        assert leg["match_date"] == "2026-05-26"  # from bridge
+        assert leg["home_team"] == "Saint Etienne"
+        assert leg["away_team"] == "Nice"
+        assert leg["market_type"] == "handicap_1x2"
+
 
 # ---------- Query bounds ---------------------------------------------
 
@@ -403,3 +523,14 @@ class TestDashboardHistoryTab:
         body = html[idx:idx+1500]
         assert "zhTeam(" in body
         assert "teamLogo(" in body
+
+    def test_history_leg_shows_market_badge(self, html):
+        """V12 W6 — each leg row distinguishes 让球 vs 胜平负 (both reuse
+        H/D/A → 主胜/平局/客胜 labels, so the market tag disambiguates)."""
+        idx = html.index("function _historyLegsHtml")
+        body = html[idx:idx+1500]
+        assert "handicap_1x2" in body
+        assert "让球" in body
+        assert "胜平负" in body
+        # Reads l.odds (the picked-side odds now populated by the backend).
+        assert "l.odds" in body
