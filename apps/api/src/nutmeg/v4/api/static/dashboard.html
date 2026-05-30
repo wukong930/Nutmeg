@@ -1807,6 +1807,7 @@ const I18N = {
     h_cupmkt:'💹 市场模式 · 杯赛 + 日职联',
     cupmkt_empty:'近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。',
     cupmkt_badge:'市场模式',
+    cupmkt_hc_toggle:'▸ 让球 (市场反推 · Pinnacle 1X2+大小球)',
     spcalc_refreshing: '刷新中…',
     spcalc_hc_toggle: '▸ 让球 (handicap)',
     spcalc_hc_line:   '让球线',
@@ -2086,6 +2087,7 @@ const I18N = {
     h_cupmkt:'💹 Market mode · Cups + J1',
     cupmkt_empty:'No cup / J1 fixtures with an open line in the next 3 days.',
     cupmkt_badge:'market',
+    cupmkt_hc_toggle:'▸ Handicap (market-implied · Pinnacle 1X2+O/U)',
     spcalc_refreshing: 'Refreshing…',
     spcalc_hc_toggle: '▸ Handicap (让球)',
     spcalc_hc_line:   'Line',
@@ -3912,6 +3914,32 @@ function _cupCardHtml(pr, idx) {
         <span class="cupev text-xs text-muted shrink-0" data-idx="${idx}" data-outcome="${o}">—</span>
       </div>`;
   }).join('');
+  // V12 W8 — market-implied 让球: handicap_lines come from a DC grid reverse-fit
+  // to the de-vig 1X2 + Pinnacle O/U (validated vs Pinnacle's own AH ~1pp). Pick
+  // a 竞彩 让球线, type the 竞彩 让球 SP → live EV, same as the 1X2 rows above.
+  const hc = (pr.handicap_lines && pr.handicap_lines.length) ? `
+      <details class="mt-2 pt-2" style="border-top:1px dashed var(--border-subtle)">
+        <summary class="text-xs text-secondary cursor-pointer select-none">${t('cupmkt_hc_toggle')}</summary>
+        <div class="mt-2">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="text-xs text-muted">${t('spcalc_hc_line')}</span>
+            <select id="cuphcline-${idx}" onchange="_cupHcLine(${idx})"
+                    class="text-xs px-2 py-1 border rounded num-display" aria-label="${t('spcalc_hc_line')}">
+              <option value="">—</option>
+              ${pr.handicap_lines.map(l => `<option value="${l.line}">${_hcLineLabel(l.line)}</option>`).join('')}
+            </select>
+          </div>
+          ${['H', 'D', 'A'].map(o => `<div class="flex items-center gap-2 py-1 text-sm flex-wrap">
+            <span class="w-10 shrink-0 text-secondary">${_hcOutcomeLabel(o)}</span>
+            <span id="cuphcp-${idx}-${o}" class="text-xs text-muted shrink-0">P —</span>
+            <span class="text-xs text-muted ml-auto">竞彩</span>
+            <input type="number" inputmode="decimal" step="0.01" min="1.01"
+                   class="cuphcsp w-20 px-2 py-1 border rounded num-display" data-idx="${idx}" data-outcome="${o}"
+                   oninput="_cupHcRecalc(${idx})" placeholder="SP" aria-label="${_hcOutcomeLabel(o)} 竞彩 SP">
+            <span class="cuphcev text-xs text-muted shrink-0" data-idx="${idx}" data-outcome="${o}">—</span>
+          </div>`).join('')}
+        </div>
+      </details>` : '';
   return `<div class="card-rec">
       <div class="flex items-start justify-between gap-3 mb-2">
         <span class="inline-flex items-center gap-1.5 flex-wrap font-medium">
@@ -3924,7 +3952,7 @@ function _cupCardHtml(pr, idx) {
           <span class="badge-gold text-xs whitespace-nowrap">${t('cupmkt_badge')}</span>
         </span>
       </div>
-      ${rows}
+      ${rows}${hc}
     </div>`;
 }
 
@@ -3944,6 +3972,43 @@ function _cupRecalc(idx) {
     } else {
       evEl.textContent = '—';
       evEl.className = 'cupev text-xs text-muted shrink-0';
+    }
+  });
+}
+
+// V12 W8 — market-implied 让球 live EV on a cup-market card. P comes from the
+// selected handicap line's server-computed grid probs (no round-trip); EV =
+// P × 竞彩SP − 1, same coloring as the 1X2 rows.
+function _cupHcP(idx) {
+  const pr = _CUPMKT.preds[idx];
+  const sel = $(`#cuphcline-${idx}`);
+  if (!pr || !sel || sel.value === '' || !pr.handicap_lines) return null;
+  const line = parseInt(sel.value, 10);
+  const lp = pr.handicap_lines.find(l => l.line === line);
+  return lp ? { H: lp.p_home, D: lp.p_draw, A: lp.p_away } : null;
+}
+function _cupHcLine(idx) {
+  const P = _cupHcP(idx);
+  ['H', 'D', 'A'].forEach(o => {
+    const el = $(`#cuphcp-${idx}-${o}`);
+    if (el) el.textContent = P ? `P ${(P[o] * 100).toFixed(0)}%` : 'P —';
+  });
+  _cupHcRecalc(idx);
+}
+function _cupHcRecalc(idx) {
+  const P = _cupHcP(idx);
+  ['H', 'D', 'A'].forEach(o => {
+    const el = document.querySelector(`.cuphcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+    const evEl = document.querySelector(`.cuphcev[data-idx="${idx}"][data-outcome="${o}"]`);
+    if (!evEl) return;
+    const sp = el ? parseFloat(el.value) : NaN;
+    if (P && sp && sp > 1.0) {
+      const ev = P[o] * sp - 1;
+      evEl.textContent = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '%';
+      evEl.className = 'cuphcev text-xs font-medium shrink-0 ' + (ev >= 0 ? 'text-pos' : 'text-muted');
+    } else {
+      evEl.textContent = '—';
+      evEl.className = 'cuphcev text-xs text-muted shrink-0';
     }
   });
 }

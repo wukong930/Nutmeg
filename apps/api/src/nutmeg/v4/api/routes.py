@@ -333,7 +333,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w7-j1-market-mode';
+const CACHE_VERSION = 'nutmeg-v12-fe-w8-market-handicap';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1462,10 +1462,37 @@ _CUP_MARKET_COMPETITIONS = [
 ]
 
 
+def _market_handicap_lines(fair, r: dict) -> list[HandicapLineProb]:
+    """V12 W8 — market-implied 让球 for a market-mode fixture: reverse-map the
+    de-vig 1X2 + Pinnacle O/U 2.5 to a Dixon-Coles goal grid, then read off the
+    integer handicap lines. Pure market (no model) — validated against
+    Pinnacle's own Asian Handicap within ~1pp. Degrades to a 1X2-only fit when
+    the O/U is absent, and to [] (1X2-only card) if the fit raises."""
+    try:
+        from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+        p_over = devig_over(r.get("psc_over25"), r.get("psc_under25"))
+        return [
+            HandicapLineProb(line=line, p_home=ph, p_draw=pd_, p_away=pa)
+            for line, ph, pd_, pa in implied_handicap_lines(
+                float(fair[0]), float(fair[1]), float(fair[2]), p_over
+            )
+        ]
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "market handicap fit failed for %s vs %s",
+            r.get("home_team"), r.get("away_team"),
+        )
+        return []
+
+
 def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
     """Build a market-mode SinglePrediction: 1X2 P = Pinnacle de-vig (NOT
     model). Returns None when the row has no Pinnacle 1X2 quote (caller routes
-    those to pending_fixtures / 待开盘)."""
+    those to pending_fixtures / 待开盘).
+
+    V12 W8 — also carries market-implied 让球 lines (DC fit to 1X2 + O/U) so the
+    market-mode card prices 竞彩 让球 SP live, not just 胜平负."""
     fair = _pinnacle_devig_1x2(r.get("psc_home"), r.get("psc_draw"), r.get("psc_away"))
     if fair is None:
         return None
@@ -1476,7 +1503,7 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         lambda_home=0.0, lambda_away=0.0,
         p_home_1x2=float(fair[0]), p_draw_1x2=float(fair[1]), p_away_1x2=float(fair[2]),
         psc_home=r.get("psc_home"), psc_draw=r.get("psc_draw"), psc_away=r.get("psc_away"),
-        handicap_lines=[],
+        handicap_lines=_market_handicap_lines(fair, r),
         market_mode=True,
     )
 

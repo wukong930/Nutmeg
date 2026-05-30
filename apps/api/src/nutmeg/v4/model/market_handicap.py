@@ -1,0 +1,157 @@
+"""V12 W8 — market-implied 让球 (handicap) from Pinnacle 1X2 + over/under.
+
+Fits a Dixon-Coles goal grid to BOTH the de-vigged Pinnacle 1X2 AND the
+Pinnacle over/under line, then reads off any integer handicap line's
+让胜/让平/让负 probabilities. Pure market — no model.
+
+Why this exists
+---------------
+竞彩 让球 is a 3-way European handicap on an integer line (−1 = 主队让1球).
+Computing it needs a goal-margin distribution. The production CatBoost model
+is out-of-distribution for J1 + cups (the cup ablation was negative; J1
+diverges ~13pp from the sharp line). So for those surfaces we DON'T use the
+model — we reverse-engineer the goal distribution from two sharp Pinnacle
+markets:
+
+  - de-vig 1X2          → pins λ_diff = λ_home − λ_away (the supremacy)
+  - de-vig over/under   → pins λ_total = λ_home + λ_away (the goal level)
+
+Two anchors uniquely determine (λ_home, λ_away); the DC grid then gives every
+handicap line. When the O/U is missing we fall back to a 1X2-only fit (the
+draw rate weakly constrains the total — empirically within ~1pp on the
+handicap, slightly optimistic on the favourite's 让胜).
+
+Distinct from ``national_team_handicap.lambdas_from_1x2``, which FIXES
+λ_total at a constant prior (WC had no reliable O/U). Anchoring λ_total to
+the actual O/U is what makes this accurate.
+
+Validation
+----------
+Fit only to 1X2 + O/U, the resulting grid reproduces Pinnacle's OWN Asian
+Handicap cover probability within ~1pp across a full J1 matchday (the AH line
+was held out, never fitted) — i.e. Pinnacle's own money agrees with the
+reverse-mapped goal distribution. See tests/v4/test_market_handicap.py.
+"""
+from __future__ import annotations
+
+import numpy as np
+from scipy.optimize import minimize
+
+from nutmeg.v4.model.dixon_coles import (
+    grid_to_1x2,
+    grid_to_handicap_1x2,
+    grid_to_over_under,
+    score_grid,
+)
+
+# Production DC low-score correction (matches gbm_rho default).
+DEFAULT_RHO = -0.10
+# Score-grid truncation. Goals >9 are vanishingly rare; 10 is ample headroom
+# for blowouts (the 让胜 tail) while keeping the fit fast.
+DEFAULT_MAX_GOALS = 10
+# Integer handicap lines 竞彩 offers (主队 −3..+3). −1 = 主队让1球.
+DEFAULT_LINES = tuple(range(-3, 4))
+
+# Loss weights. The 1X2 is the sharper, lower-vig market, so weight matching
+# it above the O/U. These reproduce the ~1pp AH cross-check (see module docstring).
+_W_1X2 = 4.0
+_W_OU = 2.0
+
+# Fit search domain. λ outside [0.2, 3.4] is unphysical for a single team's
+# expected goals; the bounds keep score_grid's λ>0 precondition satisfied.
+_LAMBDA_BOUNDS = (0.2, 3.4)
+_LAMBDA_X0 = (1.20, 1.05)
+
+
+def devig_over(odds_over, odds_under) -> float | None:
+    """2-way de-vig of an over/under pair → P(over). None if either leg is
+    missing or non-positive (caller then fits 1X2-only)."""
+    try:
+        o = float(odds_over)
+        u = float(odds_under)
+    except (TypeError, ValueError):
+        return None
+    if not (o > 1.0 and u > 1.0):
+        return None
+    inv_o, inv_u = 1.0 / o, 1.0 / u
+    return inv_o / (inv_o + inv_u)
+
+
+def fit_lambdas(
+    p_home: float,
+    p_draw: float,
+    p_away: float,
+    p_over: float | None = None,
+    *,
+    ou_line: float = 2.5,
+    rho: float = DEFAULT_RHO,
+    max_goals: int = DEFAULT_MAX_GOALS,
+) -> tuple[float, float]:
+    """Fit (λ_home, λ_away) so the DC grid reproduces the de-vig 1X2 — and the
+    de-vig P(over) at ``ou_line`` when provided.
+
+    Returns a positive (λ_home, λ_away) pair. ``p_over`` None → 1X2-only fit.
+    """
+    th = np.array([p_home, p_draw, p_away], dtype=float)
+    s = th.sum()
+    if s <= 0:
+        raise ValueError("1X2 probabilities sum to zero")
+    th = th / s
+
+    def loss(x: np.ndarray) -> float:
+        lh, la = float(x[0]), float(x[1])
+        grid = score_grid(lh, la, rho=rho, max_goals=max_goals)
+        ph, pd_, pa = grid_to_1x2(grid)
+        err = _W_1X2 * ((ph - th[0]) ** 2 + (pd_ - th[1]) ** 2 + (pa - th[2]) ** 2)
+        if p_over is not None:
+            over, _ = grid_to_over_under(grid, line=ou_line)
+            err += _W_OU * (over - p_over) ** 2
+        return float(err)
+
+    res = minimize(
+        loss,
+        x0=np.array(_LAMBDA_X0, dtype=float),
+        method="L-BFGS-B",
+        bounds=[_LAMBDA_BOUNDS, _LAMBDA_BOUNDS],
+    )
+    return float(res.x[0]), float(res.x[1])
+
+
+def implied_handicap_lines(
+    p_home: float,
+    p_draw: float,
+    p_away: float,
+    p_over: float | None = None,
+    *,
+    lines=DEFAULT_LINES,
+    ou_line: float = 2.5,
+    rho: float = DEFAULT_RHO,
+    max_goals: int = DEFAULT_MAX_GOALS,
+) -> list[tuple[int, float, float, float]]:
+    """Fit the goal grid once, then return ``(line, P让胜, P让平, P让负)`` for
+    each integer handicap line.
+
+    ``line`` is ``handicap_home`` in DC convention (added to home's score):
+    −1 = 主队让1球, +1 = 主队受让1球. The triple is
+    (P(home covers), P(push), P(away covers)).
+    """
+    lh, la = fit_lambdas(
+        p_home, p_draw, p_away, p_over,
+        ou_line=ou_line, rho=rho, max_goals=max_goals,
+    )
+    grid = score_grid(lh, la, rho=rho, max_goals=max_goals)
+    out: list[tuple[int, float, float, float]] = []
+    for line in lines:
+        ph, pd_, pa = grid_to_handicap_1x2(grid, handicap_home=int(line))
+        out.append((int(line), float(ph), float(pd_), float(pa)))
+    return out
+
+
+__all__ = [
+    "DEFAULT_RHO",
+    "DEFAULT_MAX_GOALS",
+    "DEFAULT_LINES",
+    "devig_over",
+    "fit_lambdas",
+    "implied_handicap_lines",
+]

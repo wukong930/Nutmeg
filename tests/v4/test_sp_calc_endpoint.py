@@ -186,14 +186,43 @@ class TestCupMarket:
         assert r.status_code == 200, r.text
         p = r.json()["predictions"][0]
         assert p["market_mode"] is True
-        assert p["handicap_lines"] == []        # no model grid
-        assert p["lambda_home"] == 0.0          # not a model prediction
+        # V12 W8 — market mode now carries market-implied 让球 lines (a DC grid
+        # reverse-fit to the de-vig 1X2; O/U absent here → 1X2-only fit). Still
+        # NOT a model prediction (λ stays 0, P is pure Pinnacle de-vig).
+        assert len(p["handicap_lines"]) == 7    # integer lines −3..+3
+        assert p["lambda_home"] == 0.0          # λ not surfaced for market mode
+        # handicap line 0 == straight 1X2 (the fit reproduces the de-vig 1X2)
+        hl0 = next(h for h in p["handicap_lines"] if h["line"] == 0)
+        assert abs(hl0["p_home"] - p["p_home_1x2"]) < 0.02
         # de-vig of 2.36 / 3.37 / 3.20 (sums to 1.0)
         assert abs(p["p_home_1x2"] - 0.410) < 0.005
         assert abs(p["p_draw_1x2"] - 0.287) < 0.005
         assert abs(p["p_away_1x2"] - 0.303) < 0.005
         assert abs(sum((p["p_home_1x2"], p["p_draw_1x2"], p["p_away_1x2"])) - 1.0) < 1e-6
         assert p["psc_home"] == 2.36            # echoes Pinnacle odds
+
+    def test_market_handicap_uses_over_under_anchor(self, client):
+        """V12 W8 — when the row carries Pinnacle O/U, the market-implied 让球
+        is double-anchored (1X2 + total). A higher P(over) → higher goal total
+        → more favourite blowouts → higher 让胜 at the −1 line."""
+        from unittest.mock import patch
+
+        def _row(over, under):
+            return [{
+                "date": "2026-05-30", "league": "JPN_J1",
+                "home_team": "Vissel Kobe", "away_team": "Kashima",
+                "kickoff_utc": "2026-05-30T04:00:00+00:00",
+                "psc_home": 2.43, "psc_draw": 3.04, "psc_away": 3.41,
+                "psc_over25": over, "psc_under25": under,
+            }]
+        # Low-total line (under favoured) vs high-total line (over favoured).
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows", return_value=(_row(2.6, 1.5), 1, 0)):
+            lo = client.get("/api/v4/predictions/cup-market?days=1").json()["predictions"][0]
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows", return_value=(_row(1.5, 2.6), 1, 0)):
+            hi = client.get("/api/v4/predictions/cup-market?days=1").json()["predictions"][0]
+        hc_lo = next(h for h in lo["handicap_lines"] if h["line"] == -1)["p_home"]
+        hc_hi = next(h for h in hi["handicap_lines"] if h["line"] == -1)["p_home"]
+        assert hc_hi > hc_lo, "higher total should raise P(home wins by ≥2)"
 
     def test_no_line_cup_is_pending(self, client):
         from unittest.mock import patch

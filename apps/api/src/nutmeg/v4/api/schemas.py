@@ -114,8 +114,12 @@ class SinglePrediction(BaseModel):
     handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
     # V12 W7 — 杯赛市场模式: when True, p_*_1x2 are NOT model output — they are
     # the Pinnacle de-vig fair probabilities (the model is out-of-distribution
-    # for cups, so we lean 100% on the sharp market). lambda_* are 0 and
-    # handicap_lines empty. The UI labels these "市场模式·Pinnacle 公允价".
+    # for cups, so we lean 100% on the sharp market). lambda_* are 0. The UI
+    # labels these "市场模式·Pinnacle 公允价".
+    # V12 W8 — handicap_lines ARE now populated for market mode too: a
+    # Dixon-Coles goal grid reverse-fitted to the de-vig 1X2 + Pinnacle O/U
+    # gives market-implied 让球 P (validated vs Pinnacle's own AH ~1pp). So the
+    # market-mode card prices 竞彩 让球 SP live, not just 胜平负.
     market_mode: bool = False
 
 
