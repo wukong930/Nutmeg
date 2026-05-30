@@ -434,6 +434,107 @@ def record_wc_handicap_session(
         return session_id
 
 
+_HC_IDX = {"H": 0, "D": 1, "A": 2}
+
+
+def record_market_handicap_session(
+    db_path: str | Path,
+    *,
+    league: str,
+    match_date: str,
+    home_team: str,
+    away_team: str,
+    handicap_home: int,
+    p_handicap: tuple[float, float, float],
+    p_1x2: tuple[float, float, float] | None,
+    pick_outcome: str,
+    pick_odds: float,
+    pick_ev: float,
+    pick_stake: float,
+    pick_expected_return: float,
+    bankroll: float,
+    psc_1x2: tuple[float, float, float] | None = None,
+    request: dict[str, Any] | None = None,
+    snapshot_phase: str = "closing",
+) -> int:
+    """V12 W8 — record one 市场模式 让球 pick (J1 / cup) for tracking.
+
+    The probability is the MARKET-IMPLIED handicap P (Dixon-Coles fit to the
+    de-vig Pinnacle 1X2 + O/U), NOT the model — the model is OOD for these
+    competitions. Tagged ``model_type="market_handicap"`` so AB/ROI reports
+    slice it apart from model bets.
+
+    Shape mirrors ``record_wc_handicap_session``: one ``single_predictions``
+    row (handicap_home + handicap P pinned) + one ``parlay_recommendations``
+    row (k_legs=1) with ``match_id="{league}_{home}_vs_{away}"`` so the regular
+    ``settle_unsettled`` pipeline picks it up once the result lands. Returns
+    the session_id.
+    """
+    if pick_outcome not in _HC_IDX:
+        raise ValueError(f"pick_outcome must be H/D/A, got {pick_outcome!r}")
+    p_pick = float(p_handicap[_HC_IDX[pick_outcome]])
+    ph1, pd1, pa1 = (p_1x2 if p_1x2 is not None else (0.0, 0.0, 0.0))
+    with open_db(db_path) as conn:
+        session_id = insert_session(
+            conn,
+            bankroll=bankroll,
+            model_cutoff=None,
+            model_trained_at=None,
+            n_fixtures=1,
+            n_recommendations=1,
+            request=request or {},
+            metadata={
+                "session_kind": "market_handicap",
+                "model": {"model_type": "market_handicap"},
+                "psc_1x2": list(psc_1x2) if psc_1x2 else None,
+            },
+            snapshot_phase=snapshot_phase,
+            model_type="market_handicap",
+        )
+        insert_single_prediction(
+            conn,
+            session_id,
+            match_date=match_date,
+            league=league,
+            home_team=home_team,
+            away_team=away_team,
+            lambda_home=0.0,
+            lambda_away=0.0,
+            p_home_1x2=float(ph1),
+            p_draw_1x2=float(pd1),
+            p_away_1x2=float(pa1),
+            handicap_home=int(handicap_home),
+            p_home_handicap=float(p_handicap[0]),
+            p_draw_handicap=float(p_handicap[1]),
+            p_away_handicap=float(p_handicap[2]),
+        )
+        leg = {
+            "match_id": f"{league}_{home_team}_vs_{away_team}",
+            "market_type": "handicap_1x2",
+            "selections": [{
+                "outcome": pick_outcome,
+                "odds": float(pick_odds),
+                "probability": p_pick,
+                "edge": float(pick_ev),
+            }],
+        }
+        insert_parlay_recommendation(
+            conn,
+            session_id,
+            rank=1,
+            k_legs=1,
+            is_compound=False,
+            stake_units=1,
+            kelly_stake=float(pick_stake),
+            expected_return=float(pick_expected_return),
+            hit_probability=p_pick,
+            ev_per_unit=float(pick_ev),
+            log_growth=0.0,
+            legs=[leg],
+        )
+        return session_id
+
+
 def record_pool_session(
     db_path: str | Path,
     *,

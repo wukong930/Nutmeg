@@ -27,6 +27,8 @@ from nutmeg.v4.api.schemas import (
     JingcaiRecommendRequest,
     LegResponse,
     LotteryRulesResponse,
+    MarketHandicapRequest,
+    MarketHandicapResponse,
     ModelInfo,
     ParlayLegEcho,
     ParlayRecordRequest,
@@ -333,7 +335,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w8-market-handicap';
+const CACHE_VERSION = 'nutmeg-v12-fe-w8-market-handicap-track';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1503,6 +1505,7 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         lambda_home=0.0, lambda_away=0.0,
         p_home_1x2=float(fair[0]), p_draw_1x2=float(fair[1]), p_away_1x2=float(fair[2]),
         psc_home=r.get("psc_home"), psc_draw=r.get("psc_draw"), psc_away=r.get("psc_away"),
+        psc_over25=r.get("psc_over25"), psc_under25=r.get("psc_under25"),
         handicap_lines=_market_handicap_lines(fair, r),
         market_mode=True,
     )
@@ -1569,6 +1572,97 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
         fixtures_fetched=len(preds) + len(pending),
         predictions=preds,
         pending_fixtures=pending,
+    )
+
+
+@router.post(
+    "/recommend/market-handicap",
+    response_model=MarketHandicapResponse,
+    summary="V12 W8 — record a 市场模式 让球 pick (market-implied P; J1/cups)",
+)
+def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapResponse:
+    """Recompute the market-implied 让球 P (Dixon-Coles fit to de-vig Pinnacle
+    1X2 + O/U 2.5) for the requested line, score each 竞彩 SP, and — when
+    record_session + the server DB gate are both on — record the highest-EV leg
+    to the observation DB (model_type=market_handicap) so the existing
+    settle/ROI pipeline tracks it. NO model is used (OOD for these comps)."""
+    fair = _pinnacle_devig_1x2(req.psc_home, req.psc_draw, req.psc_away)
+    if fair is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="missing/invalid Pinnacle 1X2",
+        )
+    from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+    p_over = devig_over(req.psc_over25, req.psc_under25)
+    lines = implied_handicap_lines(fair[0], fair[1], fair[2], p_over)
+    row = next((ln for ln in lines if ln[0] == req.handicap_home), None)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"handicap line {req.handicap_home} out of range [-3, 3]",
+        )
+    _, p_h, p_d, p_a = row
+    P = {"H": p_h, "D": p_d, "A": p_a}
+    odds = {"H": req.odds_handicap_H, "D": req.odds_handicap_D, "A": req.odds_handicap_A}
+    ev = {
+        o: (P[o] * odds[o] - 1.0) if (odds[o] and odds[o] > 1.0) else None
+        for o in ("H", "D", "A")
+    }
+    # Highest-EV leg among the outcomes that carry a 竞彩 SP.
+    filled = [o for o in ("H", "D", "A") if ev[o] is not None]
+    best = max(filled, key=lambda o: ev[o]) if filled else None
+
+    best_stake = None
+    recorded = False
+    session_id = None
+    if best is not None:
+        from nutmeg.v4.combo.kelly import fractional_kelly_stake
+        k = fractional_kelly_stake(
+            hit_probability=P[best], ev_per_unit=ev[best],
+            bankroll=req.bankroll, kelly_fraction=req.kelly_fraction,
+        )
+        # Floor at the ¥2 竞彩 minimum: Kelly is 0 for EV ≤ 0, but a near-fair
+        # leg the user actually places must still be tracked with a real stake.
+        best_stake = max(float(k.recommended_stake), 2.0)
+        db_path = _should_record_session(req.record_session)
+        if db_path:
+            from nutmeg.v4.observation.recorder import record_market_handicap_session
+            try:
+                session_id = record_market_handicap_session(
+                    db_path,
+                    league=req.league, match_date=str(req.date),
+                    home_team=req.home_team, away_team=req.away_team,
+                    handicap_home=req.handicap_home,
+                    p_handicap=(p_h, p_d, p_a),
+                    p_1x2=(fair[0], fair[1], fair[2]),
+                    pick_outcome=best, pick_odds=float(odds[best]),
+                    pick_ev=float(ev[best]),
+                    pick_stake=best_stake,
+                    pick_expected_return=best_stake * float(ev[best]),
+                    bankroll=req.bankroll,
+                    psc_1x2=(req.psc_home, req.psc_draw, req.psc_away),
+                    request=req.model_dump(mode="json"),
+                )
+                recorded = True
+            except Exception:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).exception(
+                    "record_market_handicap_session failed (db=%s)", db_path,
+                )
+
+    def _fair(p):
+        return (1.0 / p) if p > 0 else 0.0
+
+    return MarketHandicapResponse(
+        league=req.league, date=req.date,
+        home_team=req.home_team, away_team=req.away_team,
+        handicap_home=req.handicap_home,
+        market_implied_p=[p_h, p_d, p_a],
+        fair_odds=[_fair(p_h), _fair(p_d), _fair(p_a)],
+        ev_per_unit=[ev["H"], ev["D"], ev["A"]],
+        best_outcome=best,
+        best_ev=(ev[best] if best is not None else None),
+        best_stake=best_stake, recorded=recorded, session_id=session_id,
     )
 
 

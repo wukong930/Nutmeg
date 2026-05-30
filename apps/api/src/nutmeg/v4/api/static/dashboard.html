@@ -1808,6 +1808,10 @@ const I18N = {
     cupmkt_empty:'近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。',
     cupmkt_badge:'市场模式',
     cupmkt_hc_toggle:'▸ 让球 (市场反推 · Pinnacle 1X2+大小球)',
+    cupmkt_hc_record:'📌 记录此注',
+    cupmkt_hc_recorded:'已记入观测库 (市场让球)',
+    cupmkt_hc_need_sp:'先填竞彩让球 SP',
+    cupmkt_hc_gate_off:'已计算 · 服务端未开记录 (未写库)',
     spcalc_refreshing: '刷新中…',
     spcalc_hc_toggle: '▸ 让球 (handicap)',
     spcalc_hc_line:   '让球线',
@@ -2088,6 +2092,10 @@ const I18N = {
     cupmkt_empty:'No cup / J1 fixtures with an open line in the next 3 days.',
     cupmkt_badge:'market',
     cupmkt_hc_toggle:'▸ Handicap (market-implied · Pinnacle 1X2+O/U)',
+    cupmkt_hc_record:'📌 Record this bet',
+    cupmkt_hc_recorded:'logged to observation DB (market handicap)',
+    cupmkt_hc_need_sp:'enter 竞彩 handicap SP first',
+    cupmkt_hc_gate_off:'computed · server recording off (not written)',
     spcalc_refreshing: 'Refreshing…',
     spcalc_hc_toggle: '▸ Handicap (让球)',
     spcalc_hc_line:   'Line',
@@ -3938,6 +3946,13 @@ function _cupCardHtml(pr, idx) {
                    oninput="_cupHcRecalc(${idx})" placeholder="SP" aria-label="${_hcOutcomeLabel(o)} 竞彩 SP">
             <span class="cuphcev text-xs text-muted shrink-0" data-idx="${idx}" data-outcome="${o}">—</span>
           </div>`).join('')}
+          <div class="flex items-center gap-2 mt-2 flex-wrap">
+            <button id="cuphcrec-${idx}" onclick="_cupHcRecord(${idx})"
+                    class="text-xs px-3 py-1 rounded" style="background:#059669;color:#fff;cursor:pointer">
+              ${t('cupmkt_hc_record')}
+            </button>
+            <span id="cuphcverdict-${idx}" class="text-xs text-muted" aria-live="polite"></span>
+          </div>
         </div>
       </details>` : '';
   return `<div class="card-rec">
@@ -4011,6 +4026,56 @@ function _cupHcRecalc(idx) {
       evEl.className = 'cuphcev text-xs text-muted shrink-0';
     }
   });
+}
+// V12 W8 — record a market-mode 让球 pick for tracking. Server recomputes the
+// market-implied P from Pinnacle (de-vig 1X2 + O/U), picks the highest-EV leg,
+// and writes it (model_type=market_handicap) — the existing settle/ROI pipeline
+// then tracks it. record_session=true always; the server env gate decides.
+async function _cupHcRecord(idx) {
+  const pr = _CUPMKT.preds[idx];
+  const sel = $(`#cuphcline-${idx}`);
+  const verdict = $(`#cuphcverdict-${idx}`);
+  const btn = $(`#cuphcrec-${idx}`);
+  if (!pr || !sel || sel.value === '') { if (verdict) verdict.textContent = t('spcalc_hc_pickline'); return; }
+  const line = parseInt(sel.value, 10);
+  const get = (o) => {
+    const el = document.querySelector(`.cuphcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+    const v = el ? parseFloat(el.value) : NaN;
+    return (v && v > 1.0) ? v : null;
+  };
+  const oh = get('H'), od = get('D'), oa = get('A');
+  if (!(oh || od || oa)) { verdict.textContent = t('cupmkt_hc_need_sp'); verdict.style.color = '#e11d48'; return; }
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await fetch(API + '/recommend/market-handicap', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        league: pr.league, date: pr.date,
+        home_team: pr.home_team, away_team: pr.away_team,
+        psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
+        psc_over25: pr.psc_over25, psc_under25: pr.psc_under25,
+        handicap_home: line,
+        odds_handicap_H: oh, odds_handicap_D: od, odds_handicap_A: oa,
+        bankroll: 1000, kelly_fraction: 0.25, record_session: true,
+      }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const b = await res.json();
+    if (b.recorded) {
+      const ev = (b.best_ev != null) ? `${b.best_ev >= 0 ? '+' : ''}${(b.best_ev * 100).toFixed(1)}%` : '';
+      verdict.textContent = `✓ ${t('cupmkt_hc_recorded')} · ${_hcOutcomeLabel(b.best_outcome)} EV ${ev} · ${fmtMoney(b.best_stake)}`;
+      verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
+      btn.textContent = t('spcalc_recorded_btn'); btn.style.cssText = 'background:#f3f4f6;color:#6b7280';
+    } else {
+      verdict.textContent = t('cupmkt_hc_gate_off'); verdict.style.color = '#b45309';
+      btn.disabled = false; btn.textContent = prev;
+    }
+  } catch (err) {
+    console.warn('cup hc record failed:', err);
+    verdict.textContent = t('spcalc_record_err'); verdict.style.color = '#e11d48';
+    btn.disabled = false; btn.textContent = prev;
+  }
 }
 
 function renderCupMarket(preds, pending) {

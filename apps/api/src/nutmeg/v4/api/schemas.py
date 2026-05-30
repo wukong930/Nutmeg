@@ -103,6 +103,12 @@ class SinglePrediction(BaseModel):
     psc_home: float | None = None
     psc_draw: float | None = None
     psc_away: float | None = None
+    # V12 W8 — Pinnacle over/under 2.5 echo, present in 市场模式. The dashboard
+    # sends these back to /recommend/market-handicap so the server recomputes
+    # the market-implied 让球 P (double-anchored on 1X2 + O/U) authoritatively
+    # before recording — no trusting a client-sent probability.
+    psc_over25: float | None = None
+    psc_under25: float | None = None
     # Optional handicap probs (present only when handicap_home was provided)
     handicap_home: Optional[int] = None
     p_home_handicap: Optional[float] = None
@@ -407,6 +413,53 @@ class SingleRecommendResponse(BaseModel):
     version_hash: str | None = Field(None, description=
         "12-char SHA1 prefix covering this response's picks. Frontend compares "
         "to its last-seen hash to detect when recs need a refresh.")
+
+
+# ---------- /recommend/market-handicap (V12 W8 — 市场模式让球追踪) ----------
+
+class MarketHandicapRequest(BaseModel):
+    """POST /v4/recommend/market-handicap — record one 市场模式 让球 pick (J1 /
+    cup) for tracking.
+
+    The server RECOMPUTES the market-implied 让球 P from the Pinnacle inputs
+    (de-vig 1X2 + O/U 2.5) — it never trusts a client-sent probability. For each
+    outcome carrying a 竞彩 SP it computes EV, picks the highest-EV leg, and
+    (when record_session=True AND the server DB gate is on) records it tagged
+    model_type=market_handicap so AB/ROI reports slice it apart from model bets."""
+    league: str
+    date: date
+    home_team: str
+    away_team: str
+    psc_home: float
+    psc_draw: float
+    psc_away: float
+    psc_over25: float | None = None
+    psc_under25: float | None = None
+    handicap_home: int
+    odds_handicap_H: float | None = None
+    odds_handicap_D: float | None = None
+    odds_handicap_A: float | None = None
+    bankroll: float = 1000.0
+    kelly_fraction: float = 0.25
+    record_session: bool = False
+
+
+class MarketHandicapResponse(BaseModel):
+    league: str
+    date: date
+    home_team: str
+    away_team: str
+    handicap_home: int
+    # market-implied P(让胜/让平/让负) for this line, order [H, D, A]
+    market_implied_p: list[float]
+    fair_odds: list[float]
+    # EV/unit vs the supplied 竞彩 SP; None for outcomes with no SP given
+    ev_per_unit: list[float | None]
+    best_outcome: str | None = None  # "H"|"D"|"A" — highest-EV leg with a SP
+    best_ev: float | None = None
+    best_stake: float | None = None
+    recorded: bool = False
+    session_id: int | None = None
 
 
 # ---------- /recommend/pool (V8 W6) ----------
