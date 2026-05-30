@@ -1,13 +1,26 @@
-"""V11 post-ship — Path A++ WC handicap recommendation dashboard tests.
+"""V12 W8 — WC handicap unified into 市场模式 (was: Path A++ inline form).
 
-Verifies that the new 让球推荐 inline section is wired into the WC tab:
-  - renderWcHandicapSection helper exists with both states (form + warning)
-  - All form inputs have correct data-fld names so _wcHcCalc reads them
-  - Click handler is bound via event delegation
-  - i18n keys are present in BOTH zh + en locales (parity)
-  - SW cache version was bumped (forces refresh on existing PWA installs)
+History
+-------
+V11 post-ship shipped a per-fixture Path A++ 让球推荐 form inside each WC
+card: enter an integer line + 3 竞彩 SP → POST ``/recommend/wc/single`` →
+model-vs-market Bayesian blend. V12 W8 retired that path. A leakage-free
+walk-forward (4330 EU matches, 24/25) measured pure **market-reverse**
+(de-vig Pinnacle 1X2 + O/U(2.5) → Dixon-Coles grid → read the let-line)
+at 0.20452 AH-cover Brier — sitting on Pinnacle's own AH ceiling (0.20444)
+and beating the fair model (0.20690) by 2.4e-3. WC/EURO/WC_QUAL_UEFA are
+in ``_CUP_MARKET_COMPETITIONS``, so 市场模式 already prices their 让球 that
+way. Path A++ also blended *toward* the 竞彩 SP, shrinking any real edge.
 
-Lightweight — only checks HTML/JS substring presence; no Playwright.
+So the WC tab now:
+  - keeps its 1X2 pre-line forecast (``renderWcMatch`` / ``loadWcPredictions``)
+  - replaces the 让球 section with a redirect button into 市场模式
+  - the old form renderer + ``_wcHcCalc`` / ``_wcHcOutcomeRow`` JS and the
+    ``wc_hc_toggle`` / ``wc_hc_line`` / ``wc_hc_sp_*`` / ``wc_hc_calc`` /
+    ``wc_hc_needs_pin`` i18n keys were deleted.
+
+These tests pin the new redirect + guard the dead artifacts from creeping
+back. Lightweight — HTML/JS substring checks, no Playwright.
 """
 from __future__ import annotations
 
@@ -16,7 +29,6 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -43,96 +55,75 @@ def sw_js(client):
     return r.text
 
 
-# ============ Renderer + handler wiring =================================
+# ============ Renderer still wired into the WC card ====================
 
 class TestRendererPresent:
 
     def test_renderwcmatch_calls_handicap_section(self, html):
-        """The base WC card should invoke the new handicap section."""
+        """The base WC card still invokes the handicap section (now a redirect)."""
         assert "renderWcHandicapSection(p)" in html
 
     def test_handicap_section_function_defined(self, html):
         assert "function renderWcHandicapSection(p)" in html
 
-    def test_form_includes_handicap_line_input(self, html):
-        """data-fld names must match what _wcHcCalc reads."""
-        assert 'data-fld="handicap_home"' in html
 
-    def test_form_includes_three_sp_inputs(self, html):
-        for fld in ("odds_h", "odds_d", "odds_a"):
-            assert f'data-fld="{fld}"' in html
+# ============ Section is now a redirect into 市场模式 ==================
 
-    def test_calc_button_has_meta_attribute(self, html):
-        """meta passes fixture_id + Pinnacle 1X2 to the handler."""
-        assert "wc-hc-calc-btn" in html
-        assert 'data-meta=' in html
+class TestHandicapRedirect:
+    """The 让球 section renders a hint + a button that jumps to 市场模式
+    (the 今日推荐 tab's 国际盘口 board) instead of an inline Path A++ form."""
 
-    def test_no_pinnacle_warning_branch_present(self, html):
-        """When has_pinnacle=false, show warning instead of form."""
-        assert "if (!p.has_pinnacle)" in html
-        assert "wc_hc_needs_pin" in html
+    def test_redirect_copy_present(self, html):
+        assert 'data-i18n="wc_hc_moved"' in html
+        assert 'data-i18n="wc_hc_goto_market"' in html
 
-    def test_calc_handler_defined(self, html):
-        assert "async function _wcHcCalc(btn)" in html
+    def test_redirect_button_loads_market_mode(self, html):
+        """The button switches to 今日推荐 and triggers loadCupMarket()."""
+        assert "switchTab('today'); setTimeout(loadCupMarket, 150);" in html
 
-    def test_calc_handler_posts_to_endpoint(self, html):
-        # The handler must POST to /recommend/wc/single
-        assert "/recommend/wc/single" in html
-        assert "method: 'POST'" in html
+    def test_old_path_a_form_artifacts_removed(self, html):
+        """Guardrail — the retired Path A++ form must not creep back."""
+        for dead in (
+            'data-fld="handicap_home"',
+            'data-fld="odds_h"',
+            "wc-hc-calc-btn",
+            "wc-hc-record-session",
+            "function _wcHcCalc",
+            "function _wcHcOutcomeRow",
+        ):
+            assert dead not in html, f"retired Path A++ artifact resurfaced: {dead}"
 
-    def test_event_delegation_wired(self, html):
-        """The button is dynamic — needs delegation, not direct binding."""
-        assert "e.target.closest('.wc-hc-calc-btn')" in html
-
-    def test_outcome_row_renderer_present(self, html):
-        """Per-outcome row (让胜/让平/让负) renderer."""
-        assert "_wcHcOutcomeRow" in html
-
-    def test_handicap_validation_present(self, html):
-        """Client-side guard against odds <= 1.0."""
-        assert "SP 必须 > 1.0" in html or "v > 1.0" in html
+    def test_no_live_fetch_to_deprecated_endpoint(self, html):
+        """No client code may POST to the deprecated /recommend/wc/single.
+        (A doc comment may *name* it, but there must be no fetch template.)"""
+        assert "${API}/recommend/wc/single" not in html
 
 
-# ============ i18n parity ==============================================
+# ============ i18n: only the 2 redirect keys remain ===================
 
-class TestI18nKeys:
-    """Both zh + en locales must have the same 6 new keys."""
+class TestRedirectI18nKeys:
+    """Both zh + en locales keep exactly the redirect keys; the old form
+    keys are gone."""
 
-    REQUIRED_KEYS = (
-        "wc_hc_toggle",
-        "wc_hc_needs_pin",
-        "wc_hc_line",
-        "wc_hc_sp_h",
-        "wc_hc_sp_d",
-        "wc_hc_sp_a",
-        "wc_hc_calc",
+    REDIRECT_KEYS = ("wc_hc_moved", "wc_hc_goto_market")
+    RETIRED_KEYS = (
+        "wc_hc_toggle", "wc_hc_needs_pin", "wc_hc_line",
+        "wc_hc_sp_h", "wc_hc_sp_d", "wc_hc_sp_a", "wc_hc_calc",
     )
 
-    def test_all_keys_in_zh(self, html):
-        # Crude — count "wc_hc_*:" occurrences. zh and en each get one.
-        for key in self.REQUIRED_KEYS:
-            assert f"{key}:" in html, f"missing key {key}"
-
-    def test_each_key_appears_at_least_twice(self, html):
+    def test_redirect_keys_present_twice(self, html):
         """One occurrence in zh + one in en = each key shows ≥2 times."""
-        for key in self.REQUIRED_KEYS:
+        for key in self.REDIRECT_KEYS:
             assert html.count(f"{key}:") >= 2, (
                 f"{key} appears < 2 times — i18n parity broken"
             )
 
-    def test_zh_label_format(self, html):
-        """Spot-check Chinese label content."""
-        assert "让球推荐 (Path A++)" in html  # toggle
-        assert "让胜 SP" in html
-        assert "让平 SP" in html
-        assert "让负 SP" in html
-
-    def test_en_label_format(self, html):
-        """Spot-check English label content."""
-        assert "Handicap recommendation (Path A++)" in html
-        assert "Home SP" in html
-        assert "Draw SP" in html
-        assert "Away SP" in html
+    def test_retired_form_keys_absent(self, html):
+        """The orphaned Path A++ form keys were removed from both locales."""
+        for key in self.RETIRED_KEYS:
+            assert f"{key}:" not in html, (
+                f"retired i18n key {key} still defined — cleanup regressed"
+            )
 
 
 # ============ Service worker cache busted ==============================
@@ -144,9 +135,7 @@ class TestSwCacheBust:
 
         We assert the FORMAT, not a specific feature slug. The slug changes
         on every frontend deploy by design — pinning it to one feature name
-        (it was ``wc-handicap``) made this test break on each later bump
-        (it did, silently, when WC-lookahead bumped it to
-        ``nutmeg-v12-fe-w0-wc-lookahead``)."""
+        made this test break on each later bump."""
         import re
         m = re.search(r"'(nutmeg-v\d+-fe-[a-z0-9-]+)'", sw_js)
         assert m is not None, (
@@ -159,7 +148,7 @@ class TestSwCacheBust:
         )
 
 
-# ============ V11 post-ship — Today WC block ==========================
+# ============ Today's recommendations — 🏆 WC block ===================
 
 class TestTodayWcBlock:
     """Today's recommendations tab surfaces a 🏆 WC section when the
@@ -177,11 +166,13 @@ class TestTodayWcBlock:
         # Hook into the existing load pipeline alongside single/parlay/pool
         assert "renderTodayWc(body.wc)" in html
 
-    def test_deeplink_to_wc_tab(self, html):
-        # CTA button uses data-tab-link="wc" which the existing handler
-        # picks up to switch the active tab.
-        assert 'data-tab-link="wc"' in html
-        # i18n key for the CTA copy
+    def test_deeplink_to_market_mode(self, html):
+        """V12 W8 — the WC card CTA used to deep-link to the WC tab
+        (data-tab-link="wc"); it now jumps to 市场模式 via loadCupMarket so
+        the user reads WC 让球 the same way as every other competition."""
+        assert "today-wc-deeplink" in html
+        assert 'data-tab-link="wc"' not in html
+        assert "setTimeout(loadCupMarket, 150);" in html
         assert "today_wc_cta" in html
 
     def test_pinnacle_required_indicator(self, html):
@@ -191,31 +182,10 @@ class TestTodayWcBlock:
 
     def test_error_path_hides_section(self, html):
         """On today error, the WC section is hidden alongside others."""
-        # Look for the cleanup line we added
         assert "$('#today-wc-section').classList.add('hidden')" in html
 
 
-# ============ V11 post-ship — record-session checkbox =================
-
-class TestRecordSessionCheckbox:
-    """WC handicap form now has the same opt-in observation checkbox
-    as single/parlay/pool — both env + flag required for an actual write."""
-
-    def test_checkbox_in_handicap_form(self, html):
-        assert "wc-hc-record-session" in html
-
-    def test_record_session_flag_in_request_body(self, html):
-        """The JS must pass record_session: recordChecked into the POST."""
-        assert "record_session: recordChecked," in html
-
-    def test_label_uses_shared_i18n_key(self, html):
-        """Reuse lbl_record_session (already in both locales) instead of
-        defining a new key — keeps the dictionary lean."""
-        # The existing key is present (used by 4 forms now)
-        assert "lbl_record_session" in html
-
-
-# ============ V11 post-ship — Today WC i18n parity ====================
+# ============ Today WC i18n parity ====================================
 
 class TestTodayWcI18n:
     REQUIRED_KEYS = (
@@ -227,7 +197,7 @@ class TestTodayWcI18n:
     )
 
     def test_each_key_present_twice(self, html):
-        """Each new key must appear in both zh + en locales."""
+        """Each key must appear in both zh + en locales."""
         for key in self.REQUIRED_KEYS:
             count = html.count(f"{key}:")
             assert count >= 2, (

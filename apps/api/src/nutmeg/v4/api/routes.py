@@ -335,7 +335,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w8-market-mode-10-leagues';
+const CACHE_VERSION = 'nutmeg-v12-fe-w8-wc-unified';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -2571,14 +2571,32 @@ def predictions_wc_upcoming(
 
 
 # ---------- /recommend/wc/single (V11 post-ship — Path A++ hybrid) -------
+#
+# DEPRECATED (V12 W8 — WC unification). Superseded by 市场模式
+# (``_market_handicap_lines`` / POST ``/recommend/market-handicap``), which
+# fits λ to de-vigged Pinnacle 1X2 + O/U(2.5) and reads the integer let-line
+# directly. The walk-forward showdown (4330 EU matches, 24/25, leakage-free)
+# measured market-reverse at 0.20452 AH-cover Brier vs the fair model's
+# 0.20690 — reverse beats model by 2.4e-3 because it anchors the goal total
+# to the O/U line instead of a 2.6 prior + 128-match model blend. Path A++
+# also blends TOWARD the 竞彩 SP, which shrinks any real edge. WC/EURO/
+# WC_QUAL_UEFA are in ``_CUP_MARKET_COMPETITIONS`` so they already serve
+# market-reverse 让球 via 市场模式. The dashboard WC tab now redirects its
+# 让球 section here (see ``renderWcHandicapSection``). This endpoint is kept
+# only so any cached client mid-session keeps working; do not extend it.
 
 @router.post(
     "/recommend/wc/single",
     response_model=WcSingleRecResponse,
-    summary="WC integer-handicap recommendations (Path A++: 1X2 reverse-map + DC + market blend)",
+    summary="[DEPRECATED V12 W8 → 市场模式] WC integer-handicap (Path A++)",
 )
 def recommend_wc_single(req: WcSingleRecRequest) -> WcSingleRecResponse:
-    """V11 post-ship — bridges NationalTeamModel (1X2) to the 竞彩 整数让球
+    """DEPRECATED (V12 W8). Use 市场模式 (``/recommend/market-handicap``) — it
+    de-vigs Pinnacle 1X2 + O/U and reads the let-line directly, measured 2.4e-3
+    Brier better than this Path A++ blend on a leakage-free walk-forward. Kept
+    only for mid-session cached clients; the dashboard no longer calls it.
+
+    V11 post-ship — bridges NationalTeamModel (1X2) to the 竞彩 整数让球
     market via Path A++ hybrid:
 
       1. NationalTeamModel.predict_proba → 1X2 model probs
