@@ -131,6 +131,19 @@ _DOMESTIC_LEAGUE_IDS: dict[str, int] = {
     # tests/v4/test_league_coverage.py for the guardrail.
     "BEL_PRO_LEAGUE": 144,   # Jupiler Pro League (Belgium)
     "JPN_J1": 98,
+    # V12 W8 — 市场模式 expansion (2026-05-30). Not trained on; served via
+    # market mode (Pinnacle de-vig 1X2 + reverse 让球). IDs verified against
+    # API-Football /leagues?current=true. 竞彩-common + Pinnacle-priced.
+    "NOR_ELITESERIEN": 103,     # Norway   (calendar-year)
+    "SWE_ALLSVENSKAN": 113,     # Sweden   (calendar-year)
+    "DNK_SUPERLIGA": 119,       # Denmark  (Jul–May, European)
+    "FIN_VEIKKAUSLIIGA": 244,   # Finland  (calendar-year)
+    "KOR_K_LEAGUE_1": 292,      # S. Korea (calendar-year)
+    "JPN_J2": 99,               # Japan J2 (calendar-year)
+    "AUS_A_LEAGUE": 188,        # Australia (Oct–May, European)
+    "SCO_PREMIERSHIP": 179,     # Scotland (Aug–May, European)
+    "TUR_SUPER_LIG": 203,       # Turkey   (Aug–May, European)
+    "SUI_SUPER_LEAGUE": 207,    # Switzerland (Jul–May, European)
 }
 
 # Cup + national-team competition IDs (V6 W11). Merged into the public
@@ -158,7 +171,14 @@ def league_id(canonical: str) -> int:
 # API-Football ``season`` param is the date's calendar year — NOT the European
 # Aug–Jul "year the season started" convention. Add codes here as more
 # calendar-year leagues (other Asian / Nordic / Americas) enter the set.
-CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({"JPN_J1"})
+CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({
+    "JPN_J1",
+    # V12 W8 — Nordic + K-League + J2 run ≈Feb–Nov (one calendar year). The
+    # other new market-mode leagues (Denmark/Scotland/Turkey/Switzerland/
+    # Australia) run Aug/Oct–May → the European heuristic is correct for them.
+    "NOR_ELITESERIEN", "SWE_ALLSVENSKAN", "FIN_VEIKKAUSLIIGA",
+    "KOR_K_LEAGUE_1", "JPN_J2",
+})
 
 
 def season_for_date(on_date: date, league_canonical: str | None = None) -> int:

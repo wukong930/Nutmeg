@@ -185,3 +185,60 @@ class TestProductionLeagueCoverage:
         # API-Football's id for Jupiler Pro League is 144 — pinning so a
         # future "let's renumber" can't silently break Belgian coverage.
         assert API_FOOTBALL_LEAGUE_IDS["BEL_PRO_LEAGUE"] == 144
+
+
+class TestMarketModeExpansion:
+    """V12 W8 — 10 竞彩-common leagues added to market mode (no model). Each
+    needs an API-Football ID (to fetch fixtures+odds) AND a place in
+    _CUP_MARKET_COMPETITIONS (to be served). Nordic/K-League/J2 are
+    calendar-year; the rest run the European Aug–May calendar."""
+
+    NEW = (
+        "NOR_ELITESERIEN", "SWE_ALLSVENSKAN", "DNK_SUPERLIGA", "FIN_VEIKKAUSLIIGA",
+        "KOR_K_LEAGUE_1", "JPN_J2", "AUS_A_LEAGUE", "SCO_PREMIERSHIP",
+        "TUR_SUPER_LIG", "SUI_SUPER_LEAGUE",
+    )
+
+    def test_all_have_api_football_ids(self):
+        for lg in self.NEW:
+            assert lg in API_FOOTBALL_LEAGUE_IDS, f"{lg} missing API-Football ID"
+            assert API_FOOTBALL_LEAGUE_IDS[lg] > 0
+
+    def test_ids_pinned(self):
+        """Pin the /leagues-verified IDs — a silent API renumber would
+        otherwise fetch the wrong league with no error."""
+        expect = {
+            "NOR_ELITESERIEN": 103, "SWE_ALLSVENSKAN": 113, "DNK_SUPERLIGA": 119,
+            "FIN_VEIKKAUSLIIGA": 244, "KOR_K_LEAGUE_1": 292, "JPN_J2": 99,
+            "AUS_A_LEAGUE": 188, "SCO_PREMIERSHIP": 179, "TUR_SUPER_LIG": 203,
+            "SUI_SUPER_LEAGUE": 207,
+        }
+        for lg, lid in expect.items():
+            assert API_FOOTBALL_LEAGUE_IDS[lg] == lid
+
+    def test_all_in_market_mode_list(self):
+        from nutmeg.v4.api.routes import _CUP_MARKET_COMPETITIONS
+        for lg in self.NEW:
+            assert lg in _CUP_MARKET_COMPETITIONS
+
+    def test_not_in_model_board(self):
+        """They're market-mode only — must NOT enter the model-scored set."""
+        from nutmeg.v4.api.routes import _SP_CALC_LEAGUES
+        from nutmeg.v4.api.schemas import TodayRecommendationsRequest
+        for lg in self.NEW:
+            assert lg not in _SP_CALC_LEAGUES
+            assert lg not in TodayRecommendationsRequest().leagues
+            assert lg not in PRODUCTION_LEAGUES_14
+
+    def test_season_convention(self):
+        import datetime as dt
+
+        from nutmeg.v4.data.sources.api_football import season_for_date
+        # Nordic / K-League / J2: a June date is mid-season of THAT calendar year
+        for lg in ("NOR_ELITESERIEN", "SWE_ALLSVENSKAN", "FIN_VEIKKAUSLIIGA",
+                   "KOR_K_LEAGUE_1", "JPN_J2"):
+            assert season_for_date(dt.date(2025, 6, 1), lg) == 2025
+        # European new leagues: June belongs to the season that began prior August
+        for lg in ("SCO_PREMIERSHIP", "TUR_SUPER_LIG", "SUI_SUPER_LEAGUE",
+                   "DNK_SUPERLIGA", "AUS_A_LEAGUE"):
+            assert season_for_date(dt.date(2025, 6, 1), lg) == 2024

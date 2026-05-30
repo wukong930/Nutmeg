@@ -335,7 +335,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w8-reverse-handicap-13leagues';
+const CACHE_VERSION = 'nutmeg-v12-fe-w8-market-mode-10-leagues';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1494,6 +1494,13 @@ _CUP_MARKET_COMPETITIONS = [
     # (European-trained; diverges ~13pp from the sharp J1 line). Priced off
     # Pinnacle de-vig here instead of model-scored — same treatment as cups.
     "JPN_J1",
+    # V12 W8 — market-mode expansion: 竞彩-common leagues Pinnacle prices that
+    # we never trained on. Served via the SAME de-vig 1X2 + reverse 让球 engine
+    # (handicap validated to sit on Pinnacle's AH ceiling). User-confirmed set:
+    # Nordic + APAC + 4 European. No model, no training — pure market.
+    "NOR_ELITESERIEN", "SWE_ALLSVENSKAN", "DNK_SUPERLIGA", "FIN_VEIKKAUSLIIGA",
+    "KOR_K_LEAGUE_1", "JPN_J2", "AUS_A_LEAGUE",
+    "SCO_PREMIERSHIP", "TUR_SUPER_LIG", "SUI_SUPER_LEAGUE",
 ]
 
 
