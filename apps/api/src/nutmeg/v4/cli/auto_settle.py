@@ -183,6 +183,41 @@ def apply_outcomes(
     return summary
 
 
+def pending_leagues(db_path: str | Path, start: dt.date, end: dt.date) -> list[str]:
+    """V12 W8 — leagues with a recorded prediction in [start, end] but no
+    match_outcome yet: exactly what auto-settle needs to fetch results for.
+
+    Derives the settle league set from the DB instead of a hardcoded list, so
+    it automatically covers the model leagues AND 市场模式 surfaces (J1, cups)
+    the moment the user records a bet there — with zero API calls wasted on
+    leagues that have nothing pending."""
+    import sqlite3
+
+    if not Path(db_path).exists():
+        return []
+    con = sqlite3.connect(str(db_path))
+    try:
+        rows = con.execute(
+            """
+            SELECT DISTINCT sp.league
+            FROM single_predictions sp
+            WHERE sp.match_date >= ? AND sp.match_date <= ?
+              AND NOT EXISTS (
+                SELECT 1 FROM match_outcomes mo
+                WHERE mo.league = sp.league
+                  AND mo.match_date = sp.match_date
+                  AND mo.home_team = sp.home_team
+                  AND mo.away_team = sp.away_team
+              )
+            ORDER BY sp.league
+            """,
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+    finally:
+        con.close()
+    return [r[0] for r in rows if r[0]]
+
+
 def _parse_date(s: str) -> dt.date:
     return dt.date.fromisoformat(s)
 
@@ -192,7 +227,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--leagues",
         default="EPL,ESP_LA_LIGA",
-        help="Comma-separated V4 canonical league codes (incl cups: UCL, FAC, etc.)",
+        help="Comma-separated V4 canonical league codes (incl cups: UCL, FAC, "
+             "etc.), or 'auto' to derive the set from leagues with unsettled "
+             "recorded bets in the DB (covers model leagues + J1 + cups).",
     )
     p.add_argument(
         "--db", required=True,
@@ -224,13 +261,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.quiet:
         log.setLevel(logging.WARNING)
 
-    leagues = [s.strip() for s in args.leagues.split(",") if s.strip()]
-    if not leagues:
-        log.error("no leagues parsed from --leagues=%r", args.leagues)
-        return 2
-
     end = args.end_date or dt.date.today()
     start = end - dt.timedelta(days=args.days)
+
+    if args.leagues.strip().lower() == "auto":
+        leagues = pending_leagues(args.db, start, end)
+        if not leagues:
+            log.info(
+                "auto: no leagues with unresolved recorded fixtures in %s → %s; "
+                "nothing to settle (0 API calls)", start, end,
+            )
+            return 0
+        log.info("auto: leagues with pending recorded fixtures → %s", leagues)
+    else:
+        leagues = [s.strip() for s in args.leagues.split(",") if s.strip()]
+        if not leagues:
+            log.error("no leagues parsed from --leagues=%r", args.leagues)
+            return 2
+
     log.info("Window: %s → %s (inclusive); leagues=%s; dry_run=%s",
              start, end, leagues, args.dry_run)
 
