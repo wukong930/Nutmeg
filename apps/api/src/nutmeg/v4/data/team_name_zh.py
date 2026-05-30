@@ -744,6 +744,70 @@ _V12_W7_CUP_AND_VARIANTS = {
 }
 TEAM_NAME_ZH.update(_V12_W7_CUP_AND_VARIANTS)
 
+# V12 W8 (2026-05-30) — market-mode league expansion (Nordic / APAC / Europe).
+# Keys are the exact strings API-Football returns (verified via /teams). The 27
+# clubs already in the dict (UEFA cup regulars + relegated J1 sides) are NOT
+# repeated here. The handful of genuinely obscure lower-table sides that aren't
+# listed fall back to the Latin name (acceptable, same policy as the cup tail).
+_V12_W8_NEW_LEAGUES = {
+    # ── 挪超 NOR_ELITESERIEN ──
+    "Aalesund": "阿勒松", "Fredrikstad": "弗雷德里克斯塔", "Ham-Kam": "哈马卡姆",
+    "KFUM Oslo": "奥斯陆KFUM", "Kristiansund BK": "克里斯蒂安松", "Lillestrom": "利勒斯特罗姆",
+    "Rosenborg": "罗森博格", "Sandefjord": "桑德菲尤尔", "Sarpsborg 08 FF": "萨尔普斯堡",
+    "Start": "斯塔特", "Tromso": "特罗姆瑟", "Valerenga": "瓦勒伦加", "Viking": "维京",
+    # ── 瑞典超 SWE_ALLSVENSKAN ──
+    "AIK Stockholm": "索尔纳AIK", "BK Hacken": "哈尔肯", "Degerfors IF": "德格福斯",
+    "Djurgardens IF": "尤尔加登", "Gais": "哥德堡GAIS", "Halmstad": "哈尔姆斯塔",
+    "Hammarby FF": "哈马比", "IF Brommapojkarna": "布罗马波卡纳", "IF Elfsborg": "埃尔夫斯堡",
+    "IFK Goteborg": "哥德堡", "Kalmar FF": "卡尔马", "Mjallby AIF": "米亚尔比",
+    "Orgryte IS": "奥格瑞特", "Sirius": "天狼星", "Vasteras SK FK": "韦斯特罗斯",
+    # ── 芬超 FIN_VEIKKAUSLIIGA ──
+    "AC Oulu": "奥卢", "FF Jaro": "雅罗", "Gnistan": "格尼斯坦", "Ilves": "伊尔维斯",
+    "Inter Turku": "图尔库国际", "KuPS": "库奥皮奥", "Lahti": "拉赫蒂", "Mariehamn": "玛丽港",
+    "SJK": "塞伊奈约基", "Turku PS": "图尔库PS", "VPS": "瓦萨",
+    # ── K联赛 KOR_K_LEAGUE_1 ──
+    "Bucheon FC 1995": "富川", "Daejeon Citizen": "大田市民", "FC Anyang": "安养",
+    "FC Seoul": "首尔", "Gangwon FC": "江原", "Gimcheon Sangmu FC": "金泉尚武",
+    "Gwangju FC": "光州", "Incheon United": "仁川联", "Jeju United FC": "济州联",
+    "Jeonbuk Motors": "全北现代", "Pohang Steelers": "浦项制铁", "Ulsan Hyundai FC": "蔚山现代",
+    # ── 日职乙 JPN_J2 ──
+    "Biwako Shiga": "滋贺琵琶湖", "Blaublitz Akita": "秋田蓝色闪电", "Ehime FC": "爱媛",
+    "FC Gifu": "岐阜", "FC Ryukyu": "琉球", "Fujieda MYFC": "藤枝", "Fukushima United": "福岛联",
+    "Gainare Tottori": "鸟取", "Imabari": "今治", "Iwaki": "磐城", "Kagoshima United": "鹿儿岛联",
+    "Kamatamare Sanuki": "赞岐", "Kanazawa": "金泽",
+    "Kataller Toyama": "富山", "Kitakyushu": "北九州",
+    "Kochi United": "高知联", "Matsumoto Yamaga": "松本山雅", "Montedio Yamagata": "山形山神",
+    "Nara Club": "奈良", "Oita Trinita": "大分三神", "Omiya Ardija": "大宫松鼠", "Osaka": "FC大阪",
+    "Parceiro Nagano": "长野", "Renofa Yamaguchi": "山口", "Roasso Kumamoto": "熊本",
+    "Sagamihara": "相模原", "Tegevajaro Miyazaki": "宫崎", "Thespakusatsu Gunma": "群马",
+    "Tochigi City": "枥木城市", "Tochigi SC": "枥木", "Tokushima Vortis": "德岛漩涡",
+    "Vanraure Hachinohe": "八户", "Vegalta Sendai": "仙台维加塔", "Ventforet Kofu": "甲府风林",
+    # ── 丹超 DNK_SUPERLIGA ──
+    "Aarhus": "奥胡斯", "FC Fredericia": "弗雷德里西亚", "FC Nordsjaelland": "北西兰",
+    "Odense": "欧登塞", "Randers FC": "兰德斯", "Silkeborg": "西尔克堡", "Sonderjyske": "南日德兰",
+    "Vejle": "瓦埃勒", "Viborg": "维堡",
+    # ── 澳超 AUS_A_LEAGUE ──
+    "Adelaide United": "阿德莱德联", "Auckland": "奥克兰", "Brisbane Roar": "布里斯班狮吼",
+    "Central Coast Mariners": "中央海岸水手", "Macarthur": "麦克阿瑟", "Melbourne City": "墨尔本城",
+    "Melbourne Victory": "墨尔本胜利", "Newcastle Jets": "纽卡斯尔喷气机",
+    "Perth Glory": "珀斯光荣", "Sydney": "悉尼FC", "Wellington Phoenix": "惠灵顿凤凰",
+    "Western Sydney Wanderers": "西悉尼流浪者",
+    # ── 苏超 SCO_PREMIERSHIP ──
+    "Arbroath": "阿布罗斯", "Dundee": "邓迪", "Dundee Utd": "邓迪联", "Dunfermline": "邓弗姆林",
+    "Falkirk": "福尔柯克", "Hibernian": "希伯尼安", "Kilmarnock": "基尔马诺克",
+    "Livingston": "利文斯顿", "Motherwell": "马瑟韦尔", "Partick": "帕蒂克", "ST Mirren": "圣米伦",
+    # ── 土超 TUR_SUPER_LIG ──
+    "Alanyaspor": "阿兰亚士邦", "Antalyaspor": "安塔利亚士邦", "Başakşehir": "巴萨克塞希尔",
+    "Eyüpspor": "埃于普士邦", "Fatih Karagümrük": "卡拉古鲁克", "Gaziantep FK": "加济安泰普",
+    "Gençlerbirliği S.K.": "根克勒比利吉", "Göztepe": "戈兹塔佩", "Kasımpaşa": "卡瑟姆帕萨",
+    "Kayserispor": "开塞利士邦", "Kocaelispor": "科贾埃利士邦", "Konyaspor": "科尼亚士邦",
+    "Rizespor": "里泽士邦", "Samsunspor": "萨姆松士邦",
+    # ── 瑞士超 SUI_SUPER_LEAGUE ──
+    "FC Aarau": "阿劳", "FC Luzern": "卢塞恩", "FC ST. Gallen": "圣加仑", "FC Sion": "锡永",
+    "FC Thun": "图恩", "FC Winterthur": "温特图尔", "Grasshoppers": "草蜢", "Lausanne": "洛桑",
+}
+TEAM_NAME_ZH.update(_V12_W8_NEW_LEAGUES)
+
 
 def lookup_zh(team_name: str) -> str:
     """Return Chinese name for a canonical team, else input unchanged.
@@ -802,5 +866,7 @@ def coverage_by_league() -> Dict[str, int]:
         # V12 W7 — UEFA cup clubs + Euro nations + core-league API spelling
         # variants (not attributable to one of the 14 leagues).
         "CUP_AND_VARIANTS":        len(_V12_W7_CUP_AND_VARIANTS),
+        # V12 W8 — market-mode expansion leagues (Nordic / APAC / Europe).
+        "MARKET_MODE_NEW_LEAGUES": len(_V12_W8_NEW_LEAGUES),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }
