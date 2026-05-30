@@ -335,7 +335,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w8-market-handicap-track';
+const CACHE_VERSION = 'nutmeg-v12-fe-w8-reverse-handicap-13leagues';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1320,6 +1320,42 @@ def _pinnacle_devig_1x2(h, d, a):
     return [x / s for x in inv] if s > 0 else None
 
 
+def _model_board_handicap_lines(f, model_grid, corr) -> list[HandicapLineProb]:
+    """V12 W8 — 让球 lines for the 13-league model board.
+
+    Switched from the model's own DC grid to MARKET-REVERSE (a Dixon-Coles grid
+    fit to the de-vig Pinnacle 1X2 + O/U). A leakage-free walk-forward on 4330
+    EU matches (24/25) showed the reverse sits on Pinnacle's own Asian-Handicap
+    ceiling (cover Brier 0.2045) while the model grid is +2.4e-3 worse — the
+    model's total goals isn't anchored to the O/U, the reverse's is. The model
+    still drives the 1X2; only 让球 changes. Falls back to the model grid when
+    the Pinnacle 1X2 is absent or the fit raises."""
+    fair = _pinnacle_devig_1x2(
+        getattr(f, "psc_home", None), getattr(f, "psc_draw", None), getattr(f, "psc_away", None)
+    )
+    if fair is not None:
+        try:
+            from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+            p_over = devig_over(getattr(f, "psc_over25", None), getattr(f, "psc_under25", None))
+            return [
+                HandicapLineProb(line=ln, p_home=ph, p_draw=pd_, p_away=pa)
+                for ln, ph, pd_, pa in implied_handicap_lines(fair[0], fair[1], fair[2], p_over)
+            ]
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                "market-reverse handicap failed (%s vs %s); model-grid fallback",
+                getattr(f, "home_team", "?"), getattr(f, "away_team", "?"),
+            )
+    out: list[HandicapLineProb] = []
+    for line in range(-3, 4):
+        hh, hd, ha = tuple(apply_correction_to_probs(
+            np.array(grid_to_handicap_1x2(model_grid, handicap_home=line)), corr))
+        out.append(HandicapLineProb(
+            line=line, p_home=float(hh), p_draw=float(hd), p_away=float(ha)))
+    return out
+
+
 def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
     """V12 W3 — per-fixture model output for the 竞彩 SP calculator: 1X2 P,
     Pinnacle-odds echo, and handicap P across integer lines −3..+3 (all from
@@ -1356,12 +1392,7 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                         a * pd_ + (1 - a) * pin[1],
                         a * pa + (1 - a) * pin[2],
                     )
-            hc_lines = []
-            for line in range(-3, 4):
-                hh, hd, ha = tuple(apply_correction_to_probs(
-                    np.array(grid_to_handicap_1x2(grid, handicap_home=line)), corr))
-                hc_lines.append(HandicapLineProb(
-                    line=line, p_home=float(hh), p_draw=float(hd), p_away=float(ha)))
+            hc_lines = _model_board_handicap_lines(f, grid, corr)
             preds.append(SinglePrediction(
                 home_team=f.home_team, away_team=f.away_team,
                 league=f.league, date=f.date,
@@ -1369,6 +1400,8 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 lambda_home=float(lh), lambda_away=float(la),
                 p_home_1x2=float(ph), p_draw_1x2=float(pd_), p_away_1x2=float(pa),
                 psc_home=f.psc_home, psc_draw=f.psc_draw, psc_away=f.psc_away,
+                psc_over25=getattr(f, "psc_over25", None),
+                psc_under25=getattr(f, "psc_under25", None),
                 handicap_lines=hc_lines,
             ))
         return preds

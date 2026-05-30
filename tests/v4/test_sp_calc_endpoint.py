@@ -249,6 +249,58 @@ class TestCupMarket:
         assert "COPA_AMERICA" not in _CUP_MARKET_COMPETITIONS
 
 
+# ============ Model board 让球 = market-reverse (V12 W8) ==============
+
+class TestModelBoardHandicapIsReverse:
+    """V12 W8 — the 13-league model board serves MARKET-REVERSE 让球 (a DC fit
+    to de-vig Pinnacle 1X2 + O/U), which a 4330-match walk-forward showed beats
+    the model's own grid for handicap. Falls back to the model grid only when
+    the Pinnacle 1X2 is absent. Pure unit test — no artifact needed."""
+
+    def test_uses_reverse_when_pinnacle_present(self):
+        from types import SimpleNamespace
+
+        from nutmeg.v4.api.routes import (
+            _model_board_handicap_lines,
+            _pinnacle_devig_1x2,
+        )
+        from nutmeg.v4.model.dixon_coles import score_grid
+
+        # model grid = an EXTREME home favourite (λ 2.5 vs 0.5) so its handicap
+        # is unmistakably different from the (balanced) market line.
+        model_grid = score_grid(2.5, 0.5, rho=-0.10)
+        f = SimpleNamespace(
+            psc_home=1.90, psc_draw=3.60, psc_away=4.20,
+            psc_over25=1.95, psc_under25=1.95,
+            home_team="A", away_team="B",
+        )
+        lines = _model_board_handicap_lines(f, model_grid, None)
+        assert len(lines) == 7
+        line0 = next(ln for ln in lines if ln.line == 0)
+        dv = _pinnacle_devig_1x2(1.90, 3.60, 4.20)
+        # line-0 ≈ de-vig 1X2 (reverse), NOT the model grid's ~90% home
+        assert abs(line0.p_home - dv[0]) < 0.02
+        assert line0.p_home < 0.70
+
+    def test_falls_back_to_model_grid_without_pinnacle(self):
+        from types import SimpleNamespace
+
+        from nutmeg.v4.api.routes import _model_board_handicap_lines
+        from nutmeg.v4.model.dixon_coles import grid_to_handicap_1x2, score_grid
+
+        model_grid = score_grid(2.5, 0.5, rho=-0.10)
+        f = SimpleNamespace(
+            psc_home=None, psc_draw=None, psc_away=None,
+            psc_over25=None, psc_under25=None,
+            home_team="A", away_team="B",
+        )
+        lines = _model_board_handicap_lines(f, model_grid, None)
+        line0 = next(ln for ln in lines if ln.line == 0)
+        exp = grid_to_handicap_1x2(model_grid, handicap_home=0)
+        assert abs(line0.p_home - exp[0]) < 1e-9   # exact model grid
+        assert line0.p_home > 0.80                 # the favourite the grid sees
+
+
 # ============ Playoff→market blend (needs artifact) ===================
 
 class TestPlayoffBlend:
