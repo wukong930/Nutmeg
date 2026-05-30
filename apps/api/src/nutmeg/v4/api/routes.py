@@ -333,7 +333,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w7-single-teams';
+const CACHE_VERSION = 'nutmeg-v12-fe-w7-j1-market-mode';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1295,7 +1295,12 @@ def _fixture_rows_to_inputs(rows: list[dict]) -> list[FixtureOddsInput]:
 _SP_CALC_LEAGUES = [
     "EPL", "ESP_LA_LIGA", "ITA_SERIE_A", "GER_BUNDESLIGA", "FRA_LIGUE_1",
     "ENG_CHAMPIONSHIP", "ESP_SEGUNDA_DIVISION", "ITA_SERIE_B", "GER_2_BUNDESLIGA",
-    "FRA_LIGUE_2", "NED_EREDIVISIE", "PRT_PRIMEIRA_LIGA", "BEL_PRO_LEAGUE", "JPN_J1",
+    "FRA_LIGUE_2", "NED_EREDIVISIE", "PRT_PRIMEIRA_LIGA", "BEL_PRO_LEAGUE",
+    # V12 W7 — JPN_J1 moved OUT of the model-scored set: the production model
+    # was trained on European leagues only, and on J1 it disagrees with the
+    # sharp Pinnacle line by up to 13pp (systematically making home favorites
+    # underdogs) → out-of-distribution. J1 now goes through the market-mode
+    # path (Pinnacle de-vig) in _CUP_MARKET_COMPETITIONS, like cups.
 ]
 # Playoff/barrage: how much to keep the model's own 1X2 P vs the Pinnacle
 # de-vig P. <1 leans on the market (which prices the high-stakes context the
@@ -1450,6 +1455,10 @@ _CUP_MARKET_COMPETITIONS = [
     "UCL", "UEL", "UECL",
     "FAC", "COPA_DEL_REY", "COPPA_ITALIA", "DFB_POKAL", "COUPE_DE_FRANCE",
     "WC", "EURO", "WC_QUAL_UEFA",
+    # V12 W7 — JPN_J1: not a cup, but out-of-distribution for the model
+    # (European-trained; diverges ~13pp from the sharp J1 line). Priced off
+    # Pinnacle de-vig here instead of model-scored — same treatment as cups.
+    "JPN_J1",
 ]
 
 

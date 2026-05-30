@@ -502,8 +502,9 @@ class TodayRecommendationsRequest(BaseModel):
             "GER_2_BUNDESLIGA", "FRA_LIGUE_2",
             # Other major European
             "NED_EREDIVISIE", "PRT_PRIMEIRA_LIGA", "BEL_PRO_LEAGUE",
-            # Asia
-            "JPN_J1",
+            # V12 W7 — JPN_J1 removed from the MODEL-scored board: it's
+            # out-of-distribution (European-trained model; ~13pp off the sharp
+            # J1 line). J1 is now served via market mode (Pinnacle de-vig).
         ],
         description=(
             "V4 canonical league codes (default: all 13 trained leagues). "

@@ -108,21 +108,40 @@ class TestProductionLeagueCoverage:
             f"training set: {extra}. Either train on them or remove from cron."
         )
 
-    def test_dashboard_today_default_leagues_cover_all_14(self):
-        """V12 W3 — the dashboard's TODAY_DEFAULT_LEAGUES (what the 今日推荐
-        tab + 竞彩 SP calculator fetch) must cover the full production set,
-        not a 2-league subset. Affordable because /today-recommendations reads
-        the cron-populated API-Football cache. Guards against silent regression
-        back to ['EPL', 'ESP_LA_LIGA']."""
+    def test_dashboard_today_default_leagues_are_the_13_model_leagues(self):
+        """V12 W3 — the dashboard's TODAY_DEFAULT_LEAGUES (the 今日推荐 MODEL
+        board) must cover the model-scored set, not a 2-league subset.
+
+        V12 W7 — that set is now the 13 European leagues; JPN_J1 is EXCLUDED
+        because it's out-of-distribution for the European-trained model (it
+        diverges ~13pp from the sharp J1 line). J1 is served via 市场模式
+        (Pinnacle de-vig) instead. The cron still fetches J1 to warm the cache."""
         dash = REPO_ROOT / "apps" / "api" / "src" / "nutmeg" / "v4" / "api" / "static" / "dashboard.html"
         src = dash.read_text(encoding="utf-8")
-        m = re.search(r"TODAY_DEFAULT_LEAGUES\s*=\s*\[(.*?)\]", src, re.S)
+        m = re.search(r"const TODAY_DEFAULT_LEAGUES\s*=\s*\[(.*?)\]", src, re.S)
         assert m is not None, "TODAY_DEFAULT_LEAGUES array not found in dashboard.html"
         listed = set(re.findall(r"'([A-Z0-9_]+)'", m.group(1)))
-        missing = PRODUCTION_LEAGUES_14 - listed
+        model_13 = PRODUCTION_LEAGUES_14 - {"JPN_J1"}
+        missing = model_13 - listed
         assert not missing, (
-            f"dashboard 今日推荐 only fetches {sorted(listed)}; missing "
-            f"production leagues: {sorted(missing)}"
+            f"dashboard 今日推荐 missing model leagues: {sorted(missing)}"
+        )
+        assert "JPN_J1" not in listed, (
+            "JPN_J1 must NOT be in the MODEL board — it's OOD → 市场模式"
+        )
+
+    def test_j1_routed_to_market_mode_not_model(self):
+        """V12 W7 — J1 is in the market-mode set and OUT of every model-scored
+        league list (国际盘口 + 近期赛事). Same treatment as cups."""
+        from nutmeg.v4.api.routes import (
+            _CUP_MARKET_COMPETITIONS,
+            _SP_CALC_LEAGUES,
+        )
+        from nutmeg.v4.api.schemas import TodayRecommendationsRequest
+        assert "JPN_J1" in _CUP_MARKET_COMPETITIONS, "J1 must be market-mode"
+        assert "JPN_J1" not in _SP_CALC_LEAGUES, "J1 must be out of model 近期赛事"
+        assert "JPN_J1" not in TodayRecommendationsRequest().leagues, (
+            "J1 must be out of the model 今日推荐 default"
         )
 
     def test_every_setup_league_has_api_football_id(self):

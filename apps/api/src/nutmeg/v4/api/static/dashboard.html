@@ -910,30 +910,30 @@
     </div>
     <div id="spcalc-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
          data-i18n="upcoming_empty">未来 3 天暂无可识别的比赛 (或盘口未开)。</div>
-    <!-- V12 W7 — 🏆 杯赛市场模式: UCL/UEL/UECL + 国内杯 + WC/EURO, priced off Pinnacle de-vig.
-         User-triggered (cups are sparse → don't fetch on every load). Model is OOD for cups,
-         so we show Pinnacle 公允价 (NOT model P) and price 竞彩 SP against it. -->
+    <!-- V12 W7 — 💹 市场模式: 杯赛(UCL/UEL/UECL + 国内杯 + WC/EURO) + J1, priced off
+         Pinnacle de-vig. User-triggered (sparse → don't fetch on every load). Model is OOD
+         for cups AND J1 (European-trained), so we show Pinnacle 公允价 (NOT model P). -->
     <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #b8860b">
       <div class="flex items-center gap-3 flex-wrap">
         <button id="cupmkt-load" onclick="loadCupMarket()"
                 class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
-                title="拉欧战/杯赛 Pinnacle 盘口 (消耗少量 API)"
-                data-i18n="cupmkt_load_btn">🏆 加载杯赛盘口</button>
+                title="拉欧战/杯赛/日职联 Pinnacle 盘口 (消耗少量 API)"
+                data-i18n="cupmkt_load_btn">💹 加载市场模式盘口 (杯赛 + 日职联)</button>
         <span id="cupmkt-status" class="text-xs text-muted ml-auto"></span>
       </div>
       <div class="text-xs text-muted mt-2" data-i18n="cupmkt_hint">
-        欧冠/欧联/欧协联 + 五大联赛国内杯 + 世界杯/欧洲杯。杯赛以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。
+        杯赛(欧冠/欧联/欧协联 + 五大国内杯 + 世界杯/欧洲杯)+ 日职联(模型未训练·分布外)。一律以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 杯赛淘汰赛: 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。
       </div>
     </div>
     <div id="cupmkt-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h3 class="font-bold mb-1">
-        <span data-i18n="h_cupmkt">🏆 杯赛 · 市场模式</span>
+        <span data-i18n="h_cupmkt">💹 市场模式 · 杯赛 + 日职联</span>
         <span id="cupmkt-count" class="text-sm font-normal text-gray-500"></span>
       </h3>
       <div id="cupmkt-list" class="space-y-3"></div>
     </div>
     <div id="cupmkt-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
-         data-i18n="cupmkt_empty">近 3 天暂无开盘的杯赛 (或盘口未开)。</div>
+         data-i18n="cupmkt_empty">近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。</div>
     <!-- V12 W5 — 串关篮子: tick 「串」 on outcomes across matches → combined EV/Kelly + 记录串关. -->
     <div id="parlay-basket" class="hidden" style="position:sticky;bottom:0;z-index:20">
       <div class="bg-white shadow-lg rounded-lg p-3 sm:p-4 mt-2" style="border-top:4px solid #059669">
@@ -1802,10 +1802,10 @@ const I18N = {
     spcalc_pending_title:'⏳ 待开盘 (Pinnacle 未开盘)',
     spcalc_pending_hint:'Pinnacle 尚未开出盘口 → 模型缺少关键先验, 暂不计算 EV (避免误导)。开盘后这些比赛会自动出现在上方可计算列表。',
     spcalc_pending_badge:'⏳ 待开盘',
-    cupmkt_load_btn:'🏆 加载杯赛盘口',
-    cupmkt_hint:'欧冠/欧联/欧协联 + 五大联赛国内杯 + 世界杯/欧洲杯。杯赛以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。',
-    h_cupmkt:'🏆 杯赛 · 市场模式',
-    cupmkt_empty:'近 3 天暂无开盘的杯赛 (或盘口未开)。',
+    cupmkt_load_btn:'💹 加载市场模式盘口 (杯赛 + 日职联)',
+    cupmkt_hint:'杯赛(欧冠/欧联/欧协联 + 五大国内杯 + 世界杯/欧洲杯)+ 日职联(模型未训练·分布外)。一律以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 杯赛淘汰赛: 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。',
+    h_cupmkt:'💹 市场模式 · 杯赛 + 日职联',
+    cupmkt_empty:'近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。',
     cupmkt_badge:'市场模式',
     spcalc_refreshing: '刷新中…',
     spcalc_hc_toggle: '▸ 让球 (handicap)',
@@ -2081,10 +2081,10 @@ const I18N = {
     spcalc_pending_title:'⏳ Awaiting Pinnacle line',
     spcalc_pending_hint:'Pinnacle has not opened a line yet → the model lacks a key prior, so EV is not computed (avoids misleading picks). These fixtures move to the calculable list above once the line opens.',
     spcalc_pending_badge:'⏳ no line yet',
-    cupmkt_load_btn:'🏆 Load cup odds',
-    cupmkt_hint:'UCL/UEL/UECL + big domestic cups + World Cup/Euro. Cups are priced off Pinnacle fair value (NOT the model); enter 竞彩 SP for EV. ⚠️ 竞彩 1X2 settles on the 90-min result (ET/penalties excluded).',
-    h_cupmkt:'🏆 Cups · market mode',
-    cupmkt_empty:'No cup fixtures with an open line in the next 3 days.',
+    cupmkt_load_btn:'💹 Load market-mode odds (cups + J1)',
+    cupmkt_hint:'Cups (UCL/UEL/UECL + big domestic cups + World Cup/Euro) + J1 League (model untrained / out-of-distribution). All priced off Pinnacle fair value (NOT the model); enter 竞彩 SP for EV. ⚠️ Cup knockouts: 竞彩 1X2 settles on the 90-min result (ET/penalties excluded).',
+    h_cupmkt:'💹 Market mode · Cups + J1',
+    cupmkt_empty:'No cup / J1 fixtures with an open line in the next 3 days.',
     cupmkt_badge:'market',
     spcalc_refreshing: 'Refreshing…',
     spcalc_hc_toggle: '▸ Handicap (让球)',
@@ -2986,11 +2986,13 @@ function initRecordSessionPersistence() {
 // cron waves populate — so a warm poll costs ~0 API calls; only a cold first
 // load of the day fetches (bounded, trivial vs the 7500/day budget). This is
 // what lets the 竞彩 SP calculator cover every league you actually bet.
+// V12 W7 — 13 MODEL-scored leagues. JPN_J1 removed: it's out-of-distribution
+// for the European-trained model (diverges ~13pp from the sharp J1 line), so
+// it's served via 💹 市场模式 (Pinnacle de-vig) instead, like cups.
 const TODAY_DEFAULT_LEAGUES = [
   'EPL', 'ESP_LA_LIGA', 'ITA_SERIE_A', 'GER_BUNDESLIGA', 'FRA_LIGUE_1',
   'ENG_CHAMPIONSHIP', 'ESP_SEGUNDA_DIVISION', 'ITA_SERIE_B', 'GER_2_BUNDESLIGA',
   'FRA_LIGUE_2', 'NED_EREDIVISIE', 'PRT_PRIMEIRA_LIGA', 'BEL_PRO_LEAGUE',
-  'JPN_J1',
 ];
 let _todayDebounce = null;
 
