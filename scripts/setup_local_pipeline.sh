@@ -332,9 +332,14 @@ install_job "com.nutmeg.daily_recommend" \
 # unsettled recorded bets in the DB, instead of the 2-league default. Covers the
 # model leagues AND 市场模式 surfaces (J1, cups) the moment a bet is recorded
 # there, with zero API calls on no-pending leagues.
+# --refresh-fixtures (2026-05-31): force a fresh /fixtures pull. The morning
+# odds cron caches each date's fixtures while they're still NS (no result); the
+# 02:00 settle would otherwise read that stale cache and see "0 finished", so a
+# match settled overnight (e.g. the UCL final, decided late) stays pending. The
+# extra calls are cheap (settle window is 3 days × pending leagues only).
 install_job "com.nutmeg.daily_settle" \
   2 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $REPO_ROOT/scripts/rotate_logs.sh || true"
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto --refresh-fixtures && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $REPO_ROOT/scripts/rotate_logs.sh || true"
 
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
 # post-v9 P1#24: automate the P1#19 cross-source-aware gate.

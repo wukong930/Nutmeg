@@ -38,8 +38,13 @@ def _fixture(
     away: str = "Liverpool",
     home_goals: int | None = 2,
     away_goals: int | None = 1,
+    ft_home: int | None = None,
+    ft_away: int | None = None,
 ) -> dict:
-    return {
+    """``home_goals``/``away_goals`` populate fixture["goals"] (= 120' score
+    for AET/PEN). ``ft_home``/``ft_away`` populate score.fulltime (the 90'
+    score) — set them to model a knockout decided in extra time."""
+    fx = {
         "fixture": {
             "id": fid,
             "date": iso_date,
@@ -49,6 +54,9 @@ def _fixture(
         "goals": {"home": home_goals, "away": away_goals},
         "league": {"id": 39},
     }
+    if ft_home is not None or ft_away is not None:
+        fx["score"] = {"fulltime": {"home": ft_home, "away": ft_away}}
+    return fx
 
 
 # ---------- _date_range ----------------------------------------------
@@ -96,6 +104,27 @@ class TestExtractOutcomeRows:
     def test_pen_status_extracts(self):
         rows = _extract_outcome_rows([_fixture(status="PEN")], "EPL")
         assert len(rows) == 1
+
+    def test_cup_knockout_settles_on_90_minute_score(self):
+        """竞彩 settles 胜平负/让球 on the 90' result. A knockout that goes to
+        extra time must use score.fulltime (90'), NOT goals (incl. ET).
+
+        Regression: the UCL final (2026-05-30) settled fine only because ET was
+        scoreless. A 1-1-at-90' / 2-1-after-ET match would otherwise settle as
+        an away-cover when 竞彩 scores it a draw."""
+        rows = _extract_outcome_rows(
+            [_fixture(status="AET", home_goals=2, away_goals=1,  # 120' score
+                      ft_home=1, ft_away=1)],                    # 90' score
+            "UCL",
+        )
+        assert len(rows) == 1
+        assert (rows[0]["home_goals"], rows[0]["away_goals"]) == (1, 1)
+
+    def test_fulltime_absent_falls_back_to_goals(self):
+        """Normal FT matches (no score.fulltime in the payload) keep using
+        goals — back-compat, unchanged behaviour."""
+        rows = _extract_outcome_rows([_fixture(status="FT")], "EPL")
+        assert (rows[0]["home_goals"], rows[0]["away_goals"]) == (2, 1)
 
     @pytest.mark.parametrize("status", [
         "NS",    # Not started

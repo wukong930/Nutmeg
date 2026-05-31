@@ -87,11 +87,19 @@ def _extract_outcome_rows(
         if not (home and away):
             continue
 
+        # 竞彩 settles 胜平负/让球 on the 90-MINUTE result. For cup knockouts
+        # decided in extra time / penalties (status AET / PEN), fixture["goals"]
+        # is the score AFTER extra time, so prefer score.fulltime (the 90' line)
+        # when both legs are present; fall back to goals for normal FT matches
+        # (where fulltime == goals) and partial payloads.
+        ft = (f.get("score") or {}).get("fulltime") or {}
         goals = f.get("goals") or {}
-        hg = goals.get("home")
-        ag = goals.get("away")
+        if ft.get("home") is not None and ft.get("away") is not None:
+            hg, ag = ft["home"], ft["away"]
+        else:
+            hg, ag = goals.get("home"), goals.get("away")
         if hg is None or ag is None:
-            # Status said finished but goals missing → don't fabricate
+            # Status said finished but no 90' score → don't fabricate
             continue
 
         rows.append({
