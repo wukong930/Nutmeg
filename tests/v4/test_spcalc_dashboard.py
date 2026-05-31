@@ -452,3 +452,8 @@ class TestSelfCheckScoreboard:
                   "sb_logloss", "sb_delta", "sb_cal_never", "sb_honest",
                   "sb_accumulating"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+    def test_auto_refreshes_on_visibility(self, html):
+        # Returning to a visible 推荐追溯 refreshes the card via the existing
+        # Visibility API hook (slow-moving data → no polling interval).
+        assert "_todayCurrentTab === 'history' && typeof loadScoreboard" in html

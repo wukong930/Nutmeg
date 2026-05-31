@@ -4759,6 +4759,9 @@ document.addEventListener('visibilitychange', () => {
     _renderStaleLabel();             // immediate update on return
     _startStaleTicker();
     if (_todayCurrentTab === 'today') _startTodayPolling();
+    // V12 W8j — 自我体检 data moves slowly (daily settle / weekly Layer A), so
+    // refresh it on visibility-resume rather than burning a polling interval.
+    else if (_todayCurrentTab === 'history' && typeof loadScoreboard === 'function') loadScoreboard();
   } else {
     _stopTodayPolling();
     _stopStaleTicker();
