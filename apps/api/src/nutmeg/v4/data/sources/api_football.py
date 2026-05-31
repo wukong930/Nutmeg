@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,12 @@ from typing import Any
 import httpx
 
 from nutmeg.config import get_settings
+
+# Transient-failure retry. A single read timeout / reset connection shouldn't
+# abort a whole cron run — the daily settle died on one httpx.ReadTimeout
+# (2026-05-31) and left the UCL final unsettled. 3 attempts with linear backoff.
+_MAX_REQUEST_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = 1.5
 
 
 log = logging.getLogger(__name__)
@@ -87,8 +94,24 @@ def _request(
     if cf.exists() and not refresh:
         return json.loads(cf.read_text())
 
-    with _client() as c:
-        r = c.get(endpoint, params=params)
+    # Retry transient network failures (read timeout / connection reset);
+    # non-network errors (bad status, auth) fall through to raise immediately.
+    last_exc: Exception | None = None
+    r = None
+    for attempt in range(_MAX_REQUEST_ATTEMPTS):
+        try:
+            with _client() as c:
+                r = c.get(endpoint, params=params)
+            break
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            last_exc = exc
+            if attempt + 1 < _MAX_REQUEST_ATTEMPTS:
+                time.sleep(_RETRY_BACKOFF_SECONDS * (attempt + 1))
+    if r is None:
+        raise ApiFootballError(
+            f"{endpoint} network error after {_MAX_REQUEST_ATTEMPTS} attempts: "
+            f"{last_exc!r}"
+        ) from last_exc
     if r.status_code != 200:
         raise ApiFootballError(f"{endpoint} HTTP {r.status_code}: {r.text[:200]}")
     body = r.json()

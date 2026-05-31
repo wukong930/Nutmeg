@@ -12,10 +12,10 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from nutmeg.v4.data.sources import api_football
-
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "api_football"
 
@@ -64,6 +64,73 @@ class TestCachePersistence:
         result = api_football._request("/fixtures", {"date": "2025-05-11"},
                                        cache_dir=tmp_path)
         assert result == canned
+
+
+class _Resp:
+    status_code = 200
+    text = ""
+
+    def json(self):
+        return {"response": [{"ok": 1}], "errors": []}
+
+
+class _FlakyClient:
+    """Context-manager client whose .get() raises ReadTimeout the first
+    ``fail_times`` calls, then returns ``response``. Shared across retries so
+    the call counter persists."""
+
+    def __init__(self, fail_times, response):
+        self.fail_times = fail_times
+        self.response = response
+        self.calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get(self, endpoint, params=None):
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise httpx.ReadTimeout("simulated timeout")
+        return self.response
+
+
+class TestRequestRetry:
+    """V13 — a single transient timeout must not abort the call (the 2026-05-31
+    settle cron died on one httpx.ReadTimeout, leaving the UCL final pending)."""
+
+    def test_retries_then_succeeds(self, tmp_path, monkeypatch):
+        flaky = _FlakyClient(fail_times=2, response=_Resp())
+        monkeypatch.setattr(api_football, "_client", lambda: flaky)
+        monkeypatch.setattr(api_football.time, "sleep", lambda s: None)
+        out = api_football._request("/fixtures", {"date": "a"},
+                                    cache_dir=tmp_path, refresh=True)
+        assert out == [{"ok": 1}]
+        assert flaky.calls == 3   # 2 timeouts + 1 success
+
+    def test_raises_after_max_attempts(self, tmp_path, monkeypatch):
+        flaky = _FlakyClient(fail_times=99, response=_Resp())
+        monkeypatch.setattr(api_football, "_client", lambda: flaky)
+        monkeypatch.setattr(api_football.time, "sleep", lambda s: None)
+        with pytest.raises(api_football.ApiFootballError,
+                           match="network error after 3 attempts"):
+            api_football._request("/fixtures", {"date": "b"},
+                                  cache_dir=tmp_path, refresh=True)
+        assert flaky.calls == 3   # exactly _MAX_REQUEST_ATTEMPTS
+
+    def test_http_error_not_retried(self, tmp_path, monkeypatch):
+        class _Resp500:
+            status_code = 500
+            text = "boom"
+
+        flaky = _FlakyClient(fail_times=0, response=_Resp500())
+        monkeypatch.setattr(api_football, "_client", lambda: flaky)
+        monkeypatch.setattr(api_football.time, "sleep", lambda s: None)
+        with pytest.raises(api_football.ApiFootballError, match="HTTP 500"):
+            api_football._request("/x", {"a": 1}, cache_dir=tmp_path, refresh=True)
+        assert flaky.calls == 1   # HTTP errors are not transient → no retry
 
 
 class TestComputeXiMinutesShare:
