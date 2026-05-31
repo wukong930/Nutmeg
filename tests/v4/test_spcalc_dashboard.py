@@ -273,3 +273,37 @@ class TestTwoBoardToday:
         for k in ("board_intl", "board_intl_hint", "board_jc", "board_jc_hint",
                   "jc_generate", "jc_need_sp", "jc_computing", "jc_recs", "jc_none"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestManualReverseCalc:
+    """V12 W8c — 🧮 手动反推计算器: type Pinnacle 盘口 by hand (incl. the O/U
+    line) → POST /recommend/market-handicap → reverse 让球 + EV. The fallback
+    for fixtures the API never quoted a line for (e.g. some J1 matchdays)."""
+
+    def test_form_present(self, html):
+        assert 'id="manual-reverse"' in html
+        for fld in ("mrev-p1", "mrev-px", "mrev-p2", "mrev-ouline",
+                    "mrev-over", "mrev-under", "mrev-hcap",
+                    "mrev-jh", "mrev-jd", "mrev-ja", "mrev-result"):
+            assert f'id="{fld}"' in html, f"missing input #{fld}"
+
+    def test_handler_defined_and_wired(self, html):
+        assert "async function manualReverseCalc()" in html
+        assert 'onclick="manualReverseCalc()"' in html
+
+    def test_handler_posts_with_ou_line(self, html):
+        # Must send the user's O/U line so the server fits the right total.
+        assert "/recommend/market-handicap" in html
+        assert "ou_line: ouline" in html
+        assert "handicap_home: hcap" in html
+
+    def test_ouline_defaults_to_quarter(self, html):
+        # Pinnacle's J1 main total is usually a quarter line — default 2.25.
+        assert 'id="mrev-ouline" type="number" inputmode="decimal" step="0.25" value="2.25"' in html
+
+    def test_i18n_keys_present_both_locales(self, html):
+        for k in ("mrev_title", "mrev_hint", "mrev_pin1x2", "mrev_ou",
+                  "mrev_hcap_lbl", "mrev_jc_hc", "mrev_calc", "mrev_fair",
+                  "mrev_let_labels", "mrev_1x2_labels", "mrev_err_inputs",
+                  "mrev_err_hcap", "mrev_calculating", "mrev_no_ou"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"

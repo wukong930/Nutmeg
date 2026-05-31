@@ -925,6 +925,59 @@
         杯赛(欧冠/欧联/欧协联 + 五大国内杯 + 世界杯/欧洲杯)+ 日职联(模型未训练·分布外)。一律以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 杯赛淘汰赛: 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。
       </div>
     </div>
+    <!-- V12 W8c — 🧮 手动反推计算器: when the API has no Pinnacle line, type the
+         盘口 by hand → POST /recommend/market-handicap (ou_line-aware) → reverse 让球 + EV. -->
+    <details id="manual-reverse" class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #6366f1">
+      <summary class="font-bold cursor-pointer" data-i18n="mrev_title">🧮 手动反推计算器</summary>
+      <div class="text-xs text-muted mt-1 mb-3" data-i18n="mrev_hint">盘口未开 / 任意场次:从 Pinnacle 读数手填 → 即时反推让球 + EV(不用等 API)。</div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_teams">球队(可选):主 / 客</label>
+          <div class="grid grid-cols-2 gap-2">
+            <input id="mrev-home" type="text" class="w-full px-2 py-1 border rounded text-sm" aria-label="home team">
+            <input id="mrev-away" type="text" class="w-full px-2 py-1 border rounded text-sm" aria-label="away team">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_pin1x2">Pinnacle 1X2:主 / 平 / 客</label>
+          <div class="grid grid-cols-3 gap-2">
+            <input id="mrev-p1" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="2.91" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-px" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="3.27" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-p2" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="2.60" class="w-full px-2 py-1 border rounded text-sm num-display">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_ou">Pinnacle 大小球:盘口线 / 大 / 小</label>
+          <div class="grid grid-cols-3 gap-2">
+            <input id="mrev-ouline" type="number" inputmode="decimal" step="0.25" value="2.25" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-over" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="1.91" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-under" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="1.98" class="w-full px-2 py-1 border rounded text-sm num-display">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_hcap_lbl">主队让球数(整数,-1 = 主让1球)</label>
+          <input id="mrev-hcap" type="number" inputmode="numeric" step="1" value="-1" class="w-28 px-2 py-1 border rounded text-sm num-display">
+        </div>
+        <div>
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_jc_hc">竞彩让球 SP:让胜 / 让平 / 让负</label>
+          <div class="grid grid-cols-3 gap-2">
+            <input id="mrev-jh" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-jd" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-ja" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_jc_1x2">竞彩不让 SP(可选):主 / 平 / 客</label>
+          <div class="grid grid-cols-3 gap-2">
+            <input id="mrev-j1" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-jx" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-j2" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+          </div>
+        </div>
+        <button type="button" onclick="manualReverseCalc()" class="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700" data-i18n="mrev_calc">🧮 反推计算</button>
+        <div id="mrev-result" class="mt-2"></div>
+      </div>
+    </details>
     <div id="cupmkt-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h3 class="font-bold mb-1">
         <span data-i18n="h_cupmkt">💹 市场模式 · 杯赛 + 日职联</span>
@@ -1802,6 +1855,25 @@ const I18N = {
     h_cupmkt:'💹 市场模式 · 杯赛 + 日职联',
     cupmkt_empty:'近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。',
     cupmkt_badge:'市场模式',
+    // V12 W8c — 手动反推计算器
+    mrev_title:       '🧮 手动反推计算器',
+    mrev_hint:        '盘口未开 / 任意场次:从 Pinnacle 读数手填 → 即时反推让球 + EV(不用等 API)。',
+    mrev_teams:       '球队(可选):主 / 客',
+    mrev_pin1x2:      'Pinnacle 1X2:主 / 平 / 客',
+    mrev_ou:          'Pinnacle 大小球:盘口线 / 大 / 小',
+    mrev_hcap_lbl:    '主队让球数(整数,-1 = 主让1球)',
+    mrev_jc_hc:       '竞彩让球 SP:让胜 / 让平 / 让负',
+    mrev_jc_1x2:      '竞彩不让 SP(可选):主 / 平 / 客',
+    mrev_calc:        '🧮 反推计算',
+    mrev_fair:        '公平',
+    mrev_let_labels:  '让胜/让平/让负',
+    mrev_1x2_labels:  '主胜/平/客胜',
+    mrev_hc_head:     '让球盘 · 主让',
+    mrev_1x2_head:    '不让球 1X2',
+    mrev_err_inputs:  '请填 Pinnacle 1X2 三个赔率 (>1.0)',
+    mrev_err_hcap:    '让球数须是 -5..5 的整数',
+    mrev_calculating: '计算中…',
+    mrev_no_ou:       '未填大小球 → 仅用 1X2 拟合(让球略不准)',
     cupmkt_hc_toggle:'▸ 让球 (市场反推 · Pinnacle 1X2+大小球)',
     cupmkt_hc_record:'📌 记录此注',
     cupmkt_hc_recorded:'已记入观测库 (市场让球)',
@@ -2081,6 +2153,25 @@ const I18N = {
     h_cupmkt:'💹 Market mode · Cups + J1',
     cupmkt_empty:'No cup / J1 fixtures with an open line in the next 3 days.',
     cupmkt_badge:'market',
+    // V12 W8c — manual reverse calculator
+    mrev_title:       '🧮 Manual reverse calculator',
+    mrev_hint:        'No line / any match: type the numbers off Pinnacle → instant reverse 让球 + EV (no API wait).',
+    mrev_teams:       'Teams (optional): Home / Away',
+    mrev_pin1x2:      'Pinnacle 1X2: Home / Draw / Away',
+    mrev_ou:          'Pinnacle O/U: line / over / under',
+    mrev_hcap_lbl:    'Home handicap (integer, -1 = home -1)',
+    mrev_jc_hc:       '竞彩 handicap SP: cover / push / against',
+    mrev_jc_1x2:      '竞彩 1X2 SP (optional): H / D / A',
+    mrev_calc:        '🧮 Reverse-calculate',
+    mrev_fair:        'Fair',
+    mrev_let_labels:  'Cover/Push/Against',
+    mrev_1x2_labels:  'Home/Draw/Away',
+    mrev_hc_head:     'Handicap · home',
+    mrev_1x2_head:    '1X2 (no handicap)',
+    mrev_err_inputs:  'Enter all 3 Pinnacle 1X2 odds (>1.0)',
+    mrev_err_hcap:    'Handicap must be an integer in -5..5',
+    mrev_calculating: 'Calculating…',
+    mrev_no_ou:       'No O/U entered → 1X2-only fit (handicap less precise)',
     cupmkt_hc_toggle:'▸ Handicap (market-implied · Pinnacle 1X2+O/U)',
     cupmkt_hc_record:'📌 Record this bet',
     cupmkt_hc_recorded:'logged to observation DB (market handicap)',
@@ -4514,6 +4605,85 @@ function renderWcHandicapSection(p) {
       <button type="button" onclick="switchTab('today'); setTimeout(loadCupMarket, 150);"
               class="px-3 py-1.5 text-xs font-medium bg-amber-600 text-white rounded hover:bg-amber-700"
               data-i18n="wc_hc_goto_market">💹 前往市场模式下世界杯让球 →</button>
+    </div>`;
+}
+
+// V12 W8c — 🧮 手动反推计算器. The market-reverse fit (λ from 1X2 + O/U) is
+// server-side scipy, so 让球 must POST to /recommend/market-handicap (now
+// ou_line-aware). 不让球 1X2 is a pure de-vig → computed client-side.
+async function manualReverseCalc() {
+  const gv = (id) => (document.getElementById(id).value || '').trim();
+  const nv = (id) => { const v = parseFloat(gv(id)); return Number.isFinite(v) ? v : null; };
+  const res = document.getElementById('mrev-result');
+  const fail = (msg) => { res.innerHTML = `<div class="text-xs text-red-600">⚠️ ${msg}</div>`; };
+
+  const p1 = nv('mrev-p1'), px = nv('mrev-px'), p2 = nv('mrev-p2');
+  if (![p1, px, p2].every((v) => v && v > 1.0)) return fail(t('mrev_err_inputs'));
+  const hcap = parseInt(gv('mrev-hcap'), 10);
+  if (!Number.isInteger(hcap) || hcap < -5 || hcap > 5) return fail(t('mrev_err_hcap'));
+  const over = nv('mrev-over'), under = nv('mrev-under');
+  const ouline = nv('mrev-ouline') || 2.5;
+  const jh = nv('mrev-jh'), jd = nv('mrev-jd'), ja = nv('mrev-ja');
+
+  const body = {
+    league: 'MANUAL', date: new Date().toISOString().slice(0, 10),
+    home_team: gv('mrev-home') || '主队', away_team: gv('mrev-away') || '客队',
+    psc_home: p1, psc_draw: px, psc_away: p2,
+    psc_over25: (over && under) ? over : null,
+    psc_under25: (over && under) ? under : null,
+    ou_line: ouline, handicap_home: hcap,
+    odds_handicap_H: jh, odds_handicap_D: jd, odds_handicap_A: ja,
+    record_session: false,
+  };
+  res.innerHTML = `<div class="text-xs text-muted">${t('mrev_calculating')}</div>`;
+  let data;
+  try {
+    const resp = await fetch(`${API}/recommend/market-handicap`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 120)}`);
+    data = await resp.json();
+  } catch (e) { return fail(e.message); }
+
+  // 不让球 1X2: pure 2-way... actually 3-way de-vig, client-side.
+  const inv = [1 / p1, 1 / px, 1 / p2];
+  const s = inv[0] + inv[1] + inv[2];
+  const fair1x2 = inv.map((x) => x / s);
+
+  const fmtEV = (p, o) => {
+    if (!(o && o > 1.0)) return '<span class="text-muted">—</span>';
+    const ev = p * o - 1;
+    const cls = ev >= 0.05 ? 'text-gold font-semibold' : (ev > 0 ? 'text-amber-600' : 'text-muted');
+    return `<span class="${cls}">${(ev * 100).toFixed(1)}%${ev >= 0.05 ? ' ✅' : ''}</span>`;
+  };
+  const row = (label, p, o) => `
+    <div class="grid grid-cols-12 gap-1 text-xs py-1 border-b border-gray-100 last:border-0 items-center">
+      <span class="col-span-3 text-secondary truncate">${label}</span>
+      <span class="col-span-3 num-display text-right">${(p * 100).toFixed(1)}%</span>
+      <span class="col-span-3 num-display text-muted text-right">${(1 / p).toFixed(2)}</span>
+      <span class="col-span-3 text-right">${fmtEV(p, o)}</span>
+    </div>`;
+  const head = `
+    <div class="grid grid-cols-12 gap-1 text-xs font-medium text-muted pb-1 border-b border-gray-200">
+      <span class="col-span-3"></span>
+      <span class="col-span-3 text-right">P</span>
+      <span class="col-span-3 text-right" data-i18n-skip>${t('mrev_fair')}</span>
+      <span class="col-span-3 text-right">EV</span>
+    </div>`;
+  const hcLabels = t('mrev_let_labels').split('/');
+  const x2Labels = t('mrev_1x2_labels').split('/');
+  const hcapLabel = (hcap > 0 ? '+' : '') + hcap;
+  const hcP = data.market_implied_p;
+  res.innerHTML = `
+    <div class="bg-gray-50 dark:bg-gray-800 rounded p-2 space-y-2">
+      <div class="text-xs font-medium">${t('mrev_hc_head')} ${hcapLabel} · O/U ${ouline}</div>
+      ${head}
+      ${row(hcLabels[0], hcP[0], jh)}${row(hcLabels[1], hcP[1], jd)}${row(hcLabels[2], hcP[2], ja)}
+      <div class="text-xs font-medium pt-1" data-i18n="mrev_1x2_head">不让球 1X2</div>
+      ${head}
+      ${row(x2Labels[0], fair1x2[0], nv('mrev-j1'))}${row(x2Labels[1], fair1x2[1], nv('mrev-jx'))}${row(x2Labels[2], fair1x2[2], nv('mrev-j2'))}
+      <div class="text-xs text-muted pt-1">${(over && under) ? '' : '⚠️ ' + t('mrev_no_ou')}</div>
     </div>`;
 }
 
