@@ -233,6 +233,43 @@ class TestLoadCalibrationPairs:
         pairs_10w = load_calibration_pairs(db, weeks=10)
         assert len(pairs_2w) < len(pairs_10w)
 
+    def test_includes_model_board_prediction_log(self, tmp_path: Path):
+        """V12 W8j — Layer A also feeds off league_predictions (the big
+        model-board stream). model_mode=0 rows only: market-mode p_* are the
+        Pinnacle de-vig, not model output, and must not calibrate the model."""
+        from nutmeg.v4.observation.prediction_log import (
+            record_league_prediction,
+            settle_league_predictions,
+        )
+        db = tmp_path / "obs.db"
+        with open_db(db):
+            pass  # init base schema
+        now = dt.datetime.now(dt.UTC)
+        recent = (now - dt.timedelta(days=3)).date().isoformat()
+
+        def mk(home: str, away: str, market_mode: bool) -> None:
+            record_league_prediction(str(db), {
+                "date": recent, "league": "ESP_SEGUNDA_DIVISION",
+                "home_team": home, "away_team": away, "kickoff_utc": None,
+                "market_mode": market_mode,
+                "p_home_1x2": 0.5, "p_draw_1x2": 0.3, "p_away_1x2": 0.2,
+                "psc_home": 2.0, "psc_draw": 3.4, "psc_away": 3.6,
+            })
+        mk("Aaa", "Bbb", False)   # model-mode  → feeds calibration
+        mk("Ccc", "Ddd", True)    # market-mode → must be excluded
+        fx = [
+            {"teams": {"home": {"name": n[0]}, "away": {"name": n[1]}},
+             "fixture": {"status": {"short": "FT"}},
+             "score": {"fulltime": {"home": 2, "away": 0}},
+             "goals": {"home": 2, "away": 0}}
+            for n in [("Aaa", "Bbb"), ("Ccc", "Ddd")]
+        ]
+        settle_league_predictions(str(db), fetch_fixtures=lambda d, lg: fx,
+                                  today=now.date())
+        keys = {(p.home_team, p.away_team) for p in load_calibration_pairs(db, weeks=4)}
+        assert ("Aaa", "Bbb") in keys       # model-mode prediction feeds Layer A
+        assert ("Ccc", "Ddd") not in keys   # market-mode (de-vig) excluded
+
 
 class TestSplitTrainHoldout:
     def test_holdout_is_most_recent(self):

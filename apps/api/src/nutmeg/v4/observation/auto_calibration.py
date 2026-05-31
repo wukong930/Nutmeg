@@ -243,6 +243,46 @@ def load_calibration_pairs(
                 p_away=float(r["p_away_1x2"]),
                 outcome=outcome,
             ))
+
+        # V12 W8j — also feed Layer A the model-board prediction log
+        # (nutmeg-predict-log). It is by FAR the largest settled-prediction
+        # stream (every model-board match, not just the few 竞彩 bets), so it
+        # is what finally gives the calibration fit enough samples to clear the
+        # ship-gate. Only model_mode=0 rows: market-mode p_* are the Pinnacle
+        # de-vig, NOT model output, and must never calibrate the model. Deduped
+        # against the 竞彩 rows above (a match bet on AND auto-logged counts
+        # once — same model P either way).
+        from nutmeg.v4.observation.prediction_log import LEAGUE_PREDICTIONS_SCHEMA
+        conn.execute(LEAGUE_PREDICTIONS_SCHEMA)
+        seen = {(r.match_date, r.league, r.home_team, r.away_team) for r in rows}
+        cur2 = conn.execute(
+            """
+            SELECT match_date, league, home_team, away_team,
+                   p_home, p_draw, p_away, home_goals, away_goals
+            FROM league_predictions
+            WHERE outcome IS NOT NULL AND market_mode = 0 AND match_date >= ?
+            ORDER BY match_date ASC
+            """,
+            (cutoff.date().isoformat(),),
+        )
+        for r in cur2.fetchall():
+            key = (r["match_date"], r["league"], r["home_team"], r["away_team"])
+            if key in seen:
+                continue
+            seen.add(key)
+            hg, ag = r["home_goals"], r["away_goals"]
+            outcome = 0 if hg > ag else (2 if hg < ag else 1)
+            rows.append(CalibrationPair(
+                match_date=r["match_date"],
+                league=r["league"],
+                home_team=r["home_team"],
+                away_team=r["away_team"],
+                p_home=float(r["p_home"]),
+                p_draw=float(r["p_draw"]),
+                p_away=float(r["p_away"]),
+                outcome=outcome,
+            ))
+    rows.sort(key=lambda p: p.match_date)
     return rows
 
 
