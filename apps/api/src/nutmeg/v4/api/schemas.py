@@ -422,10 +422,11 @@ class MarketHandicapRequest(BaseModel):
     cup) for tracking.
 
     The server RECOMPUTES the market-implied 让球 P from the Pinnacle inputs
-    (de-vig 1X2 + O/U 2.5) — it never trusts a client-sent probability. For each
-    outcome carrying a 竞彩 SP it computes EV, picks the highest-EV leg, and
-    (when record_session=True AND the server DB gate is on) records it tagged
-    model_type=market_handicap so AB/ROI reports slice it apart from model bets."""
+    (de-vig 1X2 + O/U at ``ou_line``) — it never trusts a client-sent
+    probability. For each outcome carrying a 竞彩 SP it computes EV, picks the
+    highest-EV leg, and (when record_session=True AND the server DB gate is on)
+    records it tagged model_type=market_handicap so AB/ROI reports slice it
+    apart from model bets."""
     league: str
     date: date
     home_team: str
@@ -435,6 +436,12 @@ class MarketHandicapRequest(BaseModel):
     psc_away: float
     psc_over25: float | None = None
     psc_under25: float | None = None
+    # Asian total line the over/under prices are quoted AT. Pinnacle's main J1
+    # total is often a quarter line (2.25 / 2.75), not 2.5; the server anchors
+    # λ_total to THIS line (push counted as half). Treating a 2.25 line as 2.5
+    # biases λ_total ~+0.22 goals. Default 2.5 keeps existing callers unchanged;
+    # the over/under value is simply the price at ou_line.
+    ou_line: float = Field(2.5, gt=0.0)
     handicap_home: int
     odds_handicap_H: float | None = None
     odds_handicap_D: float | None = None

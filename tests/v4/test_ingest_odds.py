@@ -29,6 +29,7 @@ from nutmeg.v4.data.odds_parser import (
     BET_MATCH_WINNER,
     PINNACLE_BOOKMAKER_ID,
     extract_1x2_odds,
+    extract_over_under,
     extract_over_under_25,
     fixture_envelope_to_csv_row,
 )
@@ -89,6 +90,27 @@ def _bookmaker_with_1x2_and_ou(
             {"value": "Under 2.5", "odd": under},
             {"value": "Over 1.5", "odd": "1.40"},  # other lines ignored
             {"value": "Under 1.5", "odd": "2.80"},
+        ],
+    })
+    return bm
+
+
+def _bookmaker_quarter_ou_only(
+    *, book_id: int = PINNACLE_BOOKMAKER_ID,
+) -> dict:
+    """V12 W8b — an Asian-only ladder: main total = 2.25, NO 2.5 line.
+    Mirrors Pinnacle's J1 quote where 'Over 2.5' simply isn't offered."""
+    bm = _bookmaker_with_1x2(book_id=book_id)
+    bm["bets"].append({
+        "id": 5,
+        "name": "Goals Over/Under",
+        "values": [
+            {"value": "Over 2.0", "odd": "1.63"},
+            {"value": "Under 2.0", "odd": "2.38"},
+            {"value": "Over 2.25", "odd": "1.909"},   # main (most balanced)
+            {"value": "Under 2.25", "odd": "1.980"},
+            {"value": "Over 2.75", "odd": "2.59"},
+            {"value": "Under 2.75", "odd": "1.54"},
         ],
     })
     return bm
@@ -189,6 +211,34 @@ class TestExtractOU25:
         assert extract_over_under_25(env) is None
 
 
+# ---------- extract_over_under (main line, V12 W8b) -------------------
+
+class TestExtractOverUnderMainLine:
+    def test_prefers_2_5_when_present(self):
+        env = _envelope(bookmakers=[_bookmaker_with_1x2_and_ou(over="2.05", under="1.80")])
+        assert extract_over_under(env, PINNACLE_BOOKMAKER_ID) == (2.5, 2.05, 1.80)
+
+    def test_falls_back_to_most_balanced_line(self):
+        # No 2.5 quoted → pick the line whose over/under are most even (2.25).
+        env = _envelope(bookmakers=[_bookmaker_quarter_ou_only()])
+        line, over, under = extract_over_under(env, PINNACLE_BOOKMAKER_ID)
+        assert line == 2.25
+        assert (over, under) == (1.909, 1.980)
+
+    def test_incomplete_pair_skipped(self):
+        bm = {
+            "id": PINNACLE_BOOKMAKER_ID, "name": "Pinnacle",
+            "bets": [{
+                "id": 5, "name": "Goals Over/Under",
+                "values": [{"value": "Over 2.25", "odd": "1.91"}],  # no under
+            }],
+        }
+        assert extract_over_under(_envelope(bookmakers=[bm])) is None
+
+    def test_missing_bookmaker_returns_none(self):
+        assert extract_over_under(_envelope(bookmakers=[])) is None
+
+
 # ---------- fixture_envelope_to_csv_row -------------------------------
 
 class TestFixtureEnvelopeToRow:
@@ -233,6 +283,28 @@ class TestFixtureEnvelopeToRow:
         assert row is not None
         assert "psc_over25" not in row
         assert "psc_under25" not in row
+        assert "ou_line" not in row  # no O/U → no line stamped
+
+    def test_2_5_line_stamps_ou_line_2_5(self):
+        env = _envelope(bookmakers=[_bookmaker_with_1x2_and_ou(over="2.05", under="1.80")])
+        fixture_record = {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+                          "teams": {"home": {"name": "A"}, "away": {"name": "B"}}}
+        row = fixture_envelope_to_csv_row(fixture_record, env, "EPL")
+        # 2.5 present → unchanged psc + ou_line == 2.5 (validated path intact).
+        assert row["psc_over25"] == 2.05
+        assert row["psc_under25"] == 1.80
+        assert row["ou_line"] == 2.5
+
+    def test_quarter_only_falls_back_to_main_line(self):
+        """V12 W8b — when 2.5 is absent, capture the main (2.25) line so the
+        market-reverse 让球 keeps an O/U anchor instead of a weaker 1X2 fit."""
+        env = _envelope(bookmakers=[_bookmaker_quarter_ou_only()])
+        fixture_record = {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+                          "teams": {"home": {"name": "A"}, "away": {"name": "B"}}}
+        row = fixture_envelope_to_csv_row(fixture_record, env, "JPN_J1")
+        assert row["ou_line"] == 2.25
+        assert row["psc_over25"] == 1.909
+        assert row["psc_under25"] == 1.980
 
     def test_no_1x2_emits_pending_row_when_not_required(self):
         # V12 W6 — require_1x2_odds=False keeps the fixture as a 待开盘 row

@@ -53,6 +53,10 @@ CSV_COLUMNS = [
     "date", "league", "home_team", "away_team",
     "psc_home", "psc_draw", "psc_away",
     "psc_over25", "psc_under25",
+    # Asian total line psc_over25/under25 belong to (2.5 when quoted, else the
+    # book's main line — e.g. a 2.25 quarter total). The market-reverse 让球
+    # anchors λ_total to THIS line; default 2.5 keeps every prior row valid.
+    "ou_line",
     # Lottery-specific odds left blank — the user fills these from the
     # 竞彩 terminal at bet time (浮动 SP).
     "handicap_home",

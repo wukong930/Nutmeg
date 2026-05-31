@@ -17,6 +17,7 @@ from nutmeg.v4.model.dixon_coles import (
 from nutmeg.v4.model.market_handicap import (
     DEFAULT_MAX_GOALS,
     DEFAULT_RHO,
+    asian_total_over_prob,
     devig_over,
     fit_lambdas,
     implied_handicap_lines,
@@ -119,3 +120,92 @@ class TestImpliedHandicapLines:
             for ln in implied_handicap_lines(*target, devig_over(1.6, 2.4))
         }
         assert hi_total[-1] > base[-1]
+
+
+class TestAsianTotalOverProb:
+    """V12 W8b — push/quarter-aware Asian total. The serving path historically
+    hard-coded a 2.5 line; Pinnacle's main J1 total is often 2.25."""
+
+    GRIDS = [
+        score_grid(lh, la, rho=DEFAULT_RHO, max_goals=DEFAULT_MAX_GOALS)
+        for lh, la in [(1.2, 1.1), (1.8, 0.7), (0.9, 1.5), (1.35, 1.27)]
+    ]
+    LINES = [1.5, 2.0, 2.25, 2.5, 2.75, 3.0]
+
+    def _under(self, grid, line):
+        # symmetric: win=under, push=half
+        import math
+        tot: dict[int, float] = {}
+        n = grid.shape[0]
+        for i in range(n):
+            for j in range(n):
+                tot[i + j] = tot.get(i + j, 0.0) + float(grid[i, j])
+
+        def single(ell):
+            return sum(p * (1.0 if k < ell else 0.5 if k == ell else 0.0)
+                       for k, p in tot.items())
+        frac = line - math.floor(line)
+        if abs(frac - 0.25) < 1e-9 or abs(frac - 0.75) < 1e-9:
+            return 0.5 * single(line - 0.25) + 0.5 * single(line + 0.25)
+        return single(line)
+
+    def test_over_plus_under_is_one(self):
+        """Push-as-half convention ⇒ over + under == 1 at EVERY line."""
+        for g in self.GRIDS:
+            for line in self.LINES:
+                assert (
+                    asian_total_over_prob(g, line) + self._under(g, line)
+                    == pytest.approx(1.0, abs=1e-12)
+                )
+
+    def test_half_line_matches_grid_to_over_under(self):
+        """Back-compat: at 2.5 (and any half line) identical to the old
+        threshold function — the default serving path is unchanged."""
+        for g in self.GRIDS:
+            for line in (1.5, 2.5, 3.5):
+                assert asian_total_over_prob(g, line) == pytest.approx(
+                    grid_to_over_under(g, line=line)[0], abs=1e-12
+                )
+
+    def test_quarter_line_is_mean_of_neighbours(self):
+        """2.25 = ½·(2.0 line) + ½·(2.5 line)."""
+        for g in self.GRIDS:
+            mid = 0.5 * (asian_total_over_prob(g, 2.0)
+                         + asian_total_over_prob(g, 2.5))
+            assert asian_total_over_prob(g, 2.25) == pytest.approx(mid, abs=1e-12)
+
+    def test_whole_line_adds_half_push(self):
+        """At a whole line the total==line mass is a push (half), so the over
+        prob sits strictly above the bare P(total > line)."""
+        for g in self.GRIDS:
+            bare = grid_to_over_under(g, line=2.0)[0]  # strict total > 2
+            assert asian_total_over_prob(g, 2.0) >= bare  # adds 0.5·P(==2)
+
+    def test_monotonic_decreasing_in_line(self):
+        for g in self.GRIDS:
+            vals = [asian_total_over_prob(g, x) for x in self.LINES]
+            assert all(a >= b - 1e-12 for a, b in zip(vals, vals[1:], strict=False))
+
+
+class TestQuarterLineHandicap:
+    """The ou_line argument must actually change the fitted handicap — and the
+    2.25 fix must lower λ_total vs the (biased) 2.5 assumption."""
+
+    def test_2_25_differs_from_2_5(self):
+        th = _devig_1x2(2.91, 3.27, 2.6)          # 清水 (updated line)
+        p_over = devig_over(1.909, 1.980)         # main total = 2.25
+        at_225 = {ln[0]: ln[1] for ln in
+                  implied_handicap_lines(*th, p_over, ou_line=2.25)}
+        at_250 = {ln[0]: ln[1] for ln in
+                  implied_handicap_lines(*th, p_over, ou_line=2.5)}
+        # Treating 2.25 as 2.5 inflates λ_total → over-states 主队让胜 at −1.
+        assert at_250[-1] > at_225[-1]
+        # The validated 2.25 number (interactively reproduced).
+        assert at_225[-1] == pytest.approx(0.143, abs=0.01)
+
+    def test_2_25_lowers_lambda_total(self):
+        th = _devig_1x2(2.91, 3.27, 2.6)
+        p_over = devig_over(1.909, 1.980)
+        lh25, la25 = fit_lambdas(*th, p_over, ou_line=2.5)
+        lh225, la225 = fit_lambdas(*th, p_over, ou_line=2.25)
+        assert (lh225 + la225) < (lh25 + la25)

@@ -141,6 +141,75 @@ def extract_over_under_25(
     return over, under
 
 
+def _ou_ladder(bet: dict) -> dict[float, dict]:
+    """``{line: {"over": odd, "under": odd}}`` from a Goals Over/Under bet.
+
+    API-Football labels look like ``"Over 2.25"`` / ``"Under 2.5"``; Pinnacle
+    exposes the full quarter-line ladder (1.5, 1.75, 2.0, 2.25, 2.5, 2.75, …).
+    """
+    ladder: dict[float, dict] = {}
+    for entry in bet.get("values", []):
+        label = entry.get("value", "")
+        try:
+            odd = float(entry.get("odd"))
+        except (TypeError, ValueError):
+            continue
+        if odd <= 1.0:
+            continue
+        if label.startswith("Over "):
+            side, num = "over", label[5:]
+        elif label.startswith("Under "):
+            side, num = "under", label[6:]
+        else:
+            continue
+        try:
+            line = float(num)
+        except ValueError:
+            continue
+        ladder.setdefault(line, {})[side] = odd
+    return ladder
+
+
+def extract_over_under(
+    envelope: dict,
+    bookmaker_id: int = PINNACLE_BOOKMAKER_ID,
+) -> Optional[tuple[float, float, float]]:
+    """Pull ``(line, over, under)`` for the sharp book's MAIN total line.
+
+    Prefers the 2.5 line — so ``psc_over25``/``psc_under25`` and the validated
+    market-reverse serving path stay byte-identical whenever it's quoted. Falls
+    back to the most-balanced complete pair (smallest ``|1/over − 1/under|`` —
+    the line the book centres its money on) when 2.5 is absent. On a quarter
+    total (2.25 / 2.75) that pivot is the sharpest anchor; proven on real
+    Pinnacle ladders to imply the same λ_total as the 2.5 line to <0.1pp, so the
+    fallback only ADDS coverage for fixtures that lack a 2.5 line — it never
+    moves a fixture that already had one.
+
+    Returns None when the book quotes no complete Over/Under pair.
+    """
+    bm = _find_bookmaker(envelope, bookmaker_id)
+    if bm is None:
+        return None
+    bet = _find_bet(bm, BET_GOALS_OVER_UNDER)
+    if bet is None:
+        return None
+    complete = {
+        ln: d for ln, d in _ou_ladder(bet).items()
+        if "over" in d and "under" in d
+    }
+    if not complete:
+        return None
+    if 2.5 in complete:
+        d = complete[2.5]
+        return 2.5, d["over"], d["under"]
+    line = min(
+        complete,
+        key=lambda ln: abs(1.0 / complete[ln]["over"] - 1.0 / complete[ln]["under"]),
+    )
+    d = complete[line]
+    return line, d["over"], d["under"]
+
+
 def fixture_envelope_to_csv_row(
     fixture_record: dict,
     odds_envelope: Optional[dict],
@@ -205,8 +274,22 @@ def fixture_envelope_to_csv_row(
     if odds_envelope is not None:
         ou = extract_over_under_25(odds_envelope, sharp_bookmaker_id)
         if ou is not None:
+            # 2.5 quoted — keep the model's "over 2.5" feature pure + the
+            # validated reverse path unchanged.
             row["psc_over25"] = ou[0]
             row["psc_under25"] = ou[1]
+            row["ou_line"] = 2.5
+        else:
+            # 2.5 absent (thin / Asian-only book) — fall back to the main line
+            # so the market-reverse 让球 still has an O/U anchor instead of
+            # degrading to a 1X2-only fit. ou_line tells the server which line
+            # these prices belong to (quarter lines handled correctly).
+            main = extract_over_under(odds_envelope, sharp_bookmaker_id)
+            if main is not None:
+                line, over, under = main
+                row["psc_over25"] = over
+                row["psc_under25"] = under
+                row["ou_line"] = line
     return row
 
 
@@ -219,5 +302,6 @@ __all__ = [
     "BET_ASIAN_HANDICAP",
     "extract_1x2_odds",
     "extract_over_under_25",
+    "extract_over_under",
     "fixture_envelope_to_csv_row",
 ]

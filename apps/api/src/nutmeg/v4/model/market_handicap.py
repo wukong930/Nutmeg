@@ -34,13 +34,14 @@ reverse-mapped goal distribution. See tests/v4/test_market_handicap.py.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from scipy.optimize import minimize
 
 from nutmeg.v4.model.dixon_coles import (
     grid_to_1x2,
     grid_to_handicap_1x2,
-    grid_to_over_under,
     score_grid,
 )
 
@@ -77,6 +78,47 @@ def devig_over(odds_over, odds_under) -> float | None:
     return inv_o / (inv_o + inv_u)
 
 
+def asian_total_over_prob(grid: np.ndarray, line: float) -> float:
+    """P(over) at any Asian total ``line`` from a Dixon-Coles score grid,
+    counting a push (stake refunded) as half a win.
+
+    Handles the three Asian-line families 竞彩/Pinnacle actually quote:
+
+      - half line  (…, 2.5, 3.5): no push — ``P(total > line)``.
+      - whole line (…, 2.0, 3.0): pushes when ``total == line`` — adds
+        ``0.5·P(==line)``.
+      - quarter line (…, 2.25, 2.75): the stake splits 50/50 across the two
+        neighbouring lines (2.25 = ½·2.0 + ½·2.5), so the over prob is the mean
+        of those two single-line values.
+
+    Why this matters: :func:`fit_lambdas` anchors λ_total to this number.
+    Treating a 2.25 line as a 2.5 line (the old hard-coded assumption) biases
+    λ_total high — on a typical J1 total by ~+0.22 goals, shifting the 让球 P by
+    ~1pp. The push-as-half convention makes ``over + under == 1`` at every line,
+    consistent with the 2-way de-vig in :func:`devig_over`.
+
+    Reduces EXACTLY to ``grid_to_over_under(grid, line)[0]`` at half lines, so
+    the default-2.5 serving path is unchanged.
+    """
+    tot: dict[int, float] = {}
+    n = grid.shape[0]
+    for i in range(n):
+        for j in range(n):
+            tot[i + j] = tot.get(i + j, 0.0) + float(grid[i, j])
+
+    def _single(ell: float) -> float:
+        # A push (total == ell, only possible at whole lines) counts as half.
+        return sum(
+            p * (1.0 if k > ell else 0.5 if k == ell else 0.0)
+            for k, p in tot.items()
+        )
+
+    frac = line - math.floor(line)
+    if abs(frac - 0.25) < 1e-9 or abs(frac - 0.75) < 1e-9:
+        return 0.5 * _single(line - 0.25) + 0.5 * _single(line + 0.25)
+    return _single(line)
+
+
 def fit_lambdas(
     p_home: float,
     p_draw: float,
@@ -104,7 +146,7 @@ def fit_lambdas(
         ph, pd_, pa = grid_to_1x2(grid)
         err = _W_1X2 * ((ph - th[0]) ** 2 + (pd_ - th[1]) ** 2 + (pa - th[2]) ** 2)
         if p_over is not None:
-            over, _ = grid_to_over_under(grid, line=ou_line)
+            over = asian_total_over_prob(grid, ou_line)
             err += _W_OU * (over - p_over) ** 2
         return float(err)
 
@@ -152,6 +194,7 @@ __all__ = [
     "DEFAULT_MAX_GOALS",
     "DEFAULT_LINES",
     "devig_over",
+    "asian_total_over_prob",
     "fit_lambdas",
     "implied_handicap_lines",
 ]

@@ -1337,9 +1337,12 @@ def _model_board_handicap_lines(f, model_grid, corr) -> list[HandicapLineProb]:
         try:
             from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
             p_over = devig_over(getattr(f, "psc_over25", None), getattr(f, "psc_under25", None))
+            ou_line = float(getattr(f, "ou_line", None) or 2.5)
             return [
                 HandicapLineProb(line=ln, p_home=ph, p_draw=pd_, p_away=pa)
-                for ln, ph, pd_, pa in implied_handicap_lines(fair[0], fair[1], fair[2], p_over)
+                for ln, ph, pd_, pa in implied_handicap_lines(
+                    fair[0], fair[1], fair[2], p_over, ou_line=ou_line
+                )
             ]
         except Exception:  # noqa: BLE001
             import logging
@@ -1513,10 +1516,12 @@ def _market_handicap_lines(fair, r: dict) -> list[HandicapLineProb]:
     try:
         from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
         p_over = devig_over(r.get("psc_over25"), r.get("psc_under25"))
+        ou_line = float(r.get("ou_line") or 2.5)
         return [
             HandicapLineProb(line=line, p_home=ph, p_draw=pd_, p_away=pa)
             for line, ph, pd_, pa in implied_handicap_lines(
-                float(fair[0]), float(fair[1]), float(fair[2]), p_over
+                float(fair[0]), float(fair[1]), float(fair[2]), p_over,
+                ou_line=ou_line,
             )
         ]
     except Exception:  # noqa: BLE001
@@ -1634,7 +1639,9 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
         )
     from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
     p_over = devig_over(req.psc_over25, req.psc_under25)
-    lines = implied_handicap_lines(fair[0], fair[1], fair[2], p_over)
+    lines = implied_handicap_lines(
+        fair[0], fair[1], fair[2], p_over, ou_line=req.ou_line
+    )
     row = next((ln for ln in lines if ln[0] == req.handicap_home), None)
     if row is None:
         raise HTTPException(
