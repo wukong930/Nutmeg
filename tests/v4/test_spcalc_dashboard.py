@@ -307,3 +307,24 @@ class TestManualReverseCalc:
                   "mrev_let_labels", "mrev_1x2_labels", "mrev_err_inputs",
                   "mrev_err_hcap", "mrev_calculating", "mrev_no_ou"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+    # V12 W8d — 📌 记一笔 (record the manual bet to the observation DB)
+    def test_record_button_and_league_field(self, html):
+        assert 'id="mrev-record-btn"' in html
+        assert 'onclick="manualReverseRecord()"' in html
+        assert 'id="mrev-league"' in html        # real league → auto-settle
+        assert 'id="mrev-record-status"' in html
+
+    def test_record_handler_posts_with_record_flag(self, html):
+        assert "function _mrevBuildBody(record)" in html
+        assert "async function manualReverseRecord()" in html
+        assert "record_session: record" in html
+        # records the real league (not the throwaway 'MANUAL' compute sentinel)
+        assert "record ? (gv('mrev-league') || 'MANUAL') : 'MANUAL'" in html
+        # honest feedback when the server-side gate is off
+        assert "data.recorded" in html
+
+    def test_record_i18n_both_locales(self, html):
+        for k in ("mrev_record", "mrev_record_ok", "mrev_record_off",
+                  "mrev_league_lbl"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"

@@ -939,6 +939,10 @@
           </div>
         </div>
         <div>
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_league_lbl">联赛代码(记一笔自动结算需要,如 JPN_J1)</label>
+          <input id="mrev-league" type="text" value="JPN_J1" class="w-40 px-2 py-1 border rounded text-sm" aria-label="league code">
+        </div>
+        <div>
           <label class="text-xs text-secondary block mb-1" data-i18n="mrev_pin1x2">Pinnacle 1X2:主 / 平 / 客</label>
           <div class="grid grid-cols-3 gap-2">
             <input id="mrev-p1" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="2.91" class="w-full px-2 py-1 border rounded text-sm num-display">
@@ -974,7 +978,11 @@
             <input id="mrev-j2" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
           </div>
         </div>
-        <button type="button" onclick="manualReverseCalc()" class="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700" data-i18n="mrev_calc">🧮 反推计算</button>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" onclick="manualReverseCalc()" class="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700" data-i18n="mrev_calc">🧮 反推计算</button>
+          <button type="button" id="mrev-record-btn" onclick="manualReverseRecord()" class="hidden px-4 py-2 text-sm font-medium bg-amber-600 text-white rounded hover:bg-amber-700" data-i18n="mrev_record">📌 记一笔(写入追踪库)</button>
+          <span id="mrev-record-status" class="text-xs"></span>
+        </div>
         <div id="mrev-result" class="mt-2"></div>
       </div>
     </details>
@@ -1874,6 +1882,10 @@ const I18N = {
     mrev_err_hcap:    '让球数须是 -5..5 的整数',
     mrev_calculating: '计算中…',
     mrev_no_ou:       '未填大小球 → 仅用 1X2 拟合(让球略不准)',
+    mrev_league_lbl:  '联赛代码(记一笔自动结算需要,如 JPN_J1)',
+    mrev_record:      '📌 记一笔(写入追踪库)',
+    mrev_record_ok:   '✅ 已记录',
+    mrev_record_off:  '⚠️ 未写入:服务端记录开关未开',
     cupmkt_hc_toggle:'▸ 让球 (市场反推 · Pinnacle 1X2+大小球)',
     cupmkt_hc_record:'📌 记录此注',
     cupmkt_hc_recorded:'已记入观测库 (市场让球)',
@@ -2172,6 +2184,10 @@ const I18N = {
     mrev_err_hcap:    'Handicap must be an integer in -5..5',
     mrev_calculating: 'Calculating…',
     mrev_no_ou:       'No O/U entered → 1X2-only fit (handicap less precise)',
+    mrev_league_lbl:  'League code (needed for auto-settle on record, e.g. JPN_J1)',
+    mrev_record:      '📌 Record this bet (to tracker)',
+    mrev_record_ok:   '✅ Recorded',
+    mrev_record_off:  '⚠️ Not written: server recording gate is off',
     cupmkt_hc_toggle:'▸ Handicap (market-implied · Pinnacle 1X2+O/U)',
     cupmkt_hc_record:'📌 Record this bet',
     cupmkt_hc_recorded:'logged to observation DB (market handicap)',
@@ -4611,30 +4627,41 @@ function renderWcHandicapSection(p) {
 // V12 W8c — 🧮 手动反推计算器. The market-reverse fit (λ from 1X2 + O/U) is
 // server-side scipy, so 让球 must POST to /recommend/market-handicap (now
 // ou_line-aware). 不让球 1X2 is a pure de-vig → computed client-side.
-async function manualReverseCalc() {
+// V12 W8d — shared body builder so 反推计算 and 📌 记一笔 read the same inputs.
+function _mrevBuildBody(record) {
   const gv = (id) => (document.getElementById(id).value || '').trim();
   const nv = (id) => { const v = parseFloat(gv(id)); return Number.isFinite(v) ? v : null; };
-  const res = document.getElementById('mrev-result');
-  const fail = (msg) => { res.innerHTML = `<div class="text-xs text-red-600">⚠️ ${msg}</div>`; };
-
   const p1 = nv('mrev-p1'), px = nv('mrev-px'), p2 = nv('mrev-p2');
-  if (![p1, px, p2].every((v) => v && v > 1.0)) return fail(t('mrev_err_inputs'));
+  if (![p1, px, p2].every((v) => v && v > 1.0)) return { ok: false, msg: t('mrev_err_inputs') };
   const hcap = parseInt(gv('mrev-hcap'), 10);
-  if (!Number.isInteger(hcap) || hcap < -5 || hcap > 5) return fail(t('mrev_err_hcap'));
+  if (!Number.isInteger(hcap) || hcap < -5 || hcap > 5) return { ok: false, msg: t('mrev_err_hcap') };
   const over = nv('mrev-over'), under = nv('mrev-under');
   const ouline = nv('mrev-ouline') || 2.5;
   const jh = nv('mrev-jh'), jd = nv('mrev-jd'), ja = nv('mrev-ja');
-
-  const body = {
-    league: 'MANUAL', date: new Date().toISOString().slice(0, 10),
-    home_team: gv('mrev-home') || '主队', away_team: gv('mrev-away') || '客队',
-    psc_home: p1, psc_draw: px, psc_away: p2,
-    psc_over25: (over && under) ? over : null,
-    psc_under25: (over && under) ? under : null,
-    ou_line: ouline, handicap_home: hcap,
-    odds_handicap_H: jh, odds_handicap_D: jd, odds_handicap_A: ja,
-    record_session: false,
+  return {
+    ok: true, p1, px, p2, hcap, ouline, over, under, jh, jd, ja,
+    body: {
+      // 记一笔 needs a real league so auto-settle can fetch the result; a bare
+      // compute call stays 'MANUAL' (it's never recorded anyway).
+      league: record ? (gv('mrev-league') || 'MANUAL') : 'MANUAL',
+      date: new Date().toISOString().slice(0, 10),
+      home_team: gv('mrev-home') || '主队', away_team: gv('mrev-away') || '客队',
+      psc_home: p1, psc_draw: px, psc_away: p2,
+      psc_over25: (over && under) ? over : null,
+      psc_under25: (over && under) ? under : null,
+      ou_line: ouline, handicap_home: hcap,
+      odds_handicap_H: jh, odds_handicap_D: jd, odds_handicap_A: ja,
+      record_session: record,
+    },
   };
+}
+
+async function manualReverseCalc() {
+  const res = document.getElementById('mrev-result');
+  const fail = (msg) => { res.innerHTML = `<div class="text-xs text-red-600">⚠️ ${msg}</div>`; };
+  const built = _mrevBuildBody(false);
+  if (!built.ok) return fail(built.msg);
+  const { p1, px, p2, hcap, ouline, over, under, jh, jd, ja, body } = built;
   res.innerHTML = `<div class="text-xs text-muted">${t('mrev_calculating')}</div>`;
   let data;
   try {
@@ -4685,6 +4712,39 @@ async function manualReverseCalc() {
       ${row(x2Labels[0], fair1x2[0], nv('mrev-j1'))}${row(x2Labels[1], fair1x2[1], nv('mrev-jx'))}${row(x2Labels[2], fair1x2[2], nv('mrev-j2'))}
       <div class="text-xs text-muted pt-1">${(over && under) ? '' : '⚠️ ' + t('mrev_no_ou')}</div>
     </div>`;
+  // Calc succeeded → offer 📌 记一笔 (records the server-chosen best-EV leg).
+  document.getElementById('mrev-record-btn').classList.remove('hidden');
+  document.getElementById('mrev-record-status').innerHTML = '';
+}
+
+// V12 W8d — 📌 记一笔: re-POST with record_session=true so the manual bet lands
+// in the observation DB (model_type=market_handicap) and the existing
+// auto-settle / ROI pipeline tracks it. Reuses the server's env+DB gate: if the
+// gate is off, recorded=false and we say so. Records the highest-EV leg, same
+// as the auto 市场模式 cards. Auto-settle needs the league code + team names to
+// match API-Football, hence the league field.
+async function manualReverseRecord() {
+  const st = document.getElementById('mrev-record-status');
+  const built = _mrevBuildBody(true);
+  if (!built.ok) { st.innerHTML = `<span class="text-red-600">⚠️ ${built.msg}</span>`; return; }
+  st.innerHTML = `<span class="text-muted">${t('mrev_calculating')}</span>`;
+  let data;
+  try {
+    const resp = await fetch(`${API}/recommend/market-handicap`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(built.body),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 120)}`);
+    data = await resp.json();
+  } catch (e) { st.innerHTML = `<span class="text-red-600">⚠️ ${e.message}</span>`; return; }
+  if (data.recorded) {
+    const lab = t('mrev_let_labels').split('/')[{ H: 0, D: 1, A: 2 }[data.best_outcome] ?? 0];
+    const stake = (data.best_stake || 0).toFixed(0);
+    const sid = data.session_id ? ` #${data.session_id}` : '';
+    st.innerHTML = `<span class="text-green-600">${t('mrev_record_ok')}: ${lab} ¥${stake}${sid}</span>`;
+  } else {
+    st.innerHTML = `<span class="text-amber-600">${t('mrev_record_off')}</span>`;
+  }
 }
 
 async function loadWcPredictions() {
