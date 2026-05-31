@@ -12,6 +12,7 @@
 #   8. com.nutmeg.weekly_calibration_check    Monday 03:00 — V10 W2 auto-T calibration drift check + rollback
 #   9. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
 #  10. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
+#  11. com.nutmeg.daily_predict               15:30 daily — V12 W8j model-board prediction log + settle + accuracy report
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
 # (no plaintext key in plists). Logs go to logs/launchd/.
@@ -393,6 +394,16 @@ install_job "com.nutmeg.daily_wc_predict" \
 install_job "com.nutmeg.daily_wc_settle" \
   2 0 "" \
   "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_settle --db $DB_PATH --quiet && $VENV_PY -m nutmeg.v4.cli.wc_report --db $DB_PATH --season 2026 --out $WC_OUT_DIR/wc_report_\$(date +%Y-%m-%d).md --quiet || true"
+
+# Job 11: V12 W8j model-board prediction accuracy (15:30 daily)
+# Logs the model's 1X2 prediction for every UPCOMING model-board match (no bet
+# — pure accuracy tracking, since 竞彩 lists few games), settles finished ones
+# on the 90' score, then writes a hit-rate / calibration / vs-Pinnacle report.
+# Runs after daily_odds (14:00) so the European model leagues' Pinnacle lines
+# are cached, and before their evening kickoffs (predictions logged pre-result).
+install_job "com.nutmeg.daily_predict" \
+  15 30 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.predict_log --db $DB_PATH --days 2 && mkdir -p $REPO_ROOT/docs/weekly && $VENV_PY -m nutmeg.v4.cli.predict_report --db $DB_PATH --out $REPO_ROOT/docs/weekly/predict_report_latest.md || true"
 
 echo ""
 echo "✓ Done. Jobs are loaded. Logs:"

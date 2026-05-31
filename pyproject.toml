@@ -82,6 +82,8 @@ nutmeg-wc-predict = "nutmeg.v4.cli.wc_predict:main"
 nutmeg-auto-calibration = "nutmeg.v4.cli.auto_calibration:main"
 nutmeg-wc-settle = "nutmeg.v4.cli.wc_settle:main"
 nutmeg-wc-report = "nutmeg.v4.cli.wc_report:main"
+nutmeg-predict-log = "nutmeg.v4.cli.predict_log:main"
+nutmeg-predict-report = "nutmeg.v4.cli.predict_report:main"
 nutmeg-ingest-team-logos = "nutmeg.v4.cli.ingest_team_logos:main"
 nutmeg-auto-retrain = "nutmeg.v4.cli.auto_retrain:main"
 
