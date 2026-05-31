@@ -335,7 +335,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w8h-cupmkt-refresh';
+const CACHE_VERSION = 'nutmeg-v12-fe-w8i-today-rec';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -862,6 +862,19 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
             stake=float(t.stake),
             raw_kelly_stake=float(t.raw_kelly_stake),
             expected_return=float(t.expected_return),
+            # V12 W8i — echo the source fixture's Pinnacle inputs so the 今日推荐
+            # card can record THIS pick at the user's 竞彩 SP (the record
+            # endpoints recompute model P from these; never trust a client P).
+            psc_home=(float(_fx.psc_home) if _fx else None),
+            psc_draw=(float(_fx.psc_draw) if _fx else None),
+            psc_away=(float(_fx.psc_away) if _fx else None),
+            psc_over25=(float(_fx.psc_over25) if _fx and _fx.psc_over25 else None),
+            psc_under25=(float(_fx.psc_under25) if _fx and _fx.psc_under25 else None),
+            handicap_home=(
+                int(_fx.handicap_home)
+                if _fx and _fx.handicap_home is not None
+                else None
+            ),
         )
         tk.selection_fingerprint = single_ticket_fingerprint(tk)
         tickets_out.append(tk)

@@ -328,6 +328,33 @@ class TestEndpointAutoRecord:
             n = conn.execute("SELECT COUNT(*) FROM recommendation_sessions").fetchone()[0]
         assert n == 1
 
+    def test_single_ticket_echoes_psc_for_today_card_record(self, env_no_db):
+        """V12 W8i — the 今日推荐 card records THIS pick at the user's 竞彩 SP, so
+        each single ticket must echo the source fixture's Pinnacle inputs (the
+        record endpoint recomputes P from these; it never trusts a client P)."""
+        client = _build_client()
+        r = client.post("/api/v4/recommend/single", json={
+            "fixtures": [{
+                "date": "2025-08-17", "league": "EPL",
+                "home_team": "Arsenal", "away_team": "Liverpool",
+                "psc_home": 2.85, "psc_draw": 3.40, "psc_away": 2.60,
+                "psc_over25": 1.90, "psc_under25": 1.95,
+                # Generous home odds so a +EV home ticket is virtually assured.
+                "odds_1x2_H": 9.0, "odds_1x2_D": 3.30, "odds_1x2_A": 2.80,
+            }],
+            "bankroll": 500.0, "top_per_match": 3,
+        })
+        assert r.status_code == 200
+        tickets = r.json()["tickets"]
+        if not tickets:
+            pytest.skip("model produced no +EV ticket for the test fixture")
+        for tk in tickets:
+            assert tk["psc_home"] == 2.85
+            assert tk["psc_draw"] == 3.40
+            assert tk["psc_away"] == 2.60
+            assert tk["psc_over25"] == 1.90
+            assert tk["psc_under25"] == 1.95
+
     def test_pool_endpoint_records_when_env_set(self, env_db):
         client = _build_client()
         r = client.post("/api/v4/recommend/pool", json={

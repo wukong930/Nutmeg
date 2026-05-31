@@ -394,6 +394,17 @@ class SingleTicketResponse(BaseModel):
     stake: float                  # ¥2-quantized
     raw_kelly_stake: float        # pre-quantization (diagnostic)
     expected_return: float
+    # V12 W8i — Pinnacle inputs echoed so the 今日推荐 card can record THIS pick
+    # at the user's 竞彩 SP. The record endpoints recompute model P from these
+    # (server never trusts a client-sent P); psc_over/under + handicap_home let
+    # a 让球 pick re-derive its grid via /recommend/market-handicap. All optional
+    # for back-compat (None when the source fixture lacked them).
+    psc_home: float | None = None
+    psc_draw: float | None = None
+    psc_away: float | None = None
+    psc_over25: float | None = None
+    psc_under25: float | None = None
+    handicap_home: int | None = None
     # V11 P1-FE#5 — per-ticket fingerprint (12 chars). One single
     # ticket = a single (match_id, market, outcome) triple, so the
     # fingerprint identifies exactly that pick.

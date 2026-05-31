@@ -1804,6 +1804,10 @@ const I18N = {
     today_empty_main: '今日无可下注组合',
     today_empty_sub:  '所有场次的 EV / 命中率均未达推荐门槛 (建议 no-bet)。明天再来 · 或前往高级模式手动输入场次。',
     today_loading:    '正在抓取今日盘口 ...',
+    today_rec_jcsp:   '竞彩 SP',
+    today_rec_btn:    '记这笔',
+    today_rec_done:   '已记录 · 自动追踪胜负',
+    today_rec_gateoff:'此竞彩SP下未过门槛,未记录',
     today_no_fixtures: '今日联赛无可下注场次。明天再来。',
     today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
     health_offline:   'API 离线',
@@ -2108,6 +2112,10 @@ const I18N = {
     today_empty_main: 'No qualifying bets today',
     today_empty_sub:  "All fixtures fell short of the EV / hit-rate thresholds (recommend: skip today). Check back tomorrow · or use advanced mode to enter fixtures manually.",
     today_loading:    'Fetching today\'s odds ...',
+    today_rec_jcsp:   'Lottery SP',
+    today_rec_btn:    'Record',
+    today_rec_done:   'Recorded · auto-tracked',
+    today_rec_gateoff:'Below gate at this SP — not recorded',
     today_no_fixtures: 'No fixtures from your leagues today. Check back tomorrow.',
     today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
     health_offline:   'API offline',
@@ -3117,6 +3125,16 @@ const TODAY_DEFAULT_LEAGUES = [
 ];
 let _todayDebounce = null;
 
+// V12 W8i — 今日推荐 inline record state. _TODAY_SINGLES mirrors the rendered
+// single tickets (so the per-card 📌 handlers can read psc_*/outcome); _TODAY_CTX
+// carries bankroll + kelly for the record POST. The 📌 enables only when EV at
+// the typed 竞彩 SP clears the 5% 竞彩 gate — same discipline as the SP 计算器.
+let _TODAY_SINGLES = [];
+let _TODAY_CTX = { bankroll: 1000, kelly: 0.25 };
+const _TODAY_REC_GATE = 0.05;
+const _TODAY_REC_BTN_ON = 'background:#059669;color:#fff;cursor:pointer;border:none;border-radius:6px;padding:4px 11px;font-size:12px;font-weight:600';
+const _TODAY_REC_BTN_OFF = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed;border:none;border-radius:6px;padding:4px 11px;font-size:12px';
+
 function renderTodaySingle(single, pfx = 'today') {
   const list = $('#' + pfx + '-single-list');
   const section = $('#' + pfx + '-single-section');
@@ -3133,11 +3151,25 @@ function renderTodaySingle(single, pfx = 'today') {
   // V11 P1-FE#5 — i18n label captured outside the map (parameter `t`
   // below shadows the i18n helper).
   const updatedLabel = t('badge_updated');
-  list.innerHTML = single.tickets.map(t => {
+  // V12 W8i — capture i18n labels outside the map (the `t` param below shadows
+  // the i18n helper). Inline 竞彩 SP + 📌 only on the main 今日推荐 landing.
+  const recSpLabel = t('today_rec_jcsp');
+  const recBtnLabel = t('today_rec_btn');
+  const showRec = (pfx === 'today');
+  if (showRec) _TODAY_SINGLES = single.tickets;
+  list.innerHTML = single.tickets.map((t, i) => {
     const marketLabel = t.market_type === 'handicap_1x2' ? '让球' : '胜平负';
     // V11 P1-FE#5 — stamp .is-updated outline + badge when this pick is new
     const isUpdated = t.selection_fingerprint && isFingerprintChanged(t.selection_fingerprint);
     const updatedBadge = isUpdated ? `<span class="badge-updated">${updatedLabel}</span>` : '';
+    const recRow = showRec ? `
+        <div class="mt-3 pt-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid rgba(128,128,128,0.18)">
+          <span class="text-xs text-muted">${recSpLabel}</span>
+          <input type="number" step="0.01" min="1.01" inputmode="decimal" class="today-rec-sp num-display" data-i="${i}" placeholder="${t.odds.toFixed(2)}" oninput="_todayRecCalc(${i})" aria-label="${recSpLabel}" style="width:5rem;padding:3px 6px;border:1px solid rgba(128,128,128,0.35);border-radius:6px;background:transparent;color:inherit;font-size:13px">
+          <span id="today-rec-ev-${i}" class="text-xs text-muted" aria-live="polite"></span>
+          <button id="today-rec-btn-${i}" type="button" disabled onclick="_todayRecRecord(${i})" style="${_TODAY_REC_BTN_OFF}">📌 ${recBtnLabel}</button>
+          <span id="today-rec-verdict-${i}" class="text-xs"></span>
+        </div>` : '';
     return `
       <div class="card-rec ${isUpdated ? 'is-updated' : ''}">
         <div class="flex items-start justify-between gap-3 mb-3">
@@ -3166,8 +3198,96 @@ function renderTodaySingle(single, pfx = 'today') {
             ${evBar(t.ev_per_unit)}
           </div>
         </div>
+        ${recRow}
       </div>`;
   }).join('');
+}
+
+// V12 W8i — recompute EV at the typed 竞彩 SP; enable 📌 only when it clears the
+// 5% gate (same discipline as the SP 计算器). P = ticket's model/market P.
+function _todayRecCalc(i) {
+  const tk = _TODAY_SINGLES[i];
+  const inp = document.querySelector(`.today-rec-sp[data-i="${i}"]`);
+  const evEl = $(`#today-rec-ev-${i}`);
+  const btn = $(`#today-rec-btn-${i}`);
+  if (!tk || !inp || !evEl || !btn) return;
+  const sp = parseFloat(inp.value);
+  if (!sp || sp <= 1.0) {
+    evEl.textContent = ''; evEl.removeAttribute('style');
+    btn.disabled = true; btn.style.cssText = _TODAY_REC_BTN_OFF;
+    return;
+  }
+  const ev = tk.probability * sp - 1.0;
+  const pass = ev >= _TODAY_REC_GATE;
+  evEl.textContent = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%`;
+  evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '#b45309');
+  evEl.style.fontWeight = pass ? '600' : '';
+  btn.disabled = !pass;
+  btn.style.cssText = pass ? _TODAY_REC_BTN_ON : _TODAY_REC_BTN_OFF;
+}
+
+// V12 W8i — record THIS pick at the typed 竞彩 SP. 1x2 → /recommend/single
+// (sentinel the non-picked outcomes so the engine records EXACTLY this leg);
+// 让球 → /recommend/market-handicap (threads O/U, records the chosen outcome).
+async function _todayRecRecord(i) {
+  const tk = _TODAY_SINGLES[i];
+  const btn = $(`#today-rec-btn-${i}`);
+  const verdict = $(`#today-rec-verdict-${i}`);
+  if (!tk || !btn || btn.disabled) return;
+  const inp = document.querySelector(`.today-rec-sp[data-i="${i}"]`);
+  const sp = parseFloat(inp.value);
+  if (!sp || sp <= 1.0) return;
+  const bankroll = _TODAY_CTX.bankroll || 1000;
+  const kelly = _TODAY_CTX.kelly || 0.25;
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    let recorded = false, ev = null;
+    if (tk.market_type === 'handicap_1x2') {
+      const body = {
+        league: tk.league, date: tk.date, home_team: tk.home_team, away_team: tk.away_team,
+        psc_home: tk.psc_home, psc_draw: tk.psc_draw, psc_away: tk.psc_away,
+        psc_over25: tk.psc_over25 || null, psc_under25: tk.psc_under25 || null,
+        ou_line: 2.5, handicap_home: tk.handicap_home,
+        bankroll, kelly_fraction: kelly, record_session: true,
+      };
+      body['odds_handicap_' + tk.outcome] = sp;
+      const res = await fetch(API + '/recommend/market-handicap', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const b = await res.json(); recorded = b.recorded; ev = b.best_ev;
+    } else {
+      const fx = {
+        date: tk.date, league: tk.league, home_team: tk.home_team, away_team: tk.away_team,
+        psc_home: tk.psc_home, psc_draw: tk.psc_draw, psc_away: tk.psc_away,
+        odds_1x2_H: 1.01, odds_1x2_D: 1.01, odds_1x2_A: 1.01,
+      };
+      fx['odds_1x2_' + tk.outcome] = sp;
+      const res = await fetch(API + '/recommend/single', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fixtures: [fx], bankroll, top_per_match: 1, kelly_fraction: kelly, record_session: true }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const b = await res.json();
+      recorded = !!(b.tickets && b.tickets.length > 0);
+      ev = recorded ? b.tickets[0].ev_per_unit : null;
+    }
+    if (recorded) {
+      const evs = (ev != null) ? ` ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%` : '';
+      verdict.textContent = `✓ ${t('today_rec_done')}${evs}`;
+      verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
+      btn.textContent = t('spcalc_recorded_btn'); btn.style.cssText = 'background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:4px 11px;font-size:12px';
+    } else {
+      verdict.textContent = t('today_rec_gateoff'); verdict.style.color = '#b45309';
+      btn.disabled = false; btn.textContent = prev; btn.style.cssText = _TODAY_REC_BTN_ON;
+    }
+  } catch (err) {
+    console.warn('today rec record failed:', err);
+    verdict.textContent = t('spcalc_record_err'); verdict.style.color = '#e11d48';
+    btn.disabled = false; btn.textContent = prev; btn.style.cssText = _TODAY_REC_BTN_ON;
+  }
 }
 
 function renderTodayParlay(parlay, pfx = 'today') {
@@ -4395,6 +4515,8 @@ async function loadTodayRecommendations(opts = {}) {
   // undefined → falsy, so that path stays a normal cached load.
   const bankrollEl = $('#today-bankroll');
   const bankroll = Math.max(2, parseFloat(bankrollEl.value) || 1000);
+  // V12 W8i — share bankroll with the per-card 📌 record handlers.
+  _TODAY_CTX = { bankroll, kelly: 0.25 };
   // V11 P1-FE#4 — pull slider state into the request body
   const risk = _readRiskPreference();
   const minEv = _readMinEv();

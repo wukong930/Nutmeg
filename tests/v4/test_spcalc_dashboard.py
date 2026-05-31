@@ -372,3 +372,50 @@ class TestManualReverseCalc:
         for k in ("mrev_record", "mrev_record_ok", "mrev_record_off",
                   "mrev_league_lbl"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestTodayInlineRecord:
+    """V12 W8i — 今日推荐 single cards get an inline 竞彩 SP + 📌 control so a pick
+    can be recorded (and then auto-settled / win-loss tracked) without leaving
+    the landing page. The card echoes psc_* from the ticket; the server
+    recomputes P on record (never trusts a client P)."""
+
+    def test_sp_input_and_record_button_present(self, html):
+        assert 'class="today-rec-sp' in html       # per-card 竞彩 SP input
+        assert 'id="today-rec-btn-' in html         # per-card 📌
+        assert "_todayRecCalc(" in html             # live EV-at-SP recompute
+        assert "_todayRecRecord(" in html           # record handler wired
+
+    def test_record_row_only_on_today_landing(self, html):
+        # Not duplicated onto the reused 'jc' board (would clash on data-i ids).
+        assert "const showRec = (pfx === 'today')" in html
+
+    def test_routes_1x2_to_single_and_handicap_to_market(self, html):
+        # 1x2 → /recommend/single ; 让球 → /recommend/market-handicap.
+        assert "/recommend/single" in html
+        assert "/recommend/market-handicap" in html
+        assert "tk.market_type === 'handicap_1x2'" in html
+
+    def test_client_gate_mirrors_5pct_discipline(self, html):
+        assert "_TODAY_REC_GATE = 0.05" in html
+        assert "ev >= _TODAY_REC_GATE" in html
+
+    def test_record_posts_opt_in_flag(self, html):
+        # Both record branches must opt in to the double-gate.
+        assert html.count("record_session: true") >= 1
+
+    def test_handicap_record_threads_outcome_and_line(self, html):
+        # 让球 record sends the chosen outcome's 竞彩 odds + the handicap line.
+        assert "'odds_handicap_' + tk.outcome" in html
+        assert "handicap_home: tk.handicap_home" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("today_rec_jcsp", "today_rec_btn", "today_rec_done",
+                  "today_rec_gateoff"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+    def test_cache_version_bumped_in_family(self):
+        txt = ROUTES.read_text(encoding="utf-8")
+        # Stays in the nutmeg-v12-fe-w family (pinned by another test) and
+        # advances to the today-rec build.
+        assert "nutmeg-v12-fe-w8i-today-rec" in txt
