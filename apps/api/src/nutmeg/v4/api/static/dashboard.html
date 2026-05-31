@@ -4197,6 +4197,24 @@ async function _cupHcRecord(idx) {
 
 function renderCupMarket(preds, pending) {
   preds = preds || []; pending = pending || [];
+  // Preserve any 竞彩 SP / 让球线 the user already typed, keyed by match
+  // identity, so a 🔄 refresh updates Pinnacle P/odds WITHOUT wiping the SP
+  // (mirrors renderTodaySpCalc's model-board preservation). Read the *old* DOM
+  // before _CUPMKT.preds is reassigned below.
+  const _entered = {};
+  (_CUPMKT.preds || []).forEach((p, i) => {
+    const key = p.home_team + '|' + p.away_team + '|' + p.date;
+    const bucket = {};
+    ['H', 'D', 'A'].forEach(o => {
+      const el = document.querySelector(`.cupsp[data-idx="${i}"][data-outcome="${o}"]`);
+      if (el && el.value) bucket[o] = el.value;
+      const hel = document.querySelector(`.cuphcsp[data-idx="${i}"][data-outcome="${o}"]`);
+      if (hel && hel.value) { bucket.hc = bucket.hc || {}; bucket.hc[o] = hel.value; }
+    });
+    const lsel = document.querySelector(`#cuphcline-${i}`);
+    if (lsel && lsel.value !== '') bucket.hcline = lsel.value;
+    if (Object.keys(bucket).length) _entered[key] = bucket;
+  });
   _CUPMKT.preds = preds;
   const sec = $('#cupmkt-section'), list = $('#cupmkt-list'), empty = $('#cupmkt-empty');
   if (preds.length === 0 && pending.length === 0) {
@@ -4241,6 +4259,32 @@ function renderCupMarket(preds, pending) {
       </div>`;
   }
   list.innerHTML = html;
+  // Restore preserved 竞彩 SP / 让球线 into the freshly-rendered inputs + recompute.
+  preds.forEach((pr, idx) => {
+    const saved = _entered[pr.home_team + '|' + pr.away_team + '|' + pr.date];
+    if (!saved) return;
+    let any = false;
+    ['H', 'D', 'A'].forEach(o => {
+      if (saved[o]) {
+        const el = document.querySelector(`.cupsp[data-idx="${idx}"][data-outcome="${o}"]`);
+        if (el) { el.value = saved[o]; any = true; }
+      }
+    });
+    if (any) _cupRecalc(idx);
+    if (saved.hcline) {
+      const lsel = $(`#cuphcline-${idx}`);
+      if (lsel) lsel.value = saved.hcline;
+    }
+    if (saved.hc) {
+      ['H', 'D', 'A'].forEach(o => {
+        if (saved.hc[o]) {
+          const el = document.querySelector(`.cuphcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+          if (el) el.value = saved.hc[o];
+        }
+      });
+    }
+    if (saved.hcline || saved.hc) _cupHcLine(idx);
+  });
 }
 
 async function loadCupMarket() {

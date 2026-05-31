@@ -56,6 +56,17 @@ class TestSpCalcMarkup:
         # V12 W7 — 🏆 杯赛市场模式: user-triggered, Pinnacle de-vig priced.
         assert 'id="cupmkt-section"' in html
         assert 'id="cupmkt-list"' in html
+
+    def test_cup_market_preserves_sp_on_refresh(self, html):
+        """V13 — a 市场模式 refresh must KEEP the user's hand-typed 竞彩 SP +
+        让球线 (it used to wipe them on every re-render). renderCupMarket now
+        mirrors the model board's capture-before / restore-after pattern."""
+        # The keyed restore lookup now appears in BOTH renderers (model + cup).
+        phrase = "_entered[pr.home_team + '|' + pr.away_team + '|' + pr.date]"
+        assert html.count(phrase) >= 2
+        # Cup-market restore touches the cup-specific SP input classes.
+        assert ".cupsp[data-idx=" in html
+        assert ".cuphcsp[data-idx=" in html
         assert 'onclick="loadCupMarket()"' in html
         assert "async function loadCupMarket" in html
         assert "function renderCupMarket" in html
