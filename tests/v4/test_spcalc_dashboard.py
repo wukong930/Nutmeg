@@ -57,6 +57,21 @@ class TestSpCalcMarkup:
         assert 'id="cupmkt-section"' in html
         assert 'id="cupmkt-list"' in html
 
+    def test_cup_market_has_refresh_odds_button(self, html):
+        """V13 — 市场模式 gets a 🔄 刷新盘口 button that forces a live Pinnacle
+        pull (refresh_odds=true); the plain 加载 button stays cache-only."""
+        assert 'id="cupmkt-refresh"' in html
+        assert "loadCupMarket({refreshOdds:true})" in html
+        assert "'?days=3&refresh_odds=true'" in html
+        assert "async function loadCupMarket(opts = {})" in html
+
+    def test_cup_market_label_drops_cups_j1_text(self, html):
+        """V13 — 市场模式 now covers J1/J2/cups/WC/10 expansion leagues, so the
+        misleading '(杯赛 + 日职联)' / '· Cups + J1' parenthetical was dropped."""
+        assert "杯赛 + 日职联" not in html
+        assert "· Cups + J1" not in html
+        assert "(cups + J1)" not in html
+
     def test_cup_market_preserves_sp_on_refresh(self, html):
         """V13 — a 市场模式 refresh must KEEP the user's hand-typed 竞彩 SP +
         让球线 (it used to wipe them on every re-render). renderCupMarket now
