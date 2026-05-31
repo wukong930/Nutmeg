@@ -3187,7 +3187,14 @@ function renderTodayParlay(parlay, pfx = 'today') {
       const sels = l.selections.map(s =>
         `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
       ).join('');
-      const matchName = l.match_id.split('|').slice(0, 2).join(' vs ').replace(/_/g, ' ');
+      // match_id = "{LEAGUE}_{Home}_vs_{Away}" — legs carry no team fields, so
+      // strip the league prefix, split on _vs_, and translate each side (the
+      // old split('|') was the wrong delimiter → showed the raw English id).
+      const raw = (l.match_id || '').replace(/^[A-Z0-9_]+_/, '');
+      const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
+      const matchName = parts[1]
+        ? `${zhTeam(parts[0])} <span class="text-muted">vs</span> ${zhTeam(parts[1])}`
+        : zhTeam(parts[0]);
       return `<div class="text-sm py-1 text-primary">${matchName}${sels}</div>`;
     }).join('');
     const isUpdated = r.selection_fingerprint && isFingerprintChanged(r.selection_fingerprint);

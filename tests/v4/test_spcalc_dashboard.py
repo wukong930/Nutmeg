@@ -277,6 +277,15 @@ class TestTwoBoardToday:
         assert "function renderTodayPool(pool, pfx = 'today')" in html
         assert "$('#' + pfx + '-single-list')" in html
 
+    def test_parlay_legs_translate_team_names(self, html):
+        """V13 — parlay legs carry only match_id (LEAGUE_Home_vs_Away); they
+        must strip the league prefix, split on _vs_, and zhTeam() each side.
+        Regression: the old split('|') delimiter was wrong → showed the raw
+        English match_id with no translation."""
+        assert "l.match_id.split('|').slice(0, 2)" not in html   # bug gone
+        assert "raw.includes('_vs_') ? raw.split('_vs_')" in html
+        assert "${zhTeam(parts[0])} <span class=\"text-muted\">vs</span> ${zhTeam(parts[1])}" in html
+
     def test_jc_loader_wired(self, html):
         assert "function loadJingcaiBoard(" in html
         assert "function _collectJingcaiFixtures(" in html
