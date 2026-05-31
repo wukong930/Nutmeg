@@ -32,6 +32,15 @@ class TestSpCalcMarkup:
         assert 'id="today-spcalc-section"' in html
         assert 'id="today-spcalc-list"' in html
 
+    def test_model_vs_market_1x2_shown(self, html):
+        """V13 — each model-board outcome row shows the Pinnacle de-vig market
+        1X2 (`市`/`Mkt`) next to the model P, for an at-a-glance divergence
+        check. Transparency only — the recommendation still uses model P."""
+        assert "const Mkt = (() => {" in html        # client-side de-vig
+        assert "t('spcalc_mkt')" in html
+        for k in ("spcalc_mkt", "spcalc_mkt_tip"):
+            assert html.count(k + ":") >= 2, f"i18n {k!r} missing from a locale"
+
     def test_pending_fixtures_render(self, html):
         # V12 W6 — 待开盘 section: renderTodaySpCalc takes a `pending` arg and
         # builds non-interactive 待开盘 cards (no SP inputs) for fixtures whose
