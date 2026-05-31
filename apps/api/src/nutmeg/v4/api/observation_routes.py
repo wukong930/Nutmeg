@@ -667,3 +667,56 @@ def live_vs_backtest_route(
         roi_gap_pp=report.roi_gap_pp,
         hit_rate_gap_pp=report.hit_rate_gap_pp,
     )
+
+
+# ----- Prediction scoreboard (V12 W8j) -----------------------------------
+
+class PredictionScoreboardResponse(BaseModel):
+    """Model-board prediction accuracy (non-竞彩) + Layer A calibration status.
+
+    Powers the dashboard 自我体检 card. Read-only. `prediction` mirrors
+    nutmeg-predict-report's numbers; `calibration` reflects the last
+    auto-calibration run (or nulls if Layer A hasn't acted yet)."""
+    db_exists: bool
+    prediction: dict[str, Any]
+    calibration: dict[str, Any]
+
+
+@router.get("/prediction-scoreboard", response_model=PredictionScoreboardResponse)
+def prediction_scoreboard() -> PredictionScoreboardResponse:
+    """Model-board prediction hit-rate / calibration / vs-Pinnacle + the latest
+    Layer A calibration verdict. Honest by construction: hit-rate ships next to
+    the Pinnacle baseline + the model-vs-sharp log-loss delta."""
+    from nutmeg.v4.cli.predict_report import scoreboard
+    from nutmeg.v4.observation.auto_calibration import fetch_latest_journal_entry
+    from nutmeg.v4.observation.prediction_log import fetch_league_predictions
+
+    empty_cal: dict[str, Any] = {
+        "last_run_at": None, "applied": None, "current_t": None,
+        "proposed_t": None, "reason": None, "n_samples": None,
+    }
+    if not _db_exists():
+        return PredictionScoreboardResponse(
+            db_exists=False, prediction=scoreboard([]), calibration=empty_cal,
+        )
+    db = _db_path()
+    try:
+        rows = fetch_league_predictions(db)
+    except Exception:  # noqa: BLE001
+        rows = []
+    pred = scoreboard(rows)
+    cal = dict(empty_cal)
+    try:
+        j = fetch_latest_journal_entry(db)
+        if j:
+            cal = {
+                "last_run_at": j.get("recorded_at"),
+                "applied": bool(j.get("decision")),
+                "current_t": j.get("current_T"),
+                "proposed_t": j.get("proposed_T"),
+                "reason": j.get("reason"),
+                "n_samples": (j.get("n_train") or 0) + (j.get("n_holdout") or 0),
+            }
+    except Exception:  # noqa: BLE001
+        pass
+    return PredictionScoreboardResponse(db_exists=True, prediction=pred, calibration=cal)

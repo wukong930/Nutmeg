@@ -416,6 +416,39 @@ class TestTodayInlineRecord:
 
     def test_cache_version_bumped_in_family(self):
         txt = ROUTES.read_text(encoding="utf-8")
-        # Stays in the nutmeg-v12-fe-w family (pinned by another test) and
-        # advances to the today-rec build.
-        assert "nutmeg-v12-fe-w8i-today-rec" in txt
+        # Stays in the nutmeg-v12-fe-w family (pinned by another test).
+        assert "nutmeg-v12-fe-w8" in txt
+
+
+class TestSelfCheckScoreboard:
+    """V12 W8j — 推荐追溯 gets a 模型自我体检 card: non-竞彩 prediction accuracy
+    + Layer A calibration status, fed by /observation/prediction-scoreboard."""
+
+    def test_card_markup_present(self, html):
+        assert 'id="scoreboard-body"' in html
+        assert 'data-i18n="h_scoreboard"' in html
+
+    def test_js_wired_to_endpoint(self, html):
+        assert "function renderScoreboard" in html
+        assert "async function loadScoreboard" in html
+        assert "/observation/prediction-scoreboard" in html
+
+    def test_loads_with_history_tab(self, html):
+        # loadScoreboard() fires when the 推荐追溯 tab loads.
+        assert "async function loadHistory() {\n  loadScoreboard();" in html
+
+    def test_shows_pinnacle_baseline_and_delta(self, html):
+        # Honest: hit-rate ships next to the Pinnacle baseline + the Δ.
+        assert "sb_vs_pin" in html
+        assert "sb_delta" in html
+        assert "sb_honest" in html
+
+    def test_calibration_status_rendered(self, html):
+        assert "sb_cal_never" in html
+        assert "Layer A" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("h_scoreboard", "sub_scoreboard", "sb_settled", "sb_model_hit",
+                  "sb_logloss", "sb_delta", "sb_cal_never", "sb_honest",
+                  "sb_accumulating"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"

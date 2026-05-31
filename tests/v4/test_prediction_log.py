@@ -159,3 +159,31 @@ class TestReportMetrics:
         assert "log-loss" in md
         assert "Pinnacle" in md
         assert "分歧" in md
+
+
+class TestScoreboard:
+    def test_empty(self):
+        from nutmeg.v4.cli.predict_report import scoreboard
+        sb = scoreboard([])
+        assert sb["n_settled"] == 0
+        assert sb["model_hit_rate"] is None
+        assert sb["delta_log_loss"] is None
+
+    def test_counts_and_metrics(self):
+        from nutmeg.v4.cli.predict_report import scoreboard
+        rows = [
+            dict(p_home=0.6, p_draw=0.25, p_away=0.15, outcome=0,
+                 psc_home=1.8, psc_draw=3.5, psc_away=4.5),   # settled, model right
+            dict(p_home=0.2, p_draw=0.3, p_away=0.5, outcome=2,
+                 psc_home=4.0, psc_draw=3.3, psc_away=1.9),   # settled, model right
+            dict(p_home=0.5, p_draw=0.3, p_away=0.2, outcome=None,
+                 psc_home=2.0, psc_draw=3.4, psc_away=3.6),   # pending
+        ]
+        sb = scoreboard(rows)
+        assert sb["n_settled"] == 2
+        assert sb["n_pending"] == 1
+        assert sb["model_hit_rate"] == 1.0
+        assert sb["model_log_loss"] is not None
+        assert sb["pinnacle_log_loss"] is not None
+        assert sb["delta_log_loss"] is not None
+        assert "n" in sb["disagreement"]

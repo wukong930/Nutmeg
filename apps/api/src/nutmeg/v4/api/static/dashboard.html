@@ -1635,6 +1635,15 @@
       <div id="history-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
     </div>
 
+    <!-- V12 W8j — 模型自我体检 (非竞彩 prediction accuracy + Layer A status) -->
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6" style="border-left:3px solid #6366f1">
+      <div class="mb-2">
+        <h2 class="font-bold" data-i18n="h_scoreboard">📊 模型自我体检 · 非竞彩</h2>
+        <p class="text-sm text-gray-500" data-i18n="sub_scoreboard">模型预测准不准 + Layer A 自动校准状态 · 与竞彩下注无关</p>
+      </div>
+      <div id="scoreboard-body" class="text-sm text-muted" aria-live="polite"></div>
+    </div>
+
     <!-- Stats card at top -->
     <div id="history-stats" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <div class="grid grid-cols-3 sm:grid-cols-4 gap-4 text-center">
@@ -1985,6 +1994,23 @@ const I18N = {
     tab_history:         '📜 推荐追溯',
     h_history_title:     '推荐追溯',
     sub_history:         '查看过去的推荐 + 是否命中 · 时间倒序',
+    h_scoreboard:        '📊 模型自我体检 · 非竞彩',
+    sub_scoreboard:      '模型预测准不准 + Layer A 自动校准状态 · 与竞彩下注无关',
+    sb_no_db:            '观测库未启用',
+    sb_accumulating:     '攒数据中:已记录 {n} 场未结算,赛后自动评分',
+    sb_settled:          '已结算',
+    sb_pending:          '待结算',
+    sb_model_hit:        '模型命中率',
+    sb_vs_pin:           '热门',
+    sb_logloss:          'log-loss',
+    sb_delta:            'Δ vs Pin',
+    sb_disagree:         '分歧场',
+    sb_model:            '模型',
+    sb_cal_never:        'Layer A 校准:尚未运行(攒够样本后每周自动跑)',
+    sb_cal_applied:      '已调整',
+    sb_cal_hold:         '保持不变',
+    sb_cal_samples:      '样本',
+    sb_honest:           '命中率会被热门拉高;真正看 log-loss vs Pinnacle。预期:模型≈sharp、无额外 edge。',
     history_range_7d:    '最近 7 天',
     history_range_30d:   '最近 30 天',
     history_range_all:   '全部',
@@ -2291,6 +2317,23 @@ const I18N = {
     tab_history:         '📜 History',
     h_history_title:     'Recommendation history',
     sub_history:         'Past recommendations + outcomes · most recent first',
+    h_scoreboard:        '📊 Model self-check · non-竞彩',
+    sub_scoreboard:      "Is the model's prediction any good? + Layer A calibration status · unrelated to 竞彩 betting",
+    sb_no_db:            'Observation DB not enabled',
+    sb_accumulating:     'Accumulating: {n} logged, unsettled — scored once results land',
+    sb_settled:          'Settled',
+    sb_pending:          'pending',
+    sb_model_hit:        'Model hit-rate',
+    sb_vs_pin:           'vs Pin',
+    sb_logloss:          'log-loss',
+    sb_delta:            'Δ vs Pin',
+    sb_disagree:         'Disagreements',
+    sb_model:            'model',
+    sb_cal_never:        'Layer A: not run yet (weekly, once enough samples)',
+    sb_cal_applied:      'adjusted',
+    sb_cal_hold:         'held',
+    sb_cal_samples:      'samples',
+    sb_honest:           'Hit-rate is inflated by favourites; what matters is log-loss vs Pinnacle. Expected: model ≈ sharp, no edge.',
     history_range_7d:    'Last 7 days',
     history_range_30d:   'Last 30 days',
     history_range_all:   'All time',
@@ -5086,7 +5129,56 @@ function renderHistory(body) {
   timeline.innerHTML = body.days.map(_historyDayBlock).join('');
 }
 
+// V12 W8j — 模型自我体检卡片 (非竞彩 prediction accuracy + Layer A status).
+function _sbPct(x) { return (x == null) ? '—' : (x * 100).toFixed(1) + '%'; }
+function _sbNum(x) { return (x == null) ? '—' : x.toFixed(4); }
+function renderScoreboard(data) {
+  const el = $('#scoreboard-body');
+  if (!el) return;
+  const p = data.prediction || {}, c = data.calibration || {};
+  if (!data.db_exists) { el.innerHTML = `<span class="text-muted">${t('sb_no_db')}</span>`; return; }
+  let html = '';
+  if (!p.n_settled) {
+    html += `<div class="text-muted mb-2">${t('sb_accumulating').replace('{n}', p.n_pending || 0)}</div>`;
+  } else {
+    const dl = p.delta_log_loss;
+    const dlStr = (dl == null) ? '—' : `${dl >= 0 ? '+' : ''}${dl.toFixed(4)}`;
+    const dlColor = (dl == null) ? '' : (dl <= -0.002 ? '#059669' : (dl >= 0.002 ? '#e11d48' : '#b45309'));
+    html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center mb-3">
+      <div><div class="text-xs text-muted">${t('sb_settled')}</div><div class="text-xl font-semibold">${p.n_settled}</div><div class="text-xs text-muted">+${p.n_pending || 0} ${t('sb_pending')}</div></div>
+      <div><div class="text-xs text-muted">${t('sb_model_hit')}</div><div class="text-xl font-semibold">${_sbPct(p.model_hit_rate)}</div><div class="text-xs text-muted">${t('sb_vs_pin')} ${_sbPct(p.pinnacle_hit_rate)}</div></div>
+      <div><div class="text-xs text-muted">${t('sb_logloss')}</div><div class="text-xl font-semibold">${_sbNum(p.model_log_loss)}</div><div class="text-xs text-muted">Pin ${_sbNum(p.pinnacle_log_loss)}</div></div>
+      <div><div class="text-xs text-muted">${t('sb_delta')}</div><div class="text-xl font-semibold" style="color:${dlColor}">${dlStr}</div></div>
+    </div>`;
+    const dis = p.disagreement || {};
+    if (dis.n) {
+      html += `<div class="text-xs text-muted mb-2">${t('sb_disagree')}: ${dis.n} · ${t('sb_model')} ${dis.model_correct}/${dis.n} vs Pinnacle ${dis.pinnacle_correct}/${dis.n}</div>`;
+    }
+  }
+  let cal;
+  if (!c.last_run_at) {
+    cal = t('sb_cal_never');
+  } else {
+    const when = (c.last_run_at || '').slice(0, 10);
+    const act = c.applied
+      ? `${t('sb_cal_applied')} T=${(c.proposed_t != null) ? c.proposed_t.toFixed(3) : '?'}`
+      : t('sb_cal_hold');
+    cal = `Layer A · ${when} · ${act} · ${t('sb_cal_samples')} ${c.n_samples || 0}`;
+  }
+  html += `<div class="text-xs" style="border-top:1px solid rgba(128,128,128,0.15);padding-top:8px;margin-top:4px">🔧 ${cal}</div>`;
+  html += `<div class="text-xs text-muted mt-2">${t('sb_honest')}</div>`;
+  el.innerHTML = html;
+}
+async function loadScoreboard() {
+  try {
+    const r = await fetch(API + '/observation/prediction-scoreboard');
+    if (!r.ok) return;
+    renderScoreboard(await r.json());
+  } catch (e) { console.warn('scoreboard load failed:', e); }
+}
+
 async function loadHistory() {
+  loadScoreboard();
   setStatus('#history-status', 'loading', t('history_loading'));
   try {
     const r = await fetch(API + '/observation/recommendations-history?days=' + _historyDays);

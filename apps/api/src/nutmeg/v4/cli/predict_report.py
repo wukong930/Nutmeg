@@ -93,6 +93,49 @@ def _pct(x):
     return f"{x * 100:.1f}%" if x == x else "—"  # x!=x → NaN
 
 
+def scoreboard(rows: list[dict]) -> dict:
+    """JSON-friendly metrics for the dashboard card (same numbers as the
+    markdown report). Honest by construction: hit-rate is reported alongside
+    the Pinnacle baseline + the model-vs-sharp log-loss delta, never alone."""
+    settled = [r for r in rows if r.get("outcome") is not None]
+    pending = [r for r in rows if r.get("outcome") is None]
+    out: dict = {
+        "n_settled": len(settled),
+        "n_pending": len(pending),
+        "model_hit_rate": None,
+        "pinnacle_hit_rate": None,
+        "model_log_loss": None,
+        "pinnacle_log_loss": None,
+        "delta_log_loss": None,
+        "disagreement": {"n": 0, "model_correct": 0, "pinnacle_correct": 0},
+    }
+    n = len(settled)
+    if n == 0:
+        return out
+    mh, _ = _hits(settled, _model_p)
+    out["model_hit_rate"] = mh / n
+    out["model_log_loss"], _ = _log_loss(settled, _model_p)
+    pin_rows = [r for r in settled if _pin_p(r) is not None]
+    if pin_rows:
+        ph, pn = _hits(pin_rows, _pin_p)
+        out["pinnacle_hit_rate"] = ph / pn
+        out["pinnacle_log_loss"], _ = _log_loss(pin_rows, _pin_p)
+        if out["model_log_loss"] == out["model_log_loss"]:  # not NaN
+            out["delta_log_loss"] = out["model_log_loss"] - out["pinnacle_log_loss"]
+        dis = [
+            r for r in pin_rows
+            if max(range(3), key=lambda i: _model_p(r)[i])
+            != max(range(3), key=lambda i: _pin_p(r)[i])
+        ]
+        if dis:
+            dmh, _ = _hits(dis, _model_p)
+            dph, _ = _hits(dis, _pin_p)
+            out["disagreement"] = {
+                "n": len(dis), "model_correct": dmh, "pinnacle_correct": dph,
+            }
+    return out
+
+
 def build_report(rows: list[dict]) -> str:
     settled = [r for r in rows if r.get("outcome") is not None]
     out: list[str] = ["# 模型盘预测命中率报告 (非竞彩 · 纯预测验证)\n"]
