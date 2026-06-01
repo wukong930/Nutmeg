@@ -183,6 +183,66 @@ class TestSingleEndpointE2E:
 
 
 @pytest.mark.skipif(not ARTIFACT_PATH.exists(), reason="v4 artifact not present")
+class TestNoPinnacleFallbackForRecommendation:
+    """拔根 regression: a 竞彩 recommendation requires a real 竞彩 SP. When only
+    Pinnacle (psc_*) is present, /recommend/single and /recommend must NOT fall
+    back to Pinnacle-as-SP. That fallback computed EV = model_P × Pinnacle_odds
+    − 1 — model-vs-sharp divergence (noise) surfaced as a 'best bet' (the
+    EV-vs-Pinnacle bug). These fixtures (psc_away inflated to 6.0) used to fire a
+    ticket via the fallback; with the fallback gone they must yield none.
+    """
+
+    def _psc_only(self, home="Vissel Kobe", away="Kashima", league="JPN_J1"):
+        # A balanced fixture (psc 2.85/3.40/2.60) with its 竞彩 1X2 odds STRIPPED
+        # — only Pinnacle (psc_*) remains. The OLD code fell back to psc as the
+        # bet odds (model P_home × 2.85 ≈ +EV → a noise ticket fired); the fix
+        # yields none. Balanced psc also keeps model P(away) high enough that
+        # adding a real 竞彩 SP below still clears the gate.
+        fx = _good_fixture(home, away, league)
+        for k in ("odds_1x2_H", "odds_1x2_D", "odds_1x2_A"):
+            fx.pop(k, None)
+        return fx
+
+    def test_single_psc_only_yields_no_recommendation(self, client):
+        r = client.post("/api/v4/recommend/single", json={
+            "fixtures": [self._psc_only()], "bankroll": 1000.0, "top_per_match": 3,
+        })
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["n_fixtures"] == 1
+        assert body["n_recommendations"] == 0, (
+            "psc-only fixture must NOT produce a Pinnacle-fallback recommendation"
+        )
+        assert body["tickets"] == []
+        assert body["total_stake"] == 0.0
+
+    def test_single_with_real_lottery_odds_still_recommends(self, client):
+        # A FULL 竞彩 1X2 line (胜平负 is one all-or-nothing market) with a juicy
+        # away price → the genuine +EV path is intact: the fix removes the
+        # Pinnacle fallback, not the real recommender.
+        fx = _good_fixture("Vissel Kobe", "Kashima", "JPN_J1")
+        fx["odds_1x2_A"] = 6.0
+        r = client.post("/api/v4/recommend/single", json={
+            "fixtures": [fx], "bankroll": 1000.0, "top_per_match": 3,
+        })
+        assert r.status_code == 200, r.text
+        assert r.json()["tickets"], "a real 竞彩 SP should still yield a ticket"
+
+    def test_parlay_psc_only_yields_no_recommendation(self, client):
+        r = client.post("/api/v4/recommend", json={
+            "fixtures": [
+                self._psc_only("Vissel Kobe", "Kashima", "JPN_J1"),
+                self._psc_only("Urawa", "Gamba Osaka", "JPN_J1"),
+            ],
+            "bankroll": 1000.0, "k_min": 2, "k_max": 2, "top_n": 10,
+        })
+        assert r.status_code == 200, r.text
+        assert r.json()["n_recommendations"] == 0, (
+            "psc-only legs carry no rankable 竞彩 selection → no parlay"
+        )
+
+
+@pytest.mark.skipif(not ARTIFACT_PATH.exists(), reason="v4 artifact not present")
 class TestPoolEndpointE2E:
     def test_returns_pool_recommendations(self, client):
         fixtures = [

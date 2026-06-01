@@ -504,14 +504,29 @@ def _fixtures_to_dataframe(fixtures: list[FixtureOddsInput]) -> pd.DataFrame:
 
 
 def _fixture_to_match_input(row: pd.Series, lh: float, la: float, gbm_rho: float) -> Optional[MatchInput]:
-    """Build MatchInput, defaulting to PSC odds if lottery-specific odds are missing."""
-    # 1X2 market — fall back to PSC if no lottery odds
-    o_h = row.get("odds_1x2_H") if not pd.isna(row.get("odds_1x2_H")) else row["psc_home"]
-    o_d = row.get("odds_1x2_D") if not pd.isna(row.get("odds_1x2_D")) else row["psc_draw"]
-    o_a = row.get("odds_1x2_A") if not pd.isna(row.get("odds_1x2_A")) else row["psc_away"]
-    odds_1x2 = {"H": float(o_h), "D": float(o_d), "A": float(o_a)}
+    """Build a MatchInput from a fixture's 竞彩 (lottery) odds — or None.
 
-    # Handicap market (only when both handicap_home and odds_handicap_* are present)
+    A 竞彩 recommendation is only meaningful against a real 竞彩 SP: the line you
+    actually bet. We deliberately do NOT substitute Pinnacle (psc_*) when the
+    lottery line is missing — Pinnacle is the sharp BENCHMARK, not a betting
+    venue, so EV = model_P × Pinnacle_odds − 1 measures the model's divergence
+    from the sharp (noise), not a real edge. Feeding that fallback into the
+    recommenders was the "EV-vs-Pinnacle" bug; removing it here stops the same
+    pattern from resurfacing through /recommend or /recommend/single.
+
+    Returns None when neither the 竞彩 1X2 nor the 竞彩 handicap line is present
+    (no rankable ticket). Callers still emit a model PREDICTION for the fixture;
+    only the bet recommendation is withheld until a real 竞彩 SP arrives.
+    """
+    # 1X2 market — require a real 竞彩 line; NO Pinnacle fallback.
+    o_h = row.get("odds_1x2_H")
+    o_d = row.get("odds_1x2_D")
+    o_a = row.get("odds_1x2_A")
+    odds_1x2 = None
+    if not (pd.isna(o_h) or pd.isna(o_d) or pd.isna(o_a)):
+        odds_1x2 = {"H": float(o_h), "D": float(o_d), "A": float(o_a)}
+
+    # Handicap market (only when both handicap_home and 竞彩 odds_handicap_* present)
     odds_hc = None
     handicap = None
     if not pd.isna(row.get("handicap_home")):
@@ -521,6 +536,10 @@ def _fixture_to_match_input(row: pd.Series, lh: float, la: float, gbm_rho: float
         ho_a = row.get("odds_handicap_A")
         if not (pd.isna(ho_h) or pd.isna(ho_d) or pd.isna(ho_a)):
             odds_hc = {"H": float(ho_h), "D": float(ho_d), "A": float(ho_a)}
+
+    # No real 竞彩 line on either market → no rankable 竞彩 ticket.
+    if odds_1x2 is None and odds_hc is None:
+        return None
 
     return MatchInput(
         match_id=f"{row['league']}_{row['home_team']}_vs_{row['away_team']}",
