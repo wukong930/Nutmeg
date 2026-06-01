@@ -1945,8 +1945,15 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
     # V12 W8k — parlay/pool boards are SUPPRESSED on 今日推荐: they were the same
     # bug as the single board — auto-generated +EV-vs-Pinnacle combos with no
     # real 竞彩 SP = model-vs-sharp noise sold as bet recommendations. A 串关/复式
-    # recommendation needs a real 竞彩 SP per leg, which this view doesn't have.
-    # (Re-enable later with a real-EV path driven by entered SPs.)
+    # recommendation needs a real 竞彩 SP per leg, which this predictions view
+    # doesn't have.
+    #
+    # This stays OFF by design — NOT "to be built later". The real-EV 串关 already
+    # exists: the 近期赛事 串关篮子 (tick 「串」 across legs → POST /recommend/parlay,
+    # which server-recomputes each leg's model P and returns ∏P × ∏SP − 1, gated
+    # + Kelly-staked). 今日推荐 stays a pure predictions board and routes users
+    # there (see the in-card hint). Re-enabling an auto-parlay here would only
+    # reintroduce the noise, since this view carries no entered 竞彩 SP.
     _today_allow_parlay_pool = False
     if _today_allow_parlay_pool and fixtures_fetched >= 2 and "parlay" in req.include:
         try:
