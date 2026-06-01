@@ -474,10 +474,15 @@ class TestTodayPredictionBoard:
         assert "(t.probability * 100).toFixed(0)}%</div>\n            " \
                "<div class=\"text-xs text-muted mt-0.5\">${predConfLabel}" in html
 
-    def test_market_agreement_badge(self, html):
-        assert "today_pred_agree" in html
-        assert "today_pred_disagree" in html
-        assert "_sa === t.outcome" in html
+    def test_market_agreement_3tier_confidence(self, html):
+        # V12 W8m — model↔sharp agreement is a 3-tier confidence badge, not a
+        # binary ✓/⚠️: 一致 → 高把握; 分歧+模型仍自信 → 信市场; 分歧+近五五开 → 观望.
+        assert "today_conf_agree" in html
+        assert "today_conf_tossup" in html
+        assert "today_conf_trust" in html
+        assert "_sa === t.outcome" in html              # agree tier
+        assert "t.probability >= _TODAY_CONF_HI" in html  # confident-disagree split
+        assert "_TODAY_CONF_HI = 0.50" in html
 
     def test_count_label_is_prediction_not_stake(self, html):
         assert "today_pred_count" in html
@@ -487,6 +492,6 @@ class TestTodayPredictionBoard:
         assert "单关预测" in html
 
     def test_i18n_keys_both_locales(self, html):
-        for k in ("today_pred_count", "today_pred_conf", "today_pred_agree",
-                  "today_pred_disagree"):
+        for k in ("today_pred_count", "today_pred_conf", "today_conf_agree",
+                  "today_conf_tossup", "today_conf_trust"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"

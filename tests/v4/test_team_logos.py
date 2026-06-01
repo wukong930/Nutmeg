@@ -161,7 +161,9 @@ class TestDashboardLogoWiring:
                    "renderSingleRecommendations", "renderPoolRecommendations",
                    "renderWcMatch"):
             idx = html.index(f"function {fn}")
-            body = html[idx:idx+3000]
+            # Window 4000 (was 3000): renderTodaySingle grew with the V12 W8m
+            # 3-tier confidence badge, pushing the teamLogo() call further down.
+            body = html[idx:idx+4000]
             assert "teamLogo(" in body, f"{fn} doesn't call teamLogo"
 
 
