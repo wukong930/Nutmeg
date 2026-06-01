@@ -1808,7 +1808,11 @@ const I18N = {
     metric_n_recs:      '推荐总数',
     metric_total_stake: '推荐总投注',
     metric_weighted_ev: '加权 EV',
-    h_today_single:   '① 单关推荐',
+    h_today_single:   '① 单关预测',
+    today_pred_count: '场 · 模型预测',
+    today_pred_conf:  '模型置信',
+    today_pred_agree: '市场同意',
+    today_pred_disagree: '市场更看好',
     h_today_parlay:   '② 串关推荐',
     today_empty_main: '今日无可下注组合',
     today_empty_sub:  '所有场次的 EV / 命中率均未达推荐门槛 (建议 no-bet)。明天再来 · 或前往高级模式手动输入场次。',
@@ -2133,7 +2137,11 @@ const I18N = {
     metric_n_recs:      'Recommendations',
     metric_total_stake: 'Total stake',
     metric_weighted_ev: 'Weighted EV',
-    h_today_single:   '① Single bets',
+    h_today_single:   '① Single predictions',
+    today_pred_count: 'matches · model prediction',
+    today_pred_conf:  'model confidence',
+    today_pred_agree: 'market agrees',
+    today_pred_disagree: 'market prefers',
     h_today_parlay:   '② Parlay bets',
     today_empty_main: 'No qualifying bets today',
     today_empty_sub:  "All fixtures fell short of the EV / hit-rate thresholds (recommend: skip today). Check back tomorrow · or use advanced mode to enter fixtures manually.",
@@ -3178,6 +3186,16 @@ const _TODAY_REC_GATE = 0.05;
 const _TODAY_REC_BTN_ON = 'background:#059669;color:#fff;cursor:pointer;border:none;border-radius:6px;padding:4px 11px;font-size:12px;font-weight:600';
 const _TODAY_REC_BTN_OFF = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed;border:none;border-radius:6px;padding:4px 11px;font-size:12px';
 
+// V12 W8k — sharp (Pinnacle de-vig) argmax outcome ('H'/'D'/'A'), or null if
+// no Pinnacle line. Used to flag when the model's prediction is contested.
+function _devigArgmax1x2(h, d, a) {
+  if (!h || !d || !a) return null;
+  const inv = [1 / h, 1 / d, 1 / a];
+  const s = inv[0] + inv[1] + inv[2];
+  const q = inv.map(x => x / s);
+  return ['H', 'D', 'A'][q.indexOf(Math.max(...q))];
+}
+
 function renderTodaySingle(single, pfx = 'today') {
   const list = $('#' + pfx + '-single-list');
   const section = $('#' + pfx + '-single-section');
@@ -3186,18 +3204,17 @@ function renderTodaySingle(single, pfx = 'today') {
     return;
   }
   section.classList.remove('hidden');
+  // V12 W8k — the single board is now PREDICTIONS (model argmax), not bets.
   $('#' + pfx + '-single-count').textContent =
-    ` · ${single.n_recommendations} 注 · 总投注 ${fmtMoney(single.total_stake)}`;
-  // V11 P1-FE#1 Day 2: card-rec style with mono-display numbers + EV bar.
-  // Engineer info (probability %, "停"短语) hidden; replaced with visual
-  // confidence indicator + plain "建议投注" copy.
-  // V11 P1-FE#5 — i18n label captured outside the map (parameter `t`
-  // below shadows the i18n helper).
+    ` · ${single.n_recommendations} ${t('today_pred_count')}`;
   const updatedLabel = t('badge_updated');
-  // V12 W8i — capture i18n labels outside the map (the `t` param below shadows
-  // the i18n helper). Inline 竞彩 SP + 📌 only on the main 今日推荐 landing.
+  // V12 W8i/W8k — capture i18n labels outside the map (the `t` param below
+  // shadows the i18n helper). Inline 竞彩 SP + 📌 only on the 今日推荐 landing.
   const recSpLabel = t('today_rec_jcsp');
   const recBtnLabel = t('today_rec_btn');
+  const predConfLabel = t('today_pred_conf');
+  const agreeLabel = t('today_pred_agree');
+  const disagreeLabel = t('today_pred_disagree');
   const showRec = (pfx === 'today');
   if (showRec) _TODAY_SINGLES = single.tickets;
   list.innerHTML = single.tickets.map((t, i) => {
@@ -3205,6 +3222,12 @@ function renderTodaySingle(single, pfx = 'today') {
     // V11 P1-FE#5 — stamp .is-updated outline + badge when this pick is new
     const isUpdated = t.selection_fingerprint && isFingerprintChanged(t.selection_fingerprint);
     const updatedBadge = isUpdated ? `<span class="badge-updated">${updatedLabel}</span>` : '';
+    // V12 W8k — does the sharp (de-vig psc) agree with the model's argmax?
+    const _sa = _devigArgmax1x2(t.psc_home, t.psc_draw, t.psc_away);
+    const agreeBadge = (_sa === null) ? ''
+      : (_sa === t.outcome)
+        ? `<span style="color:#059669">✓ ${agreeLabel}</span>`
+        : `<span style="color:#b45309">⚠️ ${disagreeLabel}: ${outcomeLabel(_sa)}</span>`;
     const recRow = showRec ? `
         <div class="mt-3 pt-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid rgba(128,128,128,0.18)">
           <span class="text-xs text-muted">${recSpLabel}</span>
@@ -3233,12 +3256,11 @@ function renderTodaySingle(single, pfx = 'today') {
         </div>
         <div class="flex items-end justify-between gap-3">
           <div>
-            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(t.stake)}</div>
-            <div class="text-xs text-muted mt-0.5">建议投注</div>
+            <div class="num-display text-2xl text-gold font-semibold">${(t.probability * 100).toFixed(0)}%</div>
+            <div class="text-xs text-muted mt-0.5">${predConfLabel}</div>
           </div>
           <div class="flex flex-col items-end gap-1 text-xs">
-            <div class="text-secondary">赔率 <span class="num-display text-primary">${t.odds.toFixed(2)}</span></div>
-            ${evBar(t.ev_per_unit)}
+            ${agreeBadge}
           </div>
         </div>
         ${recRow}

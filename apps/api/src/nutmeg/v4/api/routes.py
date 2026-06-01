@@ -335,7 +335,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v12-fe-w8k-sb-autorefresh';
+const CACHE_VERSION = 'nutmeg-v12-fe-w8l-pred-board';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1726,6 +1726,50 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
     )
 
 
+def _argmax_prediction_tickets(
+    preds: list[SinglePrediction],
+) -> list[SingleTicketResponse]:
+    """V12 W8k — BUGFIX. Build the 今日推荐 single board as model PREDICTIONS,
+    not EV-vs-Pinnacle recommendations.
+
+    The old board fed recommend_singles the Pinnacle-fallback odds (no 竞彩 SP
+    at page-load), so its "EV" was actually model_P × Pinnacle_odds − 1 = the
+    model's DIVERGENCE from the sharp (noise), and it surfaced the model's
+    biggest disagreement with the sharp as the "best pick" (e.g. recommending
+    an already-relegated home side at 5.21). That mislabels noise as a bet.
+
+    A prediction board instead shows, per match, the model's single MOST-LIKELY
+    1X2 outcome (argmax of model P) + its probability. No bet, no EV. The actual
+    bet decision (real EV) happens only when the user types a 竞彩 SP into the
+    per-card input. Sorted by model confidence (argmax P) desc.
+    """
+    from nutmeg.v4.observation.recommendation_version import (
+        single_ticket_fingerprint,
+    )
+
+    tickets: list[SingleTicketResponse] = []
+    for p in preds:
+        probs = {"H": p.p_home_1x2, "D": p.p_draw_1x2, "A": p.p_away_1x2}
+        outcome = max(probs, key=lambda k: probs[k])
+        prob = float(probs[outcome])
+        tk = SingleTicketResponse(
+            match_id=f"{p.league}_{p.home_team}_vs_{p.away_team}",
+            league=p.league, date=str(p.date),
+            home_team=p.home_team, away_team=p.away_team,
+            market_type="1x2", outcome=outcome,
+            odds=float(1.0 / prob) if prob > 0 else 99.0,  # model fair price
+            probability=prob,
+            ev_per_unit=0.0,           # a prediction is NOT a bet — no EV here
+            stake=0.0, raw_kelly_stake=0.0, expected_return=0.0,
+            psc_home=p.psc_home, psc_draw=p.psc_draw, psc_away=p.psc_away,
+            psc_over25=p.psc_over25, psc_under25=p.psc_under25,
+        )
+        tk.selection_fingerprint = single_ticket_fingerprint(tk)
+        tickets.append(tk)
+    tickets.sort(key=lambda t: -t.probability)
+    return tickets
+
+
 @router.post(
     "/today-recommendations",
     response_model=TodayRecommendationsResponse,
@@ -1850,36 +1894,42 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
 
     if fixtures_fetched > 0 and "single" in req.include:
         try:
-            single_req = SingleRecommendRequest(
-                fixtures=fixtures,
-                bankroll=req.bankroll,
-                kelly_fraction=effective_kelly,
-                record_session=req.record_session,
-            )
-            single_resp = recommend_single(single_req)
-            # V11 P1-FE#4 — min_ev gate (single)
-            if single_resp.n_recommendations > 0 and req.min_ev > 0:
-                kept = [t for t in single_resp.tickets if t.ev_per_unit >= req.min_ev]
-                single_resp.tickets = kept
-                single_resp.n_recommendations = len(kept)
-                single_resp.total_stake = float(sum(t.stake for t in kept))
-                single_resp.total_expected_return = float(sum(t.expected_return for t in kept))
-            if single_resp.n_recommendations > 0:
-                total_recs += single_resp.n_recommendations
-                total_stake += single_resp.total_stake
-                # Sum EV-weighted-by-stake for the weighted_ev computation
-                for t in single_resp.tickets:
-                    stake_weighted_ev_sum += t.stake * t.ev_per_unit
-            else:
-                single_resp = None
+            # V12 W8k — BUGFIX: the single board is now the model's PREDICTIONS
+            # (argmax per match), NOT the EV-vs-Pinnacle max-pick. At page-load
+            # there is no 竞彩 SP, so the old recommend_single fell back to
+            # Pinnacle odds and ranked by model-minus-sharp divergence (noise) —
+            # surfacing the model's biggest disagreement with the sharp as the
+            # "best bet". The real bet decision (EV) happens when the user types
+            # a 竞彩 SP into the per-card input.
+            _art = get_artifact()
+            _preds = _calc_predictions(_art, fixtures) if _art is not None else []
+            pred_tickets = _argmax_prediction_tickets(_preds)
+            if pred_tickets:
+                single_resp = SingleRecommendResponse(
+                    generated_at_utc=datetime.now(timezone.utc).isoformat(
+                        timespec="seconds"),
+                    model=_model_info_from_artifact(_art),
+                    bankroll=req.bankroll,
+                    n_fixtures=len(fixtures),
+                    n_recommendations=len(pred_tickets),
+                    tickets=pred_tickets,
+                    total_stake=0.0,            # predictions, not bets
+                    total_expected_return=0.0,
+                )
         except Exception:  # noqa: BLE001
             import logging
             logging.getLogger(__name__).exception(
-                "today-recommendations: single pipeline failed",
+                "today-recommendations: prediction board failed",
             )
             single_resp = None
 
-    if fixtures_fetched >= 2 and "parlay" in req.include:
+    # V12 W8k — parlay/pool boards are SUPPRESSED on 今日推荐: they were the same
+    # bug as the single board — auto-generated +EV-vs-Pinnacle combos with no
+    # real 竞彩 SP = model-vs-sharp noise sold as bet recommendations. A 串关/复式
+    # recommendation needs a real 竞彩 SP per leg, which this view doesn't have.
+    # (Re-enable later with a real-EV path driven by entered SPs.)
+    _today_allow_parlay_pool = False
+    if _today_allow_parlay_pool and fixtures_fetched >= 2 and "parlay" in req.include:
         try:
             parlay_req = RecommendRequest(
                 fixtures=fixtures,
@@ -1919,7 +1969,8 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             parlay_resp = None
 
     # V11 P1-FE#4 — pool (Strategy B: auto-pick max-EV market per fixture)
-    if fixtures_fetched >= req.pool_n and "pool" in req.include:
+    # V12 W8k — suppressed on 今日推荐 (see _today_allow_parlay_pool note above).
+    if _today_allow_parlay_pool and fixtures_fetched >= req.pool_n and "pool" in req.include:
         try:
             pool_resp = _build_today_pool(
                 fixtures=fixtures,

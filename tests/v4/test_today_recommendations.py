@@ -417,3 +417,52 @@ class TestTodayRecommendationsPlayoffWarnings:
         from nutmeg.v4.api.schemas import TodayRecommendationsRequest
         req = TodayRecommendationsRequest()
         assert req.record_session is False
+
+
+class TestTodayPredictionBoardW8k:
+    """V12 W8k BUGFIX — the 今日推荐 single board is the model's PREDICTION
+    (argmax per match), NOT the EV-vs-Pinnacle max-pick (which surfaced the
+    model's biggest disagreement with the sharp as a 'bet', e.g. an already-
+    relegated home side at 5.21). Parlay/pool boards are suppressed on this view
+    (same Pinnacle-EV bug — a 串关 needs a real 竞彩 SP per leg)."""
+
+    def test_single_board_surfaces_argmax_not_ev_pick(self, client):
+        fake_rows = [
+            _make_fixture_row("Arsenal", "Liverpool", psc_h=1.90),
+            _make_fixture_row("Chelsea", "Spurs", psc_h=2.40),
+            _make_fixture_row("Real Madrid", "Barcelona",
+                              league="ESP_LA_LIGA", psc_h=2.10),
+        ]
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows",
+                   return_value=(fake_rows, 3, 0)):
+            resp = client.post("/api/v4/today-recommendations", json={
+                "leagues": ["EPL"], "bankroll": 1000.0, "date": "2026-05-25"})
+        if resp.status_code == 503:
+            pytest.skip("Production artifact not available")
+        body = resp.json()
+        single = body.get("single")
+        assert single is not None and single["tickets"], "should show predictions"
+        assert single["total_stake"] == 0.0, "predictions carry no stake"
+        preds = {(p["home_team"], p["away_team"]): p
+                 for p in body["single_match_predictions"]}
+        for tk in single["tickets"]:
+            assert tk["ev_per_unit"] == 0.0, "a prediction is not a bet — no EV"
+            assert tk["stake"] == 0.0
+            p = preds[(tk["home_team"], tk["away_team"])]
+            probs = {"H": p["p_home_1x2"], "D": p["p_draw_1x2"], "A": p["p_away_1x2"]}
+            argmax = max(probs, key=lambda k: probs[k])
+            assert tk["outcome"] == argmax, (
+                f"{tk['home_team']}: surfaced {tk['outcome']} but argmax is {argmax}")
+
+    def test_parlay_and_pool_suppressed(self, client):
+        fake_rows = [_make_fixture_row(f"H{i}", f"A{i}") for i in range(5)]
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows",
+                   return_value=(fake_rows, 5, 0)):
+            resp = client.post("/api/v4/today-recommendations", json={
+                "leagues": ["EPL"], "bankroll": 1000.0, "date": "2026-05-25",
+                "include": ["single", "parlay", "pool"]})
+        if resp.status_code == 503:
+            pytest.skip("Production artifact not available")
+        body = resp.json()
+        assert body["parlay"] is None, "parlay suppressed (Pinnacle-EV bug)"
+        assert body["pool"] is None, "pool suppressed (Pinnacle-EV bug)"

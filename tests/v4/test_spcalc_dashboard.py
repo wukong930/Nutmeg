@@ -457,3 +457,36 @@ class TestSelfCheckScoreboard:
         # Returning to a visible 推荐追溯 refreshes the card via the existing
         # Visibility API hook (slow-moving data → no polling interval).
         assert "_todayCurrentTab === 'history' && typeof loadScoreboard" in html
+
+
+class TestTodayPredictionBoard:
+    """V12 W8k BUGFIX — the 今日推荐 single board shows model PREDICTIONS
+    (argmax + confidence + market-agreement flag), not EV-vs-Pinnacle picks."""
+
+    def test_devig_argmax_helper_present(self, html):
+        assert "function _devigArgmax1x2" in html
+
+    def test_card_shows_model_confidence_not_stake(self, html):
+        # renderTodaySingle's body now shows model confidence % (a prediction),
+        # not a 建议投注 stake / fake-EV bar. (Other cards — 单关 tab, parlay —
+        # legitimately still show stakes; this asserts the prediction body.)
+        assert "today_pred_conf" in html
+        assert "(t.probability * 100).toFixed(0)}%</div>\n            " \
+               "<div class=\"text-xs text-muted mt-0.5\">${predConfLabel}" in html
+
+    def test_market_agreement_badge(self, html):
+        assert "today_pred_agree" in html
+        assert "today_pred_disagree" in html
+        assert "_sa === t.outcome" in html
+
+    def test_count_label_is_prediction_not_stake(self, html):
+        assert "today_pred_count" in html
+        assert "注 · 总投注 ${fmtMoney(single.total_stake)}" not in html
+
+    def test_section_title_renamed_to_prediction(self, html):
+        assert "单关预测" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("today_pred_count", "today_pred_conf", "today_pred_agree",
+                  "today_pred_disagree"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
