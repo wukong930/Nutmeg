@@ -15,6 +15,7 @@
 | **β 独立信号** | 模型相对 Pinnacle 有没有独立信号? | **无**(1X2 收盘:加权模型单调变差,最优 β≤0)→ **不改服务层** | [`beta_independent_signal_finding.md`](beta_independent_signal_finding.md) |
 | **战意 / stakes** | Pinnacle 有没有 mis-price 死亡之组? | 方向对但 **≤1.5σ**(n=210,欠采样 17×)+ **竞彩不挂** → **搁置** | [`motivation_stakes_finding.md`](motivation_stakes_finding.md) |
 | **球员级 xG/xA** | 球员级比队级多挤出 edge 吗? | **数据门控**(无球员数据);回测上限低(Pinnacle 收盘已 price 阵容);真 edge 在 soft-book 滞后的**实时窗口** → **搁置** | [`player_xg_finding.md`](player_xg_finding.md) |
+| **赔率变化路径** | 开盘→收盘盘路有没有残余信号? | **已直接验证被收盘吸收**(速度 +0.0000、跨公司 +0.0001,噪声级 + 样本内)→ **不做** | [`odds_path_finding.md`](odds_path_finding.md) |
 
 ## 文章六条优先级 × 我们的状态
 
@@ -25,7 +26,7 @@
 | ③ | 用让球+大小球反推 λ → 进球分布 | ✅ **早已做且超前**(Dixon-Coles `fit_lambdas` → 网格) |
 | ④ | 校准,别堆模型 | ✅ **已成熟**(温度/isotonic/ECE 审计;ECE 0.0120 优于 Pinnacle 0.0123;分联赛校准试过失败) |
 | ⑤ | 看 edge 来自哪里(分桶) | 🟡 有工具(bucket_decomp/ece-audit),但**没实盘数据**做真归因 |
-| ⑥ | 加市场没吸收的信息 | 战意 ❌搁置 · 球员xG ❌数据门控 · 裁判 🔴竞彩无盘口 · 赔率路径 🔴market_dynamics 已 ablation 失败 |
+| ⑥ | 加市场没吸收的信息 | 战意 ❌搁置 · 球员xG ❌数据门控 · 裁判 🔴竞彩无盘口 · 赔率路径 ✅已验证被收盘吸收 |
 
 ## 可重复诊断
 
