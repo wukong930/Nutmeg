@@ -32,6 +32,29 @@ _DB = Path(__file__).resolve().parents[2] / "data" / "v4_observation_backtest.db
 _GOLDEN_LOG_LOSS = 0.9670
 _TOL = 0.005
 
+# The baseline card (bench.py rewrites it with NO threshold). Pin the production
+# model's pooled log-loss row so a silent regeneration that drops or degrades it
+# fails CI — at audit time the working-tree card had in fact dropped this row.
+# Unlike the backtest-DB guard above, the card is tracked, so this runs in CI.
+_CARD = Path(__file__).resolve().parents[2] / "docs" / "v4_baseline_card.md"
+_CARD_GOLDEN = {
+    "Pinnacle closing (baseline)": 0.9942,  # the sharp benchmark
+    "V5 CatBoost + DC": 0.9960,             # PRODUCTION model (data/v4_model_cat)
+}
+_CARD_TOL = 0.001
+
+
+def _card_pooled_log_loss(card: str, label: str) -> float | None:
+    for line in card.splitlines():
+        if label in line and line.lstrip().startswith("|"):
+            cells = [c.strip().strip("*") for c in line.split("|") if c.strip()]
+            if len(cells) >= 2:
+                try:
+                    return float(cells[1])
+                except ValueError:
+                    continue
+    return None
+
 
 def _pooled_log_loss(db: Path) -> tuple[float, int]:
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -75,3 +98,17 @@ def test_backtest_pooled_log_loss_within_golden():
         f"ship threshold — review the baseline card, then re-pin _GOLDEN_LOG_LOSS "
         f"deliberately."
     )
+
+
+def test_baseline_card_pins_production_golden():
+    card = _CARD.read_text(encoding="utf-8")
+    for label, golden in _CARD_GOLDEN.items():
+        got = _card_pooled_log_loss(card, label)
+        assert got is not None, (
+            f"baseline card lost the '{label}' row — a bench.py regeneration "
+            f"silently dropped the production golden (audit R2)"
+        )
+        assert abs(got - golden) <= _CARD_TOL, (
+            f"'{label}' card log-loss {got} drifted from golden {golden} "
+            f"(+/-{_CARD_TOL}) — review, then re-pin deliberately"
+        )
