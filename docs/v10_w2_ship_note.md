@@ -32,7 +32,7 @@ No retraining — that's the V11+ Layer B.
   com.nutmeg.weekly_calibration_check                 ↓
     └─→ nutmeg-auto-calibration                       ↓
          --apply --auto-rollback                      ↓
-         --deploy-artifact data/v4_model              ↓
+         --deploy-artifact data/v4_model_cat              ↓
                                                       ↓
          ┌──────────────────────────────┬─────────────┘
          │                              │
@@ -101,15 +101,15 @@ nutmeg-auto-calibration --db data/v4_observation.db --apply
 
 # Deploy: write live_T_correction.json when ship gate passes
 nutmeg-auto-calibration --db data/v4_observation.db --apply \
-    --action=deploy --deploy-artifact data/v4_model
+    --action=deploy --deploy-artifact data/v4_model_cat
 
 # Rollback: delete live_T_correction.json + journal rollback
 nutmeg-auto-calibration --db data/v4_observation.db --apply \
-    --action=rollback --deploy-artifact data/v4_model
+    --action=rollback --deploy-artifact data/v4_model_cat
 
 # Weekly cron: auto-rollback FIRST, then propose if not reverted
 nutmeg-auto-calibration --db data/v4_observation.db --apply \
-    --auto-rollback --deploy-artifact data/v4_model \
+    --auto-rollback --deploy-artifact data/v4_model_cat \
     --out docs/weekly/auto_calibration_$(date +%Y-W%V).md
 ```
 
@@ -181,7 +181,7 @@ Before flipping Layer A "on" in production, the user needs:
    (V7 W1-W3 cron, ongoing)
 3. ⏳ First Monday after install: `docs/weekly/auto_calibration_*.md`
    will land — review it before approving a `--action=deploy`
-4. ⏳ Once a T is deployed, monitor `data/v4_model/live_T_correction.json`
+4. ⏳ Once a T is deployed, monitor `data/v4_model_cat/live_T_correction.json`
    metadata — if `n_holdout` is low or `p_value` is near 0.10, the
    next weekly check might propose a different T
 

@@ -29,7 +29,7 @@ Local launchd jobs:
 | 2 | `com.nutmeg.daily_recommend` | 15:00 daily | Generate EPL + La Liga recommendations, record session into observation DB |
 | 3 | `com.nutmeg.daily_settle` | 02:00 daily | Settle finished-match outcomes + refresh `docs/local_ab_report_latest.md` (was Sunday-only `weekly_settle`; daily since 2026-05-29) |
 | 4 | `com.nutmeg.weekly_gate` | Sunday 04:00 | Run P1#19 live-vs-backtest gate (cross-source-aware, `--tolerance-pp 50` per P1#22 noise floor); write report to `docs/weekly/p1_19_gate_<ISO-week>.md` |
-| 5 | `com.nutmeg.weekly_calibration_check` | Monday 03:00 | **V10 W2** Layer A drift check + auto-rollback. Runs `nutmeg-auto-calibration --apply --auto-rollback --deploy-artifact data/v4_model`. If a deployed correction is hurting log-loss → revert; otherwise propose a fresh T. Writes `docs/weekly/auto_calibration_<ISO-week>.md`. |
+| 5 | `com.nutmeg.weekly_calibration_check` | Monday 03:00 | **V10 W2** Layer A drift check + auto-rollback. Runs `nutmeg-auto-calibration --apply --auto-rollback --deploy-artifact data/v4_model_cat`. If a deployed correction is hurting log-loss → revert; otherwise propose a fresh T. Writes `docs/weekly/auto_calibration_<ISO-week>.md`. |
 | 6 | `com.nutmeg.daily_wc_predict` | 09:00 daily | **V10 W4** WC predictions for today, pulls Pinnacle odds when available, upserts into `wc_predictions` table. Writes `docs/wc/wc_<YYYY-MM-DD>.json`. |
 | 7 | `com.nutmeg.daily_wc_settle` | 02:00 daily | **V10 W4** Pulls finished WC fixtures from API-Football, fills outcome columns in `wc_predictions`, then writes a fresh tournament-wide report to `docs/wc/wc_report_<YYYY-MM-DD>.md`. |
 
@@ -208,10 +208,10 @@ nutmeg-auto-calibration \
   --db data/v4_observation.db \
   --apply \
   --action deploy \
-  --deploy-artifact data/v4_model
+  --deploy-artifact data/v4_model_cat
 
 # Verify the artifact file landed
-cat data/v4_model/live_T_correction.json
+cat data/v4_model_cat/live_T_correction.json
 ```
 
 The serving layer (`/api/v4/recommend*`, `/api/v4/predictions/upcoming`,
@@ -225,7 +225,7 @@ nutmeg-auto-calibration \
   --db data/v4_observation.db \
   --apply \
   --action rollback \
-  --deploy-artifact data/v4_model
+  --deploy-artifact data/v4_model_cat
 ```
 
 Removes the correction file + writes a `rollback` journal entry.

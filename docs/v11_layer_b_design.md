@@ -366,7 +366,7 @@ Layer B rolled back            absent (auto-cleared)    absent
 Transitions:
 
 ```
-nutmeg-auto-calibration --action=deploy --deploy-artifact data/v4_model
+nutmeg-auto-calibration --action=deploy --deploy-artifact data/v4_model_cat
     → writes live_T_correction.json
 
 nutmeg-auto-retrain --action=deploy --artifact-base data/v4_model_layer_b

@@ -370,7 +370,14 @@ install_job "com.nutmeg.weekly_gate" \
 #
 # Why Monday 03:00? Settle (Sunday 02:00) and Gate (Sunday 04:00)
 # need to finish first — calibration uses the freshly-settled rows.
-ARTIFACT_DIR="$REPO_ROOT/data/v4_model"
+#
+# AUDIT FIX (D1): deploy Layer A corrections to the SAME artifact dir serving
+# reads — NUTMEG_V4_ARTIFACT_PATH in .env (data/v4_model_cat, the CatBoost
+# model). The old value data/v4_model is the LightGBM default that serving does
+# NOT load, so a correction written there was a silent no-op (it fit, gated,
+# journaled, reported success — while serving applied identity T=1.0 forever).
+# tests/v4/test_layer_a_deploy_path.py locks deploy-dir == serving-dir.
+ARTIFACT_DIR="$REPO_ROOT/data/v4_model_cat"
 CALIB_OUT_DIR="$REPO_ROOT/docs/weekly"
 install_job "com.nutmeg.weekly_calibration_check" \
   3 0 1 \
