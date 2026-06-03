@@ -29,7 +29,11 @@ class FixtureOddsInput(BaseModel):
     psc_draw: float = Field(..., gt=1.0)
     psc_away: float = Field(..., gt=1.0)
 
-    # Lottery odds (what the player actually bets at). Default to Pinnacle if absent.
+    # 竞彩 lottery odds (what the player actually bets at). If absent, the
+    # outcome is NOT bettable — do NOT substitute Pinnacle (psc_*). Pinnacle is
+    # the sharp benchmark, not a betting venue; EV against it is model-vs-sharp
+    # noise (the EV-vs-Pinnacle bug). Selection builders raise when these are
+    # missing (audit B2/D3; was previously "Default to Pinnacle if absent").
     odds_1x2_H: Optional[float] = Field(None, gt=1.0)
     odds_1x2_D: Optional[float] = Field(None, gt=1.0)
     odds_1x2_A: Optional[float] = Field(None, gt=1.0)

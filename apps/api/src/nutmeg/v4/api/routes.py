@@ -1123,10 +1123,15 @@ def _pick_to_selection(
         odds_col = f"odds_1x2_{outcome}"
         odds = row.get(odds_col)
         if odds is None or pd.isna(odds):
-            psc_col = {
-                "H": "psc_home", "D": "psc_draw", "A": "psc_away",
-            }[outcome]
-            odds = row[psc_col]
+            # AUDIT FIX (B2): a 竞彩 recommendation requires a real 竞彩 SP. Do
+            # NOT fall back to psc_* (raw vigged Pinnacle) — that makes
+            # edge = model_P × Pinnacle_odds − 1 = model-vs-sharp noise (the
+            # EV-vs-Pinnacle bug). The 让球 branch below already raises; this
+            # parallel 复式(pool) path was missed by the 53a7dc8 single/parlay fix.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"{match_id}: 1X2 {outcome} has no SP (no Pinnacle fallback)",
+            )
         return Selection(
             match_id=match_id, market_type="1x2", outcome=outcome,
             probability=float(prob), odds=float(odds),

@@ -95,7 +95,12 @@ def _row_to_selection(
         odds_col = f"odds_1x2_{outcome}"
         odds = row.get(odds_col)
         if odds is None or pd.isna(odds):
-            odds = row[f"psc_{('home' if outcome == 'H' else 'draw' if outcome == 'D' else 'away')}"]
+            # AUDIT FIX (B2): no 竞彩 SP → not bettable. Do NOT fall back to
+            # psc_* (vigged Pinnacle); that = the EV-vs-Pinnacle noise bug.
+            # The hc_X branch below already raises — match it.
+            raise ValueError(
+                f"row {match_id}: pick={pick} but odds_1x2_{outcome} missing (no Pinnacle fallback)"
+            )
         return Selection(
             match_id=match_id,
             market_type="1x2",

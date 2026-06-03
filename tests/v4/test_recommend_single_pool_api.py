@@ -241,6 +241,20 @@ class TestNoPinnacleFallbackForRecommendation:
             "psc-only legs carry no rankable 竞彩 selection → no parlay"
         )
 
+    def test_pool_psc_only_raises_not_fabricated(self, client):
+        # AUDIT FIX (B2): the 复式(pool) path was the one 53a7dc8 MISSED —
+        # _pick_to_selection fell back to psc_* and fabricated +EV pool tickets.
+        # It now raises 422 (like the 让球 branch) instead of betting Pinnacle.
+        fxs = [self._psc_only("Vissel Kobe", "Kashima", "JPN_J1"),
+               self._psc_only("Urawa", "Gamba Osaka", "JPN_J1")]
+        for fx in fxs:
+            fx["pick"] = "1x2_A"
+        r = client.post("/api/v4/recommend/pool", json={
+            "fixtures": fxs, "n": 2, "bankroll": 1000.0,
+        })
+        assert r.status_code == 422, r.text
+        assert "no Pinnacle fallback" in r.json()["detail"]
+
 
 @pytest.mark.skipif(not ARTIFACT_PATH.exists(), reason="v4 artifact not present")
 class TestPoolEndpointE2E:
