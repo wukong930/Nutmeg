@@ -161,7 +161,10 @@ class TestParlayRecordSettleable:
             row = rows[0]
             assert row["k_legs"] == 2
             assert not row["is_compound"]
-            assert row["stake_units"] == 10        # ¥20 / ¥2
+            # AUDIT FIX (B1): a 串关 ticket = exactly 1 atomic combo (all legs
+            # must hit), so stake_units == 1 (NOT ¥stake/¥2). The old ==10
+            # pinned the bug that shrank every winning payout by ~stake/2.
+            assert row["stake_units"] == 1
             legs = json.loads(row["legs_json"])
             assert legs[0]["match_id"] == "ESP_SEGUNDA_DIVISION_Granada CF_vs_Sporting Gijon"
             assert legs[0]["selections"][0]["outcome"] == "H"

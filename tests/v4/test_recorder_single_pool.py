@@ -90,7 +90,10 @@ class TestRecordSingleSession:
             assert row["k_legs"] == 1
             assert row["is_compound"] == 0  # SQLite int 0/1
 
-    def test_stake_units_quantized_to_2(self, tmp_path):
+    def test_stake_units_is_one_per_single(self, tmp_path):
+        # AUDIT FIX (B1): each 单关 ticket = exactly 1 atomic combo (1 leg, 1
+        # selection) → stake_units == 1, regardless of ¥ stake. The old test
+        # asserted [10, 12] (¥stake/¥2), pinning the bug that shrank every win.
         db = tmp_path / "obs.db"
         req, resp = _single_request_response()
         record_single_session(db, request=req, response=resp)
@@ -98,9 +101,8 @@ class TestRecordSingleSession:
             rows = list(conn.execute(
                 "SELECT stake_units, kelly_stake FROM parlay_recommendations"
             ))
-        # stake 24 → 12 units; stake 20 → 10 units
         units = sorted(r["stake_units"] for r in rows)
-        assert units == [10, 12]
+        assert units == [1, 1]
 
     def test_leg_json_settleable_shape(self, tmp_path):
         """legs_json must include match_id + market_type + selections so V4

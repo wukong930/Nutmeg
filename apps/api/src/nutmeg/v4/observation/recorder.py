@@ -185,8 +185,13 @@ def record_single_session(
                 }],
             }
             stake = float(ticket["stake"])
-            # stake_units = ¥ stake / ¥2 minimum (always whole)
-            stake_units = int(stake // 2.0) if stake > 0 else 0
+            # AUDIT FIX (B1): a 单关 ticket = exactly 1 atomic combo (1 leg, 1
+            # selection) → stake_units MUST be 1 (= settlement's n_combos_total).
+            # The old `int(stake//2)` (倍数) made unit_money = kelly_stake/(stake/2)
+            # = ¥2, so a winning payout was unit_money×odds = 2×odds instead of
+            # stake×odds — silently shrinking EVERY win by ~stake/2 while losses
+            # stayed correct (total_stake = unit_money×stake_units = kelly_stake).
+            stake_units = 1 if stake > 0 else 0
             insert_parlay_recommendation(
                 conn,
                 session_id,
@@ -291,7 +296,9 @@ def record_parlay_session(
             rank=1,
             k_legs=int(response.get("k_legs", len(legs))),
             is_compound=False,
-            stake_units=int(stake // 2.0) if stake > 0 else 0,
+            # AUDIT FIX (B1): a 串关 ticket = 1 atomic combo (all legs must hit)
+            # → stake_units MUST be 1, not int(stake//2). See single-board note.
+            stake_units=1 if stake > 0 else 0,
             kelly_stake=stake,
             expected_return=stake * float(response.get("ev_per_unit", 0.0)),
             hit_probability=float(response.get("hit_probability", 0.0)),
@@ -594,7 +601,10 @@ def record_pool_session(
                 }
                 for leg in ticket["legs"]
             ]
-            stake_units = int(stake // 2.0)
+            # AUDIT FIX (C2): each 复式 sub-ticket = 1 atomic combo
+            # (single-selection legs) → stake_units MUST be 1, not int(stake//2)
+            # (same shrink-every-win bug as the 单关/串关 recorders).
+            stake_units = 1 if stake > 0 else 0
             insert_parlay_recommendation(
                 conn,
                 session_id,
