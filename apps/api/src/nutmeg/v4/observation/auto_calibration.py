@@ -40,6 +40,7 @@ from typing import Any
 
 import numpy as np
 
+from nutmeg.v4.data.playoff_context import detect_playoff
 from nutmeg.v4.observation.store import open_db
 
 
@@ -265,9 +266,19 @@ def load_calibration_pairs(
             """,
             (cutoff.date().isoformat(),),
         )
+        n_blended_skipped = 0
         for r in cur2.fetchall():
             key = (r["match_date"], r["league"], r["home_team"], r["away_team"])
             if key in seen:
+                continue
+            # AUDIT FIX (B3): playoff/barrage league_predictions rows carry a
+            # 70%-Pinnacle-blended 1X2 (_calc_predictions), NOT a pure model
+            # output — they must never calibrate the model (Layer A). The
+            # `market_mode = 0` SQL filter above does NOT catch them (they are
+            # logged as ordinary model-board rows). Re-detect via the same
+            # league+date key the blend used and skip.
+            if detect_playoff(r["league"], r["match_date"]) is not None:
+                n_blended_skipped += 1
                 continue
             seen.add(key)
             hg, ag = r["home_goals"], r["away_goals"]
@@ -282,6 +293,12 @@ def load_calibration_pairs(
                 p_away=float(r["p_away"]),
                 outcome=outcome,
             ))
+        if n_blended_skipped:
+            log.info(
+                "load_calibration_pairs: excluded %d playoff-blended row(s) "
+                "from Layer A calibration",
+                n_blended_skipped,
+            )
     rows.sort(key=lambda p: p.match_date)
     return rows
 

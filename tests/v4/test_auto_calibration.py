@@ -248,8 +248,12 @@ class TestLoadCalibrationPairs:
         recent = (now - dt.timedelta(days=3)).date().isoformat()
 
         def mk(home: str, away: str, market_mode: bool) -> None:
+            # ESP_LA_LIGA (top division) is never in a playoff window, so the
+            # B3 playoff filter stays inert here — this test isolates the
+            # market_mode dimension. (ESP_SEGUNDA_DIVISION would make `recent`
+            # land in a playoff window on some run-dates and drop both rows.)
             record_league_prediction(str(db), {
-                "date": recent, "league": "ESP_SEGUNDA_DIVISION",
+                "date": recent, "league": "ESP_LA_LIGA",
                 "home_team": home, "away_team": away, "kickoff_utc": None,
                 "market_mode": market_mode,
                 "p_home_1x2": 0.5, "p_draw_1x2": 0.3, "p_away_1x2": 0.2,
@@ -269,6 +273,53 @@ class TestLoadCalibrationPairs:
         keys = {(p.home_team, p.away_team) for p in load_calibration_pairs(db, weeks=4)}
         assert ("Aaa", "Bbb") in keys       # model-mode prediction feeds Layer A
         assert ("Ccc", "Ddd") not in keys   # market-mode (de-vig) excluded
+
+    def test_excludes_playoff_blended_from_calibration(self, tmp_path: Path,
+                                                       monkeypatch):
+        """AUDIT FIX (B3): playoff/barrage league_predictions rows carry a
+        70%-Pinnacle-blended 1X2 (_calc_predictions), NOT pure model output.
+        Even though they are logged market_mode=0, they must never feed Layer A
+        calibration — re-detected at read time and skipped. detect_playoff is
+        monkeypatched so the verdict is deterministic regardless of run-date
+        (the real calendar windows drift relative to `now`)."""
+        import nutmeg.v4.observation.auto_calibration as ac
+        from nutmeg.v4.observation.prediction_log import (
+            record_league_prediction,
+            settle_league_predictions,
+        )
+        monkeypatch.setattr(
+            ac, "detect_playoff",
+            lambda lg, d: object() if lg == "PLAYOFF_LG" else None,
+        )
+        db = tmp_path / "obs.db"
+        with open_db(db):
+            pass  # init base schema
+        now = dt.datetime.now(dt.UTC)
+        recent = (now - dt.timedelta(days=3)).date().isoformat()
+
+        def mk(league: str, home: str, away: str) -> None:
+            record_league_prediction(str(db), {
+                "date": recent, "league": league,
+                "home_team": home, "away_team": away, "kickoff_utc": None,
+                "market_mode": False,  # both logged as model-board rows
+                "p_home_1x2": 0.5, "p_draw_1x2": 0.3, "p_away_1x2": 0.2,
+                "psc_home": 2.0, "psc_draw": 3.4, "psc_away": 3.6,
+            })
+        mk("NORMAL_LG", "Norm", "Al")    # pure model → feeds calibration
+        mk("PLAYOFF_LG", "Play", "Off")  # playoff-blended → must be excluded
+        fx = [
+            {"teams": {"home": {"name": n[0]}, "away": {"name": n[1]}},
+             "fixture": {"status": {"short": "FT"}},
+             "score": {"fulltime": {"home": 2, "away": 0}},
+             "goals": {"home": 2, "away": 0}}
+            for n in [("Norm", "Al"), ("Play", "Off")]
+        ]
+        settle_league_predictions(str(db), fetch_fixtures=lambda d, lg: fx,
+                                  today=now.date())
+        keys = {(p.home_team, p.away_team)
+                for p in load_calibration_pairs(db, weeks=4)}
+        assert ("Norm", "Al") in keys        # pure model feeds Layer A
+        assert ("Play", "Off") not in keys   # playoff-blended excluded
 
 
 class TestSplitTrainHoldout:

@@ -27,6 +27,7 @@ import logging
 import math
 from pathlib import Path
 
+from nutmeg.v4.data.playoff_context import detect_playoff
 from nutmeg.v4.observation.prediction_log import fetch_league_predictions
 
 log = logging.getLogger("nutmeg-predict-report")
@@ -93,15 +94,37 @@ def _pct(x):
     return f"{x * 100:.1f}%" if x == x else "—"  # x!=x → NaN
 
 
+def _is_market_blended(r: dict) -> bool:
+    """AUDIT FIX (B3): playoff/barrage model-board rows have their 1X2 blended
+    70% toward Pinnacle in _calc_predictions, so they are NOT a pure model
+    output. Re-detect at read time (detect_playoff is keyed on league+date — the
+    same inputs the blend used) and keep them OUT of the model-vs-sharp scoring;
+    otherwise they flatter the model log-loss and never count as a
+    'disagreement'. Conservative: a pure-model playoff row that happens to carry
+    no Pinnacle line is also dropped, costing a few legit rows but never the
+    reverse (a blended row never leaks into the model's scoreboard)."""
+    md, lg = r.get("match_date"), r.get("league")
+    if not md or not lg:
+        return False
+    return detect_playoff(lg, md) is not None
+
+
+def _drop_market_blended(rows: list[dict]) -> tuple[list[dict], int]:
+    kept = [r for r in rows if not _is_market_blended(r)]
+    return kept, len(rows) - len(kept)
+
+
 def scoreboard(rows: list[dict]) -> dict:
     """JSON-friendly metrics for the dashboard card (same numbers as the
     markdown report). Honest by construction: hit-rate is reported alongside
     the Pinnacle baseline + the model-vs-sharp log-loss delta, never alone."""
+    rows, n_blended = _drop_market_blended(rows)
     settled = [r for r in rows if r.get("outcome") is not None]
     pending = [r for r in rows if r.get("outcome") is None]
     out: dict = {
         "n_settled": len(settled),
         "n_pending": len(pending),
+        "n_market_blended_excluded": n_blended,
         "model_hit_rate": None,
         "pinnacle_hit_rate": None,
         "model_log_loss": None,
@@ -137,6 +160,7 @@ def scoreboard(rows: list[dict]) -> dict:
 
 
 def build_report(rows: list[dict]) -> str:
+    rows, n_blended = _drop_market_blended(rows)
     settled = [r for r in rows if r.get("outcome") is not None]
     out: list[str] = ["# 模型盘预测命中率报告 (非竞彩 · 纯预测验证)\n"]
     if not settled:
@@ -155,6 +179,9 @@ def build_report(rows: list[dict]) -> str:
     pbr, _ = _brier(pin_rows, _pin_p)
 
     out.append(f"已结算 **{n}** 场 (其中 {pn} 场有 Pinnacle 对照)。\n")
+    if n_blended:
+        out.append(f"> 注:已排除 {n_blended} 场 playoff/附加赛"
+                   "(1X2 为 70% Pinnacle 混合,非纯模型输出,计入会虚高模型分)。\n")
     out.append("## 命中率(看着爽,但会被热门拉高,别只看它)")
     out.append(f"- **模型命中率: {_pct(mh / n)}** ({mh}/{n})")
     if pn:
