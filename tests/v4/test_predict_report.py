@@ -13,12 +13,13 @@ from __future__ import annotations
 from nutmeg.v4.cli.predict_report import build_report, scoreboard
 
 
-def _row(league: str, date: str, outcome: int) -> dict:
+def _row(league: str, date: str, outcome: int, market_mode: int = 0) -> dict:
     return {
         "match_date": date,
         "league": league,
         "home_team": "H",
         "away_team": "A",
+        "market_mode": market_mode,
         "p_home": 0.5,
         "p_draw": 0.3,
         "p_away": 0.2,
@@ -49,8 +50,9 @@ def test_build_report_excludes_and_notes_playoff_blended():
         _row("ESP_SEGUNDA_DIVISION", "2026-06-03", 0),
     ]
     md = build_report(rows)
-    assert "已结算 **1** 场" in md          # only the pure-model row scored
-    assert "已排除 1 场 playoff" in md       # honest note, not a silent drop
+    assert "已结算 **1** 场" in md            # only the pure-model row scored
+    assert "已排除 1 场非纯模型预测" in md     # honest note, not a silent drop
+    assert "playoff" in md                    # reason surfaced
 
 
 def test_pure_model_rows_untouched():
@@ -61,3 +63,16 @@ def test_pure_model_rows_untouched():
     sb = scoreboard(rows)
     assert sb["n_market_blended_excluded"] == 0
     assert sb["n_settled"] == 2
+
+
+def test_scoreboard_excludes_market_mode():
+    # AUDIT FIX (R3): market_mode=1 rows are the Pinnacle de-vig served as the
+    # prediction (cups/national) — tautological vs Pinnacle, must not score.
+    # UCL is not a playoff-window league, so this isolates the market_mode path.
+    rows = [
+        _row("ESP_LA_LIGA", "2026-06-03", 0),                # pure model → counts
+        _row("UCL", "2026-06-03", 0, market_mode=1),         # de-vig → excluded
+    ]
+    sb = scoreboard(rows)
+    assert sb["n_market_blended_excluded"] == 1
+    assert sb["n_settled"] == 1

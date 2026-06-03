@@ -95,14 +95,21 @@ def _pct(x):
 
 
 def _is_market_blended(r: dict) -> bool:
-    """AUDIT FIX (B3): playoff/barrage model-board rows have their 1X2 blended
-    70% toward Pinnacle in _calc_predictions, so they are NOT a pure model
-    output. Re-detect at read time (detect_playoff is keyed on league+date — the
-    same inputs the blend used) and keep them OUT of the model-vs-sharp scoring;
-    otherwise they flatter the model log-loss and never count as a
-    'disagreement'. Conservative: a pure-model playoff row that happens to carry
-    no Pinnacle line is also dropped, costing a few legit rows but never the
-    reverse (a blended row never leaks into the model's scoreboard)."""
+    """A row that is NOT a pure model-board output → keep it OUT of the
+    model-vs-sharp scoring. Two cases:
+
+      * AUDIT FIX (R3): market_mode=1 rows ARE the Pinnacle de-vig (cups /
+        national, OOD) served AS the prediction. Scoring them against Pinnacle
+        is tautological (Δlog-loss ≈ 0) — they neither validate nor challenge
+        the model, they just dilute the comparison.
+      * AUDIT FIX (B3): playoff / barrage rows have their 1X2 blended 70% toward
+        Pinnacle in _calc_predictions. Re-detect at read time (detect_playoff is
+        keyed on league+date — the same inputs the blend used). Conservative: a
+        pure-model playoff row with no Pinnacle line is also dropped, costing a
+        few legit rows but never letting a blended row flatter the model's
+        log-loss or hide as a non-'disagreement'."""
+    if r.get("market_mode"):
+        return True
     md, lg = r.get("match_date"), r.get("league")
     if not md or not lg:
         return False
@@ -180,8 +187,8 @@ def build_report(rows: list[dict]) -> str:
 
     out.append(f"已结算 **{n}** 场 (其中 {pn} 场有 Pinnacle 对照)。\n")
     if n_blended:
-        out.append(f"> 注:已排除 {n_blended} 场 playoff/附加赛"
-                   "(1X2 为 70% Pinnacle 混合,非纯模型输出,计入会虚高模型分)。\n")
+        out.append(f"> 注:已排除 {n_blended} 场非纯模型预测"
+                   "(playoff 70% Pinnacle 混合 / 市场模式 de-vig,计入会虚高模型分)。\n")
     out.append("## 命中率(看着爽,但会被热门拉高,别只看它)")
     out.append(f"- **模型命中率: {_pct(mh / n)}** ({mh}/{n})")
     if pn:
