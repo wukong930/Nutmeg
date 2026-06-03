@@ -81,3 +81,13 @@ def test_operator_guide_deploys_to_serving_artifact_dir():
     assert "--deploy-artifact data/v4_model`" not in guide
     assert "--deploy-artifact data/v4_model " not in guide
     assert "--deploy-artifact data/v4_model_cat" in guide
+
+
+def test_weekly_report_filenames_use_iso_year():
+    """AUDIT FIX (D5): weekly report filenames use the ISO week number (%V),
+    which MUST pair with the ISO year (%G), not the calendar year (%Y).
+    Otherwise e.g. Sun 2027-01-03 (ISO 2026-W53) is filed as 2027-W53 and a
+    2027 run with the same %V can overwrite the prior year's evidence."""
+    script = (_REPO_ROOT / "scripts" / "setup_local_pipeline.sh").read_text()
+    assert "%Y-W%V" not in script, "ISO week (%V) must pair with ISO year (%G)"
+    assert "%G-W%V" in script

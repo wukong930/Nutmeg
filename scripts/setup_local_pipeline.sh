@@ -350,14 +350,14 @@ install_job "com.nutmeg.daily_settle" \
 # football-data.co.uk PSC; their snapshot-time differences alone
 # cause 30-50pp ROI gap without any model issue).
 #
-# Output: docs/weekly/p1_19_gate_$(date +%Y-W%V).md
+# Output: docs/weekly/p1_19_gate_$(date +%G-W%V).md
 # Exit code: 0 within tolerance; 2 over tolerance (logged but not
 # alarmed — operator should `tail` the err log on Monday morning).
 BACKTEST_DB="$REPO_ROOT/data/v4_observation_backtest.db"
 GATE_OUT_DIR="$REPO_ROOT/docs/weekly"
 install_job "com.nutmeg.weekly_gate" \
   4 0 0 \
-  "$ENV_PREFIX && mkdir -p $GATE_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.live_vs_backtest --db $DB_PATH --weeks 4 --live-model-arm lineup_aware --roi-backtest-db $BACKTEST_DB --roi-backtest-arm lineup_aware --tolerance-pp 50 --out $GATE_OUT_DIR/p1_19_gate_\$(date +%Y-W%V).md || true"
+  "$ENV_PREFIX && mkdir -p $GATE_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.live_vs_backtest --db $DB_PATH --weeks 4 --live-model-arm lineup_aware --roi-backtest-db $BACKTEST_DB --roi-backtest-arm lineup_aware --tolerance-pp 50 --out $GATE_OUT_DIR/p1_19_gate_\$(date +%G-W%V).md || true"
 
 # Job 5: V10 W2 weekly auto-T calibration check (Monday 03:00)
 # Runs auto-rollback safety net FIRST: if the currently-deployed
@@ -381,7 +381,7 @@ ARTIFACT_DIR="$REPO_ROOT/data/v4_model_cat"
 CALIB_OUT_DIR="$REPO_ROOT/docs/weekly"
 install_job "com.nutmeg.weekly_calibration_check" \
   3 0 1 \
-  "$ENV_PREFIX && mkdir -p $CALIB_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.auto_calibration --db $DB_PATH --apply --auto-rollback --deploy-artifact $ARTIFACT_DIR --out $CALIB_OUT_DIR/auto_calibration_\$(date +%Y-W%V).md || true"
+  "$ENV_PREFIX && mkdir -p $CALIB_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.auto_calibration --db $DB_PATH --apply --auto-rollback --deploy-artifact $ARTIFACT_DIR --out $CALIB_OUT_DIR/auto_calibration_\$(date +%G-W%V).md || true"
 
 # Job 6: V10 W4 WC daily predict (09:00 daily during tournament)
 # Re-runs nutmeg-wc-predict for today, fetches current Pinnacle odds
