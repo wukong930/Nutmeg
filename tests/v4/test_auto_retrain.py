@@ -452,6 +452,51 @@ class TestCliDeploy:
         # Layer A correction was cleared
         assert not (base / LAYER_A_CORRECTION_FILENAME).exists()
 
+    def test_deploy_rejected_when_gate_fails(self, tmp_path):
+        """AUDIT FIX (R4): deploy re-checks the ship gate. A candidate that does
+        NOT pass (here log-loss WORSE than production) is refused with rc 2 and
+        no pointer is written — propose-passing is no longer assumed at deploy."""
+        from nutmeg.v4.cli.auto_retrain import main
+        from nutmeg.v4.observation.auto_retrain import (
+            LIVE_ARTIFACT_POINTER_FILENAME,
+        )
+        base = tmp_path / "base"
+        base.mkdir()
+        candidate = tmp_path / "v_2026-Q3"
+        candidate.mkdir()
+        rc = main([
+            "--db", str(tmp_path / "obs.db"),
+            "--action", "deploy", "--apply",
+            "--candidate", str(candidate), "--artifact-base", str(base),
+            "--version", "v_2026-Q3",
+            "--log-loss-before", "1.000", "--log-loss-after", "1.050",  # WORSE
+            "--p-value", "0.02", "--n-train", "10000", "--n-holdout", "200",
+        ])
+        assert rc == 2
+        assert not (base / LIVE_ARTIFACT_POINTER_FILENAME).exists()
+
+    def test_deploy_override_gate_forces_through(self, tmp_path):
+        """--override-gate lets an emergency manual deploy proceed despite a
+        failing gate — the pointer is written (rc 0)."""
+        from nutmeg.v4.cli.auto_retrain import main
+        from nutmeg.v4.observation.auto_retrain import (
+            LIVE_ARTIFACT_POINTER_FILENAME,
+        )
+        base = tmp_path / "base"
+        base.mkdir()
+        candidate = tmp_path / "v_2026-Q3"
+        candidate.mkdir()
+        rc = main([
+            "--db", str(tmp_path / "obs.db"),
+            "--action", "deploy", "--apply", "--override-gate",
+            "--candidate", str(candidate), "--artifact-base", str(base),
+            "--version", "v_2026-Q3",
+            "--log-loss-before", "1.000", "--log-loss-after", "1.050",  # WORSE
+            "--p-value", "0.02", "--n-train", "10000", "--n-holdout", "200",
+        ])
+        assert rc == 0
+        assert (base / LIVE_ARTIFACT_POINTER_FILENAME).exists()
+
 
 class TestCliRollback:
     def test_rollback_clears_both_files(self, tmp_path):

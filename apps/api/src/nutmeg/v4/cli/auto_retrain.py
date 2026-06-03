@@ -264,6 +264,29 @@ def do_deploy(args: argparse.Namespace) -> int:
     train_window = tuple(args.train_window.split(":", 1)) if args.train_window else ("", "")
     holdout_window = tuple(args.holdout_window.split(":", 1)) if args.holdout_window else ("", "")
 
+    # AUDIT FIX (R4): re-evaluate the ship gate at DEPLOY time. propose and
+    # deploy are separate CLI invocations, so deploy previously swapped the
+    # production pointer with NO gate check (it journaled decision=True
+    # unconditionally). A fat-fingered worse candidate — or one that regressed
+    # since propose — would silently go live. Refuse unless the gate passes, or
+    # --override-gate forces a logged emergency override.
+    ll_before = float(args.log_loss_before) if args.log_loss_before is not None else float("nan")
+    ll_after = float(args.log_loss_after) if args.log_loss_after is not None else float("nan")
+    gate_ok, gate_reason = evaluate_ship_gate(
+        log_loss_before=ll_before, log_loss_after=ll_after,
+        p_value=p_value, n_train=n_train, n_holdout=n_holdout,
+        min_log_loss_gain=args.min_log_loss_gain, max_p_value=args.max_p_value,
+        min_train_matches=args.min_train_matches,
+        min_holdout_matches=args.min_holdout_matches,
+    )
+    if not gate_ok and not args.override_gate:
+        log.error("ship gate REJECTED deploy: %s", gate_reason)
+        log.error("pass --override-gate to force an emergency manual deploy")
+        return 2
+    if not gate_ok:
+        log.warning("ship gate FAILED (%s) — deploying anyway via --override-gate",
+                    gate_reason)
+
     if args.apply:
         write_artifact_pointer(
             base,
@@ -295,8 +318,9 @@ def do_deploy(args: argparse.Namespace) -> int:
             n_holdout=n_holdout,
             train_window=train_window,
             holdout_window=holdout_window,
-            decision=True,
-            reason="deployed via CLI",
+            decision=gate_ok,
+            reason=("deployed via CLI — ship gate passed" if gate_ok
+                    else f"deployed via CLI — ship gate OVERRIDDEN: {gate_reason}"),
             prior_version=previous_version,
         )
     else:
@@ -401,6 +425,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-p-value", type=float, default=DEFAULT_MAX_P_VALUE)
     p.add_argument("--min-train-matches", type=int, default=DEFAULT_MIN_TRAIN_MATCHES)
     p.add_argument("--min-holdout-matches", type=int, default=DEFAULT_MIN_HOLDOUT_MATCHES)
+    p.add_argument("--override-gate", action="store_true",
+                   help="Deploy even if the ship gate fails — emergency manual "
+                   "override, recorded in the journal reason. (audit R4)")
 
     # Rollback bits
     p.add_argument("--reason", default="",
