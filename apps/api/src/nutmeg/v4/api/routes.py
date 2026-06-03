@@ -1699,14 +1699,19 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
     best_stake = None
     recorded = False
     session_id = None
-    if best is not None:
+    # AUDIT FIX (R1): a leg is a recommendation only when it is genuinely +EV.
+    # Under 竞彩's ~31.5% vig the market default is that ALL THREE outcomes are
+    # −EV; the old code took the least-negative leg and floored it to the ¥2
+    # minimum (Kelly returns 0 for EV ≤ 0), manufacturing a phantom "推荐" with a
+    # NEGATIVE expected_return that then polluted the unfiltered ROI / settle /
+    # calibration population. No +EV leg → 空仓: stake 0, record nothing. Mirrors
+    # the WC-handicap endpoint (test_wc_handicap_recording: "Sub-EV → not recorded").
+    if best is not None and ev[best] is not None and ev[best] > 0:
         from nutmeg.v4.combo.kelly import fractional_kelly_stake
         k = fractional_kelly_stake(
             hit_probability=P[best], ev_per_unit=ev[best],
             bankroll=req.bankroll, kelly_fraction=req.kelly_fraction,
         )
-        # Floor at the ¥2 竞彩 minimum: Kelly is 0 for EV ≤ 0, but a near-fair
-        # leg the user actually places must still be tracked with a real stake.
         best_stake = max(float(k.recommended_stake), 2.0)
         db_path = _should_record_session(req.record_session)
         if db_path:
@@ -1733,6 +1738,10 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
                 logging.getLogger(__name__).exception(
                     "record_market_handicap_session failed (db=%s)", db_path,
                 )
+    elif best is not None:
+        # Least-negative leg is still surfaced for context (best_outcome /
+        # best_ev) but it is NOT a bet — no +EV → 空仓, stake 0.
+        best_stake = 0.0
 
     def _fair(p):
         return (1.0 / p) if p > 0 else 0.0

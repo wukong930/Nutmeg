@@ -205,3 +205,35 @@ class TestMarketHandicapEndpoint:
                         json=self._payload(record_session=True))
         assert r.status_code == 200, r.text
         assert r.json()["recorded"] is False
+
+    def test_all_negative_ev_not_recorded(self, client, tmp_path, monkeypatch):
+        """AUDIT FIX (R1): when every outcome is −EV (the market default under
+        竞彩's ~31.5% vig) the endpoint must NOT manufacture a ¥2 'best' leg or
+        record it — no +EV → 空仓 → stake 0, recorded False, nothing in the DB
+        to pollute the unfiltered ROI / calibration population."""
+        db = tmp_path / "obs.db"
+        init_db(db)
+        monkeypatch.setenv("NUTMEG_V4_OBSERVATION_DB", str(db))
+        payload = {
+            "league": "JPN_J1", "date": "2026-06-03",
+            "home_team": "A", "away_team": "B",
+            "psc_home": 2.43, "psc_draw": 3.04, "psc_away": 3.41,
+            "psc_over25": 1.95, "psc_under25": 1.95,
+            "handicap_home": -1,
+            # H lowered 5.50 → 4.50 so even the least-bad leg is now −EV.
+            "odds_handicap_H": 4.50, "odds_handicap_D": 3.80,
+            "odds_handicap_A": 1.46,
+            "bankroll": 1000.0, "kelly_fraction": 0.25,
+            "record_session": True,
+        }
+        r = client.post("/api/v4/recommend/market-handicap", json=payload)
+        assert r.status_code == 200, r.text
+        b = r.json()
+        assert b["best_ev"] is not None and b["best_ev"] <= 0  # all −EV
+        assert b["best_stake"] == 0.0       # no ¥2 phantom stake
+        assert b["recorded"] is False       # not recorded as a recommendation
+        with sqlite3.connect(db) as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM recommendation_sessions"
+            ).fetchone()[0]
+        assert n == 0                       # ROI population stays clean
