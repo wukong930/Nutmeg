@@ -471,8 +471,14 @@ class TestTodayPredictionBoard:
         # not a 建议投注 stake / fake-EV bar. (Other cards — 单关 tab, parlay —
         # legitimately still show stakes; this asserts the prediction body.)
         assert "today_pred_conf" in html
-        assert "(t.probability * 100).toFixed(0)}%</div>\n            " \
-               "<div class=\"text-xs text-muted mt-0.5\">${predConfLabel}" in html
+        # AUDIT FIX (D4): assert the two behavioral tokens — model confidence %
+        # rendered, labelled by predConfLabel — WITHOUT pinning the exact newline
+        # + 12-space indentation between them. The old multi-line substring broke
+        # on any prettier/whitespace reformat with zero behavior change. The money
+        # invariant (prediction board → stake==0, ev==0) is guarded behaviorally
+        # by test_today_recommendations::TestTodayPredictionBoardW8k.
+        assert "(t.probability * 100).toFixed(0)}%" in html   # model confidence %
+        assert "${predConfLabel}" in html                     # as a prediction label
 
     def test_market_agreement_3tier_confidence(self, html):
         # V12 W8m — model↔sharp agreement is a 3-tier confidence badge, not a
