@@ -17,8 +17,36 @@ from nutmeg.v4.cli.score_ev import (
     model_grid,
     parse_scoreline,
     score_ev_rows,
+    sharp_1x2_devig,
+    sharp_over_devig,
 )
 from nutmeg.v4.model.market_handicap import DEFAULT_RHO
+
+
+def _blob_with_pinnacle():
+    """Pinnacle (1X2 + O/U only — no correct-score, like the real feed) alongside a
+    soft book that quotes 1X2 + correct-score. Pinnacle's de-vig differs clearly
+    from the soft book / consensus so the prior choice is observable."""
+    return [{"bookmakers": [
+        {"name": "Pinnacle", "bets": [
+            {"name": "Match Winner", "values": [
+                {"value": "Home", "odd": "1.50"},
+                {"value": "Draw", "odd": "4.00"},
+                {"value": "Away", "odd": "6.00"}]},
+            {"name": "Goals Over/Under", "values": [
+                {"value": "Over 2.5", "odd": "1.95"},
+                {"value": "Under 2.5", "odd": "1.85"}]},
+        ]},
+        {"name": "BookA", "bets": [
+            {"name": "Match Winner", "values": [
+                {"value": "Home", "odd": "1.20"},
+                {"value": "Draw", "odd": "6.00"},
+                {"value": "Away", "odd": "12.00"}]},
+            {"name": "Correct Score", "values": [
+                {"value": "1:0", "odd": "7.0"},
+                {"value": "2:1", "odd": "50.0"}]},   # generous → +EV flag
+        ]},
+    ]}]
 
 
 def _full_blob():
@@ -133,6 +161,39 @@ def test_consensus_over_devig():
     # Over/Under both 1.90 → de-vig P(over) = 0.5
     assert abs(consensus_over_devig(_full_blob(), 2.5) - 0.5) < 1e-9
     assert consensus_over_devig(_full_blob(), 3.5) is None  # line not quoted
+
+
+def test_sharp_1x2_devig_prefers_pinnacle():
+    # Pinnacle present → use ITS de-vig, not the all-book consensus.
+    p, src = sharp_1x2_devig(_blob_with_pinnacle())
+    assert src == "Pinnacle"
+    # Pinnacle 1.50/4.00/6.00 de-vig: home ≈ 0.615, distinct from consensus ≈ 0.69.
+    assert abs(p[0] - 0.615) < 0.01
+    assert p != consensus_1x2_devig(_blob_with_pinnacle())
+
+
+def test_sharp_1x2_devig_falls_back_to_consensus():
+    # No Pinnacle in _full_blob → consensus, equal to consensus_1x2_devig.
+    p, src = sharp_1x2_devig(_full_blob())
+    assert src == "consensus"
+    assert p == consensus_1x2_devig(_full_blob())
+    assert sharp_1x2_devig([]) == (None, "none")
+
+
+def test_sharp_over_devig_prefers_pinnacle():
+    # Pinnacle O/U 1.95/1.85 → P(over) < 0.5; consensus path absent here.
+    pov = sharp_over_devig(_blob_with_pinnacle(), 2.5)
+    assert pov is not None and pov < 0.5
+    assert sharp_over_devig(_full_blob(), 2.5) == consensus_over_devig(_full_blob(), 2.5)
+
+
+def test_ev_flags_records_prior_src():
+    # Pinnacle present → flags tagged prior_src='Pinnacle'; model_p uses Pinnacle.
+    pin_flags = ev_flags(_blob_with_pinnacle(), min_ev=0.05, rho=DEFAULT_RHO)
+    assert pin_flags and all(f["prior_src"] == "Pinnacle" for f in pin_flags)
+    # No Pinnacle → prior_src='consensus'.
+    con_flags = ev_flags(_full_blob(), min_ev=0.05, rho=DEFAULT_RHO)
+    assert con_flags and all(f["prior_src"] == "consensus" for f in con_flags)
 
 
 def test_ev_flags_core():

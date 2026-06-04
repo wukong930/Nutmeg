@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS score_ev_flags (
     league      TEXT, home TEXT, away TEXT, kickoff_utc TEXT,
     match_date  TEXT NOT NULL,
     pred_home   INTEGER NOT NULL, pred_away INTEGER NOT NULL,
-    model_p     REAL, odds REAL, book TEXT, ev REAL,
+    model_p     REAL, odds REAL, book TEXT, ev REAL, prior_src TEXT,
     captured_at TEXT NOT NULL,
     actual_home INTEGER, actual_away INTEGER, won INTEGER, settled_at TEXT,
     PRIMARY KEY (fixture_id, pred_home, pred_away)
@@ -50,6 +50,9 @@ def _conn(db: str) -> sqlite3.Connection:
     c = sqlite3.connect(db)
     c.row_factory = sqlite3.Row
     c.execute(SCHEMA)
+    # Migrate pre-prior_src DBs in place (SQLite has no ADD COLUMN IF NOT EXISTS).
+    if "prior_src" not in {r[1] for r in c.execute("PRAGMA table_info(score_ev_flags)")}:
+        c.execute("ALTER TABLE score_ev_flags ADD COLUMN prior_src TEXT")
     return c
 
 
@@ -67,6 +70,7 @@ def do_record(args) -> int:
                 if ((f.get("fixture") or {}).get("status") or {}).get("short") in UPCOMING]
     now = _now()
     n_fix = n_flag = n_calls = 0
+    src_tally: dict[str, int] = {}
     with _conn(args.db) as conn:
         for f in upcoming:
             if n_calls >= args.max_fixtures:
@@ -94,14 +98,18 @@ def do_record(args) -> int:
                 conn.execute(
                     "INSERT OR REPLACE INTO score_ev_flags (fixture_id,league,home,away,"
                     "kickoff_utc,match_date,pred_home,pred_away,model_p,odds,book,ev,"
-                    "captured_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "prior_src,captured_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (fid, league, h, a, ko, d.isoformat(), fl["home"], fl["away"],
-                     fl["model_p"], fl["odds"], fl["book"], fl["ev"], now))
+                     fl["model_p"], fl["odds"], fl["book"], fl["ev"],
+                     fl.get("prior_src"), now))
+            src = flags[0].get("prior_src") or "?"
+            src_tally[src] = src_tally.get(src, 0) + 1
             n_fix += 1
             n_flag += len(flags)
         conn.commit()
+    tally = ", ".join(f"{k}×{v}" for k, v in sorted(src_tally.items())) or "—"
     print(f"record {d}: {len(upcoming)} 待开赛 · snapshot {n_fix} 场 / {n_flag} 个 +EV 比分 "
-          f"(EV≥{args.min_ev:.0%}, 赔≤{args.max_odds:g}, odds 调用 {n_calls})")
+          f"(EV≥{args.min_ev:.0%}, 赔≤{args.max_odds:g}, odds 调用 {n_calls}) · 先验 {tally}")
     return 0
 
 
@@ -148,17 +156,21 @@ def do_report(args) -> int:
     import numpy as np
     with _conn(args.db) as conn:
         rows = conn.execute(
-            "SELECT fixture_id, odds, won, ev FROM score_ev_flags WHERE won IS NOT NULL"
+            "SELECT fixture_id, odds, won, ev, prior_src FROM score_ev_flags "
+            "WHERE won IS NOT NULL"
         ).fetchall()
     if not rows:
         print("还没有已结算的 +EV 比分。先跑 --record(每天几次)+ --settle(赛后)攒样本。")
         return 0
     by_fix: dict[int, list] = {}
+    src_tally: dict[str, int] = {}
     for r in rows:
         by_fix.setdefault(r["fixture_id"], []).append((r["odds"], r["won"], r["ev"]))
+        src_tally[r["prior_src"] or "?"] = src_tally.get(r["prior_src"] or "?", 0) + 1
     allb = [b for v in by_fix.values() for b in v]
     R, N, W = _roi(allb)
-    print(f"前向 OOS 样本: {len(by_fix)} 场 / {N} 个 +EV 比分注 (已结算)")
+    tally = ", ".join(f"{k}×{v}" for k, v in sorted(src_tally.items()))
+    print(f"前向 OOS 样本: {len(by_fix)} 场 / {N} 个 +EV 比分注 (已结算) · 先验 {tally}")
     print(f"总 ROI: {R * 100:+.1f}%   命中 {W}/{N} ({W / N * 100:.1f}%)")
     if len(by_fix) >= 20:
         rng = np.random.default_rng(0)

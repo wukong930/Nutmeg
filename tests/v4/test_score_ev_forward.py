@@ -14,6 +14,15 @@ _FID = 9001
 
 def _odds_blob():
     return [{"bookmakers": [
+        {"name": "Pinnacle", "bets": [   # sharp prior anchor (no correct-score)
+            {"name": "Match Winner", "values": [
+                {"value": "Home", "odd": "1.25"},
+                {"value": "Draw", "odd": "6.00"},
+                {"value": "Away", "odd": "11.00"}]},
+            {"name": "Goals Over/Under", "values": [
+                {"value": "Over 2.5", "odd": "1.90"},
+                {"value": "Under 2.5", "odd": "1.90"}]},
+        ]},
         {"name": "BookA", "bets": [
             {"name": "Match Winner", "values": [
                 {"value": "Home", "odd": "1.20"},
@@ -55,6 +64,7 @@ def test_record_settle_report(tmp_path, monkeypatch):
     assert all(r["won"] is None for r in rows)                 # unsettled
     preds = {(r["pred_home"], r["pred_away"]) for r in rows}
     assert (2, 1) in preds                                      # the generous 2:1
+    assert all(r["prior_src"] == "Pinnacle" for r in rows)     # Pinnacle prior recorded
 
     # --- record idempotency: a second snapshot replaces, not duplicates ---
     assert fwd.main(["--db", db, "--record", "--date", "2026-06-10"]) == 0

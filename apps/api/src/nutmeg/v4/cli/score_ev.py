@@ -116,14 +116,13 @@ def composite_overround(books) -> float:
     return sum(1.0 / o for (o, _) in best_odds(books).values())
 
 
-def consensus_1x2_devig(odds_response) -> tuple[float, float, float] | None:
-    """Per-book de-vig of the Match Winner (1X2) market, averaged across books →
-    consensus (P_home, P_draw, P_away). None if no book quotes a full 1X2. This is
-    the automated stand-in for a hand-entered Pinnacle line (Pinnacle isn't carried
-    by API-Football); a consensus is more robust than any single book."""
-    accs = []
+def _book_1x2_devigs(odds_response) -> dict[str, tuple[float, float, float]]:
+    """Per-book de-vigged (P_home, P_draw, P_away) from the Match Winner market,
+    keyed by book name (one entry per book — last quote wins on dupes)."""
+    out: dict[str, tuple[float, float, float]] = {}
     for item in odds_response or []:
         for bk in item.get("bookmakers", []) or []:
+            name = bk.get("name") or "?"
             for bet in bk.get("bets", []) or []:
                 if "match winner" not in (bet.get("name") or "").lower():
                     continue
@@ -143,19 +142,46 @@ def consensus_1x2_devig(odds_response) -> tuple[float, float, float] | None:
                 if {"H", "D", "A"} <= set(d) and all(d[k] > 1.0 for k in "HDA"):
                     inv = [1.0 / d["H"], 1.0 / d["D"], 1.0 / d["A"]]
                     tot = sum(inv)
-                    accs.append([x / tot for x in inv])
-    if not accs:
+                    out[name] = (inv[0] / tot, inv[1] / tot, inv[2] / tot)
+    return out
+
+
+def consensus_1x2_devig(odds_response) -> tuple[float, float, float] | None:
+    """Per-book de-vig of the Match Winner (1X2) market, averaged across books →
+    consensus (P_home, P_draw, P_away). None if no book quotes a full 1X2."""
+    devigs = list(_book_1x2_devigs(odds_response).values())
+    if not devigs:
         return None
-    m = len(accs)
-    return tuple(sum(a[k] for a in accs) / m for k in range(3))
+    m = len(devigs)
+    return tuple(sum(d[k] for d in devigs) / m for k in range(3))
 
 
-def consensus_over_devig(odds_response, line: float = 2.5) -> float | None:
-    """Per-book 2-way de-vig of Goals Over/Under at ``line``, averaged → consensus
-    P(over). None if no book quotes that line."""
-    ovs = []
+def sharp_1x2_devig(
+    odds_response, prefer: str = "Pinnacle"
+) -> tuple[tuple[float, float, float] | None, str]:
+    """Prior 1X2 for the model grid: the PREFERRED sharp book's de-vig when it
+    quotes 1X2 (Pinnacle IS carried by API-Football for most fixtures — it just
+    doesn't price correct-score, so it's the ideal independent anchor), else the
+    consensus across all books. Returns (probs, source) — source is the matched
+    book name (e.g. 'Pinnacle') or 'consensus', or (None, 'none') if no 1X2."""
+    books = _book_1x2_devigs(odds_response)
+    if not books:
+        return None, "none"
+    for name, p in books.items():
+        if prefer.lower() in name.lower():
+            return p, name
+    devigs = list(books.values())
+    m = len(devigs)
+    return tuple(sum(d[k] for d in devigs) / m for k in range(3)), "consensus"
+
+
+def _book_over_devigs(odds_response, line: float = 2.5) -> dict[str, float]:
+    """Per-book 2-way de-vigged P(over ``line``) from Goals Over/Under, keyed by
+    book name."""
+    out: dict[str, float] = {}
     for item in odds_response or []:
         for bk in item.get("bookmakers", []) or []:
+            name = bk.get("name") or "?"
             for bet in bk.get("bets", []) or []:
                 if "over/under" not in (bet.get("name") or "").lower():
                     continue
@@ -171,8 +197,29 @@ def consensus_over_devig(odds_response, line: float = 2.5) -> float | None:
                     elif s == f"Under {line:g}":
                         uu = o
                 if oo and uu and oo > 1.0 and uu > 1.0:
-                    ovs.append((1.0 / oo) / ((1.0 / oo) + (1.0 / uu)))
-    return sum(ovs) / len(ovs) if ovs else None
+                    out[name] = (1.0 / oo) / ((1.0 / oo) + (1.0 / uu))
+    return out
+
+
+def consensus_over_devig(odds_response, line: float = 2.5) -> float | None:
+    """Per-book 2-way de-vig of Goals Over/Under at ``line``, averaged → consensus
+    P(over). None if no book quotes that line."""
+    ov = list(_book_over_devigs(odds_response, line).values())
+    return sum(ov) / len(ov) if ov else None
+
+
+def sharp_over_devig(
+    odds_response, line: float = 2.5, prefer: str = "Pinnacle"
+) -> float | None:
+    """P(over ``line``) from the preferred sharp book when it quotes that line,
+    else the consensus. None if no book quotes it."""
+    books = _book_over_devigs(odds_response, line)
+    if not books:
+        return None
+    for name, p in books.items():
+        if prefer.lower() in name.lower():
+            return p
+    return sum(books.values()) / len(books)
 
 
 # ---------- model + I/O -------------------------------------------------
@@ -211,20 +258,23 @@ def grid_from_devig(p1x2, p_over, *, line: float = 2.5, rho: float):
 
 
 def ev_flags(odds_response, *, min_ev: float = 0.05, max_odds: float = 80.0,
-             rho: float, line: float = 2.5, exclude_books=("1xBet",)):
+             rho: float, line: float = 2.5, exclude_books=("1xBet",),
+             prefer_book: str = "Pinnacle"):
     """The shared analysis core: correct-score market → line-shop best price (excl.
-    junk books, cap odds) → model grid from consensus de-vig 1X2+O/U → list of +EV
-    flags ``[{home, away, model_p, odds, book, ev}]`` sorted by EV desc. Returns
+    junk books, cap odds) → model grid from a SHARP de-vig 1X2+O/U prior (prefers
+    ``prefer_book`` = Pinnacle when present, else consensus) → list of +EV flags
+    ``[{home, away, model_p, odds, book, ev, prior_src}]`` sorted by EV desc.
+    ``prior_src`` records which prior was used ('Pinnacle' / 'consensus'). Returns
     None when the fixture lacks a correct-score market or a 1X2 to build the prior.
     Backs both the forward recorder and (validated against) the offline backtest."""
     excl = set(exclude_books)
     cs = {bk: v for bk, v in correct_score_books(odds_response).items() if bk not in excl}
     if not cs:
         return None
-    p1x2 = consensus_1x2_devig(odds_response)
+    p1x2, prior_src = sharp_1x2_devig(odds_response, prefer=prefer_book)
     if p1x2 is None:
         return None
-    pov = consensus_over_devig(odds_response, line)
+    pov = sharp_over_devig(odds_response, line, prefer=prefer_book)
     grid, _ = grid_from_devig(p1x2, pov, line=line, rho=rho)
     mg = grid.shape[0] - 1
     flags = []
@@ -235,7 +285,7 @@ def ev_flags(odds_response, *, min_ev: float = 0.05, max_odds: float = 80.0,
         ev = p * o - 1.0
         if ev >= min_ev:
             flags.append({"home": i, "away": j, "model_p": p,
-                          "odds": o, "book": bk, "ev": ev})
+                          "odds": o, "book": bk, "ev": ev, "prior_src": prior_src})
     flags.sort(key=lambda f: f["ev"], reverse=True)
     return flags
 
