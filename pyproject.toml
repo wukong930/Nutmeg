@@ -87,6 +87,7 @@ nutmeg-predict-report = "nutmeg.v4.cli.predict_report:main"
 nutmeg-ingest-team-logos = "nutmeg.v4.cli.ingest_team_logos:main"
 nutmeg-auto-retrain = "nutmeg.v4.cli.auto_retrain:main"
 nutmeg-beta-test = "nutmeg.v4.cli.beta_test:main"
+nutmeg-score-ev = "nutmeg.v4.cli.score_ev:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
