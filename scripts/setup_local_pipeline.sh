@@ -412,6 +412,24 @@ install_job "com.nutmeg.daily_predict" \
   15 30 "" \
   "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.predict_log --db $DB_PATH --days 2 && mkdir -p $REPO_ROOT/docs/weekly && $VENV_PY -m nutmeg.v4.cli.predict_report --db $DB_PATH --out $REPO_ROOT/docs/weekly/predict_report_latest.md || true"
 
+# Job 12: V12 score-EV forward test (OOS correct-score +EV validation).
+# Snapshots the correct-score market + the model's +EV flags for UPCOMING
+# fixtures (replacing each fixture's prior snapshot → the last pre-kickoff
+# capture ≈ closing). Two record passes catch afternoon + evening kickoffs;
+# settle fills the 90' result next morning. Read with: nutmeg-score-ev-forward
+# --report. HONEST purpose: the backtest over-states ROI (post-match cached /
+# non-closing odds + uncapturable best line); this accumulates a real OOS sample.
+SEV_DB="$REPO_ROOT/data/score_ev_forward.db"
+install_job "com.nutmeg.score_ev_forward_record_noon" \
+  13 0 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.score_ev_forward --db $SEV_DB --record --max-fixtures 200 || true"
+install_job "com.nutmeg.score_ev_forward_record_eve" \
+  19 0 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.score_ev_forward --db $SEV_DB --record --max-fixtures 200 || true"
+install_job "com.nutmeg.score_ev_forward_settle" \
+  6 0 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.score_ev_forward --db $SEV_DB --settle || true"
+
 echo ""
 echo "✓ Done. Jobs are loaded. Logs:"
 echo "    $LOG_DIR/com.nutmeg.api_server.{out,err}.log    ← always-on daemon"
