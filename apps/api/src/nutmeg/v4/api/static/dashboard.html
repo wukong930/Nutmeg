@@ -4560,20 +4560,18 @@ async function loadCupMarket(opts = {}) {
 // V12 W5 — 💴 竞彩盘口推荐: collect the fixtures the user filled with 竞彩 SP
 // (1X2 + 让球) in 近期赛事, POST /recommend/jingcai (same engine, 竞彩 odds drive
 // the EV), render into the jc-* board with the shared renderers (pfx='jc').
-function _collectJingcaiFixtures() {
+// V13 — collect entered 竞彩 SP from ONE board (a preds array + its DOM input
+// classes). diag explains a 0-result: hcNoLine (让球 SP typed, no 让球线 picked) /
+// partial (incomplete triple).
+function _collectBoard(preds, spClass, hcClass, lineId, diag) {
   const out = [];
-  // V13 — diagnostics so a 0-fixture result can explain WHY. The old generic
-  // "先去填 SP" lied when SP *was* filled but unusable (e.g. 让球 SP typed while
-  // the 让球线 dropdown was left on "—": the 让球 SP boxes aren't gated on the
-  // line, so it's easy to fill them and never pick a line).
-  const diag = { nPreds: (_SPCALC.preds || []).length, hcNoLine: 0, partial: 0 };
-  (_SPCALC.preds || []).forEach((pr, idx) => {
-    const g = (o) => {
-      const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
+  (preds || []).forEach((pr, idx) => {
+    const g = (cls, o) => {
+      const el = document.querySelector(`.${cls}[data-idx="${idx}"][data-outcome="${o}"]`);
       const v = el ? parseFloat(el.value) : NaN;
       return (v && v > 1.0) ? v : null;
     };
-    const oh = g('H'), od = g('D'), oa = g('A');
+    const oh = g(spClass, 'H'), od = g(spClass, 'D'), oa = g(spClass, 'A');
     const fx = {
       date: pr.date, league: pr.league,
       home_team: pr.home_team, away_team: pr.away_team,
@@ -4583,13 +4581,8 @@ function _collectJingcaiFixtures() {
     let any = false;
     const n1x2 = (oh ? 1 : 0) + (od ? 1 : 0) + (oa ? 1 : 0);
     if (oh && od && oa) { fx.odds_1x2_H = oh; fx.odds_1x2_D = od; fx.odds_1x2_A = oa; any = true; }
-    const lsel = document.querySelector(`#spcalc-hcline-${idx}`);
-    const hg = (o) => {
-      const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
-      const v = el ? parseFloat(el.value) : NaN;
-      return (v && v > 1.0) ? v : null;
-    };
-    const hh = hg('H'), hd = hg('D'), ha = hg('A');
+    const lsel = document.querySelector(`#${lineId}-${idx}`);
+    const hh = g(hcClass, 'H'), hd = g(hcClass, 'D'), ha = g(hcClass, 'A');
     const nHc = (hh ? 1 : 0) + (hd ? 1 : 0) + (ha ? 1 : 0);
     if (lsel && lsel.value !== '') {
       if (hh && hd && ha) {
@@ -4605,6 +4598,21 @@ function _collectJingcaiFixtures() {
     if (any) out.push(fx);
     else if (n1x2 > 0 && n1x2 < 3) diag.partial++;   // partial 胜平负
   });
+  return out;
+}
+
+// V13 — read BOTH boards: 模型模式 (_SPCALC, .spcalc-*) AND 市场模式 (_CUPMKT,
+// .cup*; 杯赛 + J1/日职). Previously only _SPCALC was read, so 竞彩 SP entered on
+// a 市场模式 card (e.g. 日职) was invisible → the misleading "先去填SP".
+function _collectJingcaiFixtures() {
+  const diag = {
+    nPreds: (_SPCALC.preds || []).length + (_CUPMKT.preds || []).length,
+    hcNoLine: 0, partial: 0,
+  };
+  const out = [
+    ..._collectBoard(_SPCALC.preds, 'spcalc-sp', 'spcalc-hcsp', 'spcalc-hcline', diag),
+    ..._collectBoard(_CUPMKT.preds, 'cupsp', 'cuphcsp', 'cuphcline', diag),
+  ];
   return { out, diag };
 }
 
