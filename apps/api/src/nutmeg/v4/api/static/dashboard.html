@@ -3268,7 +3268,13 @@ function renderTodaySingle(single, pfx = 'today') {
     // Disagreement is mostly near-tie noise → 低把握·观望 (don't pick a side);
     // only when the model is still confident (argmax P ≥ _TODAY_CONF_HI) do we
     // call a stark split and defer to the sharp (our "bet the sharp" rule).
-    const _sa = _devigArgmax1x2(t.psc_home, t.psc_draw, t.psc_away);
+    // The 市场同意/信市场 chip is a 1X2 model↔sharp argmax signal — only
+    // meaningful for a 1X2 pick. For a 让球 ticket (竞彩盘口推荐 can return
+    // handicap_1x2) the sharp's 1X2 argmax is a DIFFERENT market, so comparing
+    // it to t.outcome — or rendering "信市场: 主胜" next to a 让胜 pick — is
+    // 张冠李戴. Suppress the chip for non-1X2 tickets.
+    const _sa = t.market_type === '1x2'
+      ? _devigArgmax1x2(t.psc_home, t.psc_draw, t.psc_away) : null;
     const agreeBadge = (_sa === null) ? ''
       : (_sa === t.outcome)
         ? `<span style="color:#059669;font-weight:600">🟢 ${confAgreeLabel}</span>`

@@ -584,3 +584,12 @@ class TestParlayLegMarketBadge:
         # The 5 leg renderers fixed/confirmed: today parlay+pool, quick
         # parlay+pool, legacy pool — all key off l.market_type for the badge.
         assert html.count("l.market_type === 'handicap_1x2' ? '让球'") >= 5
+
+    def test_agree_chip_suppressed_for_handicap_ticket(self, html):
+        # renderTodaySingle's 市场同意/信市场 chip is a 1X2 model↔sharp argmax
+        # signal. On the 竞彩盘口推荐 (jc) board a ticket can be handicap_1x2; a
+        # 1X2 argmax (_devigArgmax1x2) vs a 让球 outcome — or "信市场: 主胜" on a
+        # 让胜 pick — is 张冠李戴. Must be gated to 1X2 tickets only.
+        assert "? _devigArgmax1x2(t.psc_home, t.psc_draw, t.psc_away) : null" in html
+        idx = html.index("_devigArgmax1x2(t.psc_home")
+        assert "t.market_type === '1x2'" in html[idx - 130:idx]
