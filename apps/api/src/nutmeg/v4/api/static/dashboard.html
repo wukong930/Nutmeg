@@ -4317,12 +4317,16 @@ async function _spcalcHcRecord(idx) {
   };
   const oh = get('H'), od = get('D'), oa = get('A');
   if (!(oh && od && oa)) { alert(t('spcalc_need_all_sp')); return; }
-  // Send handicap odds (+ psc for model features); omit odds_1x2 so the
-  // recommender records the 让球 pick, not a psc-derived 1X2 one.
+  // Send handicap odds + the REAL Pinnacle echo (1X2 + O/U) so the server's
+  // market-reverse 让球 P matches the displayed card P exactly (F1). Send the
+  // real psc or null — NEVER the 让球 odds as a fake 1X2 (that would de-vig into
+  // a garbage prior); null → server falls back to the model grid, same as the
+  // board display does when Pinnacle is absent. Omit odds_1x2 → records 让球.
   const fixture = {
     date: pr.date, league: pr.league,
     home_team: pr.home_team, away_team: pr.away_team,
-    psc_home: pr.psc_home || oh, psc_draw: pr.psc_draw || od, psc_away: pr.psc_away || oa,
+    psc_home: pr.psc_home ?? null, psc_draw: pr.psc_draw ?? null, psc_away: pr.psc_away ?? null,
+    psc_over25: pr.psc_over25 ?? null, psc_under25: pr.psc_under25 ?? null,
     handicap_home: line,
     odds_handicap_H: oh, odds_handicap_D: od, odds_handicap_A: oa,
   };
@@ -4478,11 +4482,15 @@ function _cupRecalc(idx) {
     const sp = el ? parseFloat(el.value) : NaN;
     if (sp && sp > 1.0) {
       const ev = P[o] * sp - 1;
+      const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
       evEl.textContent = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '%';
-      evEl.className = 'cupev text-xs font-medium shrink-0 ' + (ev >= 0 ? 'text-pos' : 'text-muted');
+      evEl.className = 'cupev text-xs font-medium shrink-0';
+      evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
+      evEl.style.fontWeight = pass ? '600' : '';
     } else {
       evEl.textContent = '—';
       evEl.className = 'cupev text-xs text-muted shrink-0';
+      evEl.removeAttribute('style');
     }
   });
 }
@@ -4515,11 +4523,15 @@ function _cupHcRecalc(idx) {
     const sp = el ? parseFloat(el.value) : NaN;
     if (P && sp && sp > 1.0) {
       const ev = P[o] * sp - 1;
+      const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
       evEl.textContent = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '%';
-      evEl.className = 'cuphcev text-xs font-medium shrink-0 ' + (ev >= 0 ? 'text-pos' : 'text-muted');
+      evEl.className = 'cuphcev text-xs font-medium shrink-0';
+      evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
+      evEl.style.fontWeight = pass ? '600' : '';
     } else {
       evEl.textContent = '—';
       evEl.className = 'cuphcev text-xs text-muted shrink-0';
+      evEl.removeAttribute('style');
     }
   });
 }
@@ -4702,6 +4714,9 @@ function _collectBoard(preds, spClass, hcClass, lineId, diag) {
       home_team: pr.home_team, away_team: pr.away_team,
       kickoff_utc: pr.kickoff_utc || null,
       psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
+      // F1 — forward the Pinnacle O/U echo so the server's market-reverse 让球 P
+      // (recommend_single) is O/U-anchored, matching the displayed card P exactly.
+      psc_over25: pr.psc_over25 ?? null, psc_under25: pr.psc_under25 ?? null,
     };
     let any = false;
     const n1x2 = (oh ? 1 : 0) + (od ? 1 : 0) + (oa ? 1 : 0);

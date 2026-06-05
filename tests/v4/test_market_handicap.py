@@ -90,6 +90,9 @@ class TestImpliedHandicapLines:
             assert all(0.0 <= x <= 1.0 for x in (ph, pd_, pa))
 
     def test_line_zero_equals_1x2(self):
+        # 1X2-ONLY fit path (no p_over): line 0 reproduces the fitted grid's 1X2
+        # exactly. NOTE: production always passes p_over — that path is covered
+        # (and bounded) by test_line_zero_vs_1x2_with_ou_anchor_bounded below.
         target = _devig_1x2(2.43, 3.04, 3.41)
         line0 = next(ln for ln in implied_handicap_lines(*target) if ln[0] == 0)
         lh, la = fit_lambdas(*target)
@@ -98,6 +101,34 @@ class TestImpliedHandicapLines:
         assert line0[1] == pytest.approx(ph, abs=1e-9)
         assert line0[2] == pytest.approx(pd_, abs=1e-9)
         assert line0[3] == pytest.approx(pa, abs=1e-9)
+
+    def test_line_zero_vs_1x2_with_ou_anchor_bounded(self):
+        """F2 — the PRODUCTION path passes a de-vig O/U, so the weighted
+        (1X2 + O/U) fit trades a little 1X2 fidelity. The dashboard shows the
+        exact de-vig 1X2 on the 胜平负 row AND this line-0 让球 on the same card,
+        so the gap must stay SMALL and BOUNDED (it can't silently grow):
+
+          - 让胜/让负 (the legs actually bet): within 2.5pp of the 1X2 de-vig.
+          - 让平 (most λ_total-sensitive, rarely the bet leg): within 4.5pp.
+
+        The old test only exercised the 1X2-only branch (p_over=None), which is
+        exact — so it passed while never guarding the path users actually hit.
+        """
+        for (h, d, a), (over, under) in [
+            ((2.05, 3.40, 3.70), (1.95, 1.95)),   # balanced total
+            ((2.30, 3.10, 3.30), (2.95, 1.40)),   # low total (biggest draw pull)
+            ((1.55, 4.10, 6.20), (1.50, 2.65)),   # high total, heavy favourite
+        ]:
+            t1x2 = _devig_1x2(h, d, a)
+            p_over = devig_over(over, under)
+            line0 = next(
+                ln for ln in implied_handicap_lines(*t1x2, p_over, ou_line=2.5)
+                if ln[0] == 0
+            )
+            assert line0[1] + line0[2] + line0[3] == pytest.approx(1.0, abs=1e-6)
+            assert line0[1] == pytest.approx(t1x2[0], abs=0.025)  # 让胜 (bet leg)
+            assert line0[3] == pytest.approx(t1x2[2], abs=0.025)  # 让负 (bet leg)
+            assert line0[2] == pytest.approx(t1x2[1], abs=0.045)  # 让平 (sensitive)
 
     def test_home_cover_monotonic_in_line(self):
         # More head start for home (more positive line) ⇒ non-decreasing P(home covers).

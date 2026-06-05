@@ -347,7 +347,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v14-fe-recordbet';
+const CACHE_VERSION = 'nutmeg-v15-fe-hcunify';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -515,6 +515,30 @@ def _fixtures_to_dataframe(fixtures: list[FixtureOddsInput]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _market_reverse_handicap_probs(row: pd.Series, line: int) -> dict[str, float] | None:
+    """F1 — market-reverse 让球 P for ONE integer line, identical to what the
+    dashboard board displays (``_model_board_handicap_lines``): de-vig Pinnacle
+    1X2 (+ O/U) → Dixon-Coles grid → cover probs. Returns ``{"H","D","A"}`` or
+    None when Pinnacle 1X2 is absent / the fit fails, so the single-leg engine
+    falls back to the model grid. Keeps recommend_single's 让球 P consistent with
+    the displayed EV + the parlay record (one source of truth, V12 W8)."""
+    fair = _pinnacle_devig_1x2(row.get("psc_home"), row.get("psc_draw"), row.get("psc_away"))
+    if fair is None:
+        return None
+    try:
+        from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+        p_over = devig_over(row.get("psc_over25"), row.get("psc_under25"))
+        ou_line = float(row.get("ou_line") or 2.5)
+        for ln, ph, pd_, pa in implied_handicap_lines(
+            fair[0], fair[1], fair[2], p_over, ou_line=ou_line
+        ):
+            if ln == int(line):
+                return {"H": float(ph), "D": float(pd_), "A": float(pa)}
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
 def _fixture_to_match_input(row: pd.Series, lh: float, la: float, gbm_rho: float) -> Optional[MatchInput]:
     """Build a MatchInput from a fixture's 竞彩 (lottery) odds — or None.
 
@@ -553,6 +577,16 @@ def _fixture_to_match_input(row: pd.Series, lh: float, la: float, gbm_rho: float
     if odds_1x2 is None and odds_hc is None:
         return None
 
+    # F1 — when a 让球 bet is present, use the MARKET-REVERSE P (de-vig Pinnacle
+    # 1X2 + O/U), the SAME source the dashboard shows + the parlay path records,
+    # so the single-leg recommendation matches the displayed EV. None when
+    # Pinnacle is absent → the engine falls back to the model grid.
+    hc_probs = (
+        _market_reverse_handicap_probs(row, handicap)
+        if (odds_hc is not None and handicap is not None)
+        else None
+    )
+
     return MatchInput(
         match_id=f"{row['league']}_{row['home_team']}_vs_{row['away_team']}",
         lambda_home=float(lh),
@@ -561,6 +595,7 @@ def _fixture_to_match_input(row: pd.Series, lh: float, la: float, gbm_rho: float
         handicap_home=handicap if odds_hc else None,
         odds_1x2=odds_1x2,
         odds_handicap_1x2=odds_hc,
+        handicap_probs=hc_probs,
     )
 
 

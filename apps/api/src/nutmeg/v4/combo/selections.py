@@ -40,6 +40,13 @@ class MatchInput:
                      If None, the handicap_1x2 market is skipped.
     `odds_1x2`: dict {"H": 2.10, "D": 3.30, "A": 3.50}; bookmaker odds.
     `odds_handicap_1x2`: same shape but for the handicap market.
+    `handicap_probs`: optional {"H","D","A"} OVERRIDE for the 让球 probabilities.
+        When supplied, build_selections_from_match uses these verbatim instead of
+        the model grid (and applies NO temperature correction — they are already
+        a de-vig probability, not a model output). This is how the API feeds the
+        MARKET-REVERSE 让球 P (de-vig Pinnacle 1X2 + O/U) so the single-leg
+        recommendation matches the dashboard display + parlay record (V12 W8 —
+        validated better than the model grid on cover-Brier). None → model grid.
     """
     match_id: str
     lambda_home: float
@@ -48,6 +55,7 @@ class MatchInput:
     handicap_home: int | None = None
     odds_1x2: dict[str, float] | None = None
     odds_handicap_1x2: dict[str, float] | None = None
+    handicap_probs: dict[str, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -108,12 +116,20 @@ def build_selections_from_match(
             ))
 
     if match.handicap_home is not None and match.odds_handicap_1x2:
-        ph, pd, pa = tuple(
-            apply_correction_to_probs(
-                np.array(grid_to_handicap_1x2(grid, handicap_home=match.handicap_home)),
-                correction,
+        if match.handicap_probs is not None:
+            # F1 — market-reverse 让球 P (de-vig Pinnacle 1X2 + O/U), the SAME
+            # source the dashboard displays + the parlay path records. It is
+            # already a probability, so NO temperature correction is applied.
+            ph = float(match.handicap_probs.get("H", 0.0))
+            pd = float(match.handicap_probs.get("D", 0.0))
+            pa = float(match.handicap_probs.get("A", 0.0))
+        else:
+            ph, pd, pa = tuple(
+                apply_correction_to_probs(
+                    np.array(grid_to_handicap_1x2(grid, handicap_home=match.handicap_home)),
+                    correction,
+                )
             )
-        )
         probs = {"H": ph, "D": pd, "A": pa}
         for outcome, prob in probs.items():
             o = match.odds_handicap_1x2.get(outcome)

@@ -286,3 +286,62 @@ class TestMainDispatch:
     def test_parser_default_type_none(self):
         ns = _build_parser().parse_args([])
         assert ns.type is None
+
+
+class TestHandicapProbsOverride:
+    """F1 — MatchInput.handicap_probs lets the API feed the MARKET-REVERSE 让球 P
+    (de-vig Pinnacle 1X2 + O/U) so the single-leg recommendation matches the
+    dashboard display + the parlay record. Before this, recommend_single used
+    the model grid for 让球 → the EV the user SAW (market-reverse) ≠ the EV that
+    got recommended/recorded (model grid) — a divergence up to ~4pp on 让胜.
+    """
+
+    def _hc_selections(self, match):
+        from nutmeg.v4.combo.selections import build_selections_from_match
+        return {
+            s.outcome: s.probability
+            for s in build_selections_from_match(match)
+            if s.market_type == "handicap_1x2"
+        }
+
+    def test_override_used_verbatim_no_correction(self):
+        mkt = {"H": 0.293, "D": 0.233, "A": 0.474}
+        m = MatchInput(
+            match_id="t", lambda_home=1.6, lambda_away=1.1, rho=-0.10,
+            handicap_home=-1, odds_handicap_1x2={"H": 2.2, "D": 3.3, "A": 2.9},
+            handicap_probs=mkt,
+        )
+        got = self._hc_selections(m)
+        # used verbatim — NOT temperature-corrected (it is a de-vig prob already)
+        assert got == pytest.approx(mkt, abs=1e-12)
+
+    def test_without_override_falls_back_to_model_grid(self):
+        from nutmeg.v4.model.dixon_coles import grid_to_handicap_1x2, score_grid
+        m = MatchInput(
+            match_id="t", lambda_home=1.6, lambda_away=1.1, rho=-0.10,
+            handicap_home=-1, odds_handicap_1x2={"H": 2.2, "D": 3.3, "A": 2.9},
+        )  # no handicap_probs
+        got = self._hc_selections(m)
+        gh, gd, ga = grid_to_handicap_1x2(score_grid(1.6, 1.1, rho=-0.10), handicap_home=-1)
+        assert got["H"] == pytest.approx(gh, abs=1e-9)
+        assert got["D"] == pytest.approx(gd, abs=1e-9)
+        assert got["A"] == pytest.approx(ga, abs=1e-9)
+
+    def test_override_changes_the_recommended_pick_ev(self):
+        # Same odds, two P sources → materially different edge (the bug's impact).
+        odds = {"H": 3.5, "D": 3.3, "A": 2.9}
+        mkt = MatchInput(
+            match_id="t", lambda_home=1.6, lambda_away=1.1, rho=-0.10,
+            handicap_home=-1, odds_handicap_1x2=odds,
+            handicap_probs={"H": 0.293, "D": 0.233, "A": 0.474},
+        )
+        model = MatchInput(
+            match_id="t", lambda_home=1.6, lambda_away=1.1, rho=-0.10,
+            handicap_home=-1, odds_handicap_1x2=odds,
+        )
+        ev_mkt = self._hc_selections(mkt)["H"] * 3.5 - 1
+        ev_model = self._hc_selections(model)["H"] * 3.5 - 1
+        # market-reverse 让胜 EV is positive-ish; model-grid is clearly negative —
+        # i.e. which P you use flips the sign of the recommendation.
+        assert ev_mkt > ev_model
+        assert abs(ev_mkt - ev_model) > 0.05
