@@ -156,6 +156,16 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Gated inputs (e.g. 让球 SP before a 让球线 is picked) must LOOK disabled.
+     A real CSS rule, because Tailwind's `disabled:` variant isn't generated for
+     inputs injected via innerHTML after page load (so disabled:opacity-* on the
+     dynamically-rendered cards silently did nothing). */
+  input:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+    background: rgba(127, 127, 127, 0.12);
+  }
+
   /* ── Tab buttons ────────────────────────────────────────────────────── */
   .tab-btn {
     color: var(--text-secondary);
@@ -4118,7 +4128,10 @@ function _spcalcHcLine(idx) {
   const enabled = !!(lsel && lsel.value !== '');
   ['H', 'D', 'A'].forEach(o => {
     const inp = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
-    if (inp) inp.disabled = !enabled;
+    if (inp) {
+      inp.disabled = !enabled;
+      if (!enabled) inp.value = '';   // no 让球线 → clear stale SP so it can't mislead
+    }
   });
   const P = _spcalcHcP(idx);
   ['H', 'D', 'A'].forEach(o => {
