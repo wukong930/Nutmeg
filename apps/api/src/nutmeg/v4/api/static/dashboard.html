@@ -3840,6 +3840,16 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
     if (lsel && lsel.value !== '') bucket.hcline = lsel.value;
     if (Object.keys(bucket).length) _entered[key] = bucket;
   });
+  // V13 — the sp-calc fixture list is VOLATILE (a match can vanish from a later
+  // fetch / a flaky fetch returns a different subset). If the user already
+  // entered SP for a match the new fetch dropped, re-append it so its card + SP
+  // survive — otherwise a background auto-refresh (tab-open / visibility / poll)
+  // silently wipes the entry and the 竞彩 board then finds nothing to price.
+  const _newKeys = new Set(preds.map(p => p.home_team + '|' + p.away_team + '|' + p.date));
+  const _revived = (_SPCALC.preds || []).filter(op =>
+    _entered[op.home_team + '|' + op.away_team + '|' + op.date] &&
+    !_newKeys.has(op.home_team + '|' + op.away_team + '|' + op.date));
+  if (_revived.length) preds = preds.concat(_revived);
   _SPCALC = { preds, bankroll, kelly, minEv };
   section.classList.remove('hidden');
   $('#today-spcalc-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
