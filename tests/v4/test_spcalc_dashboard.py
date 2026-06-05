@@ -312,6 +312,15 @@ class TestTwoBoardToday:
         assert "fx.odds_1x2_H = oh" in html
         assert "fx.odds_handicap_H = hh" in html
 
+    def test_jc_collects_both_boards(self, html):
+        # Regression (the long debug saga): the 竞彩 board must collect SP from
+        # BOTH the 模型模式 (_SPCALC, .spcalc-*) AND the 市场模式 (_CUPMKT, .cup*;
+        # 杯赛 + J1/日职). It used to read only _SPCALC, so 竞彩 SP entered on a
+        # 市场模式 (e.g. 日职) card — where the user actually bets — was invisible
+        # to the generator → the misleading "先去近期赛事填竞彩 SP".
+        assert "_collectBoard(_SPCALC.preds, 'spcalc-sp'" in html
+        assert "_collectBoard(_CUPMKT.preds, 'cupsp'" in html
+
     def test_two_board_i18n_keys(self, html):
         for k in ("board_intl", "board_intl_hint", "board_jc", "board_jc_hint",
                   "jc_generate", "jc_need_sp", "jc_computing", "jc_recs", "jc_none"):
