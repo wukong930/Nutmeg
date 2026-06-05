@@ -510,3 +510,48 @@ class TestTodayPredictionBoard:
         for k in ("today_pred_count", "today_pred_conf", "today_conf_agree",
                   "today_conf_tossup", "today_conf_trust"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestRecordBetPin:
+    """V14 #2+#3 — 记此注: a 📌 per outcome row in BOTH boards (标准 spcalc +
+    市场 cup) and BOTH markets (胜平负 1X2 + 让球) lets the user record the
+    EXACT outcome they bet at the entered 竞彩 SP with their real stake (incl
+    −EV). Inline stake box → POST /observation/record-bet (server dual-gate).
+    This gives the two modes feature parity (#2) and outcome-level choice (#3).
+    """
+
+    def test_record_helper_defined(self, html):
+        assert "function _recordBet(mode, idx, outcome, market, btn)" in html
+        # posts to the dedicated per-outcome endpoint with the session gate on
+        assert "API + '/observation/record-bet'" in html
+        assert "record_session: true," in html
+        # server-authoritative: we send odds (竞彩 SP) + model P + stake + line
+        assert "market_type: market, handicap_home: hcLine, outcome," in html
+
+    def test_pin_on_all_four_rows(self, html):
+        """One 📌 per board × market — the core of #2 (parity) + #3 (choice)."""
+        for call in (
+            "_recordBet('spcalc',${idx},'${o}','1x2',this)",       # 标准 胜平负
+            "_recordBet('spcalc',${idx},'${o}','handicap',this)",  # 标准 让球
+            "_recordBet('cup',${idx},'${o}','1x2',this)",          # 市场 胜平负
+            "_recordBet('cup',${idx},'${o}','handicap',this)",     # 市场 让球
+        ):
+            assert call in html, f"missing 📌 wiring: {call}"
+        assert html.count('onclick="_recordBet(') == 4
+
+    def test_neg_ev_allowed_but_warned(self, html):
+        """−EV is recordable (user's real bet) but the confirm turns red/⚠."""
+        assert "const warn = ev < 0;" in html
+        assert "#e11d48" in html            # red confirm button on −EV
+        assert "t('bet_neg_ev')" in html
+
+    def test_reads_sp_and_line_with_guards(self, html):
+        # odds come from the row's 竞彩 SP input; bail if absent
+        assert "if (!(odds > 1.0)) { alert(t('bet_need_sp')); return; }" in html
+        # handicap path requires a 让球线 first (collector needs it)
+        assert "alert(t('spcalc_hc_pickline')); return;" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("bet_record", "bet_stake", "bet_need_sp", "bet_neg_ev",
+                  "bet_recorded", "bet_gate_off"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
