@@ -27,6 +27,8 @@ from nutmeg.v4.api.schemas import (
     JingcaiRecommendRequest,
     LegResponse,
     LotteryRulesResponse,
+    ManualBetRequest,
+    ManualBetResponse,
     MarketHandicapRequest,
     MarketHandicapResponse,
     ModelInfo,
@@ -944,6 +946,40 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
                 db_path,
             )
     return response
+
+
+# ---------- /v4/observation/record-bet (Post-V13 — 记此注) ----------
+
+@router.post("/observation/record-bet", response_model=ManualBetResponse)
+def record_bet(req: ManualBetRequest) -> ManualBetResponse:
+    """记此注: record the EXACT outcome + real stake the user placed (NOT the
+    model's best pick), INCLUDING −EV, so the observation DB tracks the user's
+    real betting history and ROI is honest. Settlement-compatible (see
+    ``record_manual_bet``). Dual-gated like every recorder (server env +
+    request flag); the response always returns the computed EV either way."""
+    ev = float(req.probability) * float(req.odds) - 1.0
+    db_path = _should_record_session(req.record_session)
+    session_id: int | None = None
+    recorded = False
+    if db_path:
+        from nutmeg.v4.observation import record_manual_bet
+        try:
+            session_id = record_manual_bet(db_path, bet={
+                "league": req.league, "match_date": req.date,
+                "home_team": req.home_team, "away_team": req.away_team,
+                "market_type": req.market_type, "handicap_home": req.handicap_home,
+                "outcome": req.outcome, "odds": req.odds,
+                "probability": req.probability, "stake": req.stake,
+                "bankroll": req.bankroll,
+            })
+            recorded = True
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "record_manual_bet failed (db=%s); response returned anyway", db_path)
+    return ManualBetResponse(
+        recorded=recorded, ev=ev, outcome=req.outcome,
+        stake=req.stake, session_id=session_id)
 
 
 # ---------- /v4/recommend/parlay (V12 W5 — hand-picked 串关) ----------

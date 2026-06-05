@@ -297,6 +297,35 @@ class ParlayRecordResponse(BaseModel):
     single_match_predictions: list[SinglePrediction] = Field(default_factory=list)
 
 
+class ManualBetRequest(BaseModel):
+    """Post-V13 — record ONE user-chosen bet ("记此注").
+
+    Records EXACTLY the outcome + real stake the user placed (NOT the model's
+    best pick), INCLUDING −EV — the observation DB is the user's real betting
+    history so ROI is honest. Settlement-compatible (see record_manual_bet).
+    """
+    league: str
+    date: str
+    home_team: str
+    away_team: str
+    market_type: Literal["1x2", "handicap"] = "1x2"
+    handicap_home: int | None = None
+    outcome: Literal["H", "D", "A"]
+    odds: float = Field(..., gt=1.0)             # the 竞彩 SP for the picked outcome
+    probability: float = Field(0.0, ge=0.0, le=1.0)  # model P (for EV display)
+    stake: float = Field(..., gt=0.0)            # real money the user bet
+    bankroll: float = Field(1000.0, gt=0)
+    record_session: bool = False
+
+
+class ManualBetResponse(BaseModel):
+    recorded: bool
+    ev: float
+    outcome: str
+    stake: float
+    session_id: int | None = None
+
+
 class JingcaiRecommendRequest(BaseModel):
     """V12 W5 — 竞彩盘口推荐: run single + parlay + pool over the fixtures the
     user filled with 竞彩 SP (+ 让球) in 近期赛事.

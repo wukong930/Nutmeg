@@ -441,6 +441,91 @@ def record_wc_handicap_session(
         return session_id
 
 
+def record_manual_bet(
+    db_path: str | Path,
+    *,
+    bet: dict[str, Any],
+    snapshot_phase: str = "closing",
+) -> int:
+    """Record ONE user-chosen bet — the "记此注" path (Post-V13).
+
+    Unlike the /recommend* endpoints (which record the MODEL's best +EV pick),
+    this records EXACTLY the outcome + real stake the user actually placed,
+    INCLUDING −EV: the observation DB is meant to track the user's real betting
+    history so ROI is honest, not just the recommendations.
+
+    Settlement-compatible by construction (mirrors record_wc_handicap_session):
+    writes one ``single_predictions`` row (so ``settle_unsettled`` can resolve
+    match_date + handicap_home from the match_id lookup) + one
+    ``parlay_recommendations`` row with ``k_legs=1, is_compound=False,
+    stake_units=1``; the real money lives in ``kelly_stake`` so payout =
+    stake × odds (the 2026-05-27 stake_units trap — see module docstring).
+
+    ``bet`` keys: league, match_date, home_team, away_team,
+    market_type ("1x2" | "handicap"), handicap_home (int | None),
+    outcome ("H"/"D"/"A"), odds (float, the 竞彩 SP), probability (float, model
+    P, for EV), stake (float, real money), bankroll (float, optional).
+    """
+    league = str(bet["league"])
+    match_date = str(bet["match_date"])
+    home = str(bet["home_team"])
+    away = str(bet["away_team"])
+    is_hc = bet.get("market_type") == "handicap"
+    handicap_home = (
+        int(bet["handicap_home"])
+        if is_hc and bet.get("handicap_home") is not None else None
+    )
+    outcome = str(bet["outcome"])
+    odds = float(bet["odds"])
+    p = float(bet.get("probability") or 0.0)
+    stake = float(bet["stake"])
+    if stake <= 0:
+        raise ValueError("manual bet stake must be > 0")
+    ev = p * odds - 1.0  # may be NEGATIVE — recorded anyway, on purpose
+
+    with open_db(db_path) as conn:
+        session_id = insert_session(
+            conn,
+            bankroll=float(bet.get("bankroll", 0.0)),
+            model_cutoff=None,
+            model_trained_at=None,
+            n_fixtures=1,
+            n_recommendations=1,
+            request=bet,
+            metadata={"session_kind": "manual_bet",
+                      "model": {"model_type": "manual"}},
+            snapshot_phase=snapshot_phase,
+            model_type="manual",
+        )
+        # single_predictions row → settler resolves match_date + handicap_home.
+        insert_single_prediction(
+            conn, session_id,
+            match_date=match_date, league=league,
+            home_team=home, away_team=away,
+            lambda_home=0.0, lambda_away=0.0,
+            p_home_1x2=0.0, p_draw_1x2=0.0, p_away_1x2=0.0,
+            handicap_home=handicap_home,
+            p_home_handicap=(p if is_hc and outcome == "H" else None),
+            p_draw_handicap=(p if is_hc and outcome == "D" else None),
+            p_away_handicap=(p if is_hc and outcome == "A" else None),
+        )
+        leg = {
+            "match_id": f"{league}_{home}_vs_{away}",
+            "market_type": "handicap_1x2" if is_hc else "1x2",
+            "selections": [{"outcome": outcome, "odds": odds,
+                            "probability": p, "edge": ev}],
+        }
+        insert_parlay_recommendation(
+            conn, session_id,
+            rank=1, k_legs=1, is_compound=False,
+            stake_units=1, kelly_stake=stake,
+            expected_return=stake * p * odds,
+            hit_probability=p, ev_per_unit=ev, log_growth=0.0,
+            legs=[leg],
+        )
+        return session_id
+
+
 _HC_IDX = {"H": 0, "D": 1, "A": 2}
 
 
