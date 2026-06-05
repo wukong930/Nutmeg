@@ -1879,6 +1879,7 @@ const I18N = {
     jc_need_load:     '先打开「📅 近期赛事」加载赛事并填竞彩 SP',
     jc_diag_noline:   '场填了让球 SP 但没选让球线 → 去「📅 近期赛事」把让球线选上',
     jc_diag_partial:  '场 SP 没填全(胜平负 / 让球都要 3 个 SP 全填)',
+    lg_toggle:        '点击折叠 / 展开该联赛',
     jc_computing:     '计算中…',
     jc_recs:          '条推荐',
     jc_none:          '无 +EV 推荐',
@@ -2212,6 +2213,7 @@ const I18N = {
     jc_need_load:     'Open 📅 近期赛事 first to load fixtures and fill 竞彩 SP',
     jc_diag_noline:   'match(es) have 让球 SP but no 让球线 picked → pick it in 📅 近期赛事',
     jc_diag_partial:  'match(es) have incomplete SP (need all 3: 胜/平/负 or 让球)',
+    lg_toggle:        'Click to collapse / expand this league',
     jc_computing:     'computing…',
     jc_recs:          'recs',
     jc_none:          'no +EV recs',
@@ -3816,6 +3818,41 @@ async function _parlayRecord() {
   }
 }
 
+// V13 — collapsible league groups (近期赛事 + 市场模式 lists get long). Collapse
+// state persists per league code in localStorage and survives re-renders. Pure
+// visual: cards stay in the DOM (hidden), so the collector/recalc still see them.
+let _collapsedLgs = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem('nutmeg_collapsed_lgs') || '[]')); }
+  catch (e) { return new Set(); }
+})();
+function _toggleLeague(headEl) {
+  const group = headEl.closest('.spcalc-lg-group');
+  if (!group) return;
+  const lg = group.getAttribute('data-lg');
+  const cards = group.querySelector('.spcalc-lg-cards');
+  const nowCollapsed = cards.classList.toggle('hidden');
+  if (nowCollapsed) _collapsedLgs.add(lg); else _collapsedLgs.delete(lg);
+  const chev = headEl.querySelector('.lg-chevron');
+  if (chev) chev.textContent = nowCollapsed ? '▸' : '▾';
+  headEl.setAttribute('aria-expanded', String(!nowCollapsed));
+  try { localStorage.setItem('nutmeg_collapsed_lgs', JSON.stringify([..._collapsedLgs])); }
+  catch (e) { /* private mode — collapse still works in-session */ }
+}
+function _lgGroupHtml(lg, col, count, cardsHtml) {
+  const collapsed = _collapsedLgs.has(lg);
+  return `
+    <div class="spcalc-lg-group mb-4" data-lg="${lg}">
+      <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded cursor-pointer select-none"
+           style="border-left:4px solid ${col};background:${col}1a" onclick="_toggleLeague(this)"
+           role="button" aria-expanded="${!collapsed}" title="${t('lg_toggle')}">
+        <span class="lg-chevron text-xs" style="color:${col}">${collapsed ? '▸' : '▾'}</span>
+        <span class="font-display font-semibold text-sm" style="color:${col}">${zhLeague(lg)}</span>
+        <span class="text-xs text-muted">· ${count}</span>
+      </div>
+      <div class="spcalc-lg-cards${collapsed ? ' hidden' : ''}">${cardsHtml}</div>
+    </div>`;
+}
+
 function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   const section = $('#today-spcalc-section');
   const list = $('#today-spcalc-list');
@@ -3945,16 +3982,8 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
     Math.min(...byLeague[b].map(o => _kickoffMs(o.pr))));
   const scoredHtml = order.map(lg => {
     const items = byLeague[lg].slice().sort((x, y) => _kickoffMs(x.pr) - _kickoffMs(y.pr));
-    const col = leagueColor(lg);
-    return `
-      <div class="spcalc-lg-group mb-4">
-        <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded"
-             style="border-left:4px solid ${col};background:${col}1a">
-          <span class="font-display font-semibold text-sm" style="color:${col}">${zhLeague(lg)}</span>
-          <span class="text-xs text-muted">· ${items.length}</span>
-        </div>
-        ${items.map(o => cardHtml(o.pr, o.idx)).join('')}
-      </div>`;
+    return _lgGroupHtml(lg, leagueColor(lg), items.length,
+      items.map(o => cardHtml(o.pr, o.idx)).join(''));
   }).join('');
   // V12 W6 — 待开盘 section: fixtures whose Pinnacle line hasn't opened yet.
   // Listed so the user sees the full slate, but NOT scored (a psc-free model P
@@ -4475,15 +4504,8 @@ function renderCupMarket(preds, pending) {
     Math.min(...byC[a].map(o => _kickoffMs(o.pr))) - Math.min(...byC[b].map(o => _kickoffMs(o.pr))));
   let html = order.map(lg => {
     const items = byC[lg].slice().sort((x, y) => _kickoffMs(x.pr) - _kickoffMs(y.pr));
-    const col = leagueColor(lg);
-    return `<div class="spcalc-lg-group mb-4">
-        <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded"
-             style="border-left:4px solid ${col};background:${col}1a">
-          <span class="font-display font-semibold text-sm" style="color:${col}">${zhLeague(lg)}</span>
-          <span class="text-xs text-muted">· ${items.length}</span>
-        </div>
-        ${items.map(o => _cupCardHtml(o.pr, o.idx)).join('')}
-      </div>`;
+    return _lgGroupHtml(lg, leagueColor(lg), items.length,
+      items.map(o => _cupCardHtml(o.pr, o.idx)).join(''));
   }).join('');
   if (pending.length) {
     html += `<div class="mt-6 pt-4" style="border-top:1px dashed var(--border-subtle)">
