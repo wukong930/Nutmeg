@@ -3105,9 +3105,13 @@ function renderPoolRecommendations(body) {
         const matchHtml = parts[1]
           ? `<span class="inline-flex items-center gap-1.5 flex-wrap">${teamLogo(parts[0])}<span>${zhTeam(parts[0])}</span><span class="text-muted">vs</span>${teamLogo(parts[1])}<span>${zhTeam(parts[1])}</span></span>`
           : zhTeam(parts[0]);
+        const market = l.market_type === 'handicap_1x2' ? '让球' : '胜平负';
         return `<div class="text-xs flex items-center justify-between gap-2 py-1">
           <span class="text-secondary truncate">${matchHtml}</span>
-          <span class="badge-ok shrink-0">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+          <span class="shrink-0 flex items-center gap-1">
+            <span class="text-muted">[${market}]</span>
+            <span class="badge-ok">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+          </span>
         </div>`;
       }).join('');
       return `<div class="card-rec">
@@ -3416,6 +3420,11 @@ function renderTodayParlay(parlay, pfx = 'today') {
     const legCount = r.legs.length;
     // Each leg: "Team A vs Team B (outcome @ odds)"
     const legsHtml = r.legs.map(l => {
+      // Market badge: a 让球 leg uses the SAME H/D/A codes as a 胜平负 leg
+      // (主胜/平/客胜), so without this badge a 让球主胜 reads as a plain 主胜
+      // (e.g. a 让球 @ 4.00 looked like an implausible 1X2 主胜). Mirrors the
+      // legacy parlay + 推荐追溯 renderers.
+      const market = l.market_type === 'handicap_1x2' ? '让球' : '胜平负';
       const sels = l.selections.map(s =>
         `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
       ).join('');
@@ -3427,7 +3436,7 @@ function renderTodayParlay(parlay, pfx = 'today') {
       const matchName = parts[1]
         ? `${zhTeam(parts[0])} <span class="text-muted">vs</span> ${zhTeam(parts[1])}`
         : zhTeam(parts[0]);
-      return `<div class="text-sm py-1 text-primary">${matchName}${sels}</div>`;
+      return `<div class="text-sm py-1 text-primary">${matchName} <span class="text-xs text-muted">[${market}]</span>${sels}</div>`;
     }).join('');
     const isUpdated = r.selection_fingerprint && isFingerprintChanged(r.selection_fingerprint);
     const updatedBadge = isUpdated ? `<span class="badge-updated">${updatedLabelParlay}</span>` : '';
@@ -3521,9 +3530,15 @@ function renderTodayPool(pool, pfx = 'today') {
       const matchHtml = parts[1]
         ? `<span class="inline-flex items-center gap-1.5 flex-wrap">${teamLogo(parts[0])}<span>${zhTeam(parts[0])}</span><span class="text-muted">vs</span>${teamLogo(parts[1])}<span>${zhTeam(parts[1])}</span></span>`
         : zhTeam(parts[0]);
+      // [让球]/[胜平负] badge so a 让球 leg isn't read as a plain 主胜/客胜
+      // (same H/D/A codes). Mirrors renderTodayParlay + 推荐追溯.
+      const market = l.market_type === 'handicap_1x2' ? '让球' : '胜平负';
       return `<div class="text-xs flex items-center justify-between gap-2 py-1">
         <span class="text-secondary truncate">${matchHtml}</span>
-        <span class="badge-ok shrink-0">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+        <span class="shrink-0 flex items-center gap-1">
+          <span class="text-muted">[${market}]</span>
+          <span class="badge-ok">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+        </span>
       </div>`;
     }).join('');
     const isUpdated = t.selection_fingerprint && isFingerprintChanged(t.selection_fingerprint);
@@ -5622,6 +5637,7 @@ function _renderQuickParlayList(recs, k_target) {
   list.innerHTML = recs.map((r, i) => {
     const medal = medals[i] || '';
     const legsHtml = r.legs.map(l => {
+      const market = l.market_type === 'handicap_1x2' ? '让球' : '胜平负';
       const sels = l.selections.map(s =>
         `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
       ).join('');
@@ -5630,7 +5646,7 @@ function _renderQuickParlayList(recs, k_target) {
       const matchHtml = parts[1]
         ? `${zhTeam(parts[0])} <span class="text-muted">vs</span> ${zhTeam(parts[1])}`
         : zhTeam(parts[0]);
-      return `<div class="text-sm py-1 text-primary">${matchHtml}${sels}</div>`;
+      return `<div class="text-sm py-1 text-primary">${matchHtml} <span class="text-xs text-muted">[${market}]</span>${sels}</div>`;
     }).join('');
     return `
       <div class="card-rec mb-3">
@@ -5680,9 +5696,13 @@ function _renderQuickPoolList(pool) {
       const matchHtml = parts[1]
         ? `${zhTeam(parts[0])} <span class="text-muted">vs</span> ${zhTeam(parts[1])}`
         : zhTeam(parts[0]);
+      const market = l.market_type === 'handicap_1x2' ? '让球' : '胜平负';
       return `<div class="text-xs flex items-center justify-between gap-2 py-1">
         <span class="text-secondary truncate">${matchHtml}</span>
-        <span class="badge-ok shrink-0">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+        <span class="shrink-0 flex items-center gap-1">
+          <span class="text-muted">[${market}]</span>
+          <span class="badge-ok">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
+        </span>
       </div>`;
     }).join('');
     return `<div class="card-rec mb-3">

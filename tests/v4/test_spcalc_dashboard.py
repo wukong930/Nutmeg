@@ -555,3 +555,32 @@ class TestRecordBetPin:
         for k in ("bet_record", "bet_stake", "bet_need_sp", "bet_neg_ev",
                   "bet_recorded", "bet_gate_off"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestParlayLegMarketBadge:
+    """Every parlay/pool LEG must show a [让球]/[胜平负] market badge. A 让球 leg
+    reuses the same H/D/A codes as 胜平负 (主胜/平/客胜), so without the badge a
+    让球主胜 renders as a bare 主胜 — exactly the user-reported bug (浦和红钻
+    主胜 @ 4.00 was really 让球主胜; the 4.00 odds gave it away). Guards ALL leg
+    renderers (今日 + 复式 + 快速串关 + 推荐追溯 + legacy) against regression.
+    """
+
+    def test_no_bare_leg_outcome_without_market_badge(self, html):
+        import re
+        lines = html.splitlines()
+        bad = []
+        for i, ln in enumerate(lines):
+            if re.search(r"outcomeLabel\((?:l|s)\.outcome\)", ln):
+                window = "\n".join(lines[max(0, i - 9):i + 11])
+                if not any(tok in window for tok in (
+                    "market_type === 'handicap_1x2'",
+                    "market_type === '1x2'",
+                    "marketLabel",
+                )):
+                    bad.append(i + 1)
+        assert not bad, f"leg outcome rendered with no 市场 badge near line(s) {bad}"
+
+    def test_today_and_quick_renderers_have_badge(self, html):
+        # The 5 leg renderers fixed/confirmed: today parlay+pool, quick
+        # parlay+pool, legacy pool — all key off l.market_type for the badge.
+        assert html.count("l.market_type === 'handicap_1x2' ? '让球'") >= 5
