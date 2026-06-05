@@ -1866,6 +1866,9 @@ const I18N = {
     board_jc_hint:    '在近期赛事填竞彩 SP / 让球后,点按钮按竞彩价算',
     jc_generate:      '用竞彩 SP 生成',
     jc_need_sp:       '先去「📅 近期赛事」填入竞彩 SP',
+    jc_need_load:     '先打开「📅 近期赛事」加载赛事并填竞彩 SP',
+    jc_diag_noline:   '场填了让球 SP 但没选让球线 → 去「📅 近期赛事」把让球线选上',
+    jc_diag_partial:  '场 SP 没填全(胜平负 / 让球都要 3 个 SP 全填)',
     jc_computing:     '计算中…',
     jc_recs:          '条推荐',
     jc_none:          '无 +EV 推荐',
@@ -2196,6 +2199,9 @@ const I18N = {
     board_jc_hint:    'Fill 竞彩 SP / 让球 in 近期赛事, then click to price vs 竞彩',
     jc_generate:      'Generate from 竞彩 SP',
     jc_need_sp:       'Fill 竞彩 SP in 📅 近期赛事 first',
+    jc_need_load:     'Open 📅 近期赛事 first to load fixtures and fill 竞彩 SP',
+    jc_diag_noline:   'match(es) have 让球 SP but no 让球线 picked → pick it in 📅 近期赛事',
+    jc_diag_partial:  'match(es) have incomplete SP (need all 3: 胜/平/负 or 让球)',
     jc_computing:     'computing…',
     jc_recs:          'recs',
     jc_none:          'no +EV recs',
@@ -4524,6 +4530,11 @@ async function loadCupMarket(opts = {}) {
 // the EV), render into the jc-* board with the shared renderers (pfx='jc').
 function _collectJingcaiFixtures() {
   const out = [];
+  // V13 — diagnostics so a 0-fixture result can explain WHY. The old generic
+  // "先去填 SP" lied when SP *was* filled but unusable (e.g. 让球 SP typed while
+  // the 让球线 dropdown was left on "—": the 让球 SP boxes aren't gated on the
+  // line, so it's easy to fill them and never pick a line).
+  const diag = { nPreds: (_SPCALC.preds || []).length, hcNoLine: 0, partial: 0 };
   (_SPCALC.preds || []).forEach((pr, idx) => {
     const g = (o) => {
       const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
@@ -4538,30 +4549,43 @@ function _collectJingcaiFixtures() {
       psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
     };
     let any = false;
+    const n1x2 = (oh ? 1 : 0) + (od ? 1 : 0) + (oa ? 1 : 0);
     if (oh && od && oa) { fx.odds_1x2_H = oh; fx.odds_1x2_D = od; fx.odds_1x2_A = oa; any = true; }
     const lsel = document.querySelector(`#spcalc-hcline-${idx}`);
+    const hg = (o) => {
+      const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+      const v = el ? parseFloat(el.value) : NaN;
+      return (v && v > 1.0) ? v : null;
+    };
+    const hh = hg('H'), hd = hg('D'), ha = hg('A');
+    const nHc = (hh ? 1 : 0) + (hd ? 1 : 0) + (ha ? 1 : 0);
     if (lsel && lsel.value !== '') {
-      const hg = (o) => {
-        const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
-        const v = el ? parseFloat(el.value) : NaN;
-        return (v && v > 1.0) ? v : null;
-      };
-      const hh = hg('H'), hd = hg('D'), ha = hg('A');
       if (hh && hd && ha) {
         fx.handicap_home = parseInt(lsel.value, 10);
         fx.odds_handicap_H = hh; fx.odds_handicap_D = hd; fx.odds_handicap_A = ha;
         any = true;
+      } else if (nHc > 0) {
+        diag.partial++;            // 让球线 picked but its 3 SP not all filled
       }
+    } else if (nHc > 0) {
+      diag.hcNoLine++;             // 让球 SP typed but NO 让球线 selected — the trap
     }
     if (any) out.push(fx);
+    else if (n1x2 > 0 && n1x2 < 3) diag.partial++;   // partial 胜平负
   });
-  return out;
+  return { out, diag };
 }
 
 async function loadJingcaiBoard() {
-  const fixtures = _collectJingcaiFixtures();
+  const { out: fixtures, diag } = _collectJingcaiFixtures();
   if (fixtures.length === 0) {
-    setStatus('#jc-status', 'error', t('jc_need_sp'));
+    // V13 — say WHY there's nothing to price, not the misleading generic.
+    let msg;
+    if (diag.nPreds === 0) msg = t('jc_need_load');
+    else if (diag.hcNoLine > 0) msg = `${diag.hcNoLine} ${t('jc_diag_noline')}`;
+    else if (diag.partial > 0) msg = `${diag.partial} ${t('jc_diag_partial')}`;
+    else msg = t('jc_need_sp');
+    setStatus('#jc-status', 'error', msg);
     ['single', 'parlay', 'pool'].forEach(s => $('#jc-' + s + '-section').classList.add('hidden'));
     return;
   }

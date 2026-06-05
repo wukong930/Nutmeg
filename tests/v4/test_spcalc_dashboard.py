@@ -173,13 +173,12 @@ class TestSpCalcI18n:
 
 class TestSpCalcCacheBust:
     def test_cache_version_in_v12_fe_family(self):
-        # Assert the V12 front-end weekly family prefix, not a specific week or
-        # feature slug — the slug changes on every bump (w3-spcalc →
-        # w3-upcoming-tab → w4-upcoming-polish …), so pinning the week/slug
-        # makes the test break on each ship (it did, twice).
+        # Assert only the stable `nutmeg-v*` prefix, NOT a week/feature slug —
+        # the slug changes on every bump (w3-spcalc → … → v13-jc-diag), so
+        # pinning the week/slug makes the test break on each ship (it did, 3×).
         src = ROUTES.read_text(encoding="utf-8")
-        assert "nutmeg-v12-fe-w" in src, (
-            "SW CACHE_VERSION not in the V12 front-end (nutmeg-v12-fe-w*) family"
+        assert "const CACHE_VERSION = 'nutmeg-v" in src, (
+            "SW CACHE_VERSION missing or not in the nutmeg-v* family"
         )
 
 
@@ -416,8 +415,9 @@ class TestTodayInlineRecord:
 
     def test_cache_version_bumped_in_family(self):
         txt = ROUTES.read_text(encoding="utf-8")
-        # Stays in the nutmeg-v12-fe-w family (pinned by another test).
-        assert "nutmeg-v12-fe-w8" in txt
+        # Just assert a CACHE_VERSION constant in the stable nutmeg-v* family —
+        # not a specific week/slug (that pin broke on every legitimate bump).
+        assert "const CACHE_VERSION = 'nutmeg-v" in txt
 
 
 class TestSelfCheckScoreboard:
