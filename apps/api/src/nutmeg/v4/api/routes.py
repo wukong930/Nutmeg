@@ -254,11 +254,21 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 @router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
 def dashboard() -> HTMLResponse:
-    """Serve the single-file vanilla-JS dashboard."""
+    """Serve the single-file vanilla-JS dashboard.
+
+    ``Cache-Control: no-cache`` forces the browser (and the service worker's
+    network-first ``fetch``) to REVALIDATE the HTML on every load. Without it the
+    HTML was served from the HTTP disk cache with a heuristic freshness window, so
+    code changes silently failed to reach the client even after a hard reload —
+    the SW's network-first fetch just returned the stale cached copy.
+    """
     html_path = _STATIC_DIR / "dashboard.html"
     if not html_path.exists():
         raise HTTPException(status_code=500, detail="dashboard.html not bundled with package")
-    return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        content=html_path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
 
 
 # ---------- /v4/manifest.json + /v4/sw.js + /v4/icon.svg (P1#14 PWA) ----
@@ -335,7 +345,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v13-fe-hcsp-gate';
+const CACHE_VERSION = 'nutmeg-v13-fe-nocache';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
