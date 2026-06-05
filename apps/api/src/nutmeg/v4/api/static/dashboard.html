@@ -4795,7 +4795,16 @@ async function loadJingcaiBoard() {
   try {
     const res = await fetch(API + '/recommend/jingcai', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fixtures, bankroll, min_ev: 0.05, record_session: false }),
+      // Drive the 竞彩盘 from the SAME 风险偏好 + 最低期望值 sliders as the 国际盘
+      // (the jingcai backend uses risk_preference → Kelly and filters ev ≥ min_ev).
+      // Previously hardcoded min_ev:0.05 + no risk_preference → both sliders were
+      // silently ignored on the board where they actually size/gate real bets.
+      body: JSON.stringify({
+        fixtures, bankroll,
+        risk_preference: _readRiskPreference(),
+        min_ev: _readMinEv(),
+        record_session: false,
+      }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.detail || ('HTTP ' + res.status));
@@ -4903,9 +4912,21 @@ async function loadTodayRecommendations(opts = {}) {
 // V11 P1-FE#4 — slider input handlers + visible labels.
 // All 3 controls (bankroll / risk / min-ev) share the same 500ms
 // debounce so rapid drags don't spam the API.
+// Is the 竞彩盘 currently showing results (user already clicked 用竞彩 SP 生成)?
+function _jcIsShown() {
+  return ['single', 'parlay', 'pool'].some(s => {
+    const el = $('#jc-' + s + '-section');
+    return el && !el.classList.contains('hidden');
+  });
+}
 function _debouncedReload() {
   if (_todayDebounce) clearTimeout(_todayDebounce);
-  _todayDebounce = setTimeout(loadTodayRecommendations, 500);
+  _todayDebounce = setTimeout(() => {
+    loadTodayRecommendations();
+    // 风险偏好 / 最低期望值 / 本金 also drive the 竞彩盘 (Kelly + EV gate) — so
+    // re-price it too when it's on screen, keeping both boards in sync.
+    if (_jcIsShown()) loadJingcaiBoard();
+  }, 500);
 }
 $('#today-bankroll').addEventListener('input', _debouncedReload);
 $('#today-risk').addEventListener('input', () => {

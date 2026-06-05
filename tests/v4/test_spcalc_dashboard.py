@@ -593,3 +593,22 @@ class TestParlayLegMarketBadge:
         assert "? _devigArgmax1x2(t.psc_home, t.psc_draw, t.psc_away) : null" in html
         idx = html.index("_devigArgmax1x2(t.psc_home")
         assert "t.market_type === '1x2'" in html[idx - 130:idx]
+
+
+class TestJingcaiSliderWiring:
+    """风险偏好 + 最低期望值 sliders must drive the 竞彩盘 (jingcai), not just the
+    国际盘. The jingcai backend uses risk_preference→Kelly and filters ev≥min_ev,
+    but loadJingcaiBoard hardcoded min_ev:0.05 and sent no risk_preference → both
+    sliders were silently ignored on the board that sizes/gates REAL bets.
+    """
+
+    def test_jingcai_request_reads_both_sliders(self, html):
+        # the jc request body reads the SAME sliders the 国际盘 does
+        assert "risk_preference: _readRiskPreference()" in html
+        assert "min_ev: _readMinEv()" in html
+        # the old hardcoded jc body is gone
+        assert "min_ev: 0.05, record_session: false" not in html
+
+    def test_slider_change_reprices_jingcai_when_shown(self, html):
+        assert "function _jcIsShown()" in html
+        assert "if (_jcIsShown()) loadJingcaiBoard();" in html
