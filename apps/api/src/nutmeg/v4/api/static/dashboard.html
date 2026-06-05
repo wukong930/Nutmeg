@@ -3897,8 +3897,8 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
               <div class="flex items-center gap-2 text-sm py-1">
                 <span class="w-12 shrink-0 text-secondary">${_hcOutcomeLabel(o)}</span>
                 <span id="spcalc-hcp-${idx}-${o}" class="w-16 shrink-0 num-display text-muted">P —</span>
-                <input type="number" inputmode="decimal" step="0.01" min="1.01"
-                       class="spcalc-hcsp w-20 px-2 py-1 border rounded num-display"
+                <input type="number" inputmode="decimal" step="0.01" min="1.01" disabled
+                       class="spcalc-hcsp w-20 px-2 py-1 border rounded num-display disabled:opacity-40 disabled:cursor-not-allowed"
                        placeholder="SP" data-idx="${idx}" data-outcome="${o}"
                        oninput="_spcalcHcRecalc(${idx})">
                 <span id="spcalc-hcev-${idx}-${o}" class="flex-1 text-xs text-muted"></span>
@@ -4111,6 +4111,15 @@ function _spcalcHcP(idx) {
   return lp ? { H: lp.p_home, D: lp.p_draw, A: lp.p_away } : null;
 }
 function _spcalcHcLine(idx) {
+  // V13 — the 让球 SP boxes are usable only once a 让球线 is picked (the
+  // collector requires the line, so SP without it is silently dropped). Gate
+  // the inputs on the dropdown: enable when a line is set, grey out on "—".
+  const lsel = $(`#spcalc-hcline-${idx}`);
+  const enabled = !!(lsel && lsel.value !== '');
+  ['H', 'D', 'A'].forEach(o => {
+    const inp = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+    if (inp) inp.disabled = !enabled;
+  });
   const P = _spcalcHcP(idx);
   ['H', 'D', 'A'].forEach(o => {
     const el = $(`#spcalc-hcp-${idx}-${o}`);
