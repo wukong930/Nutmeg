@@ -517,6 +517,34 @@ class MarketHandicapResponse(BaseModel):
     session_id: int | None = None
 
 
+class MarketRepriceRequest(BaseModel):
+    """V14 — POST /v4/recommend/market-reprice. Re-price ONE 市场模式 card from
+    a LIVE Pinnacle line the user typed by hand (API-Football mirrors Pinnacle
+    only every few hours, so the auto-fed line can trail Pinnacle.com near
+    kickoff). Pure compute: de-vig the 1X2 + reverse-fit the 让球 board exactly
+    as the auto card does — NO recording, NO DB. The dashboard then swaps these
+    P's into the card so display / 让球线 selector / EV / 📌 all use the live
+    line. Reuses the validated implied_handicap_lines path (not a JS re-impl)."""
+    psc_home: float
+    psc_draw: float
+    psc_away: float
+    psc_over25: float | None = None
+    psc_under25: float | None = None
+    ou_line: float = Field(2.5, gt=0.0)
+
+
+class MarketRepriceResponse(BaseModel):
+    # de-vig fair 1X2 (multiplicative), order [home, draw, away]
+    p_home_1x2: float
+    p_draw_1x2: float
+    p_away_1x2: float
+    # market-implied 让球 board across integer lines (same shape the card holds)
+    handicap_lines: list[HandicapLineProb]
+    # 1X2 overround the user's typed odds imply — a sanity check the dashboard
+    # surfaces so a fat-finger (e.g. swapped 主/客) shows an off vig.
+    overround: float
+
+
 # ---------- /recommend/pool (V8 W6) ----------
 
 class PoolFixturePick(FixtureOddsInput):

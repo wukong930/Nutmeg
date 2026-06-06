@@ -666,3 +666,52 @@ class TestManualReverseCalcFix:
                    html.index("async function manualReverseRecord()")]
         assert seg.count("} catch (e) { return fail(e.message); }") == 1
         assert seg.index("data.market_implied_p") < seg.index("} catch (e) { return fail(e.message); }")
+
+
+class TestCupManualReprice:
+    """V14 — per-card 手填实时 Pinnacle (1X2 + 大小球) → 就地重算. The card gets an
+    inline panel; Apply POSTs the live line to /recommend/market-reprice, swaps the
+    returned de-vig 1X2 + 让球 board into _CUPMKT.preds[idx], and renderCupMarket
+    re-prices in place (preserving typed 竞彩 SP). Revert restores the API line.
+    """
+
+    def test_panel_inputs_present_in_card(self, html):
+        seg = html[html.index("function _cupCardHtml(pr, idx)"):
+                   html.index("function _cupRecalc(idx)")]
+        for el in ("cupman-${idx}", "cupman-h-${idx}", "cupman-d-${idx}", "cupman-a-${idx}",
+                   "cupman-line-${idx}", "cupman-o-${idx}", "cupman-u-${idx}",
+                   "cupman-status-${idx}"):
+            assert el in seg, f"manual panel missing {el}"
+        assert "_cupManualReprice(${idx})" in seg
+        assert "_cupManualRevert(${idx})" in seg
+        # inputs pre-fill with the card's current API values
+        assert "value=\"${_v(pr.psc_home)}\"" in seg
+        assert "value=\"${_v(pr.ou_line)}\"" in seg
+
+    def test_reprice_posts_and_mutates_pred(self, html):
+        seg = html[html.index("async function _cupManualReprice(idx)"):
+                   html.index("function _cupManualRevert(idx)")]
+        assert "/recommend/market-reprice" in seg
+        assert "pr.handicap_lines = data.handicap_lines;" in seg
+        assert "pr._manual = true;" in seg
+        assert "pr._apiSnapshot" in seg          # backs up API line for revert
+        assert "renderCupMarket(_CUPMKT.preds, _CUPMKT.pending" in seg
+        assert "data.overround" in seg           # fat-finger vig check surfaced
+
+    def test_revert_restores_api_snapshot(self, html):
+        seg = html[html.index("function _cupManualRevert(idx)"):
+                   html.index("function renderCupMarket(preds, pending)")]
+        assert "Object.assign(pr, pr._apiSnapshot)" in seg
+        assert "delete pr._manual" in seg
+        assert "renderCupMarket(_CUPMKT.preds, _CUPMKT.pending" in seg
+
+    def test_pending_stored_and_manual_badge(self, html):
+        assert "_CUPMKT.pending = pending;" in html       # kept for in-place re-render
+        # freshness badge flips to the manual indicator when overridden
+        assert "if (pr && pr._manual) {" in html
+        assert "t('cupman_badge')" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("cupman_toggle", "cupman_toggle_on", "cupman_hint", "cupman_apply",
+                  "cupman_revert", "cupman_err_1x2", "cupman_vig", "cupman_badge"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"

@@ -237,3 +237,55 @@ class TestMarketHandicapEndpoint:
                 "SELECT COUNT(*) FROM recommendation_sessions"
             ).fetchone()[0]
         assert n == 0                       # ROI population stays clean
+
+
+class TestMarketRepriceEndpoint:
+    """V14 — /recommend/market-reprice: pure compute that lets a 市场模式 card
+    re-price off a hand-typed LIVE Pinnacle line (de-vig 1X2 + 让球 board), NO
+    DB. Reuses the validated implied_handicap_lines path."""
+
+    def _payload(self, **over):
+        p = {
+            "psc_home": 2.36, "psc_draw": 3.35, "psc_away": 3.15,
+            "psc_over25": 1.943, "psc_under25": 1.925, "ou_line": 2.25,
+        }
+        p.update(over)
+        return p
+
+    def test_returns_devig_1x2_and_full_board(self, client):
+        r = client.post("/api/v4/recommend/market-reprice", json=self._payload())
+        assert r.status_code == 200, r.text
+        b = r.json()
+        # de-vig 1X2 sums to 1, home is the slight favourite (2.36 < 3.15)
+        s = b["p_home_1x2"] + b["p_draw_1x2"] + b["p_away_1x2"]
+        assert abs(s - 1.0) < 1e-6
+        assert b["p_home_1x2"] > b["p_away_1x2"]
+        # full integer board −3..+3, every line a valid simplex
+        assert [ln["line"] for ln in b["handicap_lines"]] == list(range(-3, 4))
+        for ln in b["handicap_lines"]:
+            assert abs(ln["p_home"] + ln["p_draw"] + ln["p_away"] - 1.0) < 1e-6
+        # overround is the typed 1X2 vig (~4%), the dashboard's fat-finger check
+        assert 0.0 < b["overround"] < 0.10
+
+    def test_overround_flags_fat_finger(self, client):
+        # swapped/garbage odds inflate the implied vig well past a real line
+        r = client.post("/api/v4/recommend/market-reprice",
+                        json=self._payload(psc_home=1.5, psc_draw=1.5, psc_away=1.5))
+        assert r.status_code == 200
+        assert r.json()["overround"] > 0.5     # ⇒ dashboard shows the ⚠
+
+    def test_invalid_1x2_returns_422(self, client):
+        r = client.post("/api/v4/recommend/market-reprice",
+                        json={"psc_home": 1.0, "psc_draw": 0, "psc_away": -2})
+        assert r.status_code == 422
+
+    def test_no_db_write(self, client, tmp_path, monkeypatch):
+        # reprice is pure compute — it must never touch the observation DB
+        db = tmp_path / "obs.db"
+        init_db(db)
+        monkeypatch.setenv("NUTMEG_V4_OBSERVATION_DB", str(db))
+        r = client.post("/api/v4/recommend/market-reprice", json=self._payload())
+        assert r.status_code == 200
+        with sqlite3.connect(db) as conn:
+            n = conn.execute("SELECT COUNT(*) FROM recommendation_sessions").fetchone()[0]
+        assert n == 0

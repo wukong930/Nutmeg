@@ -31,6 +31,8 @@ from nutmeg.v4.api.schemas import (
     ManualBetResponse,
     MarketHandicapRequest,
     MarketHandicapResponse,
+    MarketRepriceRequest,
+    MarketRepriceResponse,
     ModelInfo,
     ParlayLegEcho,
     ParlayRecordRequest,
@@ -347,7 +349,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v20-fe-mrevfix';
+const CACHE_VERSION = 'nutmeg-v21-fe-cupmanual';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1433,6 +1435,11 @@ def _pinnacle_devig_1x2(h, d, a):
     Returns None if any leg is missing."""
     if h is None or d is None or a is None or pd.isna(h) or pd.isna(d) or pd.isna(a):
         return None
+    # Decimal odds are definitionally > 1.0; anything ≤ 1.0 (or ≤ 0) is a
+    # fat-finger / garbage input — reject it instead of dividing by zero or
+    # emitting a >1 "probability". Lets the API return 422, not a 500.
+    if float(h) <= 1.0 or float(d) <= 1.0 or float(a) <= 1.0:
+        return None
     inv = [1.0 / float(h), 1.0 / float(d), 1.0 / float(a)]
     s = sum(inv)
     return [x / s for x in inv] if s > 0 else None
@@ -1736,6 +1743,38 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
         fixtures_fetched=len(preds) + len(pending),
         predictions=preds,
         pending_fixtures=pending,
+    )
+
+
+@router.post(
+    "/recommend/market-reprice",
+    response_model=MarketRepriceResponse,
+    summary="V14 — re-price a 市场模式 card from hand-typed live Pinnacle odds",
+)
+def recommend_market_reprice(req: MarketRepriceRequest) -> MarketRepriceResponse:
+    """Pure compute: de-vig the typed 1X2 + reverse-fit the 让球 board (the SAME
+    validated path the auto card uses) so the dashboard can swap a LIVE Pinnacle
+    line into ONE market-mode card when API-Football's feed is stale. No
+    recording, no DB — recording still goes through /recommend/market-handicap."""
+    fair = _pinnacle_devig_1x2(req.psc_home, req.psc_draw, req.psc_away)
+    if fair is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="missing/invalid Pinnacle 1X2",
+        )
+    r = {
+        "psc_over25": req.psc_over25,
+        "psc_under25": req.psc_under25,
+        "ou_line": req.ou_line,
+    }
+    lines = _market_handicap_lines(fair, r)
+    overround = (1.0 / req.psc_home + 1.0 / req.psc_draw + 1.0 / req.psc_away) - 1.0
+    return MarketRepriceResponse(
+        p_home_1x2=float(fair[0]),
+        p_draw_1x2=float(fair[1]),
+        p_away_1x2=float(fair[2]),
+        handicap_lines=lines,
+        overround=float(overround),
     )
 
 
