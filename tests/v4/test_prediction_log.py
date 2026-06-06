@@ -118,6 +118,34 @@ class TestLog:
         settle_league_predictions(db, fetch_fixtures=fetch, today=dt.date(2026, 6, 1))
         assert called["n"] == 0          # never fetched a future date
 
+    def test_market_mode_prediction_logs_with_flag(self, tmp_path):
+        # V14 — the exact path predict-log uses for cups/J1/J2: a Pinnacle de-vig
+        # SinglePrediction → model_dump → record, stored with market_mode=1. Without
+        # this, J1/J2/cup predictions were never accumulated (no hit-rate/CLV).
+        from nutmeg.v4.api.routes import _row_to_market_prediction
+        db = str(tmp_path / "p.db")
+        row = {
+            "home_team": "Iwaki", "away_team": "Tokushima", "league": "JPN_J2",
+            "date": "2026-05-31", "kickoff_utc": None,
+            "psc_home": 2.30, "psc_draw": 3.30, "psc_away": 3.10,
+            "psc_over25": None, "psc_under25": None,
+            "ou_line": None, "asian_handicap": None, "handicap_home": None,
+        }
+        mp = _row_to_market_prediction(row)
+        assert mp is not None and mp.market_mode is True
+        record_league_prediction(db, mp.model_dump())
+        stored = fetch_league_predictions(db)[0]
+        assert stored["market_mode"] == 1 and stored["league"] == "JPN_J2"
+        # p_home is the Pinnacle DE-VIG (not a model output), psc echoed for the report
+        fair_h = (1 / 2.30) / (1 / 2.30 + 1 / 3.30 + 1 / 3.10)
+        assert abs(stored["p_home"] - fair_h) < 1e-9 and stored["psc_home"] == 2.30
+        # settles on the 90' score like any other row
+        n = settle_league_predictions(
+            db, fetch_fixtures=lambda d, lg: [_finished("Iwaki", "Tokushima", 1, 2)],
+            today=dt.date(2026, 6, 1))
+        assert n == 1
+        assert fetch_league_predictions(db, settled_only=True)[0]["outcome"] == 2
+
 
 class TestReportMetrics:
     def test_devig_sums_to_one(self):
