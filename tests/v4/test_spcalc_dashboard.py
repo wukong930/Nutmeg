@@ -768,6 +768,26 @@ class TestMarketBoardOnToday:
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
 
 
+class TestMarketPoll:
+    """V14 — 市场模式 joins the 国际盘 60s auto-poll (cache read, today tab + visible),
+    so both boards refresh together. The re-render PRESERVES typed 竞彩 SP + 让球线."""
+
+    def test_poll_refreshes_both_boards(self, html):
+        seg = html[html.index("_todayPollTimer = setInterval"):
+                   html.index("_todayPollTimer = setInterval") + 400]
+        assert "loadTodayRecommendations();" in seg          # 国际盘
+        assert "loadCupMarket === 'function') loadCupMarket();" in seg   # 市场模式 too
+
+    def test_renderMarketPred_preserves_typed_sp(self, html):
+        seg = html[html.index("function renderMarketPred"):
+                   html.index("function renderCupMarket")]
+        # capture-before + restore-after typed 竞彩 SP / 让球线 across the re-render
+        assert "const _kept = {};" in seg
+        assert ".mkt-rec-sp[data-i=" in seg
+        assert "inp.value = e.sp; _mktRecCalc(i);" in seg     # restore SP + recompute EV
+        assert 'select[data-hcuid="mkt' in seg                # restore 让球线 too
+
+
 class TestMarketRichCard:
     """V14 — 市场模式 cards upgraded to the SAME rich layout as 国际盘's single card:
     logos + 大号 P% + 胜平负 badge + 让球 selector + inline 竞彩 SP + 📌. ISOLATED

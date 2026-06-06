@@ -4973,6 +4973,19 @@ function renderMarketPred(preds) {
   if (!sec || !list || !empty) return;
   if (preds.length === 0) { sec.classList.add('hidden'); empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden'); sec.classList.remove('hidden');
+  // V14 — preserve typed 竞彩 SP + picked 让球线 across this re-render. The 60s
+  // auto-poll re-renders from cache; don't wipe what the user entered (mirrors
+  // renderCupMarket's _entered restore). Keyed by match identity, not index.
+  const _kept = {};
+  (_MKTPRED_CARDS || []).forEach((pr, i) => {
+    if (!pr) return;
+    const spIn = document.querySelector(`.mkt-rec-sp[data-i="${i}"]`);
+    const hcSel = document.querySelector(`select[data-hcuid="mkt${i}"]`);
+    const e = {};
+    if (spIn && spIn.value) e.sp = spIn.value;
+    if (hcSel && hcSel.value !== '') e.hc = hcSel.value;
+    if (e.sp || e.hc) _kept[pr.home_team + '|' + pr.away_team + '|' + pr.date] = e;
+  });
   _MKTPRED_CARDS = [];   // rebuilt as cards render (index → pred, for the SP handlers)
   const strong = preds.filter((pr) => _mktStrength(pr) >= _MKT_STRONG_MIN);
   const weak = preds.filter((pr) => _mktStrength(pr) < _MKT_STRONG_MIN);
@@ -4988,6 +5001,19 @@ function renderMarketPred(preds) {
       + `<div class="mt-2 space-y-2">${b.html}</div></details>`;
   }
   list.innerHTML = html;
+  // restore the preserved 竞彩 SP + 让球线 into the freshly-rendered inputs + recompute
+  _MKTPRED_CARDS.forEach((pr, i) => {
+    const e = _kept[pr.home_team + '|' + pr.away_team + '|' + pr.date];
+    if (!e) return;
+    if (e.hc) {
+      const sel = document.querySelector(`select[data-hcuid="mkt${i}"]`);
+      if (sel) { sel.value = e.hc; _hcPredPick('mkt' + i); }
+    }
+    if (e.sp) {
+      const inp = document.querySelector(`.mkt-rec-sp[data-i="${i}"]`);
+      if (inp) { inp.value = e.sp; _mktRecCalc(i); }
+    }
+  });
 }
 
 function renderCupMarket(preds, pending) {
@@ -5386,7 +5412,12 @@ function _startTodayPolling() {
   if (_todayPollTimer !== null) return;
   if (!_shouldAutoPoll()) return;
   _todayPollTimer = setInterval(() => {
-    if (_shouldAutoPoll()) loadTodayRecommendations();
+    if (!_shouldAutoPoll()) return;
+    loadTodayRecommendations();
+    // V14 — 市场模式 polls on the same 60s cadence (cache read, no live pull),
+    // so 国际盘 + 市场模式 refresh together. renderMarketPred preserves any typed
+    // 竞彩 SP / 让球线 across the re-render.
+    if (typeof loadCupMarket === 'function') loadCupMarket();
   }, TODAY_POLL_INTERVAL_MS);
 }
 function _stopTodayPolling() {
