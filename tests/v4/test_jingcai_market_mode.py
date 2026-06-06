@@ -127,3 +127,56 @@ class TestArgmaxTicketCarriesHandicapLines:
         assert tickets[0].outcome == "H"                 # argmax 1X2 (unchanged)
         assert len(tickets[0].handicap_lines) == 7       # full −3..+3 board carried
         assert [ln.line for ln in tickets[0].handicap_lines] == list(range(-3, 4))
+
+
+class TestArgmaxTicketsAreNoEvPredictions:
+    """V12 W8k REGRESSION GUARD — the 今日推荐 ①单关 board must be model-argmax
+    PREDICTIONS, never +EV-vs-Pinnacle bets. The killed bug fed recommend_singles
+    the Pinnacle-fallback odds (no 竞彩 SP at page-load), surfacing the model's
+    biggest DISAGREEMENT with the sharp as the 'best pick' — noise sold as +EV
+    (e.g. an already-relegated home side @5.21). This pins that EVERY today-single
+    ticket carries ZERO EV/stake and a fair (1/P) price, so anyone re-wiring
+    recommend_single back into this path trips CI. (Audit 2026-06-06 found this
+    invariant guarded only by a 'single is None when no fixtures' assertion.)"""
+
+    def _preds(self):
+        from nutmeg.v4.api.schemas import SinglePrediction
+        return [
+            SinglePrediction(home_team="A", away_team="B", league="EPL",
+                             date="2026-06-06", lambda_home=1.6, lambda_away=1.0,
+                             p_home_1x2=0.55, p_draw_1x2=0.27, p_away_1x2=0.18),
+            SinglePrediction(home_team="C", away_team="D", league="ESP_LA_LIGA",
+                             date="2026-06-06", lambda_home=0.9, lambda_away=1.5,
+                             p_home_1x2=0.25, p_draw_1x2=0.28, p_away_1x2=0.47),
+        ]
+
+    def test_every_ticket_is_zero_ev_zero_stake(self):
+        from nutmeg.v4.api.routes import _argmax_prediction_tickets
+        tickets = _argmax_prediction_tickets(self._preds())
+        assert len(tickets) == 2
+        for tk in tickets:
+            assert tk.ev_per_unit == 0.0          # a PREDICTION, not a +EV bet
+            assert tk.stake == 0.0 and tk.raw_kelly_stake == 0.0
+            assert tk.expected_return == 0.0
+            assert tk.market_type == "1x2"
+
+    def test_price_is_model_fair_not_market(self):
+        # odds = 1/P (model fair price), NOT a Pinnacle/竞彩 SP → no EV can form
+        from nutmeg.v4.api.routes import _argmax_prediction_tickets
+        for tk in _argmax_prediction_tickets(self._preds()):
+            assert abs(tk.odds - 1.0 / tk.probability) < 1e-9
+
+    def test_outcome_is_argmax_sorted_by_confidence(self):
+        from nutmeg.v4.api.routes import _argmax_prediction_tickets
+        tickets = _argmax_prediction_tickets(self._preds())
+        assert [tk.outcome for tk in tickets] == ["H", "A"]     # argmax of each pred
+        probs = [tk.probability for tk in tickets]
+        assert probs == sorted(probs, reverse=True)             # confidence desc, not EV
+
+    def test_schema_cannot_carry_ev_or_stake(self):
+        # structural guard: SinglePrediction has no EV/stake fields at all
+        from nutmeg.v4.api.schemas import SinglePrediction
+        f = SinglePrediction.model_fields
+        assert "ev_per_unit" not in f
+        assert "stake" not in f
+        assert "expected_return" not in f
