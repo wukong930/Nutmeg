@@ -766,9 +766,10 @@ class TestMarketBoardOnToday:
 
 
 class TestHandicapPrediction:
-    """V14 — 让球胜平负 PREDICTION (non-竞彩 Pinnacle market-reverse) on BOTH the
-    国际盘 (today single) and the 市场模式 lean block: a per-match −3..+3 line
-    selector over the pred's handicap_lines, display-only (Polymarket prep)."""
+    """V14 — 让球胜平负 PREDICTION on BOTH the 国际盘 (today single) and the 市场模式
+    lean block: a per-match INTERNATIONAL Asian-Handicap line selector (half-line,
+    2-way cover/not — NOT the 竞彩 integer 3-way) over asian_handicap_lines.
+    Display-only (Polymarket prep)."""
 
     def test_helpers_defined(self, html):
         for fn in ("function _hcPredHtml(uid, lines)", "function _hcPredPick(uid)",
@@ -782,13 +783,23 @@ class TestHandicapPrediction:
     def test_wired_into_market_lean_block(self, html):
         seg = html[html.index("function _mktPredCardHtml(pr, idx)"):
                    html.index("function renderMarketPred")]
-        assert "_hcPredHtml('mkt' + idx, pr.handicap_lines)" in seg
+        # V14 — international Asian Handicap (half-line), NOT the 竞彩 integer board
+        assert "_hcPredHtml('mkt' + idx, pr.asian_handicap_lines)" in seg
 
     def test_wired_into_intl_single_today_only(self, html):
         # 国际盘 (renderTodaySingle) shows it ONLY for pfx='today' (showRec), not 竞彩盘
         seg = html[html.index("function renderTodaySingle"):
                    html.index("function _todayRecCalc")]
-        assert "showRec ? _hcPredHtml('today' + i, t.handicap_lines || []) : ''" in seg
+        assert "showRec ? _hcPredHtml('today' + i, t.asian_handicap_lines || []) : ''" in seg
+
+    def test_is_half_line_two_way_not_integer(self, html):
+        # the AH row is 2-way (cover/not, no 让平) on HALF lines (主-0.5/主+1.5 …)
+        seg = html[html.index("function _hcPredRow"):
+                   html.index("function _hcPredHtml")]
+        assert "lp.p_home >= lp.p_away" in seg          # 2-way best, no draw cell
+        assert "t('ah_home')" in seg and "t('ah_away')" in seg
+        assert "function _ahLineLabel" in html          # 主±X.X half-line labels
+        assert "lp.source === 'mkt'" in seg             # real-vs-DC source tag
 
     def test_selector_reads_handicap_lines(self, html):
         seg = html[html.index("function _hcPredHtml(uid, lines)"):

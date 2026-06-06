@@ -52,6 +52,10 @@ class FixtureOddsInput(BaseModel):
     # real line instead of assuming 2.5. None → server defaults 2.5.
     ou_line: Optional[float] = Field(None, gt=0.0)
     ahch: Optional[float] = Field(None, description="European Asian handicap closing line")
+    # V14 — real Pinnacle Asian Handicap board as a JSON string ({line: {home,
+    # away}}); the server de-vigs it for the 让球胜平负 prediction (DC fallback
+    # when absent). JSON-encoded so it survives the pandas/pydantic round-trip.
+    asian_handicap: Optional[str] = None
 
 
 class RecommendRequest(BaseModel):
@@ -89,6 +93,19 @@ class HandicapLineProb(BaseModel):
     p_home: float
     p_draw: float
     p_away: float
+
+
+class AsianHandicapLineProb(BaseModel):
+    """V14 — INTERNATIONAL Asian Handicap (half-line, 2-way: cover / not, NO
+    push). Distinct from HandicapLineProb (竞彩 integer 3-way). ``line`` is the
+    home handicap (−0.5 = 主队让半球 ⇒ home must win; +1.5 = 主受让1.5 …).
+    ``source`` = ``"mkt"`` when de-vigged from a real Pinnacle AH quote, ``"dc"``
+    when read off the Dixon-Coles grid (fallback). For the 让球胜平负 prediction
+    display (国际盘 + 市场模式), for future Polymarket comparison."""
+    line: float
+    p_home: float   # P(home covers)
+    p_away: float   # P(away covers) = 1 − p_home (half-line, no push)
+    source: str = "dc"
 
 
 class SinglePrediction(BaseModel):
@@ -130,6 +147,10 @@ class SinglePrediction(BaseModel):
     # calculator computes live 让球 EV for any 竞彩 让球线 without a round-trip.
     # Empty when not computed (e.g. WC predictions).
     handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
+    # V14 — INTERNATIONAL Asian Handicap (half-line, 2-way) for the 让球胜平负
+    # PREDICTION: real Pinnacle AH de-vig where quoted, DC-grid cover-prob
+    # fallback otherwise. NOT the 竞彩 integer market (that's handicap_lines).
+    asian_handicap_lines: list[AsianHandicapLineProb] = Field(default_factory=list)
     # V12 W7 — 杯赛市场模式: when True, p_*_1x2 are NOT model output — they are
     # the Pinnacle de-vig fair probabilities (the model is out-of-distribution
     # for cups, so we lean 100% on the sharp market). lambda_* are 0. The UI
@@ -450,6 +471,9 @@ class SingleTicketResponse(BaseModel):
     # so the 今日推荐 boards can show a 让球胜平负 prediction with a line selector
     # (non-竞彩 / Pinnacle-de-vig handicap rule). Same shape the cup-market preds use.
     handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
+    # V14 — international Asian Handicap (half-line, 2-way) board for the 让球
+    # PREDICTION display. Real Pinnacle de-vig where quoted, DC fallback else.
+    asian_handicap_lines: list[AsianHandicapLineProb] = Field(default_factory=list)
     # V11 P1-FE#5 — per-ticket fingerprint (12 chars). One single
     # ticket = a single (match_id, market, outcome) triple, so the
     # fingerprint identifies exactly that pick.

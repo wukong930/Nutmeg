@@ -189,12 +189,103 @@ def implied_handicap_lines(
     return out
 
 
+# ── International Asian Handicap (HALF-line, 2-way: cover / not, NO push) ──────
+# 竞彩 让球 (implied_handicap_lines above) is a 3-way INTEGER market (主胜/平/负
+# after the line). The INTERNATIONAL / Pinnacle handicap is a 2-way HALF-line
+# (主 -0.5 / -1.5 …): home covers OR away covers, no 让平. This is the line
+# Polymarket-style "win by N+" markets map to. We price it two ways:
+#   - REAL: de-vig the actual Pinnacle Asian-Handicap 2-way quote (most accurate)
+#   - FALLBACK: read P(home covers) straight off the DC grid (when not quoted)
+
+DEFAULT_AH_LINES = (-2.5, -1.5, -0.5, 0.5, 1.5, 2.5)
+
+
+def devig_asian_handicap_line(home_odd, away_odd) -> tuple[float, float] | None:
+    """De-vig ONE 2-way Asian-handicap line → (P(home covers), P(away covers)).
+
+    The pair sums to 1 (a half-line has no push). Returns None for junk odds
+    (≤ 1.0 or non-numeric) so callers fall back to the DC grid.
+    """
+    try:
+        h, a = float(home_odd), float(away_odd)
+    except (TypeError, ValueError):
+        return None
+    if h <= 1.0 or a <= 1.0:
+        return None
+    ih, ia = 1.0 / h, 1.0 / a
+    s = ih + ia
+    if s <= 0:
+        return None
+    return ih / s, ia / s
+
+
+def dc_home_cover_prob(grid: np.ndarray, line: float) -> float:
+    """P(home covers) at home-handicap ``line`` from a DC grid (half-line, no push).
+
+    Home covers iff ``(home_goals − away_goals) + line > 0``. ``line`` is the
+    home handicap: −0.5 ⇒ home must win; +0.5 ⇒ home win-or-draw; −1.5 ⇒ home
+    wins by ≥ 2. For a half-line the margin can never tie the line, so there is
+    no push and ``P(away covers) = 1 − P(home covers)``.
+    """
+    n = grid.shape[0]
+    idx = np.arange(n)
+    margin = idx[:, None] - idx[None, :]          # margin[i, j] = i − j
+    return float(grid[(margin + line) > 0.0].sum())
+
+
+def asian_handicap_board(
+    p_home: float,
+    p_draw: float,
+    p_away: float,
+    p_over: float | None = None,
+    *,
+    real_board: dict[float, dict[str, float]] | None = None,
+    lines=DEFAULT_AH_LINES,
+    ou_line: float = 2.5,
+    rho: float = DEFAULT_RHO,
+    max_goals: int = DEFAULT_MAX_GOALS,
+) -> list[tuple[float, float, float, str]]:
+    """International AH board: ``(line, P(home covers), P(away covers), source)``
+    per HALF-line. REAL Pinnacle de-vig where that exact line is quoted in
+    ``real_board`` (``source="mkt"``); DC-grid cover prob otherwise (``"dc"``).
+
+    ``real_board`` shape: ``{line: {"home": odd, "away": odd}}`` where ``line`` is
+    the home handicap (e.g. from ``odds_parser.extract_asian_handicap``). The DC
+    grid is fitted to the de-vig 1X2 (+ O/U) — the SAME anchor as the 1X2 board,
+    so the −0.5 line's P(home covers) equals the 1X2 de-vig 主胜 exactly.
+    """
+    lh, la = fit_lambdas(
+        p_home, p_draw, p_away, p_over,
+        ou_line=ou_line, rho=rho, max_goals=max_goals,
+    )
+    grid = score_grid(lh, la, rho=rho, max_goals=max_goals)
+    out: list[tuple[float, float, float, str]] = []
+    for line in lines:
+        dv = None
+        if real_board and float(line) in real_board:
+            q = real_board[float(line)]
+            dv = devig_asian_handicap_line(q.get("home"), q.get("away"))
+        if dv is not None:
+            ph, pa = dv
+            src = "mkt"
+        else:
+            ph = dc_home_cover_prob(grid, float(line))
+            pa = 1.0 - ph
+            src = "dc"
+        out.append((float(line), float(ph), float(pa), src))
+    return out
+
+
 __all__ = [
     "DEFAULT_RHO",
     "DEFAULT_MAX_GOALS",
     "DEFAULT_LINES",
+    "DEFAULT_AH_LINES",
     "devig_over",
     "asian_total_over_prob",
     "fit_lambdas",
     "implied_handicap_lines",
+    "devig_asian_handicap_line",
+    "dc_home_cover_prob",
+    "asian_handicap_board",
 ]

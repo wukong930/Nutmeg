@@ -10,6 +10,7 @@ cached LoadedModel.
 """
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,6 +50,7 @@ from nutmeg.v4.api.schemas import (
     SelectionResponse,
     SingleRecommendRequest,
     SingleRecommendResponse,
+    AsianHandicapLineProb,
     HandicapLineProb,
     PendingFixture,
     SinglePrediction,
@@ -349,7 +351,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v25-fe-hcpred';
+const CACHE_VERSION = 'nutmeg-v26-fe-asianhc';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1425,6 +1427,7 @@ def _fixture_rows_to_inputs(rows: list[dict]) -> list[FixtureOddsInput]:
                 odds_handicap_A=_f("odds_handicap_A"),
                 psc_over25=_f("psc_over25"),
                 psc_under25=_f("psc_under25"),
+                asian_handicap=(r.get("asian_handicap") or None),
             ))
         except Exception:  # noqa: BLE001
             # Tolerate per-row failures — better to return partial recs
@@ -1558,6 +1561,7 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 psc_over25=getattr(f, "psc_over25", None),
                 psc_under25=getattr(f, "psc_under25", None),
                 handicap_lines=hc_lines,
+                asian_handicap_lines=_model_board_asian_handicap(f, grid),
             ))
         return preds
     except Exception:  # noqa: BLE001
@@ -1685,6 +1689,82 @@ def _market_handicap_lines(fair, r: dict) -> list[HandicapLineProb]:
         return []
 
 
+def _real_ah_board(raw):
+    """Parse the ``asian_handicap`` JSON ({line: {home, away}}) → {float: {...}}."""
+    if not raw:
+        return None
+    try:
+        d = json.loads(raw) if isinstance(raw, str) else raw
+        return {float(k): v for k, v in d.items()} or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _asian_handicap_lines(fair, p_over, ou_line, real_raw) -> list[AsianHandicapLineProb]:
+    """INTERNATIONAL Asian Handicap (HALF-line, 2-way: cover/not, NO push) board
+    for the 让球胜平负 PREDICTION — real Pinnacle de-vig where that line is quoted,
+    DC-grid cover-prob fallback otherwise. ``fair`` = de-vig 1X2 triple. This is
+    the NON-竞彩 international handicap rule (≠ the 竞彩 integer ``handicap_lines``)."""
+    try:
+        from nutmeg.v4.model.market_handicap import asian_handicap_board
+        return [
+            AsianHandicapLineProb(line=ln, p_home=ph, p_away=pa, source=src)
+            for ln, ph, pa, src in asian_handicap_board(
+                float(fair[0]), float(fair[1]), float(fair[2]), p_over,
+                real_board=_real_ah_board(real_raw), ou_line=ou_line,
+            )
+        ]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _model_board_asian_handicap(f, model_grid) -> list[AsianHandicapLineProb]:
+    """国际盘 AH board. Fit to the de-vig Pinnacle 1X2 (+ O/U) when present (same
+    market anchor as the 让球 integer board); else read cover-P off the model
+    grid. Real Pinnacle AH de-vig overlays either, per line."""
+    fair = _pinnacle_devig_1x2(
+        getattr(f, "psc_home", None), getattr(f, "psc_draw", None), getattr(f, "psc_away", None)
+    )
+    real_raw = getattr(f, "asian_handicap", None)
+    if fair is not None:
+        from nutmeg.v4.model.market_handicap import devig_over
+        p_over = devig_over(getattr(f, "psc_over25", None), getattr(f, "psc_under25", None))
+        ou_line = float(getattr(f, "ou_line", None) or 2.5)
+        return _asian_handicap_lines(fair, p_over, ou_line, real_raw)
+    try:
+        from nutmeg.v4.model.market_handicap import (
+            DEFAULT_AH_LINES,
+            dc_home_cover_prob,
+            devig_asian_handicap_line,
+        )
+        real = _real_ah_board(real_raw)
+        out: list[AsianHandicapLineProb] = []
+        for ln in DEFAULT_AH_LINES:
+            dv = (
+                devig_asian_handicap_line(real[float(ln)].get("home"), real[float(ln)].get("away"))
+                if real and float(ln) in real else None
+            )
+            if dv is not None:
+                ph, pa, src = dv[0], dv[1], "mkt"
+            else:
+                ph, pa, src = dc_home_cover_prob(model_grid, float(ln)), 0.0, "dc"
+                pa = 1.0 - ph
+            out.append(AsianHandicapLineProb(line=float(ln), p_home=ph, p_away=pa, source=src))
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _market_asian_handicap_lines(fair, r: dict) -> list[AsianHandicapLineProb]:
+    """市场模式 AH board (non-竞彩): real Pinnacle de-vig where quoted, DC fallback
+    fit to the de-vig 1X2 + O/U otherwise."""
+    from nutmeg.v4.model.market_handicap import devig_over
+    return _asian_handicap_lines(
+        fair, devig_over(r.get("psc_over25"), r.get("psc_under25")),
+        float(r.get("ou_line") or 2.5), r.get("asian_handicap"),
+    )
+
+
 def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
     """Build a market-mode SinglePrediction: 1X2 P = Pinnacle de-vig (NOT
     model). Returns None when the row has no Pinnacle 1X2 quote (caller routes
@@ -1704,6 +1784,7 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         psc_home=r.get("psc_home"), psc_draw=r.get("psc_draw"), psc_away=r.get("psc_away"),
         psc_over25=r.get("psc_over25"), psc_under25=r.get("psc_under25"),
         handicap_lines=_market_handicap_lines(fair, r),
+        asian_handicap_lines=_market_asian_handicap_lines(fair, r),
         odds_update=r.get("odds_update"),
         market_mode=True,
     )
@@ -1945,6 +2026,7 @@ def _argmax_prediction_tickets(
             psc_home=p.psc_home, psc_draw=p.psc_draw, psc_away=p.psc_away,
             psc_over25=p.psc_over25, psc_under25=p.psc_under25,
             handicap_lines=p.handicap_lines,   # V14 — market-reverse 让球 board
+            asian_handicap_lines=p.asian_handicap_lines,  # V14 — international AH (half-line)
         )
         tk.selection_fingerprint = single_ticket_fingerprint(tk)
         tickets.append(tk)

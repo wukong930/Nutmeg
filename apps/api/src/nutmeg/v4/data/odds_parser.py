@@ -31,6 +31,7 @@ envelope here for 1X2 / O/U extraction.
 """
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 
@@ -139,6 +140,53 @@ def extract_over_under_25(
     if over is None or under is None:
         return None
     return over, under
+
+
+def extract_asian_handicap(
+    envelope: dict,
+    bookmaker_id: int = PINNACLE_BOOKMAKER_ID,
+) -> Optional[dict[float, dict[str, float]]]:
+    """``{line: {"home": odd, "away": odd}}`` for the sharp book's Asian Handicap.
+
+    API-Football labels the two sides of one line with the SAME (home-handicap)
+    value, e.g. for the −0.5 line::
+
+        {"value": "Home -0.5", "odd": "2.31"}   # home gives 0.5 (must win)
+        {"value": "Away -0.5", "odd": "1.58"}   # away +0.5 (win or draw)
+
+    so ``{line: {"home", "away"}}`` pairs them up. ``line`` is the HOME handicap
+    (DC convention). Only complete 2-way lines are returned; None when the book
+    quotes no Asian Handicap at all. This is the INTERNATIONAL half/quarter-line
+    handicap (NOT the 竞彩 integer market) — used for the 让球 prediction display.
+    """
+    bm = _find_bookmaker(envelope, bookmaker_id)
+    if bm is None:
+        return None
+    bet = _find_bet(bm, BET_ASIAN_HANDICAP)
+    if bet is None:
+        return None
+    board: dict[float, dict[str, float]] = {}
+    for entry in bet.get("values", []):
+        label = entry.get("value", "")
+        try:
+            odd = float(entry.get("odd"))
+        except (TypeError, ValueError):
+            continue
+        if odd <= 1.0:
+            continue
+        if label.startswith("Home "):
+            side, num = "home", label[5:]
+        elif label.startswith("Away "):
+            side, num = "away", label[5:]
+        else:
+            continue
+        try:
+            line = float(num)
+        except ValueError:
+            continue
+        board.setdefault(line, {})[side] = odd
+    complete = {ln: v for ln, v in board.items() if "home" in v and "away" in v}
+    return complete or None
 
 
 def _ou_ladder(bet: dict) -> dict[float, dict]:
@@ -295,6 +343,13 @@ def fixture_envelope_to_csv_row(
                 row["psc_over25"] = over
                 row["psc_under25"] = under
                 row["ou_line"] = line
+        # V14 — real Pinnacle Asian Handicap (international half/quarter lines)
+        # for the 让球胜平负 PREDICTION. Carried as a JSON string ({line: {home,
+        # away}}) so it survives both the FixtureOddsInput pydantic hop and a
+        # pandas column; the server de-vigs it (DC-grid fallback when absent).
+        ah = extract_asian_handicap(odds_envelope, sharp_bookmaker_id)
+        if ah:
+            row["asian_handicap"] = json.dumps({str(k): v for k, v in ah.items()})
     return row
 
 
@@ -308,5 +363,6 @@ __all__ = [
     "extract_1x2_odds",
     "extract_over_under_25",
     "extract_over_under",
+    "extract_asian_handicap",
     "fixture_envelope_to_csv_row",
 ]

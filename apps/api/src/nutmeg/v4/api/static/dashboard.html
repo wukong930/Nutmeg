@@ -1898,6 +1898,12 @@ const I18N = {
     board_mkt:        '💠 市场模式盘口推荐',
     board_mkt_hint:   'Pinnacle 去vig 最优预测 · 杯赛+日职联 · 想下注去近期赛事填竞彩SP',
     hcpred_label:     '让球预测',
+    ah_home:          '主赢盘',
+    ah_away:          '客赢盘',
+    ah_real:          '真盘',
+    ah_fit:           '拟合',
+    ah_src_mkt:       '真实 Pinnacle 亚盘去 vig',
+    ah_src_dc:        'Dixon-Coles 网格拟合(该让球线未开盘)',
     h_mktpred:        '💠 市场模式预测',
     mktpred_empty:    '今日暂无开盘的杯赛 / 日职联。',
     board_jc:         '💴 竞彩盘口推荐',
@@ -2260,6 +2266,12 @@ const I18N = {
     board_mkt:        '💠 Market-mode odds board',
     board_mkt_hint:   'Pinnacle de-vig best pick · cups + J-League · enter 竞彩 SP in 近期赛事 to bet',
     hcpred_label:     'Handicap pred.',
+    ah_home:          'Home',
+    ah_away:          'Away',
+    ah_real:          'live',
+    ah_fit:           'model',
+    ah_src_mkt:       'real Pinnacle Asian Handicap, de-vigged',
+    ah_src_dc:        'Dixon-Coles grid fit (this line not quoted)',
     h_mktpred:        '💠 Market-mode prediction',
     mktpred_empty:    'No cup / J-League fixtures open today.',
     board_jc:         '💴 竞彩 odds board',
@@ -3377,7 +3389,7 @@ function renderTodaySingle(single, pfx = 'today') {
             ${agreeBadge}
           </div>
         </div>
-        ${showRec ? _hcPredHtml('today' + i, t.handicap_lines || []) : ''}
+        ${showRec ? _hcPredHtml('today' + i, t.asian_handicap_lines || []) : ''}
         ${recRow}
       </div>`;
   }).join('');
@@ -4792,18 +4804,23 @@ function _hcPredBalancedLine(lines) {
   return lines.reduce((b, l) =>
     Math.abs(l.p_home - l.p_away) < Math.abs(b.p_home - b.p_away) ? l : b).line;
 }
+// International AH line label: home handicap, HALF-line. -0.5 → 主-0.5, +1.5 → 主+1.5.
+function _ahLineLabel(l) { return '主' + (l > 0 ? '+' : '') + l; }
 function _hcPredRow(lp) {
   if (!lp) return '<span class="text-muted">—</span>';
-  const P = { H: lp.p_home, D: lp.p_draw, A: lp.p_away };
-  const best = ['D', 'A'].reduce((a, o) => (P[o] > P[a] ? o : a), 'H');
-  const cell = (o) => `<span class="${o === best ? 'badge-ok' : 'text-muted'} whitespace-nowrap">${_hcOutcomeLabel(o)} ${(P[o] * 100).toFixed(0)}%</span>`;
-  return cell('H') + ' ' + cell('D') + ' ' + cell('A');
+  const homeBest = lp.p_home >= lp.p_away;          // 2-way (cover / not), no 让平
+  const cell = (p, lbl, best) => `<span class="${best ? 'badge-ok' : 'text-muted'} whitespace-nowrap">${lbl} ${(p * 100).toFixed(0)}%</span>`;
+  // source: real Pinnacle AH de-vig (真盘) vs DC-grid fallback (拟合, line not quoted)
+  const src = lp.source === 'mkt'
+    ? `<span class="badge-gold whitespace-nowrap" title="${t('ah_src_mkt')}">${t('ah_real')}</span>`
+    : `<span class="text-muted whitespace-nowrap" title="${t('ah_src_dc')}">${t('ah_fit')}</span>`;
+  return cell(lp.p_home, t('ah_home'), homeBest) + ' ' + cell(lp.p_away, t('ah_away'), !homeBest) + ' ' + src;
 }
 function _hcPredHtml(uid, lines) {
   if (!lines || !lines.length) return '';
   _HCPRED[uid] = lines;
   const def = _hcPredBalancedLine(lines);
-  const opts = lines.map(l => `<option value="${l.line}" ${l.line === def ? 'selected' : ''}>${_hcLineLabel(l.line)}</option>`).join('');
+  const opts = lines.map(l => `<option value="${l.line}" ${l.line === def ? 'selected' : ''}>${_ahLineLabel(l.line)}</option>`).join('');
   return `<div class="flex items-center gap-2 flex-wrap text-xs mt-2 pt-2" style="border-top:1px dashed var(--border-subtle)">
       <span class="text-muted">${t('hcpred_label')}</span>
       <select data-hcuid="${uid}" onchange="_hcPredPick('${uid}')" aria-label="${t('hcpred_label')}"
@@ -4816,7 +4833,7 @@ function _hcPredPick(uid) {
   const sel = document.querySelector(`select[data-hcuid="${uid}"]`);
   const span = document.getElementById('hcpred-' + uid);
   if (!sel || !span) return;
-  span.innerHTML = _hcPredRow(lines.find(l => l.line === parseInt(sel.value, 10)));
+  span.innerHTML = _hcPredRow(lines.find(l => l.line === parseFloat(sel.value)));
 }
 
 function _mktPredCardHtml(pr, idx) {
@@ -4837,7 +4854,7 @@ function _mktPredCardHtml(pr, idx) {
           <span class="text-xs text-muted">${_fmtKickoff(pr)}</span>
         </span>
       </div>
-      ${_hcPredHtml('mkt' + idx, pr.handicap_lines)}
+      ${_hcPredHtml('mkt' + idx, pr.asian_handicap_lines)}
     </div>`;
 }
 function renderMarketPred(preds) {
