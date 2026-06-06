@@ -446,6 +446,10 @@ class SingleTicketResponse(BaseModel):
     psc_over25: float | None = None
     psc_under25: float | None = None
     handicap_home: int | None = None
+    # V14 — market-reverse 让球 board (−3..+3) carried onto the prediction ticket
+    # so the 今日推荐 boards can show a 让球胜平负 prediction with a line selector
+    # (non-竞彩 / Pinnacle-de-vig handicap rule). Same shape the cup-market preds use.
+    handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
     # V11 P1-FE#5 — per-ticket fingerprint (12 chars). One single
     # ticket = a single (match_id, market, outcome) triple, so the
     # fingerprint identifies exactly that pick.

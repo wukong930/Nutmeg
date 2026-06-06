@@ -349,7 +349,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v24-fe-mktpred';
+const CACHE_VERSION = 'nutmeg-v25-fe-hcpred';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1944,6 +1944,7 @@ def _argmax_prediction_tickets(
             stake=0.0, raw_kelly_stake=0.0, expected_return=0.0,
             psc_home=p.psc_home, psc_draw=p.psc_draw, psc_away=p.psc_away,
             psc_over25=p.psc_over25, psc_under25=p.psc_under25,
+            handicap_lines=p.handicap_lines,   # V14 — market-reverse 让球 board
         )
         tk.selection_fingerprint = single_ticket_fingerprint(tk)
         tickets.append(tk)

@@ -763,3 +763,39 @@ class TestMarketBoardOnToday:
     def test_i18n_keys_both_locales(self, html):
         for k in ("board_mkt", "board_mkt_hint", "h_mktpred", "mktpred_empty"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestHandicapPrediction:
+    """V14 — 让球胜平负 PREDICTION (non-竞彩 Pinnacle market-reverse) on BOTH the
+    国际盘 (today single) and the 市场模式 lean block: a per-match −3..+3 line
+    selector over the pred's handicap_lines, display-only (Polymarket prep)."""
+
+    def test_helpers_defined(self, html):
+        for fn in ("function _hcPredHtml(uid, lines)", "function _hcPredPick(uid)",
+                   "function _hcPredBalancedLine(lines)", "function _hcPredRow(lp)"):
+            assert fn in html, f"missing {fn}"
+
+    def test_default_is_balanced_line(self, html):
+        # default line = argmin |p_home − p_away| (the sharp-implied fair spread)
+        assert "Math.abs(l.p_home - l.p_away) < Math.abs(b.p_home - b.p_away)" in html
+
+    def test_wired_into_market_lean_block(self, html):
+        seg = html[html.index("function _mktPredCardHtml(pr, idx)"):
+                   html.index("function renderMarketPred")]
+        assert "_hcPredHtml('mkt' + idx, pr.handicap_lines)" in seg
+
+    def test_wired_into_intl_single_today_only(self, html):
+        # 国际盘 (renderTodaySingle) shows it ONLY for pfx='today' (showRec), not 竞彩盘
+        seg = html[html.index("function renderTodaySingle"):
+                   html.index("function _todayRecCalc")]
+        assert "showRec ? _hcPredHtml('today' + i, t.handicap_lines || []) : ''" in seg
+
+    def test_selector_reads_handicap_lines(self, html):
+        seg = html[html.index("function _hcPredHtml(uid, lines)"):
+                   html.index("function _hcPredPick")]
+        assert "_HCPRED[uid] = lines;" in seg                # registered for the picker
+        assert "lines.map(l => `<option value=\"${l.line}\"" in seg
+        assert "onchange=\"_hcPredPick('${uid}')\"" in seg
+
+    def test_i18n_hcpred_label_both_locales(self, html):
+        assert html.count("hcpred_label:") >= 2

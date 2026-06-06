@@ -1897,6 +1897,7 @@ const I18N = {
     board_intl_hint:  '模型预测 · 13 个训练联赛 · 填竞彩SP才出EV',
     board_mkt:        '💠 市场模式盘口推荐',
     board_mkt_hint:   'Pinnacle 去vig 最优预测 · 杯赛+日职联 · 想下注去近期赛事填竞彩SP',
+    hcpred_label:     '让球预测',
     h_mktpred:        '💠 市场模式预测',
     mktpred_empty:    '今日暂无开盘的杯赛 / 日职联。',
     board_jc:         '💴 竞彩盘口推荐',
@@ -2258,6 +2259,7 @@ const I18N = {
     board_intl_hint:  'Model prediction · 13 trained leagues · EV after a 竞彩 SP',
     board_mkt:        '💠 Market-mode odds board',
     board_mkt_hint:   'Pinnacle de-vig best pick · cups + J-League · enter 竞彩 SP in 近期赛事 to bet',
+    hcpred_label:     'Handicap pred.',
     h_mktpred:        '💠 Market-mode prediction',
     mktpred_empty:    'No cup / J-League fixtures open today.',
     board_jc:         '💴 竞彩 odds board',
@@ -3375,6 +3377,7 @@ function renderTodaySingle(single, pfx = 'today') {
             ${agreeBadge}
           </div>
         </div>
+        ${showRec ? _hcPredHtml('today' + i, t.handicap_lines || []) : ''}
         ${recRow}
       </div>`;
   }).join('');
@@ -4779,22 +4782,62 @@ function _cupManualRevert(idx) {
 // V14 — 💠 市场模式盘口推荐 (今日推荐, DISPLAY-ONLY): the sharp de-vig BEST 1X2
 // pick per cup/J1 match — a read-only mirror of 国际盘's prediction list. NO 竞彩
 // SP here; the interactive board + SP entry live in 近期赛事 → 竞彩盘口推荐.
-function _mktPredCardHtml(pr) {
+// V14 — 让球胜平负 PREDICTION (non-竞彩 / Pinnacle market-reverse, anchored to
+// 大小球). Read-only: a per-match line selector (−3..+3) over the pred's
+// handicap_lines, showing 让胜/让平/让负 P + best pick. For Polymarket prep (a
+// fair-P view to compare against a future Polymarket price; no 竞彩 SP here).
+const _HCPRED = {};
+function _hcPredBalancedLine(lines) {
+  if (!lines || !lines.length) return null;
+  return lines.reduce((b, l) =>
+    Math.abs(l.p_home - l.p_away) < Math.abs(b.p_home - b.p_away) ? l : b).line;
+}
+function _hcPredRow(lp) {
+  if (!lp) return '<span class="text-muted">—</span>';
+  const P = { H: lp.p_home, D: lp.p_draw, A: lp.p_away };
+  const best = ['D', 'A'].reduce((a, o) => (P[o] > P[a] ? o : a), 'H');
+  const cell = (o) => `<span class="${o === best ? 'badge-ok' : 'text-muted'} whitespace-nowrap">${_hcOutcomeLabel(o)} ${(P[o] * 100).toFixed(0)}%</span>`;
+  return cell('H') + ' ' + cell('D') + ' ' + cell('A');
+}
+function _hcPredHtml(uid, lines) {
+  if (!lines || !lines.length) return '';
+  _HCPRED[uid] = lines;
+  const def = _hcPredBalancedLine(lines);
+  const opts = lines.map(l => `<option value="${l.line}" ${l.line === def ? 'selected' : ''}>${_hcLineLabel(l.line)}</option>`).join('');
+  return `<div class="flex items-center gap-2 flex-wrap text-xs mt-2 pt-2" style="border-top:1px dashed var(--border-subtle)">
+      <span class="text-muted">${t('hcpred_label')}</span>
+      <select data-hcuid="${uid}" onchange="_hcPredPick('${uid}')" aria-label="${t('hcpred_label')}"
+              class="text-xs px-1.5 py-0.5 border rounded num-display">${opts}</select>
+      <span id="hcpred-${uid}" class="flex items-center gap-1.5 flex-wrap">${_hcPredRow(lines.find(l => l.line === def))}</span>
+    </div>`;
+}
+function _hcPredPick(uid) {
+  const lines = _HCPRED[uid]; if (!lines) return;
+  const sel = document.querySelector(`select[data-hcuid="${uid}"]`);
+  const span = document.getElementById('hcpred-' + uid);
+  if (!sel || !span) return;
+  span.innerHTML = _hcPredRow(lines.find(l => l.line === parseInt(sel.value, 10)));
+}
+
+function _mktPredCardHtml(pr, idx) {
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const best = ['D', 'A'].reduce((a, o) => (P[o] > P[a] ? o : a), 'H');
   const pct = (P[best] * 100).toFixed(0);
   const fair = P[best] > 0 ? (1 / P[best]).toFixed(2) : '—';
-  return `<div class="card-rec flex items-center justify-between gap-3 flex-wrap">
-      <span class="inline-flex items-center gap-1.5 flex-wrap font-medium">
-        ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
-        <span class="text-muted">vs</span>
-        ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
-      </span>
-      <span class="shrink-0 flex items-center gap-2 text-sm">
-        <span class="badge-ok whitespace-nowrap">${outcomeLabel(best)} ${pct}%</span>
-        <span class="text-xs text-muted num-display">公允 @${fair}</span>
-        <span class="text-xs text-muted">${_fmtKickoff(pr)}</span>
-      </span>
+  return `<div class="card-rec">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <span class="inline-flex items-center gap-1.5 flex-wrap font-medium">
+          ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
+          <span class="text-muted">vs</span>
+          ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
+        </span>
+        <span class="shrink-0 flex items-center gap-2 text-sm">
+          <span class="badge-ok whitespace-nowrap">${outcomeLabel(best)} ${pct}%</span>
+          <span class="text-xs text-muted num-display">公允 @${fair}</span>
+          <span class="text-xs text-muted">${_fmtKickoff(pr)}</span>
+        </span>
+      </div>
+      ${_hcPredHtml('mkt' + idx, pr.handicap_lines)}
     </div>`;
 }
 function renderMarketPred(preds) {
@@ -4808,9 +4851,10 @@ function renderMarketPred(preds) {
   preds.forEach((pr) => { (byC[pr.league] = byC[pr.league] || []).push(pr); });
   const order = Object.keys(byC).sort((a, b) =>
     Math.min(...byC[a].map(_kickoffMs)) - Math.min(...byC[b].map(_kickoffMs)));
+  let _u = 0;
   list.innerHTML = order.map((lg) => {
     const items = byC[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y));
-    return _lgGroupHtml(lg, leagueColor(lg), items.length, items.map(_mktPredCardHtml).join(''));
+    return _lgGroupHtml(lg, leagueColor(lg), items.length, items.map((pr) => _mktPredCardHtml(pr, _u++)).join(''));
   }).join('');
 }
 

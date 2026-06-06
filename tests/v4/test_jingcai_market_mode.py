@@ -104,3 +104,26 @@ class TestMatchProbsVerbatim:
         p_corr = {s.outcome: s.probability for s in corr if s.market_type == "1x2"}
         # T=2 DOES move the model-grid P → so the verbatim test above is meaningful
         assert p_raw != p_corr
+
+
+class TestArgmaxTicketCarriesHandicapLines:
+    """V14 — the 今日推荐 prediction ticket now carries the market-reverse 让球
+    board so the 国际盘/市场模式 boards can show a 让球胜平负 prediction (line
+    selector). Display-only — for Polymarket prep, not a 竞彩 bet."""
+
+    def test_handicap_lines_on_prediction_ticket(self):
+        from nutmeg.v4.api.routes import _argmax_prediction_tickets
+        from nutmeg.v4.api.schemas import HandicapLineProb, SinglePrediction
+        hl = [HandicapLineProb(line=ln, p_home=0.3, p_draw=0.3, p_away=0.4)
+              for ln in range(-3, 4)]
+        pred = SinglePrediction(
+            home_team="A", away_team="B", league="EPL", date="2026-06-06",
+            lambda_home=1.4, lambda_away=1.1,
+            p_home_1x2=0.45, p_draw_1x2=0.28, p_away_1x2=0.27,
+            handicap_lines=hl,
+        )
+        tickets = _argmax_prediction_tickets([pred])
+        assert len(tickets) == 1
+        assert tickets[0].outcome == "H"                 # argmax 1X2 (unchanged)
+        assert len(tickets[0].handicap_lines) == 7       # full −3..+3 board carried
+        assert [ln.line for ln in tickets[0].handicap_lines] == list(range(-3, 4))
