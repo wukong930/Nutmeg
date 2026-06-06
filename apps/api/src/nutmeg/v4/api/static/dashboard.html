@@ -4883,7 +4883,10 @@ function _collectBoard(preds, spClass, hcClass, lineId, diag) {
       psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
       // F1 — forward the Pinnacle O/U echo so the server's market-reverse 让球 P
       // (recommend_single) is O/U-anchored, matching the displayed card P exactly.
+      // V14 — also forward ou_line so cup/J1 anchor λ to the REAL total (2.25),
+      // not an assumed 2.5, when the 竞彩盘 de-vig-fits their 胜平负 P.
       psc_over25: pr.psc_over25 ?? null, psc_under25: pr.psc_under25 ?? null,
+      ou_line: pr.ou_line ?? null,
     };
     let any = false;
     const n1x2 = (oh ? 1 : 0) + (od ? 1 : 0) + (oa ? 1 : 0);

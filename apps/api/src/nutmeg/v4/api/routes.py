@@ -349,7 +349,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v22-fe-mktboard';
+const CACHE_VERSION = 'nutmeg-v23-fe-jcmkt';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -579,6 +579,32 @@ def _fixture_to_match_input(row: pd.Series, lh: float, la: float, gbm_rho: float
     if odds_1x2 is None and odds_hc is None:
         return None
 
+    # V14 — cup/J1 are OUT-OF-DISTRIBUTION for the model; the 竞彩盘 must price
+    # their 胜平负 off the SHARP de-vig Pinnacle line, NOT the OOD model. Reverse-
+    # fit λ from the de-vig 1X2 (+ O/U anchor) so the grid reproduces de-vig 1X2
+    # AND market-reverse 让球 — the SAME source the 市场模式 card displays. The 13
+    # trained leagues keep their model λ untouched.
+    lam_h, lam_a = float(lh), float(la)
+    m_probs: dict[str, float] | None = None
+    if row.get("league") in _CUP_MARKET_COMPETITIONS:
+        fair = _pinnacle_devig_1x2(
+            row.get("psc_home"), row.get("psc_draw"), row.get("psc_away")
+        )
+        if fair is not None:
+            # 胜平负 P = de-vig Pinnacle VERBATIM (match_probs → no model temperature
+            # correction, matches the 市场模式 card exactly). Also reverse-fit λ so the
+            # grid backing any non-overridden outcome stays de-vig-consistent.
+            m_probs = {"H": fair[0], "D": fair[1], "A": fair[2]}
+            from nutmeg.v4.model.market_handicap import devig_over, fit_lambdas
+            p_over = devig_over(row.get("psc_over25"), row.get("psc_under25"))
+            ou_line = float(row.get("ou_line") or 2.5)
+            try:
+                lam_h, lam_a = fit_lambdas(
+                    fair[0], fair[1], fair[2], p_over, ou_line=ou_line
+                )
+            except Exception:  # noqa: BLE001 — keep model λ if the fit fails
+                pass
+
     # F1 — when a 让球 bet is present, use the MARKET-REVERSE P (de-vig Pinnacle
     # 1X2 + O/U), the SAME source the dashboard shows + the parlay path records,
     # so the single-leg recommendation matches the displayed EV. None when
@@ -591,13 +617,14 @@ def _fixture_to_match_input(row: pd.Series, lh: float, la: float, gbm_rho: float
 
     return MatchInput(
         match_id=f"{row['league']}_{row['home_team']}_vs_{row['away_team']}",
-        lambda_home=float(lh),
-        lambda_away=float(la),
+        lambda_home=lam_h,
+        lambda_away=lam_a,
         rho=gbm_rho,
         handicap_home=handicap if odds_hc else None,
         odds_1x2=odds_1x2,
         odds_handicap_1x2=odds_hc,
         handicap_probs=hc_probs,
+        match_probs=m_probs,
     )
 
 

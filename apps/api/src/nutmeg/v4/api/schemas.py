@@ -47,6 +47,10 @@ class FixtureOddsInput(BaseModel):
     # Optional extra market signals (features only, never bet)
     psc_over25: Optional[float] = Field(None, gt=1.0)
     psc_under25: Optional[float] = Field(None, gt=1.0)
+    # V14 — Asian total line the psc_over25/under25 are quoted AT (often 2.25 for
+    # J1, not 2.5). Lets the 竞彩盘 anchor the market-reverse λ for cup/J1 to the
+    # real line instead of assuming 2.5. None → server defaults 2.5.
+    ou_line: Optional[float] = Field(None, gt=0.0)
     ahch: Optional[float] = Field(None, description="European Asian handicap closing line")
 
 

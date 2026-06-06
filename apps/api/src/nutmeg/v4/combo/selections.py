@@ -56,6 +56,13 @@ class MatchInput:
     odds_1x2: dict[str, float] | None = None
     odds_handicap_1x2: dict[str, float] | None = None
     handicap_probs: dict[str, float] | None = None
+    match_probs: dict[str, float] | None = None
+    """Optional {"H","D","A"} OVERRIDE for the 胜平负 (1X2) probabilities. Same
+    contract as handicap_probs: when supplied, build_selections_from_match uses
+    these VERBATIM (NO temperature correction — a de-vig Pinnacle line is already
+    calibrated). This is how the API feeds the de-vig 1X2 P for cup/J1 (OOD for
+    the model) into the 竞彩盘, so the 胜平负 EV matches the 市场模式 card exactly.
+    None → model grid (with correction)."""
 
 
 @dataclass(frozen=True)
@@ -99,9 +106,17 @@ def build_selections_from_match(
     out: list[Selection] = []
 
     if match.odds_1x2:
-        ph, pd, pa = tuple(
-            apply_correction_to_probs(np.array(grid_to_1x2(grid)), correction)
-        )
+        if match.match_probs is not None:
+            # market-mode (cup/J1): de-vig Pinnacle 1X2 used VERBATIM — already a
+            # calibrated sharp line, so NO temperature correction (mirrors
+            # handicap_probs). Matches the 市场模式 card 胜平负 P exactly.
+            ph = float(match.match_probs.get("H", 0.0))
+            pd = float(match.match_probs.get("D", 0.0))
+            pa = float(match.match_probs.get("A", 0.0))
+        else:
+            ph, pd, pa = tuple(
+                apply_correction_to_probs(np.array(grid_to_1x2(grid)), correction)
+            )
         probs = {"H": ph, "D": pd, "A": pa}
         for outcome, prob in probs.items():
             o = match.odds_1x2.get(outcome)
