@@ -15,7 +15,6 @@ from functools import lru_cache
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 # Eagerly load .env into os.environ so legacy os.environ.get() readers
 # in v4 modules pick up the values too. Idempotent; no-op if .env absent.
 load_dotenv()
@@ -44,6 +43,17 @@ class Settings(BaseSettings):
     odds_api_key: str | None = None
     odds_api_base_url: str = "https://api.the-odds-api.com/v4"
     odds_api_timeout_seconds: float = 20.0
+
+    # Polymarket (read-only mispricing detector). PUBLIC data — no credential.
+    # Gamma API serves market metadata (questions/outcomes/token ids); the CLOB
+    # API serves live orderbook prices. We NEVER place orders — this is a
+    # measurement instrument that compares Polymarket prices to our Pinnacle
+    # de-vig fair P. Metadata is slow-moving (cache ~6h); prices are live (the
+    # source bypasses cache for the price/book calls).
+    polymarket_gamma_base_url: str = "https://gamma-api.polymarket.com"
+    polymarket_clob_base_url: str = "https://clob.polymarket.com"
+    polymarket_timeout_seconds: float = 15.0
+    polymarket_metadata_ttl_seconds: int = 21600  # 6h
 
 
 @lru_cache(maxsize=1)

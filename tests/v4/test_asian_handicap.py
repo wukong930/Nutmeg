@@ -119,17 +119,20 @@ class TestExtractAsianHandicapRealPayload:
     the international half/quarter-line AH and we read it correctly."""
 
     def _envelope(self):
+        # Find a cached Pinnacle payload whose AH board actually carries the ±0.5
+        # half-lines this test validates. NOT just the first AH file: lopsided
+        # matches (a heavy favourite) only quote one-sided lines (e.g. −3.0…−0.75,
+        # no +0.5), so scan for a balanced one. Robust to whatever the odds cache
+        # happens to hold.
         import glob
         import json
         for f in sorted(glob.glob("data/external/api_football/_odds/*.json")):
             d = json.load(open(f))
             resp = d if isinstance(d, list) else d.get("response", [])
             for r in resp:
-                for bm in r.get("bookmakers", []):
-                    if bm.get("id") == 4 and any(
-                        b.get("name") == "Asian Handicap" for b in bm.get("bets", [])
-                    ):
-                        return r
+                board = extract_asian_handicap(r)
+                if board and -0.5 in board and 0.5 in board:
+                    return r
         return None
 
     def test_extracts_half_and_quarter_lines(self):
