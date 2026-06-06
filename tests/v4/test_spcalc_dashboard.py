@@ -82,7 +82,10 @@ class TestSpCalcMarkup:
         # Cup-market restore touches the cup-specific SP input classes.
         assert ".cupsp[data-idx=" in html
         assert ".cuphcsp[data-idx=" in html
-        assert 'onclick="loadCupMarket()"' in html
+        # V14 — the board moved to 今日推荐 + auto-loads; the manual 加载 button is
+        # gone, but the 🔄 refresh entry-point (and the auto-load) still drive it.
+        assert 'onclick="loadCupMarket({refreshOdds:true})"' in html
+        assert "if (typeof loadCupMarket === 'function') loadCupMarket();" in html
         assert "async function loadCupMarket" in html
         assert "function renderCupMarket" in html
         assert "function _cupRecalc" in html
@@ -157,8 +160,9 @@ class TestSpCalcI18n:
         "spcalc_hc_h", "spcalc_hc_d", "spcalc_hc_a", "spcalc_hc_pickline",
         # V12 W6 — 待开盘 (Pinnacle not open)
         "spcalc_pending_title", "spcalc_pending_hint", "spcalc_pending_badge",
-        # V12 W7 — 🏆 杯赛市场模式
-        "cupmkt_load_btn", "cupmkt_hint", "h_cupmkt", "cupmkt_empty", "cupmkt_badge",
+        # V12 W7 — 🏆 杯赛市场模式 (V14: cupmkt_load_btn dropped — the manual 加载
+        # button was removed when the board moved to 今日推荐 + auto-loads)
+        "cupmkt_hint", "h_cupmkt", "cupmkt_empty", "cupmkt_badge",
     ]
 
     def test_each_key_defined_in_both_locales(self, html):
@@ -714,4 +718,34 @@ class TestCupManualReprice:
     def test_i18n_keys_both_locales(self, html):
         for k in ("cupman_toggle", "cupman_toggle_on", "cupman_hint", "cupman_apply",
                   "cupman_revert", "cupman_err_1x2", "cupman_vig", "cupman_badge"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestMarketBoardOnToday:
+    """V14 — 市场模式盘口推荐 relocated from 近期赛事 to the 今日推荐 landing,
+    auto-loaded. It sits between 国际盘 and 竞彩盘 and shows the sharp Pinnacle
+    de-vig PREDICTION for all cups + J1 (EV only appears once a 竞彩 SP is typed)."""
+
+    def test_board_ordered_intl_mkt_jc(self, html):
+        i_intl = html.index('data-i18n="board_intl"')
+        i_mkt = html.index('data-i18n="board_mkt"')
+        i_jc = html.index('data-i18n="board_jc"')
+        assert i_intl < i_mkt < i_jc      # 🌍 → 💠 → 💴 on 今日推荐
+
+    def test_cupmkt_section_single_and_inside_today(self, html):
+        assert html.count('id="cupmkt-section"') == 1     # relocated, not duplicated
+        i_today = html.index('id="tab-today"')
+        i_upcoming = html.index('id="tab-upcoming"')
+        i_sec = html.index('id="cupmkt-section"')
+        assert i_today < i_sec < i_upcoming               # now in 今日推荐, not 近期赛事
+
+    def test_autoloads_on_landing(self, html):
+        assert "if (typeof loadCupMarket === 'function') loadCupMarket();" in html
+
+    def test_old_manual_load_button_removed(self, html):
+        assert 'id="cupmkt-load"' not in html
+        assert "cupmkt_load_btn" not in html              # orphan i18n cleaned up
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("board_mkt", "board_mkt_hint"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
