@@ -1896,7 +1896,10 @@ const I18N = {
     board_intl:       '🌍 国际盘口推荐',
     board_intl_hint:  '模型预测 · 13 个训练联赛 · 填竞彩SP才出EV',
     board_mkt:        '💠 市场模式盘口推荐',
-    board_mkt_hint:   'Pinnacle 去vig 最优预测 · 杯赛+日职联 · 想下注去近期赛事填竞彩SP',
+    board_mkt_hint:   '高置信预测 · sharp 有明显倾向 · 非 +EV(Pinnacle 下注无优势,+EV 去竞彩盘)',
+    mkt_strong_n:     '场强势',
+    mkt_no_strong:    '今日无明显倾向的强势预测(全部接近五五开)',
+    mkt_tossup_fold:  '接近五五开 · 无明显倾向(折叠)',
     hcpred_label:     '让球预测',
     ah_home:          '主赢盘',
     ah_away:          '客赢盘',
@@ -2264,7 +2267,10 @@ const I18N = {
     board_intl:       '🌍 International odds',
     board_intl_hint:  'Model prediction · 13 trained leagues · EV after a 竞彩 SP',
     board_mkt:        '💠 Market-mode odds board',
-    board_mkt_hint:   'Pinnacle de-vig best pick · cups + J-League · enter 竞彩 SP in 近期赛事 to bet',
+    board_mkt_hint:   'High-confidence picks · sharp clearly leans · NOT +EV (no edge betting Pinnacle; +EV is on 竞彩盘)',
+    mkt_strong_n:     'strong',
+    mkt_no_strong:    'No clearly-favored picks today (all near coin-flip)',
+    mkt_tossup_fold:  'Near coin-flip · no clear favorite (folded)',
     hcpred_label:     'Handicap pred.',
     ah_home:          'Home',
     ah_away:          'Away',
@@ -4857,22 +4863,45 @@ function _mktPredCardHtml(pr, idx) {
       ${_hcPredHtml('mkt' + idx, pr.asian_handicap_lines)}
     </div>`;
 }
+// V14 — "藏五五开,留强势": a match is a STRONG pick when the sharp 1X2 clearly
+// leans one way (|P(home) − P(away)| ≥ _MKT_STRONG_MIN); a near coin-flip is a
+// toss-up (no clear favorite) and gets folded away. This is a CONFIDENCE filter
+// on the PREDICTION — it does NOT make these +EV (betting Pinnacle's own de-vig
+// line back at Pinnacle is −vig; +EV only exists at 竞彩, on the 竞彩盘).
+const _MKT_STRONG_MIN = 0.15;
+function _mktStrength(pr) { return Math.abs((pr.p_home_1x2 || 0) - (pr.p_away_1x2 || 0)); }
+function _mktGroupsHtml(preds, uidStart) {
+  const byC = {};
+  preds.forEach((pr) => { (byC[pr.league] = byC[pr.league] || []).push(pr); });
+  const order = Object.keys(byC).sort((a, b) =>
+    Math.min(...byC[a].map(_kickoffMs)) - Math.min(...byC[b].map(_kickoffMs)));
+  let u = uidStart;
+  const html = order.map((lg) => {
+    const items = byC[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y));
+    return _lgGroupHtml(lg, leagueColor(lg), items.length, items.map((pr) => _mktPredCardHtml(pr, u++)).join(''));
+  }).join('');
+  return { html, nextUid: u };
+}
 function renderMarketPred(preds) {
   preds = preds || [];
   const sec = $('#mktpred-section'), list = $('#mktpred-list'), empty = $('#mktpred-empty');
   if (!sec || !list || !empty) return;
   if (preds.length === 0) { sec.classList.add('hidden'); empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden'); sec.classList.remove('hidden');
-  const cnt = $('#mktpred-count'); if (cnt) cnt.textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
-  const byC = {};
-  preds.forEach((pr) => { (byC[pr.league] = byC[pr.league] || []).push(pr); });
-  const order = Object.keys(byC).sort((a, b) =>
-    Math.min(...byC[a].map(_kickoffMs)) - Math.min(...byC[b].map(_kickoffMs)));
-  let _u = 0;
-  list.innerHTML = order.map((lg) => {
-    const items = byC[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y));
-    return _lgGroupHtml(lg, leagueColor(lg), items.length, items.map((pr) => _mktPredCardHtml(pr, _u++)).join(''));
-  }).join('');
+  const strong = preds.filter((pr) => _mktStrength(pr) >= _MKT_STRONG_MIN);
+  const weak = preds.filter((pr) => _mktStrength(pr) < _MKT_STRONG_MIN);
+  const cnt = $('#mktpred-count');
+  if (cnt) cnt.textContent = ` · ${strong.length}/${preds.length} ${t('mkt_strong_n')}`;
+  const a = _mktGroupsHtml(strong, 0);
+  let html = strong.length ? a.html
+    : `<div class="text-sm text-muted py-2">${t('mkt_no_strong')}</div>`;
+  if (weak.length) {
+    const b = _mktGroupsHtml(weak, a.nextUid);
+    html += `<details class="mt-4 pt-3" style="border-top:1px dashed var(--border-subtle)">`
+      + `<summary class="text-sm text-muted cursor-pointer">${t('mkt_tossup_fold')} (${weak.length})</summary>`
+      + `<div class="mt-2 space-y-2">${b.html}</div></details>`;
+  }
+  list.innerHTML = html;
 }
 
 function renderCupMarket(preds, pending) {

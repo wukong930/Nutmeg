@@ -765,6 +765,32 @@ class TestMarketBoardOnToday:
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
 
 
+class TestMarketStrengthFilter:
+    """V14 — 市场模式 "藏五五开, 留强势": the lean block shows only matches where the
+    sharp 1X2 clearly leans (|P(home)-P(away)| >= _MKT_STRONG_MIN); near coin-flips
+    fold away. A CONFIDENCE filter on the PREDICTION — explicitly NOT +EV (betting
+    Pinnacle's own de-vig line at Pinnacle is -vig; +EV is only on the 竞彩盘)."""
+
+    def test_strength_helpers_defined(self, html):
+        assert "const _MKT_STRONG_MIN = 0.15;" in html
+        assert "function _mktStrength(pr)" in html
+        assert "Math.abs((pr.p_home_1x2 || 0) - (pr.p_away_1x2 || 0))" in html
+
+    def test_splits_strong_vs_tossup(self, html):
+        seg = html[html.index("function renderMarketPred"):
+                   html.index("function renderCupMarket")]
+        assert "_mktStrength(pr) >= _MKT_STRONG_MIN" in seg     # strong = shown
+        assert "_mktStrength(pr) < _MKT_STRONG_MIN" in seg      # toss-up = folded
+        assert "<details" in seg and "mkt_tossup_fold" in seg   # folded away
+
+    def test_hint_flags_not_plus_ev(self, html):
+        # the honest framing must be present: high-confidence PREDICTION, not +EV
+        assert html.count("mkt_strong_n:") >= 2
+        assert html.count("mkt_tossup_fold:") >= 2
+        assert "非 +EV" in html        # zh hint disclaims +EV
+        assert "NOT +EV" in html       # en hint disclaims +EV
+
+
 class TestHandicapPrediction:
     """V14 — 让球胜平负 PREDICTION on BOTH the 国际盘 (today single) and the 市场模式
     lean block: a per-match INTERNATIONAL Asian-Handicap line selector (half-line,
