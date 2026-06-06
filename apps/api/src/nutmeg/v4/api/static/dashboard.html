@@ -845,32 +845,22 @@
       <div id="today-pool-list" class="space-y-2"></div>
     </div>
 
-    <!-- V14 — 💠 市场模式盘口推荐: all cups + J1 priced off Pinnacle de-vig.
-         Auto-loads on 今日推荐 (cache; 🔄 force-fetches latest). It's the sharp
-         PREDICTION board (mirror of 国际盘's model predictions) — EV only appears
-         once you type a 竞彩 SP into a card. -->
+    <!-- V14 — 💠 市场模式盘口推荐: DISPLAY-ONLY sharp de-vig best pick per cup/J1
+         match (mirror of 国际盘's prediction list). Auto-loads. The full
+         interactive board (竞彩 SP / 让球 / 手填反推) lives in 📅 近期赛事; fill a
+         竞彩 SP there → it flows into 💴 竞彩盘口推荐 as a +EV recommendation. -->
     <div class="mt-8 mb-3">
       <h2 class="font-display font-bold text-base text-primary flex items-center gap-2 flex-wrap">
         <span data-i18n="board_mkt">💠 市场模式盘口推荐</span>
-        <button id="cupmkt-refresh" onclick="loadCupMarket({refreshOdds:true})"
-                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
-                title="强制拉取最新 Pinnacle 赔率 (消耗 API 调用)"
-                data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
-        <span id="cupmkt-status" class="text-xs text-muted" role="status" aria-live="polite"></span>
+        <span class="text-xs font-normal text-muted" data-i18n="board_mkt_hint">Pinnacle 去vig 最优预测 · 杯赛+日职联 · 想下注去近期赛事填竞彩SP</span>
       </h2>
-      <div class="text-xs text-muted mt-1" data-i18n="board_mkt_hint">
-        杯赛(欧冠/欧联/欧协联 + 国内杯 + 世界杯/欧洲杯)+ 日职联 · 一律 Pinnacle 公允价(模型分布外)· sharp 预测,填竞彩 SP 才出 EV。
-      </div>
     </div>
-    <div id="cupmkt-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
-      <h3 class="font-bold mb-1">
-        <span data-i18n="h_cupmkt">💹 市场模式</span>
-        <span id="cupmkt-count" class="text-sm font-normal text-gray-500"></span>
-      </h3>
-      <div id="cupmkt-list" class="space-y-3"></div>
+    <div id="mktpred-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-3"><span data-i18n="h_mktpred">💠 市场模式预测</span> <span id="mktpred-count" class="text-sm font-normal text-gray-500"></span></h3>
+      <div id="mktpred-list" class="space-y-2"></div>
     </div>
-    <div id="cupmkt-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
-         data-i18n="cupmkt_empty">近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。</div>
+    <div id="mktpred-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
+         data-i18n="mktpred_empty">今日暂无开盘的杯赛 / 日职联。</div>
 
     <!-- V12 W5 — 💴 竞彩盘口推荐: priced at the 竞彩 SP you filled in 近期赛事 -->
     <div class="mt-8 mb-3">
@@ -947,6 +937,25 @@
     </div>
     <div id="spcalc-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
          data-i18n="upcoming_empty">未来 3 天暂无可识别的比赛 (或盘口未开)。</div>
+    <!-- V12 W7 — 💹 市场模式 (FULL interactive board): 杯赛(UCL/UEL/UECL + 国内杯 +
+         WC/EURO) + J1, priced off Pinnacle de-vig. This is the workbench — type 竞彩
+         SP / 让球 / 手填反推 here; the 今日推荐 💠 block is a read-only mirror. -->
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #b8860b">
+      <div class="flex items-center gap-3 flex-wrap">
+        <button id="cupmkt-load" onclick="loadCupMarket()"
+                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
+                title="加载市场模式盘口 (走缓存, 不额外消耗 API)"
+                data-i18n="cupmkt_load_btn">💹 加载市场模式盘口</button>
+        <button id="cupmkt-refresh" onclick="loadCupMarket({refreshOdds:true})"
+                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
+                title="强制拉取最新 Pinnacle 赔率 (消耗 API 调用)"
+                data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
+        <span id="cupmkt-status" class="text-xs text-muted ml-auto"></span>
+      </div>
+      <div class="text-xs text-muted mt-2" data-i18n="cupmkt_hint">
+        杯赛(欧冠/欧联/欧协联 + 五大国内杯 + 世界杯/欧洲杯)+ 日职联(模型未训练·分布外)。一律以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 杯赛淘汰赛: 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。
+      </div>
+    </div>
     <!-- V12 W8c — 🧮 手动反推计算器: when the API has no Pinnacle line, type the
          盘口 by hand → POST /recommend/market-handicap (ou_line-aware) → reverse 让球 + EV. -->
     <details id="manual-reverse" class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #6366f1">
@@ -1008,6 +1017,15 @@
         <div id="mrev-result" class="mt-2"></div>
       </div>
     </details>
+    <div id="cupmkt-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h3 class="font-bold mb-1">
+        <span data-i18n="h_cupmkt">💹 市场模式</span>
+        <span id="cupmkt-count" class="text-sm font-normal text-gray-500"></span>
+      </h3>
+      <div id="cupmkt-list" class="space-y-3"></div>
+    </div>
+    <div id="cupmkt-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-sm text-muted"
+         data-i18n="cupmkt_empty">近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。</div>
     <!-- V12 W5 — 串关篮子: tick 「串」 on outcomes across matches → combined EV/Kelly + 记录串关. -->
     <div id="parlay-basket" class="hidden" style="position:sticky;bottom:0;z-index:20">
       <div class="bg-white shadow-lg rounded-lg p-3 sm:p-4 mt-2" style="border-top:4px solid #059669">
@@ -1878,7 +1896,9 @@ const I18N = {
     board_intl:       '🌍 国际盘口推荐',
     board_intl_hint:  '模型预测 · 13 个训练联赛 · 填竞彩SP才出EV',
     board_mkt:        '💠 市场模式盘口推荐',
-    board_mkt_hint:   'Pinnacle 去vig 预测 · 杯赛+日职联 · 填竞彩SP才出EV',
+    board_mkt_hint:   'Pinnacle 去vig 最优预测 · 杯赛+日职联 · 想下注去近期赛事填竞彩SP',
+    h_mktpred:        '💠 市场模式预测',
+    mktpred_empty:    '今日暂无开盘的杯赛 / 日职联。',
     board_jc:         '💴 竞彩盘口推荐',
     board_jc_hint:    '在近期赛事填竞彩 SP / 让球后,点按钮按竞彩价算',
     jc_generate:      '用竞彩 SP 生成',
@@ -1903,6 +1923,7 @@ const I18N = {
     spcalc_pending_title:'⏳ 待开盘 (Pinnacle 未开盘)',
     spcalc_pending_hint:'Pinnacle 尚未开出盘口 → 模型缺少关键先验, 暂不计算 EV (避免误导)。开盘后这些比赛会自动出现在上方可计算列表。',
     spcalc_pending_badge:'⏳ 待开盘',
+    cupmkt_load_btn:'💹 加载市场模式盘口',
     cupmkt_hint:'杯赛(欧冠/欧联/欧协联 + 五大国内杯 + 世界杯/欧洲杯)+ 日职联(模型未训练·分布外)。一律以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 杯赛淘汰赛: 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。',
     h_cupmkt:'💹 市场模式',
     cupmkt_empty:'近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。',
@@ -2236,7 +2257,9 @@ const I18N = {
     board_intl:       '🌍 International odds',
     board_intl_hint:  'Model prediction · 13 trained leagues · EV after a 竞彩 SP',
     board_mkt:        '💠 Market-mode odds board',
-    board_mkt_hint:   'Pinnacle de-vig prediction · cups + J-League · EV after a 竞彩 SP',
+    board_mkt_hint:   'Pinnacle de-vig best pick · cups + J-League · enter 竞彩 SP in 近期赛事 to bet',
+    h_mktpred:        '💠 Market-mode prediction',
+    mktpred_empty:    'No cup / J-League fixtures open today.',
     board_jc:         '💴 竞彩 odds board',
     board_jc_hint:    'Fill 竞彩 SP / 让球 in 近期赛事, then click to price vs 竞彩',
     jc_generate:      'Generate from 竞彩 SP',
@@ -2261,6 +2284,7 @@ const I18N = {
     spcalc_pending_title:'⏳ Awaiting Pinnacle line',
     spcalc_pending_hint:'Pinnacle has not opened a line yet → the model lacks a key prior, so EV is not computed (avoids misleading picks). These fixtures move to the calculable list above once the line opens.',
     spcalc_pending_badge:'⏳ no line yet',
+    cupmkt_load_btn:'💹 Load market-mode odds',
     cupmkt_hint:'Cups (UCL/UEL/UECL + big domestic cups + World Cup/Euro) + J1 League (model untrained / out-of-distribution). All priced off Pinnacle fair value (NOT the model); enter 竞彩 SP for EV. ⚠️ Cup knockouts: 竞彩 1X2 settles on the 90-min result (ET/penalties excluded).',
     h_cupmkt:'💹 Market mode',
     cupmkt_empty:'No cup / J1 fixtures with an open line in the next 3 days.',
@@ -4752,6 +4776,44 @@ function _cupManualRevert(idx) {
   renderCupMarket(_CUPMKT.preds, _CUPMKT.pending || []);
 }
 
+// V14 — 💠 市场模式盘口推荐 (今日推荐, DISPLAY-ONLY): the sharp de-vig BEST 1X2
+// pick per cup/J1 match — a read-only mirror of 国际盘's prediction list. NO 竞彩
+// SP here; the interactive board + SP entry live in 近期赛事 → 竞彩盘口推荐.
+function _mktPredCardHtml(pr) {
+  const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
+  const best = ['D', 'A'].reduce((a, o) => (P[o] > P[a] ? o : a), 'H');
+  const pct = (P[best] * 100).toFixed(0);
+  const fair = P[best] > 0 ? (1 / P[best]).toFixed(2) : '—';
+  return `<div class="card-rec flex items-center justify-between gap-3 flex-wrap">
+      <span class="inline-flex items-center gap-1.5 flex-wrap font-medium">
+        ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
+        <span class="text-muted">vs</span>
+        ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
+      </span>
+      <span class="shrink-0 flex items-center gap-2 text-sm">
+        <span class="badge-ok whitespace-nowrap">${outcomeLabel(best)} ${pct}%</span>
+        <span class="text-xs text-muted num-display">公允 @${fair}</span>
+        <span class="text-xs text-muted">${_fmtKickoff(pr)}</span>
+      </span>
+    </div>`;
+}
+function renderMarketPred(preds) {
+  preds = preds || [];
+  const sec = $('#mktpred-section'), list = $('#mktpred-list'), empty = $('#mktpred-empty');
+  if (!sec || !list || !empty) return;
+  if (preds.length === 0) { sec.classList.add('hidden'); empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden'); sec.classList.remove('hidden');
+  const cnt = $('#mktpred-count'); if (cnt) cnt.textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
+  const byC = {};
+  preds.forEach((pr) => { (byC[pr.league] = byC[pr.league] || []).push(pr); });
+  const order = Object.keys(byC).sort((a, b) =>
+    Math.min(...byC[a].map(_kickoffMs)) - Math.min(...byC[b].map(_kickoffMs)));
+  list.innerHTML = order.map((lg) => {
+    const items = byC[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y));
+    return _lgGroupHtml(lg, leagueColor(lg), items.length, items.map(_mktPredCardHtml).join(''));
+  }).join('');
+}
+
 function renderCupMarket(preds, pending) {
   preds = preds || []; pending = pending || [];
   // Preserve any 竞彩 SP / 让球线 the user already typed, keyed by match
@@ -4850,7 +4912,8 @@ async function loadCupMarket(opts = {}) {
     const r = await fetch(API + '/predictions/cup-market' + qs);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const body = await r.json();
-    renderCupMarket(body.predictions, body.pending_fixtures);
+    renderCupMarket(body.predictions, body.pending_fixtures);   // full board (近期赛事)
+    renderMarketPred(body.predictions);                         // lean mirror (今日推荐)
     if (statusEl) statusEl.textContent =
       `${body.date_start} ~ ${body.date_end} · ${body.fixtures_fetched} ${t('spcalc_n_matches')}`;
   } catch (err) {

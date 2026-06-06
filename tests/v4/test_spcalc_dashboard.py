@@ -82,9 +82,9 @@ class TestSpCalcMarkup:
         # Cup-market restore touches the cup-specific SP input classes.
         assert ".cupsp[data-idx=" in html
         assert ".cuphcsp[data-idx=" in html
-        # V14 — the board moved to 今日推荐 + auto-loads; the manual 加载 button is
-        # gone, but the 🔄 refresh entry-point (and the auto-load) still drive it.
-        assert 'onclick="loadCupMarket({refreshOdds:true})"' in html
+        # V14 — the FULL board lives in 近期赛事 (manual 加载 button restored); the
+        # 今日推荐 💠 block is a read-only mirror, and loadCupMarket also auto-loads.
+        assert 'onclick="loadCupMarket()"' in html
         assert "if (typeof loadCupMarket === 'function') loadCupMarket();" in html
         assert "async function loadCupMarket" in html
         assert "function renderCupMarket" in html
@@ -160,9 +160,10 @@ class TestSpCalcI18n:
         "spcalc_hc_h", "spcalc_hc_d", "spcalc_hc_a", "spcalc_hc_pickline",
         # V12 W6 — 待开盘 (Pinnacle not open)
         "spcalc_pending_title", "spcalc_pending_hint", "spcalc_pending_badge",
-        # V12 W7 — 🏆 杯赛市场模式 (V14: cupmkt_load_btn dropped — the manual 加载
-        # button was removed when the board moved to 今日推荐 + auto-loads)
-        "cupmkt_hint", "h_cupmkt", "cupmkt_empty", "cupmkt_badge",
+        # V12 W7 — 🏆 杯赛市场模式 (full board lives in 近期赛事)
+        "cupmkt_load_btn", "cupmkt_hint", "h_cupmkt", "cupmkt_empty", "cupmkt_badge",
+        # V14 — 💠 市场模式预测 (read-only mirror on 今日推荐)
+        "h_mktpred", "mktpred_empty",
     ]
 
     def test_each_key_defined_in_both_locales(self, html):
@@ -722,30 +723,43 @@ class TestCupManualReprice:
 
 
 class TestMarketBoardOnToday:
-    """V14 — 市场模式盘口推荐 relocated from 近期赛事 to the 今日推荐 landing,
-    auto-loaded. It sits between 国际盘 and 竞彩盘 and shows the sharp Pinnacle
-    de-vig PREDICTION for all cups + J1 (EV only appears once a 竞彩 SP is typed)."""
+    """V14 — 今日推荐 gets a DISPLAY-ONLY 💠 市场模式盘口推荐 block (#mktpred): the
+    de-vig BEST pick per cup/J1, a read-only mirror of 国际盘's prediction list,
+    ordered 🌍→💠→💴. The FULL interactive board (#cupmkt-section) stays in 近期赛事
+    (its 加载/🔄 buttons restored). loadCupMarket renders BOTH; auto-loads on landing.
+    """
 
-    def test_board_ordered_intl_mkt_jc(self, html):
+    def test_board_header_ordered_intl_mkt_jc(self, html):
         i_intl = html.index('data-i18n="board_intl"')
         i_mkt = html.index('data-i18n="board_mkt"')
         i_jc = html.index('data-i18n="board_jc"')
-        assert i_intl < i_mkt < i_jc      # 🌍 → 💠 → 💴 on 今日推荐
+        assert i_intl < i_mkt < i_jc
 
-    def test_cupmkt_section_single_and_inside_today(self, html):
-        assert html.count('id="cupmkt-section"') == 1     # relocated, not duplicated
+    def test_lean_block_in_today_full_board_in_upcoming(self, html):
         i_today = html.index('id="tab-today"')
         i_upcoming = html.index('id="tab-upcoming"')
-        i_sec = html.index('id="cupmkt-section"')
-        assert i_today < i_sec < i_upcoming               # now in 今日推荐, not 近期赛事
+        # lean mirror lives on 今日推荐 …
+        assert html.count('id="mktpred-section"') == 1
+        assert i_today < html.index('id="mktpred-section"') < i_upcoming
+        # … and the FULL interactive board is back in 近期赛事
+        assert html.count('id="cupmkt-section"') == 1
+        assert html.index('id="cupmkt-section"') > i_upcoming
 
-    def test_autoloads_on_landing(self, html):
-        assert "if (typeof loadCupMarket === 'function') loadCupMarket();" in html
+    def test_full_board_load_button_restored_in_upcoming(self, html):
+        assert 'id="cupmkt-load"' in html
+        assert html.index('id="cupmkt-load"') > html.index('id="tab-upcoming"')
 
-    def test_old_manual_load_button_removed(self, html):
-        assert 'id="cupmkt-load"' not in html
-        assert "cupmkt_load_btn" not in html              # orphan i18n cleaned up
+    def test_lean_render_is_display_only(self, html):
+        # the lean card renders a best-pick badge but NO 竞彩 SP input
+        seg = html[html.index("function _mktPredCardHtml"):
+                   html.index("function renderMarketPred")]
+        assert "outcomeLabel(best)" in seg          # shows the de-vig best pick
+        assert "cupsp" not in seg and "oninput" not in seg   # no SP entry here
+
+    def test_loadcupmarket_renders_both(self, html):
+        assert "renderMarketPred(body.predictions);" in html   # mirror render wired
+        assert "if (typeof loadCupMarket === 'function') loadCupMarket();" in html  # auto-load
 
     def test_i18n_keys_both_locales(self, html):
-        for k in ("board_mkt", "board_mkt_hint"):
+        for k in ("board_mkt", "board_mkt_hint", "h_mktpred", "mktpred_empty"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
