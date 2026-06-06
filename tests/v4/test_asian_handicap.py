@@ -91,7 +91,7 @@ class TestAsianHandicapBoard:
         assert board[-0.5] == pytest.approx(ph_home, abs=1e-9)
 
     def test_real_board_overlays_with_source_tag(self):
-        # quote a real ±0.5 line → those become "mkt"; ±1.5/±2.5 stay "dc"
+        # quote a real ±0.5 line → those become "mkt"; deep ±1.5/±2.5 stay "dc"
         t = _devig_1x2(self.H, self.D, self.A)
         real = {-0.5: {"home": 2.31, "away": 1.58}, 0.5: {"home": 1.36, "away": 2.96}}
         board = {round(ln, 1): (ph, src) for ln, ph, _, src in asian_handicap_board(*t, real_board=real)}
@@ -100,6 +100,18 @@ class TestAsianHandicapBoard:
         assert board[-1.5][1] == "dc" and board[2.5][1] == "dc"
         # the -0.5 mkt P matches the standalone de-vig
         assert board[-0.5][0] == pytest.approx(devig_asian_handicap_line(2.31, 1.58)[0], abs=1e-12)
+
+    def test_real_quarter_and_level_lines_pass_through(self):
+        # Pinnacle headlines 0 / ±0.25 for even matches — they MUST appear (the
+        # "对不上" fix). Only half-lines were shown before; now every real line is.
+        t = _devig_1x2(self.H, self.D, self.A)
+        real = {0.0: {"home": 2.02, "away": 1.781}, -0.25: {"home": 1.95, "away": 1.85}}
+        board = {round(ln, 2): (ph, src) for ln, ph, _, src in asian_handicap_board(*t, real_board=real)}
+        assert board[0.0][1] == "mkt" and board[-0.25][1] == "mkt"
+        # de-vig of the level line matches the standalone calc (1:1 with Pinnacle)
+        assert board[0.0][0] == pytest.approx(devig_asian_handicap_line(2.02, 1.781)[0], abs=1e-12)
+        # deep Polymarket lines (±1.5) still filled off the DC grid
+        assert -1.5 in board and 1.5 in board
 
 
 class TestExtractAsianHandicapRealPayload:

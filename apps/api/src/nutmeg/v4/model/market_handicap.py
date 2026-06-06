@@ -240,40 +240,47 @@ def asian_handicap_board(
     p_over: float | None = None,
     *,
     real_board: dict[float, dict[str, float]] | None = None,
-    lines=DEFAULT_AH_LINES,
+    deep_lines=(-2.5, -1.5, 1.5, 2.5),
     ou_line: float = 2.5,
     rho: float = DEFAULT_RHO,
     max_goals: int = DEFAULT_MAX_GOALS,
 ) -> list[tuple[float, float, float, str]]:
-    """International AH board: ``(line, P(home covers), P(away covers), source)``
-    per HALF-line. REAL Pinnacle de-vig where that exact line is quoted in
-    ``real_board`` (``source="mkt"``); DC-grid cover prob otherwise (``"dc"``).
+    """International AH board: ``(line, P(home covers), P(away covers), source)``.
 
-    ``real_board`` shape: ``{line: {"home": odd, "away": odd}}`` where ``line`` is
-    the home handicap (e.g. from ``odds_parser.extract_asian_handicap``). The DC
-    grid is fitted to the de-vig 1X2 (+ O/U) — the SAME anchor as the 1X2 board,
-    so the −0.5 line's P(home covers) equals the 1X2 de-vig 主胜 exactly.
+    Mirrors what Pinnacle actually shows. EVERY line Pinnacle quotes — level 0,
+    quarter ±0.25/±0.75, half ±0.5, integer ±1, … — is de-vigged straight off
+    its odds (``source="mkt"``), so the board lines up 1:1 with the Pinnacle page
+    (which headlines 0 / ±0.25 for even matches, not just half-lines). The deep
+    half-lines ``deep_lines`` (±1.5/±2.5, for Polymarket "win by N+") are filled
+    off the DC grid (``"dc"``) when Pinnacle doesn't quote them. With NO real AH
+    at all, the whole board falls back to the DC half-line ladder.
+
+    ``real_board`` shape: ``{line: {"home": odd, "away": odd}}`` (line = home
+    handicap; e.g. from ``odds_parser.extract_asian_handicap``). The DC grid is
+    fitted to the de-vig 1X2 (+ O/U) — the SAME anchor as the 1X2 board.
     """
-    lh, la = fit_lambdas(
-        p_home, p_draw, p_away, p_over,
-        ou_line=ou_line, rho=rho, max_goals=max_goals,
-    )
-    grid = score_grid(lh, la, rho=rho, max_goals=max_goals)
-    out: list[tuple[float, float, float, str]] = []
-    for line in lines:
-        dv = None
-        if real_board and float(line) in real_board:
-            q = real_board[float(line)]
+    out: dict[float, tuple[float, float, str]] = {}
+    if real_board:
+        for ln, q in real_board.items():
             dv = devig_asian_handicap_line(q.get("home"), q.get("away"))
-        if dv is not None:
-            ph, pa = dv
-            src = "mkt"
-        else:
-            ph = dc_home_cover_prob(grid, float(line))
-            pa = 1.0 - ph
-            src = "dc"
-        out.append((float(line), float(ph), float(pa), src))
-    return out
+            if dv is not None:
+                out[float(ln)] = (dv[0], dv[1], "mkt")
+    # DC fill: just the deep Polymarket lines when Pinnacle quoted SOMETHING;
+    # the whole half-line ladder when it quoted nothing.
+    fill = (
+        [float(x) for x in deep_lines if float(x) not in out]
+        if out else list(DEFAULT_AH_LINES)
+    )
+    if fill:
+        lh, la = fit_lambdas(
+            p_home, p_draw, p_away, p_over,
+            ou_line=ou_line, rho=rho, max_goals=max_goals,
+        )
+        grid = score_grid(lh, la, rho=rho, max_goals=max_goals)
+        for line in fill:
+            ph = dc_home_cover_prob(grid, line)
+            out[line] = (ph, 1.0 - ph, "dc")
+    return [(ln, float(out[ln][0]), float(out[ln][1]), out[ln][2]) for ln in sorted(out)]
 
 
 __all__ = [
