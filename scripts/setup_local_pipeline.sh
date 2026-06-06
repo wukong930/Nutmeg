@@ -63,21 +63,42 @@ install_job() {
   local minute="$3"
   local weekday="$4"   # 0-6 (0=Sun); empty for "every day"
   local script="$5"
+  local extra_times="$6"   # optional space-separated "H:M" EXTRA daily run times.
+                           # When set, StartCalendarInterval becomes an ARRAY (primary +
+                           # extras) so the job has several wake-windows per day. This is
+                           # what survives a sleeping laptop: launchd runs a missed
+                           # calendar job once on wake, so more windows ⇒ fewer missed
+                           # days. (weekday is ignored in multi-time mode.)
 
   local plist="$PLIST_DIR/$label.plist"
   local out_log="$LOG_DIR/$label.out.log"
   local err_log="$LOG_DIR/$label.err.log"
 
-  local calendar_xml="<key>StartCalendarInterval</key>
+  local calendar_xml
+  if [[ -n "$extra_times" ]]; then
+    calendar_xml="<key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>$hour</integer><key>Minute</key><integer>$minute</integer></dict>"
+    local t h m
+    for t in $extra_times; do
+      h="${t%%:*}"; m="${t##*:}"
+      calendar_xml="$calendar_xml
+        <dict><key>Hour</key><integer>$h</integer><key>Minute</key><integer>$m</integer></dict>"
+    done
+    calendar_xml="$calendar_xml
+    </array>"
+  else
+    calendar_xml="<key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key><integer>$hour</integer>
         <key>Minute</key><integer>$minute</integer>"
-  if [[ -n "$weekday" ]]; then
-    calendar_xml="$calendar_xml
+    if [[ -n "$weekday" ]]; then
+      calendar_xml="$calendar_xml
         <key>Weekday</key><integer>$weekday</integer>"
-  fi
-  calendar_xml="$calendar_xml
+    fi
+    calendar_xml="$calendar_xml
     </dict>"
+  fi
 
   cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -402,15 +423,17 @@ install_job "com.nutmeg.daily_wc_settle" \
   2 0 "" \
   "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_settle --db $DB_PATH --quiet && $VENV_PY -m nutmeg.v4.cli.wc_report --db $DB_PATH --season 2026 --out $WC_OUT_DIR/wc_report_\$(date +%Y-%m-%d).md --quiet || true"
 
-# Job 11: V12 W8j model-board prediction accuracy (15:30 daily)
-# Logs the model's 1X2 prediction for every UPCOMING model-board match (no bet
-# — pure accuracy tracking, since 竞彩 lists few games), settles finished ones
-# on the 90' score, then writes a hit-rate / calibration / vs-Pinnacle report.
-# Runs after daily_odds (14:00) so the European model leagues' Pinnacle lines
-# are cached, and before their evening kickoffs (predictions logged pre-result).
+# Job 11: V12 W8j model-board + V14 市场模式 prediction accuracy (09:00/15:30/21:00 daily)
+# Logs the 1X2 prediction for every UPCOMING match (model board for the 13 trained
+# leagues + Pinnacle de-vig for cups/J1/J2/国际赛, market_mode=1), settles finished
+# ones on the 90' score, then writes a hit-rate / calibration / vs-Pinnacle report.
+# THREE run-times (not one): on a laptop that sleeps, launchd runs a missed calendar
+# job once on wake — three windows (morning/afternoon/evening) means a sleeping Mac
+# misses far fewer days. Idempotent (re-logging updates P, never clobbers an outcome).
 install_job "com.nutmeg.daily_predict" \
   15 30 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.predict_log --db $DB_PATH --days 2 && mkdir -p $REPO_ROOT/docs/weekly && $VENV_PY -m nutmeg.v4.cli.predict_report --db $DB_PATH --out $REPO_ROOT/docs/weekly/predict_report_latest.md || true"
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.predict_log --db $DB_PATH --days 2 && mkdir -p $REPO_ROOT/docs/weekly && $VENV_PY -m nutmeg.v4.cli.predict_report --db $DB_PATH --out $REPO_ROOT/docs/weekly/predict_report_latest.md || true" \
+  "9:0 21:0"
 
 # Job 12: V12 score-EV forward test (OOS correct-score +EV validation).
 # Snapshots the correct-score market + the model's +EV flags for UPCOMING
