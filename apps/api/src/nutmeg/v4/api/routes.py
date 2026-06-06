@@ -347,7 +347,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v18-fe-jcsliders';
+const CACHE_VERSION = 'nutmeg-v19-fe-oddsfresh';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1670,6 +1670,7 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         psc_home=r.get("psc_home"), psc_draw=r.get("psc_draw"), psc_away=r.get("psc_away"),
         psc_over25=r.get("psc_over25"), psc_under25=r.get("psc_under25"),
         handicap_lines=_market_handicap_lines(fair, r),
+        odds_update=r.get("odds_update"),
         market_mode=True,
     )
 

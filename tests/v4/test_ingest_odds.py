@@ -261,6 +261,28 @@ class TestFixtureEnvelopeToRow:
         assert row["psc_over25"] == 2.05
         assert row["psc_under25"] == 1.80
 
+    def test_captures_odds_update_timestamp(self):
+        # V14 — the /odds payload's 'update' (when API-Football last refreshed
+        # this Pinnacle snapshot) rides onto the row so the 市场模式 card can
+        # surface the line's age (API-Football trails Pinnacle.com by hours).
+        env = _envelope(bookmakers=[_bookmaker_with_1x2()])
+        env["update"] = "2025-08-17T13:00:00+00:00"
+        fixture_record = {
+            "fixture": {"id": 123, "date": "2025-08-17T15:00:00+00:00"},
+            "teams": {"home": {"name": "Arsenal"}, "away": {"name": "Liverpool"}},
+        }
+        row = fixture_envelope_to_csv_row(fixture_record, env, "EPL")
+        assert row["odds_update"] == "2025-08-17T13:00:00+00:00"
+
+    def test_odds_update_none_when_absent(self):
+        env = _envelope(bookmakers=[_bookmaker_with_1x2()])  # no 'update' key
+        fixture_record = {
+            "fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
+            "teams": {"home": {"name": "A"}, "away": {"name": "B"}},
+        }
+        row = fixture_envelope_to_csv_row(fixture_record, env, "EPL")
+        assert row["odds_update"] is None
+
     def test_no_odds_envelope_returns_none(self):
         fixture_record = {"fixture": {"id": 1, "date": "2025-08-17T15:00:00+00:00"},
                           "teams": {"home": {"name": "A"}, "away": {"name": "B"}}}

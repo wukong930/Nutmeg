@@ -1907,6 +1907,11 @@ const I18N = {
     h_cupmkt:'💹 市场模式',
     cupmkt_empty:'近 3 天暂无开盘的杯赛 / 日职联 (或盘口未开)。',
     cupmkt_badge:'市场模式',
+    odds_age_prefix:  '盘口',
+    odds_min_ago:     '分钟前',
+    odds_hr_ago:      '小时前',
+    odds_stale_note:  '临场请核对',
+    odds_manual_link: '手动反推填实时盘口 →',
     // V12 W8c — 手动反推计算器
     mrev_title:       '🧮 手动反推计算器',
     mrev_hint:        '盘口未开 / 任意场次:从 Pinnacle 读数手填 → 即时反推让球 + EV(不用等 API)。',
@@ -2247,6 +2252,11 @@ const I18N = {
     h_cupmkt:'💹 Market mode',
     cupmkt_empty:'No cup / J1 fixtures with an open line in the next 3 days.',
     cupmkt_badge:'market',
+    odds_age_prefix:  'Odds',
+    odds_min_ago:     'min ago',
+    odds_hr_ago:      'h ago',
+    odds_stale_note:  'verify near kickoff',
+    odds_manual_link: 'enter live odds manually →',
     // V12 W8c — manual reverse calculator
     mrev_title:       '🧮 Manual reverse calculator',
     mrev_hint:        'No line / any match: type the numbers off Pinnacle → instant reverse 让球 + EV (no API wait).',
@@ -4422,6 +4432,31 @@ async function loadSpCalc(opts = {}) {
 // serves Pinnacle de-vig fair P (market_mode=true). We render a 1X2-only card:
 // 公允概率 + 公允赔率 + 竞彩 SP input → live EV (green = +EV). No 让球/Kelly here
 // — it's a value-check surface. No-line fixtures → 待开盘. User-triggered only.
+// V14 — 市场模式盘口新鲜度 (A). API-Football mirrors Pinnacle only every few
+// hours, so the de-vig prior can trail Pinnacle.com. Show the snapshot age; when
+// stale (≥ _ODDS_STALE_MIN) turn amber + nudge to the 手动反推 calc (B) so the
+// user can type the LIVE Pinnacle line instead of trusting an hours-old one.
+const _ODDS_STALE_MIN = 120;
+function _openManualReverse() {
+  const el = document.getElementById('manual-reverse');
+  if (el) { el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+function _oddsFreshnessHtml(pr) {
+  const iso = pr && pr.odds_update;
+  if (!iso) return '';
+  const ts = Date.parse(iso);
+  if (isNaN(ts)) return '';
+  const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  const ago = mins < 60 ? `${mins} ${t('odds_min_ago')}`
+                        : `${(mins / 60).toFixed(1)} ${t('odds_hr_ago')}`;
+  if (mins < _ODDS_STALE_MIN) {
+    return `<div class="text-xs text-muted mb-1">🕒 ${t('odds_age_prefix')} ${ago}</div>`;
+  }
+  return `<div class="text-xs mb-1" style="color:#b45309">`
+    + `⚠ ${t('odds_age_prefix')} ${ago} · ${t('odds_stale_note')} · `
+    + `<a onclick="_openManualReverse()" style="cursor:pointer;text-decoration:underline">`
+    + `${t('odds_manual_link')}</a></div>`;
+}
 function _cupCardHtml(pr, idx) {
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const rows = ['H', 'D', 'A'].map(o => {
@@ -4488,6 +4523,7 @@ function _cupCardHtml(pr, idx) {
           <span class="badge-gold text-xs whitespace-nowrap">${t('cupmkt_badge')}</span>
         </span>
       </div>
+      ${_oddsFreshnessHtml(pr)}
       ${rows}${hc}
     </div>`;
 }

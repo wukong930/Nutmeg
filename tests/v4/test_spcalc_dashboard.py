@@ -612,3 +612,29 @@ class TestJingcaiSliderWiring:
     def test_slider_change_reprices_jingcai_when_shown(self, html):
         assert "function _jcIsShown()" in html
         assert "if (_jcIsShown()) loadJingcaiBoard();" in html
+
+
+class TestMarketOddsFreshness:
+    """市场模式盘口新鲜度 (A) + 手动反推 nudge (B). API-Football mirrors Pinnacle
+    only every few hours, so the de-vig prior can trail Pinnacle.com. Each cup
+    card shows the snapshot age; when stale it turns amber + links to the manual
+    reverse calc so the user can type the LIVE Pinnacle line.
+    """
+
+    def test_freshness_helpers_defined_and_wired(self, html):
+        assert "function _oddsFreshnessHtml(pr)" in html
+        assert "function _openManualReverse()" in html
+        assert "const iso = pr && pr.odds_update;" in html       # reads the field
+        assert "${_oddsFreshnessHtml(pr)}" in html               # rendered in _cupCardHtml
+
+    def test_stale_threshold_and_nudge(self, html):
+        assert "const _ODDS_STALE_MIN = 120;" in html
+        assert "mins < _ODDS_STALE_MIN" in html                  # fresh vs stale branch
+        # stale branch nudges to the manual reverse calc
+        assert "onclick=\"_openManualReverse()\"" in html
+        assert "getElementById('manual-reverse')" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("odds_age_prefix", "odds_min_ago", "odds_hr_ago",
+                  "odds_stale_note", "odds_manual_link"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"

@@ -270,6 +270,11 @@ def fixture_envelope_to_csv_row(
         "psc_away": odds_1x2["A"] if odds_1x2 else None,
         "kickoff_utc": iso_date,    # full ISO with TZ
         "status_short": status_short,  # NS / IN_PLAY / FT / etc.
+        # When API-Football last refreshed this odds snapshot. API-Football
+        # mirrors Pinnacle only periodically (hours), so the de-vig prior can
+        # trail Pinnacle.com — the 市场模式 card surfaces this age so a stale
+        # line isn't trusted near kickoff (and nudges to the manual calc).
+        "odds_update": (odds_envelope.get("update") if odds_envelope is not None else None),
     }
     if odds_envelope is not None:
         ou = extract_over_under_25(odds_envelope, sharp_bookmaker_id)

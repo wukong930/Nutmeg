@@ -113,6 +113,10 @@ class SinglePrediction(BaseModel):
     # before recording — no trusting a client-sent probability.
     psc_over25: float | None = None
     psc_under25: float | None = None
+    # V14 — when API-Football last refreshed this Pinnacle snapshot (ISO). The
+    # 市场模式 card shows the age so a stale de-vig prior isn't trusted near
+    # kickoff (API-Football mirrors Pinnacle only every few hours).
+    odds_update: str | None = None
     # Optional handicap probs (present only when handicap_home was provided)
     handicap_home: Optional[int] = None
     p_home_handicap: Optional[float] = None
