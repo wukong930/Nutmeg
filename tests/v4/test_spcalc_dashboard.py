@@ -638,3 +638,31 @@ class TestMarketOddsFreshness:
         for k in ("odds_age_prefix", "odds_min_ago", "odds_hr_ago",
                   "odds_stale_note", "odds_manual_link"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestManualReverseCalcFix:
+    """手动反推计算器曾卡在"计算中"不出结果: the render called nv('mrev-j1')
+    but nv is local to _mrevBuildBody — a ReferenceError, and the render sat
+    OUTSIDE the try/catch → uncaught → permanent 计算中. Fix: _mrevBuildBody
+    returns j1/jx/j2, the render uses them, and the whole fetch+render is wrapped
+    in one try/catch so no render-time throw can ever hang it again.
+    """
+
+    def test_buildbody_returns_1x2_odds(self, html):
+        assert "const j1 = nv('mrev-j1'), jx = nv('mrev-jx'), j2 = nv('mrev-j2');" in html
+        assert "ok: true, p1, px, p2, hcap, ouline, over, under, jh, jd, ja, j1, jx, j2," in html
+
+    def test_render_uses_destructured_odds_not_scoped_nv(self, html):
+        # render uses the destructured j1/jx/j2 — NOT an out-of-scope nv()
+        assert "${row(x2Labels[0], fair1x2[0], j1)}" in html
+        assert "jh, jd, ja, j1, jx, j2, body } = built;" in html
+        # nv('mrev-j1') now appears ONLY in _mrevBuildBody (not in the render)
+        assert html.count("nv('mrev-j1')") == 1
+
+    def test_render_inside_trycatch(self, html):
+        # within manualReverseCalc, the data-driven render (market_implied_p) must
+        # sit BEFORE the single catch — i.e. inside the try, so it can't hang.
+        seg = html[html.index("async function manualReverseCalc()"):
+                   html.index("async function manualReverseRecord()")]
+        assert seg.count("} catch (e) { return fail(e.message); }") == 1
+        assert seg.index("data.market_implied_p") < seg.index("} catch (e) { return fail(e.message); }")
