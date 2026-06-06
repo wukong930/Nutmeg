@@ -749,12 +749,15 @@ class TestMarketBoardOnToday:
         assert 'id="cupmkt-load"' in html
         assert html.index('id="cupmkt-load"') > html.index('id="tab-upcoming"')
 
-    def test_lean_render_is_display_only(self, html):
-        # the lean card renders a best-pick badge but NO 竞彩 SP input
-        seg = html[html.index("function _mktPredCardHtml"):
-                   html.index("function renderMarketPred")]
-        assert "outcomeLabel(best)" in seg          # shows the de-vig best pick
-        assert "cupsp" not in seg and "oninput" not in seg   # no SP entry here
+    def test_mkt_card_is_rich_interactive(self, html):
+        # V14 — the 市场模式 card is now the SAME rich INTERACTIVE card as 国际盘:
+        # de-vig best pick + inline 竞彩 SP (was display-only; user asked to match
+        # 国际盘). Full coverage in TestMarketRichCard.
+        seg = html[html.index("function _mktPredCardHtml(pr, idx)"):
+                   html.index("function _mktBest")]
+        assert "outcomeLabel(best)" in seg                 # de-vig best pick
+        assert 'class="mkt-rec-sp' in seg                  # inline 竞彩 SP (interactive)
+        assert "_mktRecCalc(" in seg                        # SP → live EV
 
     def test_loadcupmarket_renders_both(self, html):
         assert "renderMarketPred(body.predictions);" in html   # mirror render wired
@@ -763,6 +766,40 @@ class TestMarketBoardOnToday:
     def test_i18n_keys_both_locales(self, html):
         for k in ("board_mkt", "board_mkt_hint", "h_mktpred", "mktpred_empty"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestMarketRichCard:
+    """V14 — 市场模式 cards upgraded to the SAME rich layout as 国际盘's single card:
+    logos + 大号 P% + 胜平负 badge + 让球 selector + inline 竞彩 SP + 📌. ISOLATED
+    record path (_mktRec*) so the 国际盘 money path (_todayRec*) is untouched."""
+
+    def test_rich_card_elements(self, html):
+        seg = html[html.index("function _mktPredCardHtml(pr, idx)"):
+                   html.index("function _mktBest")]
+        assert "badge-gold" in seg and "胜平负 ·" in seg        # pick badge
+        assert "num-display text-2xl" in seg                    # big P%
+        assert "t('today_pred_conf')" in seg                    # 置信 label
+        assert "t('mkt_sharp_chip')" in seg                     # 市场盘·公允 chip (not 市场同意)
+        assert 'class="mkt-rec-sp' in seg and "_mktRecCalc(" in seg   # inline 竞彩 SP
+        assert "_mktRecRecord(" in seg                          # 📌 记这笔
+
+    def test_mkt_record_handlers_defined(self, html):
+        assert "let _MKTPRED_CARDS = [];" in html
+        assert "const _MKT_REC_GATE = 0.05;" in html
+        for fn in ("function _mktRecCalc(i)", "async function _mktRecRecord(i)"):
+            assert fn in html, f"missing {fn}"
+        # records the 1X2 pick at the typed 竞彩 SP via /recommend/single
+        seg = html[html.index("async function _mktRecRecord"):
+                   html.index("async function _mktRecRecord") + 1400]
+        assert "/recommend/single" in seg and "record_session: true" in seg
+        assert "ev >= _MKT_REC_GATE" in html        # same +5% gate
+
+    def test_intl_record_path_untouched(self, html):
+        # the 国际盘 money path must still use its own state + ids (not shared)
+        assert "_TODAY_SINGLES[i]" in html
+        assert "function _todayRecCalc(i)" in html
+        assert 'class="today-rec-sp' in html
+        assert "mkt_sharp_chip:" in html and html.count("mkt_sharp_chip:") >= 2
 
 
 class TestMarketStrengthFilter:

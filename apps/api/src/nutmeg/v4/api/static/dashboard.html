@@ -1898,6 +1898,7 @@ const I18N = {
     board_mkt:        '💠 市场模式盘口推荐',
     board_mkt_hint:   '高置信预测 · sharp 有明显倾向 · 非 +EV(Pinnacle 下注无优势,+EV 去竞彩盘)',
     mkt_strong_n:     '场强势',
+    mkt_sharp_chip:   '市场盘·公允',
     mkt_no_strong:    '今日无明显倾向的强势预测(全部接近五五开)',
     mkt_tossup_fold:  '接近五五开 · 无明显倾向(折叠)',
     hcpred_label:     '让球预测',
@@ -2269,6 +2270,7 @@ const I18N = {
     board_mkt:        '💠 Market-mode odds board',
     board_mkt_hint:   'High-confidence picks · sharp clearly leans · NOT +EV (no edge betting Pinnacle; +EV is on 竞彩盘)',
     mkt_strong_n:     'strong',
+    mkt_sharp_chip:   'sharp · fair',
     mkt_no_strong:    'No clearly-favored picks today (all near coin-flip)',
     mkt_tossup_fold:  'Near coin-flip · no clear favorite (folded)',
     hcpred_label:     'Handicap pred.',
@@ -4842,26 +4844,109 @@ function _hcPredPick(uid) {
   span.innerHTML = _hcPredRow(lines.find(l => l.line === parseFloat(sel.value)));
 }
 
+// V14 — 市场模式 RICH card: same layout as 国际盘's single card (logos + 大号 P%
+// + 胜平负 badge + 让球 selector + inline 竞彩 SP + 📌). The confidence chip says
+// "市场盘·公允" — P IS the Pinnacle de-vig, so a model↔market "agree" chip would
+// be tautological. Records the 1X2 pick at the typed 竞彩 SP via /recommend/single
+// (cup/J1 are priced off the de-vig P server-side — Part 2). ISOLATED from the
+// 国际盘 record path (_todayRec*) so that money path stays untouched.
+let _MKTPRED_CARDS = [];
+const _MKT_REC_GATE = 0.05;
 function _mktPredCardHtml(pr, idx) {
+  _MKTPRED_CARDS[idx] = pr;
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const best = ['D', 'A'].reduce((a, o) => (P[o] > P[a] ? o : a), 'H');
   const pct = (P[best] * 100).toFixed(0);
-  const fair = P[best] > 0 ? (1 / P[best]).toFixed(2) : '—';
-  return `<div class="card-rec">
-      <div class="flex items-center justify-between gap-3 flex-wrap">
-        <span class="inline-flex items-center gap-1.5 flex-wrap font-medium">
-          ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
-          <span class="text-muted">vs</span>
-          ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
-        </span>
-        <span class="shrink-0 flex items-center gap-2 text-sm">
-          <span class="badge-ok whitespace-nowrap">${outcomeLabel(best)} ${pct}%</span>
-          <span class="text-xs text-muted num-display">公允 @${fair}</span>
-          <span class="text-xs text-muted">${_fmtKickoff(pr)}</span>
-        </span>
+  const fair = P[best] > 0 ? (1 / P[best]).toFixed(2) : '99';
+  const recSpLabel = t('today_rec_jcsp'), recBtnLabel = t('today_rec_btn');
+  return `
+    <div class="card-rec">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div class="flex-1 min-w-0">
+          <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
+            ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
+            <span class="text-muted font-normal">vs</span>
+            ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
+          </div>
+          <div class="text-xs text-muted mt-1">${zhLeague(pr.league)} · ${_fmtKickoff(pr)}</div>
+        </div>
+        <span class="badge-gold whitespace-nowrap shrink-0">胜平负 · ${outcomeLabel(best)}</span>
+      </div>
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <div class="num-display text-2xl text-gold font-semibold">${pct}%</div>
+          <div class="text-xs text-muted mt-0.5">${t('today_pred_conf')}</div>
+        </div>
+        <span class="text-xs whitespace-nowrap" style="color:#059669;font-weight:600">🟢 ${t('mkt_sharp_chip')}</span>
       </div>
       ${_hcPredHtml('mkt' + idx, pr.asian_handicap_lines)}
+      <div class="mt-3 pt-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid rgba(128,128,128,0.18)">
+        <span class="text-xs text-muted">${recSpLabel}</span>
+        <input type="number" step="0.01" min="1.01" inputmode="decimal" class="mkt-rec-sp num-display" data-i="${idx}" placeholder="${fair}" oninput="_mktRecCalc(${idx})" aria-label="${recSpLabel}" style="width:5rem;padding:3px 6px;border:1px solid rgba(128,128,128,0.35);border-radius:6px;background:transparent;color:inherit;font-size:13px">
+        <span id="mkt-rec-ev-${idx}" class="text-xs text-muted" aria-live="polite"></span>
+        <button id="mkt-rec-btn-${idx}" type="button" disabled onclick="_mktRecRecord(${idx})" style="${_TODAY_REC_BTN_OFF}">📌 ${recBtnLabel}</button>
+        <span id="mkt-rec-verdict-${idx}" class="text-xs"></span>
+      </div>
     </div>`;
+}
+function _mktBest(pr) {
+  const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
+  return ['D', 'A'].reduce((a, o) => (P[o] > P[a] ? o : a), 'H');
+}
+function _mktRecCalc(i) {
+  const pr = _MKTPRED_CARDS[i];
+  const inp = document.querySelector(`.mkt-rec-sp[data-i="${i}"]`);
+  const evEl = $(`#mkt-rec-ev-${i}`), btn = $(`#mkt-rec-btn-${i}`);
+  if (!pr || !inp || !evEl || !btn) return;
+  const best = _mktBest(pr);
+  const pBest = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 }[best];
+  const sp = parseFloat(inp.value);
+  if (!sp || sp <= 1.0) { evEl.textContent = ''; evEl.removeAttribute('style'); btn.disabled = true; btn.style.cssText = _TODAY_REC_BTN_OFF; return; }
+  const ev = pBest * sp - 1.0;
+  const pass = ev >= _MKT_REC_GATE;
+  evEl.textContent = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%`;
+  evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '#b45309');
+  evEl.style.fontWeight = pass ? '600' : '';
+  btn.disabled = !pass; btn.style.cssText = pass ? _TODAY_REC_BTN_ON : _TODAY_REC_BTN_OFF;
+}
+async function _mktRecRecord(i) {
+  const pr = _MKTPRED_CARDS[i];
+  const btn = $(`#mkt-rec-btn-${i}`), verdict = $(`#mkt-rec-verdict-${i}`);
+  if (!pr || !btn || btn.disabled) return;
+  const inp = document.querySelector(`.mkt-rec-sp[data-i="${i}"]`);
+  const sp = parseFloat(inp.value);
+  if (!sp || sp <= 1.0) return;
+  const best = _mktBest(pr);
+  const bankroll = _TODAY_CTX.bankroll || 1000, kelly = _TODAY_CTX.kelly || 0.25;
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const fx = {
+      date: pr.date, league: pr.league, home_team: pr.home_team, away_team: pr.away_team,
+      psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
+      odds_1x2_H: 1.01, odds_1x2_D: 1.01, odds_1x2_A: 1.01,
+    };
+    fx['odds_1x2_' + best] = sp;
+    const res = await fetch(API + '/recommend/single', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fixtures: [fx], bankroll, top_per_match: 1, kelly_fraction: kelly, record_session: true }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const b = await res.json();
+    const recorded = !!(b.tickets && b.tickets.length > 0);
+    const ev = recorded ? b.tickets[0].ev_per_unit : null;
+    if (recorded) {
+      const evs = (ev != null) ? ` ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%` : '';
+      verdict.textContent = `✓ ${t('today_rec_done')}${evs}`; verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
+      btn.textContent = t('spcalc_recorded_btn'); btn.style.cssText = 'background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:4px 11px;font-size:12px';
+    } else {
+      verdict.textContent = t('today_rec_gateoff'); verdict.style.color = '#b45309';
+      btn.disabled = false; btn.textContent = prev; btn.style.cssText = _TODAY_REC_BTN_ON;
+    }
+  } catch (err) {
+    console.warn('mkt rec record failed:', err);
+    verdict.textContent = t('spcalc_record_err'); verdict.style.color = '#e11d48';
+    btn.disabled = false; btn.textContent = prev; btn.style.cssText = _TODAY_REC_BTN_ON;
+  }
 }
 // V14 — "藏五五开,留强势": a match is a STRONG pick when the sharp 1X2 clearly
 // leans one way (|P(home) − P(away)| ≥ _MKT_STRONG_MIN); a near coin-flip is a
@@ -4888,6 +4973,7 @@ function renderMarketPred(preds) {
   if (!sec || !list || !empty) return;
   if (preds.length === 0) { sec.classList.add('hidden'); empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden'); sec.classList.remove('hidden');
+  _MKTPRED_CARDS = [];   // rebuilt as cards render (index → pred, for the SP handlers)
   const strong = preds.filter((pr) => _mktStrength(pr) >= _MKT_STRONG_MIN);
   const weak = preds.filter((pr) => _mktStrength(pr) < _MKT_STRONG_MIN);
   const cnt = $('#mktpred-count');
