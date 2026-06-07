@@ -994,19 +994,19 @@
           <input id="mrev-hcap" type="number" inputmode="numeric" step="1" value="-1" class="w-28 px-2 py-1 border rounded text-sm num-display">
         </div>
         <div>
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_jc_1x2">竞彩 1X2 SP(可选):主 / 平 / 客</label>
+          <div class="grid grid-cols-3 gap-2">
+            <input id="mrev-j1" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-jx" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+            <input id="mrev-j2" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
+          </div>
+        </div>
+        <div>
           <label class="text-xs text-secondary block mb-1" data-i18n="mrev_jc_hc">竞彩让球 SP:让胜 / 让平 / 让负</label>
           <div class="grid grid-cols-3 gap-2">
             <input id="mrev-jh" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
             <input id="mrev-jd" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
             <input id="mrev-ja" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
-          </div>
-        </div>
-        <div>
-          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_jc_1x2">竞彩不让 SP(可选):主 / 平 / 客</label>
-          <div class="grid grid-cols-3 gap-2">
-            <input id="mrev-j1" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
-            <input id="mrev-jx" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
-            <input id="mrev-j2" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded text-sm num-display">
           </div>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
@@ -1993,7 +1993,7 @@ const I18N = {
     mrev_ou:          'Pinnacle 大小球:盘口线 / 大 / 小',
     mrev_hcap_lbl:    '主队让球数(整数,-1 = 主让1球)',
     mrev_jc_hc:       '竞彩让球 SP:让胜 / 让平 / 让负',
-    mrev_jc_1x2:      '竞彩不让 SP(可选):主 / 平 / 客',
+    mrev_jc_1x2:      '竞彩 1X2 SP(可选):主 / 平 / 客',
     mrev_calc:        '🧮 反推计算',
     mrev_fair:        '公平',
     mrev_let_labels:  '让胜/让平/让负',
