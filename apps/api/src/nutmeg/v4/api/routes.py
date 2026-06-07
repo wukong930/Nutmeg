@@ -351,7 +351,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v34-fe-keptlist';
+const CACHE_VERSION = 'nutmeg-v35-fe-sharpflip';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1787,6 +1787,7 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         asian_handicap_lines=_market_asian_handicap_lines(fair, r),
         odds_update=r.get("odds_update"),
         market_mode=True,
+        sharp_flip=bool(r.get("sharp_flip", False)),
     )
 
 

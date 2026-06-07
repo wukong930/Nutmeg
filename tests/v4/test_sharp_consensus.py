@@ -90,3 +90,25 @@ class TestEv:
         ev = ev_1x2(fair, {"H": 2.2, "A": 1.0})   # D absent, A sentinel ≤ 1
         assert set(ev) == {"H"}
         assert abs(ev["H"] - (0.5 * 2.2 - 1)) < 1e-12
+
+
+class TestFlipFlowsToPrediction:
+    """V14 Phase B — the row's sharp_flip flag rides into the market-mode
+    SinglePrediction (so the card can downgrade its EV reliability tag)."""
+
+    _ROW = {
+        "home_team": "A", "away_team": "B", "league": "WC", "date": "2026-06-11",
+        "kickoff_utc": None, "psc_home": 2.30, "psc_draw": 3.30, "psc_away": 3.10,
+        "psc_over25": None, "psc_under25": None,
+        "ou_line": None, "asian_handicap": None, "handicap_home": None,
+    }
+
+    def test_flag_flows_through(self):
+        from nutmeg.v4.api.routes import _row_to_market_prediction
+        mp = _row_to_market_prediction({**self._ROW, "sharp_flip": True})
+        assert mp is not None and mp.sharp_flip is True
+
+    def test_default_false_when_absent(self):
+        from nutmeg.v4.api.routes import _row_to_market_prediction
+        mp = _row_to_market_prediction(self._ROW)   # no sharp_flip key
+        assert mp is not None and mp.sharp_flip is False

@@ -1823,7 +1823,14 @@ function _evRelTier(p) {
   if (p >= 0.25 && p <= 0.67) return 'sweet';   // odds ~1.5–4
   return 'edge';                                // 0.15–0.25 or 0.67–0.77
 }
-function _evRelTag(p) {
+function _evRelTag(p, flip) {
+  // V14 — sharp-flip guard (market mode only): when Pinnacle's favourite
+  // disagrees with Betfair+SBOBET in the same envelope, its de-vig P is
+  // empirically unreliable → ⚠️ override the tier (this EV is built on a
+  // suspect line). flip is undefined/false for model + manual-calc surfaces.
+  if (flip) {
+    return `<span class="ev-rel" title="${t('rel_flip_hint')}" style="font-size:11px;font-weight:600;color:#dc2626;white-space:nowrap">⚠️ ${t('rel_flip')}</span>`;
+  }
   const tier = _evRelTier(p);
   if (!tier) return '';
   const badge = { sweet: '🟢', edge: '🟡', cold: '⚠️', chalk: '⚠️' }[tier];
@@ -1901,6 +1908,8 @@ const I18N = {
     rel_edge_hint:    '偏离甜区:去 vig 精度下降,+EV 可信度打折,谨慎',
     rel_cold_hint:    '深冷门(赔率>6):极端赔率去 vig 噪声很大,这点 +EV 多半是噪声而非真 edge',
     rel_chalk_hint:   '超短热门(赔率<1.3):EV 空间极薄,赔率一动就没,意义有限',
+    rel_flip:         'sharp 分歧',
+    rel_flip_hint:    'Pinnacle 与其它 sharp 盘(Betfair/SBOBET)对热门判断相反 → Pinnacle 线可能陈旧/有误,这个 EV 建在可疑的公允价上,慎下',
     today_no_fixtures: '今日联赛无可下注场次。明天再来。',
     today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
     health_offline:   'API 离线',
@@ -2284,6 +2293,8 @@ const I18N = {
     rel_edge_hint:    'Outside the sweet spot: de-vig less precise, +EV reliability discounted — be cautious',
     rel_cold_hint:    'Deep longshot (odds >6): de-vig of extreme odds is very noisy — a +EV here is usually noise, not edge',
     rel_chalk_hint:   'Super-short favourite (odds <1.3): razor-thin EV that dies on any line move — limited meaning',
+    rel_flip:         'sharp split',
+    rel_flip_hint:    'Pinnacle disagrees with the other sharps (Betfair/SBOBET) on the favourite → its line may be stale/wrong, so this EV rests on a suspect fair price — be cautious',
     today_no_fixtures: 'No fixtures from your leagues today. Check back tomorrow.',
     today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
     health_offline:   'API offline',
@@ -4760,7 +4771,7 @@ function _cupRecalc(idx) {
     if (sp && sp > 1.0) {
       const ev = P[o] * sp - 1;
       const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
-      evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '% ' + _evRelTag(P[o]);
+      evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '% ' + _evRelTag(P[o], pr && pr.sharp_flip);
       evEl.className = 'cupev text-xs font-medium shrink-0';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';
@@ -4801,7 +4812,7 @@ function _cupHcRecalc(idx) {
     if (P && sp && sp > 1.0) {
       const ev = P[o] * sp - 1;
       const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
-      evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '% ' + _evRelTag(P[o]);
+      evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '% ' + _evRelTag(P[o], (_CUPMKT.preds[idx] || {}).sharp_flip);
       evEl.className = 'cuphcev text-xs font-medium shrink-0';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';
@@ -5023,7 +5034,7 @@ function _mktRecCalc(i) {
   if (!sp || sp <= 1.0) { evEl.textContent = ''; evEl.removeAttribute('style'); btn.disabled = true; btn.style.cssText = _TODAY_REC_BTN_OFF; return; }
   const ev = pBest * sp - 1.0;
   const pass = ev >= _MKT_REC_GATE;
-  evEl.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}% ${_evRelTag(pBest)}`;
+  evEl.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}% ${_evRelTag(pBest, pr && pr.sharp_flip)}`;
   evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '#b45309');
   evEl.style.fontWeight = pass ? '600' : '';
   btn.disabled = !pass; btn.style.cssText = pass ? _TODAY_REC_BTN_ON : _TODAY_REC_BTN_OFF;

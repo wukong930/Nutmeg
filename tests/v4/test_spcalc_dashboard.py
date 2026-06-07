@@ -916,11 +916,12 @@ class TestEvReliability:
     def test_wired_into_all_ev_calc_surfaces(self, html):
         # EVERY live SP→EV calc surface tags the EV by the OUTCOME's P.
         assert "_evRelTag(tk.probability)" in html   # 今日推荐 国际盘 single card
-        assert "_evRelTag(pBest)" in html            # 今日推荐 市场模式 lean card
+        assert "_evRelTag(pBest" in html             # 今日推荐 市场模式 lean (+sharp_flip)
         assert "_evRelTag(p)" in html                # 反推计算器 per-outcome row
         # 近期赛事 (_cupRecalc 1X2 + _cupHcRecalc 让球) + SP计算器 (_spcalcRecalc
-        # 1X2 + _spcalcHcRecalc 让球) — all four iterate outcomes as P[o].
-        assert html.count("_evRelTag(P[o])") >= 4
+        # 1X2 + _spcalcHcRecalc 让球) — all four iterate outcomes as P[o]. The two
+        # 近期赛事 ones now also pass the per-fixture sharp_flip (Phase B).
+        assert html.count("_evRelTag(P[o]") >= 4
 
     def test_bare_checkmark_greenlight_removed(self, html):
         # the old "✅ on ANY +5% EV" (which green-lit longshots) is gone — the
@@ -979,4 +980,25 @@ class TestKeptList:
 
     def test_i18n_keys_both_locales(self, html):
         for k in ("mrevk_keep", "mrevk_title", "mrevk_clear"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestSharpFlipGuard:
+    """V14 Phase B — sharp-flip guard wired into the market-mode EV tag: when
+    Pinnacle disagrees with Betfair+SBOBET on the favourite, the EV reliability
+    tag downgrades to ⚠️ sharp 分歧 (the de-vig prior is suspect there)."""
+
+    def test_evreltag_has_flip_branch(self, html):
+        assert "function _evRelTag(p, flip)" in html
+        assert "if (flip) {" in html
+        assert "t('rel_flip')" in html
+
+    def test_flip_threaded_into_market_mode_handlers(self, html):
+        # 市场模式 lean card + 近期赛事 1X2 + 让球 all pass the per-fixture flag
+        assert "_evRelTag(pBest, pr && pr.sharp_flip)" in html
+        assert "_evRelTag(P[o], pr && pr.sharp_flip)" in html
+        assert "_evRelTag(P[o], (_CUPMKT.preds[idx] || {}).sharp_flip)" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("rel_flip", "rel_flip_hint"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"

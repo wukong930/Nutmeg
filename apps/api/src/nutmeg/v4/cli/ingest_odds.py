@@ -43,6 +43,8 @@ from nutmeg.v4.data.odds_parser import (
     fixture_envelope_to_csv_row,
 )
 from nutmeg.v4.data.sources import api_football
+from nutmeg.v4.model.sharp_consensus import consensus as _sharp_consensus
+from nutmeg.v4.model.sharp_consensus import per_book_fair as _sharp_per_book
 
 
 log = logging.getLogger("ingest_odds")
@@ -202,6 +204,12 @@ def _gather_rows(
             if row is None:
                 n_skipped += 1
                 continue
+            # V14 — sharp-flip guard: the SAME envelope already carries Betfair +
+            # SBOBET; flag the row when Pinnacle's de-vig favourite disagrees with
+            # them (Pinnacle line is empirically much worse there → the card
+            # downgrades the EV reliability tag to ⚠️ sharp 分歧).
+            if envelope is not None:
+                row["sharp_flip"] = _sharp_consensus(_sharp_per_book(envelope)).pinnacle_flip
             rows.append(row)
 
     return rows, api_calls, n_skipped

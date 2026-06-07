@@ -160,6 +160,12 @@ class SinglePrediction(BaseModel):
     # gives market-implied 让球 P (validated vs Pinnacle's own AH ~1pp). So the
     # market-mode card prices 竞彩 让球 SP live, not just 胜平负.
     market_mode: bool = False
+    # V14 — sharp-flip guard: True when Pinnacle's de-vig favourite DISAGREES
+    # with the other sharp books (Betfair + SBOBET) in the SAME /odds envelope.
+    # Empirically Pinnacle's line is much worse on these (~10pp hit-rate drop,
+    # log-loss 1.07 vs 0.97), so the card downgrades the EV reliability tag to
+    # ⚠️ "sharp 分歧" — our Pinnacle-based EV is built on a suspect line there.
+    sharp_flip: bool = False
 
 
 class PendingFixture(BaseModel):
