@@ -201,6 +201,14 @@ CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({
     # Australia) run Aug/Oct–May → the European heuristic is correct for them.
     "NOR_ELITESERIEN", "SWE_ALLSVENSKAN", "FIN_VEIKKAUSLIIGA",
     "KOR_K_LEAGUE_1", "JPN_J2",
+    # V14 — single-summer national-team tournaments are held within ONE
+    # calendar year, so season = that year (WC 2026 = season 2026). Without
+    # this, a June date falls to the Aug–Jul heuristic → year−1 (2026→2025) →
+    # the API returns 0 WC fixtures, so the generic _gather_rows path (近期赛事
+    # board + market-mode predict-log + daily_odds) silently MISSES the whole
+    # World Cup. The WC-specific endpoints already use on_date.year directly;
+    # this aligns the generic fixture fetch with them.
+    "WC", "EURO", "COPA_AMERICA",
 })
 
 

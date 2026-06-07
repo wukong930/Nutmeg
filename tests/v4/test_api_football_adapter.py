@@ -255,6 +255,18 @@ class TestSeasonForDate:
         assert api_football.season_for_date(dt.date(2026, 2, 20), "JPN_J1") == 2026
         assert "JPN_J1" in api_football.CALENDAR_YEAR_LEAGUES
 
+    def test_national_team_tournaments_use_date_year(self):
+        import datetime as dt
+        # V14 — WC 2026 (June–July) is season 2026. Under the European Aug–Jul
+        # heuristic a June date → year−1 = 2025 → API returns 0 WC fixtures,
+        # silently dropping the whole World Cup from the market-mode board +
+        # predict-log. The WC-specific endpoints already used on_date.year; this
+        # aligns the generic season resolver with them.
+        assert api_football.season_for_date(dt.date(2026, 6, 11), "WC") == 2026
+        assert api_football.season_for_date(dt.date(2026, 7, 19), "WC") == 2026
+        for code in ("WC", "EURO", "COPA_AMERICA"):
+            assert code in api_football.CALENDAR_YEAR_LEAGUES
+
     def test_none_league_falls_back_to_european(self):
         import datetime as dt
         assert api_football.season_for_date(dt.date(2026, 5, 30), None) == 2025
