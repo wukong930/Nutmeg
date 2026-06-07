@@ -328,6 +328,18 @@
     object-fit: contain;
     background: white;
   }
+  /* V14 — national teams render a flag emoji at the same 28px footprint as the
+     logo circle (no badge background; the flag is self-contained). */
+  .team-flag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    font-size: 20px;
+    line-height: 1;
+    flex-shrink: 0;
+    vertical-align: middle;
+  }
   /* Hashed palette — 8 distinguishable colors */
   .tl-c0 { background: #1e3a8a; color: #f5f7fa; border-color: #1e3a8a; }  /* deep blue */
   .tl-c1 { background: #7c2d12; color: #f5f7fa; border-color: #7c2d12; }  /* rust */
@@ -2738,8 +2750,61 @@ function teamInitials(name) {
   const chars = Array.from(display);
   return chars.slice(0, 2).join('');
 }
+// V14 — national teams render their country flag (emoji) instead of a crest /
+// initials circle. Keys are API-Football team names (WC 2026 + historical +
+// common friendly/qualifier nations); generated from TEAM_NAME_TO_ELO_CODE +
+// a curated extension. A name we don't have falls through to the normal logo,
+// so this is purely additive. England/Scotland/Wales/N.Ireland use the Unicode
+// subdivision flags.
+const _NATION_FLAG = {
+  "Albania": "🇦🇱", "Algeria": "🇩🇿", "Andorra": "🇦🇩", "Angola": "🇦🇴",
+  "Argentina": "🇦🇷", "Armenia": "🇦🇲", "Australia": "🇦🇺", "Austria": "🇦🇹",
+  "Azerbaijan": "🇦🇿", "Bahrain": "🇧🇭", "Belarus": "🇧🇾", "Belgium": "🇧🇪",
+  "Benin": "🇧🇯", "Bolivia": "🇧🇴", "Bosnia & Herzegovina": "🇧🇦",
+  "Bosnia and Herzegovina": "🇧🇦", "Brazil": "🇧🇷", "Bulgaria": "🇧🇬",
+  "Burkina Faso": "🇧🇫", "Cabo Verde": "🇨🇻", "Cameroon": "🇨🇲", "Canada": "🇨🇦",
+  "Cape Verde Islands": "🇨🇻", "Chile": "🇨🇱", "China": "🇨🇳", "China PR": "🇨🇳",
+  "Colombia": "🇨🇴", "Comoros": "🇰🇲", "Congo": "🇨🇬", "Congo DR": "🇨🇩",
+  "Costa Rica": "🇨🇷", "Croatia": "🇭🇷", "Curaçao": "🇨🇼", "Cyprus": "🇨🇾",
+  "Czech Republic": "🇨🇿", "Czechia": "🇨🇿", "DR Congo": "🇨🇩", "Denmark": "🇩🇰",
+  "Ecuador": "🇪🇨", "Egypt": "🇪🇬", "El Salvador": "🇸🇻", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+  "Equatorial Guinea": "🇬🇶", "Estonia": "🇪🇪", "Ethiopia": "🇪🇹",
+  "Faroe Islands": "🇫🇴", "Finland": "🇫🇮", "France": "🇫🇷", "Gabon": "🇬🇦",
+  "Gambia": "🇬🇲", "Georgia": "🇬🇪", "Germany": "🇩🇪", "Ghana": "🇬🇭",
+  "Gibraltar": "🇬🇮", "Greece": "🇬🇷", "Guatemala": "🇬🇹", "Guinea": "🇬🇳",
+  "Guinea-Bissau": "🇬🇼", "Haiti": "🇭🇹", "Honduras": "🇭🇳", "Hong Kong": "🇭🇰",
+  "Hungary": "🇭🇺", "Iceland": "🇮🇸", "India": "🇮🇳", "Indonesia": "🇮🇩",
+  "Iran": "🇮🇷", "Iraq": "🇮🇶", "Ireland": "🇮🇪", "Israel": "🇮🇱", "Italy": "🇮🇹",
+  "Ivory Coast": "🇨🇮", "Jamaica": "🇯🇲", "Japan": "🇯🇵", "Jordan": "🇯🇴",
+  "Kazakhstan": "🇰🇿", "Kenya": "🇰🇪", "Korea DPR": "🇰🇵", "Korea Republic": "🇰🇷",
+  "Kosovo": "🇽🇰", "Kuwait": "🇰🇼", "Kyrgyzstan": "🇰🇬", "Latvia": "🇱🇻",
+  "Lebanon": "🇱🇧", "Libya": "🇱🇾", "Liechtenstein": "🇱🇮", "Lithuania": "🇱🇹",
+  "Luxembourg": "🇱🇺", "Madagascar": "🇲🇬", "Malaysia": "🇲🇾", "Mali": "🇲🇱",
+  "Malta": "🇲🇹", "Mauritania": "🇲🇷", "Mexico": "🇲🇽", "Moldova": "🇲🇩",
+  "Montenegro": "🇲🇪", "Morocco": "🇲🇦", "Mozambique": "🇲🇿", "Namibia": "🇳🇦",
+  "Netherlands": "🇳🇱", "New Zealand": "🇳🇿", "Nicaragua": "🇳🇮", "Nigeria": "🇳🇬",
+  "North Macedonia": "🇲🇰", "Northern Ireland": "🏴󠁧󠁢󠁮󠁩󠁲󠁿", "Norway": "🇳🇴",
+  "Oman": "🇴🇲", "Palestine": "🇵🇸", "Panama": "🇵🇦", "Paraguay": "🇵🇾",
+  "Peru": "🇵🇪", "Poland": "🇵🇱", "Portugal": "🇵🇹", "Qatar": "🇶🇦",
+  "Republic of Ireland": "🇮🇪", "Romania": "🇷🇴", "Russia": "🇷🇺",
+  "San Marino": "🇸🇲", "Saudi Arabia": "🇸🇦", "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+  "Senegal": "🇸🇳", "Serbia": "🇷🇸", "Slovakia": "🇸🇰", "Slovenia": "🇸🇮",
+  "South Africa": "🇿🇦", "South Korea": "🇰🇷", "South Sudan": "🇸🇸", "Spain": "🇪🇸",
+  "Sudan": "🇸🇩", "Suriname": "🇸🇷", "Sweden": "🇸🇪", "Switzerland": "🇨🇭",
+  "Syria": "🇸🇾", "Tajikistan": "🇹🇯", "Tanzania": "🇹🇿", "Thailand": "🇹🇭",
+  "Togo": "🇹🇬", "Trinidad and Tobago": "🇹🇹", "Tunisia": "🇹🇳", "Turkey": "🇹🇷",
+  "Türkiye": "🇹🇷", "USA": "🇺🇸", "Uganda": "🇺🇬", "Ukraine": "🇺🇦",
+  "United Arab Emirates": "🇦🇪", "United States": "🇺🇸", "Uruguay": "🇺🇾",
+  "Uzbekistan": "🇺🇿", "Venezuela": "🇻🇪", "Vietnam": "🇻🇳", "Wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
+  "Zambia": "🇿🇲", "Zimbabwe": "🇿🇼",
+};
 function teamLogo(name) {
   if (!name) return '';
+  // V14 — national team → flag emoji (no crest/initials circle).
+  const flag = _NATION_FLAG[name];
+  if (flag) {
+    return `<span class="team-flag" title="${name}" aria-label="${name}">${flag}</span>`;
+  }
   const slug = teamSlug(name);
   const color = _teamHashColor(name);
   const initials = teamInitials(name);

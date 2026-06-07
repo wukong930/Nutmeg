@@ -931,3 +931,20 @@ class TestEvReliability:
         for k in ("rel_sweet", "rel_edge", "rel_cold", "rel_chalk",
                   "rel_sweet_hint", "rel_edge_hint", "rel_cold_hint", "rel_chalk_hint"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestNationFlags:
+    """V14 — national teams render a flag emoji instead of a crest/initials
+    circle. WC 2026 opens Mexico vs South Africa, so those must carry flags; the
+    UK home nations use Unicode subdivision flags (no ISO country code)."""
+
+    def test_flag_map_and_branch_present(self, html):
+        assert "const _NATION_FLAG = {" in html
+        assert "_NATION_FLAG[name]" in html        # teamLogo branches on it
+        assert 'class="team-flag"' in html          # flag render path
+        assert ".team-flag {" in html               # CSS
+
+    def test_key_nations_have_flag_entries(self, html):
+        for nation in ('"Mexico":', '"South Africa":', '"Spain":', '"Japan":',
+                       '"England":', '"Scotland":', '"China":', '"Venezuela":'):
+            assert nation in html, f"national flag entry {nation} missing"
