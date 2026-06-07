@@ -948,3 +948,35 @@ class TestNationFlags:
         for nation in ('"Mexico":', '"South Africa":', '"Spain":', '"Japan":',
                        '"England":', '"Scotland":', '"China":', '"Venezuela":'):
             assert nation in html, f"national flag entry {nation} missing"
+
+
+class TestKeptList:
+    """V14 — 反推计算器 保留列表: compute a match → 📌 保留 → accumulates into a
+    list sorted by best EV, each row deletable + clearable. Replaces the
+    (removed) 1X2-only batch textarea; reuses the single-match 1X2 + 让球 calc."""
+
+    def test_markup_present(self, html):
+        assert 'id="mrev-keep-btn"' in html
+        assert 'onclick="mrevKeptSave()"' in html
+        assert 'id="mrev-kept-list"' in html
+        assert 'onclick="mrevKeptClear()"' in html
+
+    def test_functions_defined(self, html):
+        for fn in ("function mrevKeptSave(", "function mrevKeptRender(",
+                   "function mrevKeptDelete(", "function mrevKeptClear("):
+            assert fn in html, f"{fn} missing"
+        assert "mrevKeptDelete(${r.id})" in html       # per-row delete wired
+        assert "_evRelTag(r.fair)" in html              # reliability tag in list
+
+    def test_capture_reuses_both_markets(self, html):
+        # 保留 stashes legs from BOTH the 让球 (hcP) and 1X2 (fair1x2) results
+        assert "_addLeg(hcLabels[0], hcP[0], jh)" in html
+        assert "_addLeg(x2Labels[0], fair1x2[0], j1)" in html
+
+    def test_old_batch_removed(self, html):
+        assert "batchReverseCalc" not in html
+        assert 'id="mrevb-input"' not in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("mrevk_keep", "mrevk_title", "mrevk_clear"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"

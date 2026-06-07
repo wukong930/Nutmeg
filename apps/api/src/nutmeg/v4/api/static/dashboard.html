@@ -1024,9 +1024,20 @@
         <div class="flex items-center gap-2 flex-wrap">
           <button type="button" onclick="manualReverseCalc()" class="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700" data-i18n="mrev_calc">🧮 反推计算</button>
           <button type="button" id="mrev-record-btn" onclick="manualReverseRecord()" class="hidden px-4 py-2 text-sm font-medium bg-amber-600 text-white rounded hover:bg-amber-700" data-i18n="mrev_record">📌 记一笔(写入追踪库)</button>
+          <button type="button" id="mrev-keep-btn" onclick="mrevKeptSave()" class="hidden px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded hover:bg-emerald-700" data-i18n="mrevk_keep">📋 保留对比</button>
           <span id="mrev-record-status" class="text-xs"></span>
         </div>
         <div id="mrev-result" class="mt-2"></div>
+        <!-- V14 — 📋 保留对比:反推计算后点「📌 保留」累积到这,按最优 EV 从高到低排,
+             每行可删除/清空。治"算一场清空再填下一场"的来回。复用 1X2 + 让球计算。 -->
+        <div id="mrev-kept-wrap" class="mt-4 pt-3 hidden" style="border-top:1px solid rgba(128,128,128,0.18)">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-sm font-medium" data-i18n="mrevk_title">📋 已保留对比(按最优 EV)</span>
+            <span id="mrev-kept-count" class="text-xs text-muted"></span>
+            <button type="button" onclick="mrevKeptClear()" class="ml-auto text-xs text-muted hover:text-red-600" data-i18n="mrevk_clear">清空</button>
+          </div>
+          <div id="mrev-kept-list"></div>
+        </div>
       </div>
     </details>
     <div id="cupmkt-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
@@ -2006,6 +2017,9 @@ const I18N = {
     mrev_hcap_lbl:    '主队让球数(整数,-1 = 主让1球)',
     mrev_jc_hc:       '竞彩让球 SP:让胜 / 让平 / 让负',
     mrev_jc_1x2:      '竞彩 1X2 SP(可选):主 / 平 / 客',
+    mrevk_keep:       '📋 保留对比',
+    mrevk_title:      '📋 已保留对比(按最优 EV)',
+    mrevk_clear:      '清空',
     mrev_calc:        '🧮 反推计算',
     mrev_fair:        '公平',
     mrev_let_labels:  '让胜/让平/让负',
@@ -2386,6 +2400,9 @@ const I18N = {
     mrev_hcap_lbl:    'Home handicap (integer, -1 = home -1)',
     mrev_jc_hc:       '竞彩 handicap SP: cover / push / against',
     mrev_jc_1x2:      '竞彩 1X2 SP (optional): H / D / A',
+    mrevk_keep:       '📋 Keep',
+    mrevk_title:      '📋 Kept (by best EV)',
+    mrevk_clear:      'Clear',
     mrev_calc:        '🧮 Reverse-calculate',
     mrev_fair:        'Fair',
     mrev_let_labels:  'Cover/Push/Against',
@@ -5763,6 +5780,18 @@ async function manualReverseCalc() {
     // Calc succeeded → offer 📌 记一笔 (records the server-chosen best-EV leg).
     document.getElementById('mrev-record-btn').classList.remove('hidden');
     document.getElementById('mrev-record-status').innerHTML = '';
+    // V14 — stash every leg with a filled 竞彩 SP (1X2 + 让球) for 📌 保留.
+    const _legs = [];
+    const _addLeg = (label, p, o) => { if (o && o > 1.0 && p > 0) _legs.push({ label, fair: p, ev: p * o - 1 }); };
+    if (Array.isArray(hcP)) {
+      _addLeg(hcLabels[0], hcP[0], jh); _addLeg(hcLabels[1], hcP[1], jd); _addLeg(hcLabels[2], hcP[2], ja);
+    }
+    _addLeg(x2Labels[0], fair1x2[0], j1); _addLeg(x2Labels[1], fair1x2[1], jx); _addLeg(x2Labels[2], fair1x2[2], j2);
+    const _h = (document.getElementById('mrev-home').value || '').trim();
+    const _a = (document.getElementById('mrev-away').value || '').trim();
+    _mrevLast = { name: (_h && _a) ? `${_h} vs ${_a}` : (_h || _a || ''), legs: _legs };
+    const _keepBtn = document.getElementById('mrev-keep-btn');
+    if (_keepBtn) _keepBtn.classList.toggle('hidden', _legs.length === 0);
   } catch (e) { return fail(e.message); }
 }
 
@@ -5772,6 +5801,48 @@ async function manualReverseCalc() {
 // gate is off, recorded=false and we say so. Records the highest-EV leg, same
 // as the auto 市场模式 cards. Auto-settle needs the league code + team names to
 // match API-Football, hence the league field.
+// V14 — 保留对比 list. Compute a match in the reverse calc → 📌 保留 stashes its
+// BEST +EV leg (across 1X2 + 让球) into an accumulating list, sorted by EV
+// high→low, each row deletable. Solves the "compute one, clear, retype" grind
+// for a slate of friendlies. _mrevLast is set by manualReverseCalc (same
+// de-vig + reliability-tag calc); this only picks the best leg + renders.
+let _mrevLast = null;
+let _mrevKept = [];
+let _mrevKeptSeq = 0;
+function mrevKeptSave() {
+  if (!_mrevLast || !_mrevLast.legs.length) return;
+  const best = _mrevLast.legs.reduce((a, b) => (b.ev > a.ev ? b : a));
+  _mrevKept.push({
+    id: ++_mrevKeptSeq,
+    name: _mrevLast.name || `#${_mrevKeptSeq}`,
+    label: best.label, fair: best.fair, ev: best.ev,
+  });
+  mrevKeptRender();
+}
+function mrevKeptDelete(id) {
+  _mrevKept = _mrevKept.filter((r) => r.id !== id);
+  mrevKeptRender();
+}
+function mrevKeptClear() { _mrevKept = []; mrevKeptRender(); }
+function mrevKeptRender() {
+  const wrap = document.getElementById('mrev-kept-wrap');
+  const list = document.getElementById('mrev-kept-list');
+  const cnt = document.getElementById('mrev-kept-count');
+  if (!wrap || !list) return;
+  wrap.classList.toggle('hidden', _mrevKept.length === 0);
+  if (cnt) cnt.textContent = _mrevKept.length ? `(${_mrevKept.length})` : '';
+  const evCls = (e) => (e >= 0.05 ? 'text-gold font-semibold' : (e > 0 ? 'text-amber-600' : 'text-muted'));
+  const sorted = [..._mrevKept].sort((a, b) => b.ev - a.ev);   // best EV on top
+  list.innerHTML = sorted.map((r) => `
+    <div class="flex items-center gap-2 text-xs py-1 border-b border-gray-100 dark:border-gray-700 last:border-0">
+      <span class="truncate" style="max-width:8rem" title="${r.name}">${r.name}</span>
+      <span class="text-secondary whitespace-nowrap">${r.label}</span>
+      <span class="${evCls(r.ev)} whitespace-nowrap">${r.ev >= 0 ? '+' : ''}${(r.ev * 100).toFixed(1)}%</span>
+      ${_evRelTag(r.fair)}
+      <button type="button" onclick="mrevKeptDelete(${r.id})" class="ml-auto text-muted hover:text-red-600" title="删除" aria-label="delete">✕</button>
+    </div>`).join('');
+}
+
 async function manualReverseRecord() {
   const st = document.getElementById('mrev-record-status');
   const built = _mrevBuildBody(true);
