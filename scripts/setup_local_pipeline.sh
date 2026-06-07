@@ -13,6 +13,7 @@
 #   9. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
 #  10. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
 #  11. com.nutmeg.daily_predict               15:30 daily — V12 W8j model-board prediction log + settle + accuracy report
+#  12. com.nutmeg.weekly_elo_refresh          Saturday 04:30 — V14 national-team Elo snapshot refresh (eloratings.net → WC model prior)
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
 # (no plaintext key in plists). Logs go to logs/launchd/.
@@ -422,6 +423,17 @@ install_job "com.nutmeg.daily_wc_predict" \
 install_job "com.nutmeg.daily_wc_settle" \
   2 0 "" \
   "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_settle --db $DB_PATH --quiet && $VENV_PY -m nutmeg.v4.cli.wc_report --db $DB_PATH --season 2026 --out $WC_OUT_DIR/wc_report_\$(date +%Y-%m-%d).md --quiet || true"
+
+# Job 8: V14 weekly national-team Elo refresh (Saturday 04:30)
+# The WC model's national-strength prior reads the LATEST
+# data/external/eloratings/eloratings_<date>.parquet (eloratings.net, 244
+# nations). Before V14 there was NO CLI/cron for this file — it was a one-off
+# manual ingest that silently went stale (the only Elo CLI, ingest-national-elo,
+# writes a DIFFERENT clubelo file). A weekly drop keeps the prior current through
+# the tournament; load_elo_snapshot always picks the newest dated snapshot.
+install_job "com.nutmeg.weekly_elo_refresh" \
+  4 30 6 \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_eloratings --quiet || true"
 
 # Job 11: V12 W8j model-board + V14 市场模式 prediction accuracy (09:00/15:30/21:00 daily)
 # Logs the 1X2 prediction for every UPCOMING match (model board for the 13 trained

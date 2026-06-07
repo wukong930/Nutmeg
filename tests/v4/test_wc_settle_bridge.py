@@ -16,10 +16,7 @@ hit/profit_loss computed.
 """
 from __future__ import annotations
 
-import datetime as dt
 import sqlite3
-
-import pytest
 
 from nutmeg.v4.observation.recorder import record_wc_handicap_session
 from nutmeg.v4.observation.settlement import settle_unsettled
@@ -273,3 +270,33 @@ class TestEndToEndSettlement:
         # We bet H → didn't hit → loss
         assert hit == 0
         assert pnl < 0
+
+
+class TestExtractFinishedRows90Min:
+    """V14 — wc-settle scores on the 90' result, NOT the ET-inclusive final.
+    A knockout 1-1 at 90' decided 2-1 in extra time must settle as a 90' DRAW
+    (mirrors prediction_log._ft_outcome and the 竞彩 90-minute convention)."""
+
+    def test_uses_fulltime_not_extra_time(self):
+        from nutmeg.v4.cli.wc_settle import _extract_finished_rows
+        fx = [{
+            "fixture": {"id": 7001, "status": {"short": "AET"},
+                        "date": "2026-07-10T19:00:00+00:00"},
+            "teams": {"home": {"name": "Spain"}, "away": {"name": "Brazil"}},
+            "score": {"fulltime": {"home": 1, "away": 1}},   # 90' = draw
+            "goals": {"home": 2, "away": 1},                 # decided in ET
+        }]
+        rows = _extract_finished_rows(fx)
+        assert len(rows) == 1
+        assert (rows[0]["home_goals"], rows[0]["away_goals"]) == (1, 1)  # 90', not 2-1
+
+    def test_falls_back_to_goals_when_fulltime_absent(self):
+        from nutmeg.v4.cli.wc_settle import _extract_finished_rows
+        fx = [{
+            "fixture": {"id": 7002, "status": {"short": "FT"},
+                        "date": "2026-06-15T19:00:00+00:00"},
+            "teams": {"home": {"name": "USA"}, "away": {"name": "Mexico"}},
+            "goals": {"home": 2, "away": 0},   # no score.fulltime split present
+        }]
+        rows = _extract_finished_rows(fx)
+        assert (rows[0]["home_goals"], rows[0]["away_goals"]) == (2, 0)

@@ -30,17 +30,15 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import logging
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from nutmeg.v4.observation.wc_log import (
     ensure_wc_predictions_table,
     settle_wc_prediction,
 )
-
 
 log = logging.getLogger("wc-settle")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -65,9 +63,17 @@ def _extract_finished_rows(fixtures: Iterable[dict]) -> list[dict]:
         fid = fb.get("id")
         if fid is None:
             continue
+        # V14 — settle on the 90' result (score.fulltime), NOT the ET-inclusive
+        # `goals`. A knockout decided in extra time still carries its 90' score
+        # in score.fulltime; the WC model predicts a 90' 1X2, so scoring it
+        # against the post-ET final would wrongly mark a correct 90'-draw
+        # prediction as wrong. Mirrors prediction_log._ft_outcome / 竞彩 rule.
+        ft = (f.get("score") or {}).get("fulltime") or {}
         goals = f.get("goals") or {}
-        hg = goals.get("home")
-        ag = goals.get("away")
+        hg = ft.get("home")
+        ag = ft.get("away")
+        if hg is None or ag is None:  # fall back to final goals if FT split absent
+            hg, ag = goals.get("home"), goals.get("away")
         if hg is None or ag is None:
             continue
         teams = f.get("teams") or {}
