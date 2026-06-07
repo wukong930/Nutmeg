@@ -303,7 +303,7 @@ class TestTwoBoardToday:
         English match_id with no translation."""
         assert "l.match_id.split('|').slice(0, 2)" not in html   # bug gone
         assert "raw.includes('_vs_') ? raw.split('_vs_')" in html
-        assert "${zhTeam(parts[0])} <span class=\"text-muted\">vs</span> ${zhTeam(parts[1])}" in html
+        assert "${zhTeam(parts[0])} <span class=\"text-muted\">vs</span> ${zhTeam(parts[1])}" in html  # noqa: E501
 
     def test_jc_loader_wired(self, html):
         assert "function loadJingcaiBoard(" in html
@@ -670,7 +670,7 @@ class TestManualReverseCalcFix:
         seg = html[html.index("async function manualReverseCalc()"):
                    html.index("async function manualReverseRecord()")]
         assert seg.count("} catch (e) { return fail(e.message); }") == 1
-        assert seg.index("data.market_implied_p") < seg.index("} catch (e) { return fail(e.message); }")
+        assert seg.index("data.market_implied_p") < seg.index("} catch (e) { return fail(e.message); }")  # noqa: E501
 
 
 class TestCupManualReprice:
@@ -893,3 +893,41 @@ class TestHandicapPrediction:
 
     def test_i18n_hcpred_label_both_locales(self, html):
         assert html.count("hcpred_label:") >= 2
+
+
+class TestEvReliability:
+    """V14 — EV reliability grading (anti-longshot-trap). A +EV on a deep
+    longshot (the Belgium-Tunisia 0-5 case: Tunisia ~11% @9.4 showed +8% EV)
+    must NOT read as a clean 'go' — de-vigging extreme odds is noisy. Every EV
+    display now carries a 🟢甜区 / 🟡边缘 / ⚠️冷门 tag by the OUTCOME's P."""
+
+    def test_grader_defined(self, html):
+        assert "function _evRelTier(" in html
+        assert "function _evRelTag(" in html
+
+    def test_thresholds_present(self, html):
+        # deep-longshot floor (mirrors the Polymarket detector's LONGSHOT_FLOOR
+        # 0.15) + super-short-favourite ceiling + the sweet/edge tiers.
+        assert "return 'cold'" in html and "return 'chalk'" in html
+        assert "return 'sweet'" in html and "return 'edge'" in html
+        assert "p < 0.15" in html
+        assert "p > 0.77" in html
+
+    def test_wired_into_all_ev_calc_surfaces(self, html):
+        # EVERY live SP→EV calc surface tags the EV by the OUTCOME's P.
+        assert "_evRelTag(tk.probability)" in html   # 今日推荐 国际盘 single card
+        assert "_evRelTag(pBest)" in html            # 今日推荐 市场模式 lean card
+        assert "_evRelTag(p)" in html                # 反推计算器 per-outcome row
+        # 近期赛事 (_cupRecalc 1X2 + _cupHcRecalc 让球) + SP计算器 (_spcalcRecalc
+        # 1X2 + _spcalcHcRecalc 让球) — all four iterate outcomes as P[o].
+        assert html.count("_evRelTag(P[o])") >= 4
+
+    def test_bare_checkmark_greenlight_removed(self, html):
+        # the old "✅ on ANY +5% EV" (which green-lit longshots) is gone — the
+        # reliability tag replaces it, so a longshot +EV gets ⚠️, not ✅.
+        assert "ev >= 0.05 ? ' ✅' : ''" not in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("rel_sweet", "rel_edge", "rel_cold", "rel_chalk",
+                  "rel_sweet_hint", "rel_edge_hint", "rel_cold_hint", "rel_chalk_hint"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
