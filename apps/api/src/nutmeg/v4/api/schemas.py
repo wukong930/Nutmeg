@@ -108,6 +108,27 @@ class AsianHandicapLineProb(BaseModel):
     source: str = "dc"
 
 
+class ScoreCell(BaseModel):
+    """One exact scoreline (home:away) with its probability."""
+    home: int
+    away: int
+    p: float
+
+
+class MarginBand(BaseModel):
+    """V14 — one goal-margin (home−away) band for the 净胜球分组 READ tool.
+
+    A readout of the same Dixon-Coles grid — NOT a new signal (a 1500-fixture
+    eval showed feeding the Asian Handicap INTO the λ fit adds ~0 info: the grid
+    already reproduces the AH curve to ~1.5pp). It helps pick a coherent CLUSTER
+    of scorelines given the 让球 line. ``margin`` is signed home−away; ``is_tail``
+    flags the folded ±N+ buckets; ``scores`` are the top exact scorelines in it."""
+    margin: int
+    is_tail: bool
+    p: float
+    scores: list[ScoreCell] = Field(default_factory=list)
+
+
 class SinglePrediction(BaseModel):
     home_team: str
     away_team: str
@@ -166,6 +187,10 @@ class SinglePrediction(BaseModel):
     # log-loss 1.07 vs 0.97), so the card downgrades the EV reliability tag to
     # ⚠️ "sharp 分歧" — our Pinnacle-based EV is built on a suspect line there.
     sharp_flip: bool = False
+    # V14 — 净胜球分组 (goal-margin bands): same DC grid, grouped by margin with
+    # the top scorelines per band, so the card can show a coherent score CLUSTER
+    # for the chosen 让球 line. READOUT, not a +EV signal (AH-into-fit was a wash).
+    margin_bands: list[MarginBand] = Field(default_factory=list)
 
 
 class PendingFixture(BaseModel):
@@ -553,6 +578,8 @@ class MarketHandicapResponse(BaseModel):
     best_stake: float | None = None
     recorded: bool = False
     session_id: int | None = None
+    # V14 — 净胜球分组 for the reverse-calc card (same grid, READ tool not signal)
+    margin_bands: list[MarginBand] = Field(default_factory=list)
 
 
 class MarketRepriceRequest(BaseModel):

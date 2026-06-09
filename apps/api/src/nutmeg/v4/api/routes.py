@@ -34,6 +34,8 @@ from nutmeg.v4.api.schemas import (
     MarketHandicapResponse,
     MarketRepriceRequest,
     MarketRepriceResponse,
+    MarginBand,
+    ScoreCell,
     ModelInfo,
     ParlayLegEcho,
     ParlayRecordRequest,
@@ -77,7 +79,12 @@ from nutmeg.v4.combo.compound_pool import recommend_pool
 from nutmeg.v4.combo.lottery_rules import JINGCAI_DEFAULT
 from nutmeg.v4.combo.selections import Selection
 from nutmeg.v4.combo.single_match import recommend_singles
-from nutmeg.v4.model.dixon_coles import grid_to_1x2, grid_to_handicap_1x2, score_grid
+from nutmeg.v4.model.dixon_coles import (
+    grid_to_1x2,
+    grid_to_handicap_1x2,
+    grid_to_margin_bands,
+    score_grid,
+)
 from nutmeg.v4.model.persist import (
     V4Artifact,
     build_features_for_fixtures,
@@ -351,7 +358,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v37-fe-wcwindow';
+const CACHE_VERSION = 'nutmeg-v38-fe-marginbands';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1562,6 +1569,7 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 psc_under25=getattr(f, "psc_under25", None),
                 handicap_lines=hc_lines,
                 asian_handicap_lines=_model_board_asian_handicap(f, grid),
+                margin_bands=_mk_margin_bands(grid_to_margin_bands(grid)),
             ))
         return preds
     except Exception:  # noqa: BLE001
@@ -1689,6 +1697,32 @@ def _market_handicap_lines(fair, r: dict) -> list[HandicapLineProb]:
         return []
 
 
+def _mk_margin_bands(band_dicts: list, top: int = 4) -> list[MarginBand]:
+    """``grid_to_margin_bands`` dicts → MarginBand schema (scores capped at ``top``)."""
+    return [
+        MarginBand(
+            margin=int(b["margin"]), is_tail=bool(b["is_tail"]), p=float(b["p"]),
+            scores=[ScoreCell(home=int(i), away=int(j), p=float(p))
+                    for i, j, p in b["scores"][:top]],
+        )
+        for b in band_dicts
+    ]
+
+
+def _market_margin_bands(fair, r: dict) -> list[MarginBand]:
+    """净胜球分组 for a market-mode fixture — same reverse-fit grid as
+    ``_market_handicap_lines``. READ tool, not a signal. [] on any failure."""
+    try:
+        from nutmeg.v4.model.market_handicap import devig_over, implied_margin_bands
+        p_over = devig_over(r.get("psc_over25"), r.get("psc_under25"))
+        ou_line = float(r.get("ou_line") or 2.5)
+        return _mk_margin_bands(implied_margin_bands(
+            float(fair[0]), float(fair[1]), float(fair[2]), p_over, ou_line=ou_line,
+        ))
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _real_ah_board(raw):
     """Parse the ``asian_handicap`` JSON ({line: {home, away}}) → {float: {...}}."""
     if not raw:
@@ -1788,6 +1822,7 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         odds_update=r.get("odds_update"),
         market_mode=True,
         sharp_flip=bool(r.get("sharp_flip", False)),
+        margin_bands=_market_margin_bands(fair, r),
     )
 
 
@@ -1976,6 +2011,14 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
     def _fair(p):
         return (1.0 / p) if p > 0 else 0.0
 
+    try:
+        from nutmeg.v4.model.market_handicap import implied_margin_bands
+        margin_bands = _mk_margin_bands(implied_margin_bands(
+            fair[0], fair[1], fair[2], p_over, ou_line=req.ou_line,
+        ))
+    except Exception:  # noqa: BLE001
+        margin_bands = []
+
     return MarketHandicapResponse(
         league=req.league, date=req.date,
         home_team=req.home_team, away_team=req.away_team,
@@ -1986,6 +2029,7 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
         best_outcome=best,
         best_ev=(ev[best] if best is not None else None),
         best_stake=best_stake, recorded=recorded, session_id=session_id,
+        margin_bands=margin_bands,
     )
 
 

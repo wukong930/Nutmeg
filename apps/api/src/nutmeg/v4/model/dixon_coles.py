@@ -127,6 +127,41 @@ def grid_to_over_under(grid: np.ndarray, line: float = 2.5) -> tuple[float, floa
     return p_over, p_under
 
 
+def grid_to_margin_bands(grid: np.ndarray, tail: int = 3) -> list[dict]:
+    """Goal-margin (home − away) distribution, bucketed for the 让球 read.
+
+    Returns a list ordered biggest-home-win → biggest-away-win; each entry::
+
+        {"margin": int,      # signed home−away; ±tail folds the bigger margins
+         "is_tail": bool,    # True for the folded "≥tail" buckets
+         "p": float,         # total probability of this margin band
+         "scores": [(i, j, p), …]}   # exact scorelines in it, prob-descending
+
+    This is a READOUT, not a new signal — a 1500-fixture eval showed the Asian
+    Handicap adds ~0 info beyond the 1X2+O/U fit (the grid already reproduces the
+    AH curve to ~1.5pp). Its value is SELECTION: read the 让球 line to pick the
+    likely margin band, then bet a coherent CLUSTER of scores from it. Bands
+    reconcile with :func:`grid_to_1x2` (Σ margin>0 == home, ==0 == draw, <0 == away).
+    """
+    buckets: dict[int, list[tuple[float, int, int]]] = {}
+    n = grid.shape[0]
+    for i in range(n):
+        for j in range(n):
+            m = i - j
+            b = m if abs(m) < tail else (tail if m > 0 else -tail)
+            buckets.setdefault(b, []).append((float(grid[i, j]), i, j))
+    out: list[dict] = []
+    for b in sorted(buckets, reverse=True):
+        cells = sorted(buckets[b], reverse=True)
+        out.append({
+            "margin": b,
+            "is_tail": abs(b) == tail,
+            "p": sum(p for p, _, _ in cells),
+            "scores": [(i, j, p) for p, i, j in cells],
+        })
+    return out
+
+
 def lambdas_to_1x2_array(lambdas: np.ndarray, rho: float = 0.0, max_goals: int = MAX_GOALS_DEFAULT) -> np.ndarray:
     """Vectorised: array of (lambda_h, lambda_a) → (N, 3) array of (P_H, P_D, P_A)."""
     out = np.empty((len(lambdas), 3), dtype=float)

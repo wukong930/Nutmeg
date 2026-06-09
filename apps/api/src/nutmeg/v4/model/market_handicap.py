@@ -42,6 +42,7 @@ from scipy.optimize import minimize
 from nutmeg.v4.model.dixon_coles import (
     grid_to_1x2,
     grid_to_handicap_1x2,
+    grid_to_margin_bands,
     score_grid,
 )
 
@@ -187,6 +188,34 @@ def implied_handicap_lines(
         ph, pd_, pa = grid_to_handicap_1x2(grid, handicap_home=int(line))
         out.append((int(line), float(ph), float(pd_), float(pa)))
     return out
+
+
+def implied_margin_bands(
+    p_home: float,
+    p_draw: float,
+    p_away: float,
+    p_over: float | None = None,
+    *,
+    ou_line: float = 2.5,
+    rho: float = DEFAULT_RHO,
+    max_goals: int = DEFAULT_MAX_GOALS,
+    tail: int = 4,
+    top: int = 4,
+) -> list[dict]:
+    """净胜球分组 (goal-margin bands) from the SAME fit as ``implied_handicap_lines``
+    (de-vig 1X2 + O/U → Dixon-Coles grid). Returns ``grid_to_margin_bands`` with
+    each band's ``scores`` capped at ``top``.
+
+    READOUT only — a 1500-fixture eval showed feeding the Asian Handicap INTO the
+    fit adds ~0 info (the grid already reproduces the AH curve to ~1.5pp). ``tail=4``
+    so every 竞彩 让球 line (−3..+3) classifies exactly into 让胜/让平/让负."""
+    lh, la = fit_lambdas(
+        p_home, p_draw, p_away, p_over, ou_line=ou_line, rho=rho, max_goals=max_goals,
+    )
+    bands = grid_to_margin_bands(score_grid(lh, la, rho=rho, max_goals=max_goals), tail=tail)
+    for b in bands:
+        b["scores"] = b["scores"][:top]
+    return bands
 
 
 # ── International Asian Handicap (HALF-line, 2-way: cover / not, NO push) ──────

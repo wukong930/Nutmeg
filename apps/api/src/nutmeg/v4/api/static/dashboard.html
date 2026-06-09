@@ -1919,6 +1919,16 @@ const I18N = {
     rel_chalk_hint:   '超短热门(赔率<1.3):EV 空间极薄,赔率一动就没,意义有限',
     rel_flip:         'sharp 分歧',
     rel_flip_hint:    'Pinnacle 与其它 sharp 盘(Betfair/SBOBET)对热门判断相反 → Pinnacle 线可能陈旧/有误,这个 EV 建在可疑的公允价上,慎下',
+    mb_toggle:        '净胜球分组(读法·选号辅助)',
+    mb_home:          '主胜',
+    mb_away:          '客胜',
+    mb_draw:          '平局',
+    mb_goals:         '球',
+    mb_cluster:       '让球比分簇',
+    mb_win:           '让胜',
+    mb_push:          '让平',
+    mb_lose:          '让负',
+    mb_hint:          '读法/选号辅助:从一簇相干比分里选,不是 +EV 信号(让球进拟合实测加 0 信息)。要算 EV 仍需竞彩比分 SP。',
     today_no_fixtures: '今日联赛无可下注场次。明天再来。',
     today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
     health_offline:   'API 离线',
@@ -2306,6 +2316,16 @@ const I18N = {
     rel_chalk_hint:   'Super-short favourite (odds <1.3): razor-thin EV that dies on any line move — limited meaning',
     rel_flip:         'sharp split',
     rel_flip_hint:    'Pinnacle disagrees with the other sharps (Betfair/SBOBET) on the favourite → its line may be stale/wrong, so this EV rests on a suspect fair price — be cautious',
+    mb_toggle:        'Goal-margin bands (read / selection aid)',
+    mb_home:          'Home by ',
+    mb_away:          'Away by ',
+    mb_draw:          'Draw',
+    mb_goals:         '',
+    mb_cluster:       'Handicap score cluster',
+    mb_win:           'Cover',
+    mb_push:          'Push',
+    mb_lose:          'No cover',
+    mb_hint:          'Reading / selection aid — pick from a coherent score cluster, NOT a +EV signal (handicap-into-fit measured ~0 info). EV still needs the 竞彩 score SP.',
     today_no_fixtures: 'No fixtures from your leagues today. Check back tomorrow.',
     today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
     health_offline:   'API offline',
@@ -4673,6 +4693,43 @@ function _oddsFreshnessHtml(pr) {
     + `<a onclick="_openManualReverse()" style="cursor:pointer;text-decoration:underline">`
     + `${t('odds_manual_link')}</a></div>`;
 }
+// V14 — 净胜球分组(读法工具,非 +EV 信号). Same DC grid grouped by goal margin;
+// pair with a 让球 line to pick a coherent score CLUSTER. Collapsible. The
+// handicap-into-fit eval was a wash, so this is selection help, not new signal.
+function _mbLabel(m, isTail) {
+  if (m === 0) return t('mb_draw');
+  return (m > 0 ? t('mb_home') : t('mb_away')) + Math.abs(m) + (isTail ? '+' : '') + t('mb_goals');
+}
+function _marginBandsHtml(bands, hcap) {
+  if (!bands || !bands.length) return '';
+  const sc = s => `${s.home}:${s.away}`;
+  const rows = bands.filter(b => b.p >= 0.005).map(b => {
+    const tops = (b.scores || []).slice(0, 3).map(s => `${sc(s)} ${(s.p * 100).toFixed(0)}%`).join(' · ');
+    return `<div class="flex justify-between gap-2 py-0.5">
+        <span class="shrink-0" style="min-width:5.5em">${_mbLabel(b.margin, b.is_tail)}</span>
+        <span class="num-display shrink-0">${(b.p * 100).toFixed(0)}%</span>
+        <span class="text-muted text-right truncate">${tops}</span></div>`;
+  }).join('');
+  let cluster = '';
+  const L = parseInt(hcap, 10);
+  if (Number.isInteger(L)) {
+    const g = { win: { p: 0, s: [] }, push: { p: 0, s: [] }, lose: { p: 0, s: [] } };
+    bands.forEach(b => {
+      const k = (b.margin + L) > 0 ? 'win' : (b.margin + L) === 0 ? 'push' : 'lose';
+      g[k].p += b.p;
+      (b.scores || []).forEach(s => g[k].s.push(s));
+    });
+    const top = arr => arr.sort((a, b) => b.p - a.p).slice(0, 3).map(s => `${sc(s)} ${(s.p * 100).toFixed(0)}%`).join(' · ');
+    const ln = (lab, o) => `<div>${lab} ${(o.p * 100).toFixed(0)}% · <span class="text-muted">${top(o.s)}</span></div>`;
+    cluster = `<div class="mt-1 pt-1" style="border-top:1px dashed var(--border-subtle)">
+        <div class="text-muted mb-0.5">${t('mb_cluster')} (主${L >= 0 ? '+' : ''}${L})</div>
+        ${ln(t('mb_win'), g.win)}${ln(t('mb_push'), g.push)}${ln(t('mb_lose'), g.lose)}</div>`;
+  }
+  return `<details class="mt-2 pt-2 text-xs" style="border-top:1px dashed var(--border-subtle)">
+      <summary class="cursor-pointer select-none text-secondary">${t('mb_toggle')}</summary>
+      <div class="mt-1">${rows}${cluster}
+        <div class="text-muted mt-1" style="font-size:10px">${t('mb_hint')}</div></div></details>`;
+}
 function _cupCardHtml(pr, idx) {
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const rows = ['H', 'D', 'A'].map(o => {
@@ -4766,7 +4823,7 @@ function _cupCardHtml(pr, idx) {
         </span>
       </div>
       ${_oddsFreshnessHtml(pr)}
-      ${rows}${hc}${manual}
+      ${rows}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home)}${manual}
     </div>`;
 }
 
@@ -5801,6 +5858,7 @@ async function manualReverseCalc() {
         ${head}
         ${row(x2Labels[0], fair1x2[0], j1)}${row(x2Labels[1], fair1x2[1], jx)}${row(x2Labels[2], fair1x2[2], j2)}
         <div class="text-xs text-muted pt-1">${(over && under) ? '' : '⚠️ ' + t('mrev_no_ou')}</div>
+        ${_marginBandsHtml(data.margin_bands, hcap)}
       </div>`;
     // Calc succeeded → offer 📌 记一笔 (records the server-chosen best-EV leg).
     document.getElementById('mrev-record-btn').classList.remove('hidden');
