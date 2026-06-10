@@ -152,5 +152,9 @@ class TestDashboardWiring:
         assert "recordFailed" in html
 
     def test_cache_version_bumped(self):
+        # ≥ v39 (the recfail bump) — later features keep bumping; exact-string
+        # pins broke the moment v40 landed.
+        import re
         routes = (REPO_ROOT / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v39-fe-recfail" in routes
+        m = re.search(r"CACHE_VERSION = 'nutmeg-v(\d+)-", routes)
+        assert m and int(m.group(1)) >= 39

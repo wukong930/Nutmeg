@@ -376,8 +376,9 @@ class TestManualReverseCalc:
         assert "function _mrevBuildBody(record)" in html
         assert "async function manualReverseRecord()" in html
         assert "record_session: record" in html
-        # records the real league (not the throwaway 'MANUAL' compute sentinel)
-        assert "record ? (gv('mrev-league') || 'MANUAL') : 'MANUAL'" in html
+        # records the real league (not the throwaway 'MANUAL' compute sentinel);
+        # 体检 — league now comes from the settle-able <select> (leagueSel)
+        assert "league: record ? leagueSel : 'MANUAL'" in html
         # honest feedback when the server-side gate is off
         assert "data.recorded" in html
 

@@ -30,6 +30,20 @@ class TestLeagueId:
             api_football.league_id("MLS")
 
 
+class TestFriendliesLeague:
+    """体检(2026-06-10)— FRIENDLIES must be fetchable or manual-calculator
+    friendly bets can never auto-settle (the Croatia/Slovenia 6/7 orphan)."""
+
+    def test_league_id(self):
+        assert api_football.league_id("FRIENDLIES") == 10  # from cached envelope
+
+    def test_calendar_year_season(self):
+        import datetime as dt
+        # June date: the European Aug–Jul heuristic would say season 2025 →
+        # the API returns 0 friendly fixtures; calendar-year gives 2026.
+        assert api_football.season_for_date(dt.date(2026, 6, 7), "FRIENDLIES") == 2026
+
+
 class TestCachePath:
     def test_deterministic(self, tmp_path):
         a = api_football._cache_path("/fixtures", {"league": 39, "date": "2025-05-11"}, tmp_path)

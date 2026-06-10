@@ -226,6 +226,48 @@ def pending_leagues(db_path: str | Path, start: dt.date, end: dt.date) -> list[s
     return [r[0] for r in rows if r[0]]
 
 
+def pending_match_pairs(
+    db_path: str | Path,
+    *,
+    before: dt.date,
+    max_age_days: int = 90,
+) -> list[tuple[str, dt.date]]:
+    """体检(2026-06-10)— orphan rescue: (league, match_date) pairs recorded
+    BEFORE the normal settle window that still have no outcome.
+
+    The 3-day window used to be a CEILING: any bet that missed it (mis-labelled
+    identity fixed later, cron down that night, API hiccup) hung 未结算 forever
+    — the cron never looked back. Pairs are exact, so the rescue costs one
+    /fixtures call per orphan day; bounded at ``max_age_days`` so antique rows
+    can't burn quota."""
+    import sqlite3
+
+    if not Path(db_path).exists():
+        return []
+    floor = before - dt.timedelta(days=max_age_days)
+    con = sqlite3.connect(str(db_path))
+    try:
+        rows = con.execute(
+            """
+            SELECT DISTINCT sp.league, sp.match_date
+            FROM single_predictions sp
+            WHERE sp.match_date < ? AND sp.match_date >= ?
+              AND NOT EXISTS (
+                SELECT 1 FROM match_outcomes mo
+                WHERE mo.league = sp.league
+                  AND mo.match_date = sp.match_date
+                  AND mo.home_team = sp.home_team
+                  AND mo.away_team = sp.away_team
+              )
+            ORDER BY sp.match_date, sp.league
+            """,
+            (before.isoformat(), floor.isoformat()),
+        ).fetchall()
+    finally:
+        con.close()
+    return [(r[0], dt.date.fromisoformat(r[1])) for r in rows]
+
+
 def _parse_date(s: str) -> dt.date:
     return dt.date.fromisoformat(s)
 
@@ -263,6 +305,11 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true",
         help="Don't write to DB; just report what would be upserted/settled",
     )
+    p.add_argument(
+        "--no-orphan-scan", action="store_true",
+        help="体检 — skip the rescue pass for pending bets OLDER than the "
+             "window (auto mode only; exact (league,date) pairs, ≤90d back).",
+    )
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
 
@@ -272,15 +319,25 @@ def main(argv: list[str] | None = None) -> int:
     end = args.end_date or dt.date.today()
     start = end - dt.timedelta(days=args.days)
 
+    orphan_pairs: list[tuple[str, dt.date]] = []
     if args.leagues.strip().lower() == "auto":
         leagues = pending_leagues(args.db, start, end)
-        if not leagues:
+        if not args.no_orphan_scan:
+            orphan_pairs = pending_match_pairs(args.db, before=start)
+            if orphan_pairs:
+                log.info(
+                    "orphan scan: %d pending (league, date) pairs older than "
+                    "the window → %s", len(orphan_pairs),
+                    [(lg, d.isoformat()) for lg, d in orphan_pairs],
+                )
+        if not leagues and not orphan_pairs:
             log.info(
-                "auto: no leagues with unresolved recorded fixtures in %s → %s; "
-                "nothing to settle (0 API calls)", start, end,
+                "auto: no leagues with unresolved recorded fixtures in %s → %s "
+                "and no orphans; nothing to settle (0 API calls)", start, end,
             )
             return 0
-        log.info("auto: leagues with pending recorded fixtures → %s", leagues)
+        if leagues:
+            log.info("auto: leagues with pending recorded fixtures → %s", leagues)
     else:
         leagues = [s.strip() for s in args.leagues.split(",") if s.strip()]
         if not leagues:
@@ -296,13 +353,31 @@ def main(argv: list[str] | None = None) -> int:
         # they're seeding a brand-new DB (typo in --db path?)
         log.warning("observation DB does not exist; will create: %s", db_path)
 
-    rows, n_calls, per_league = gather_finished_outcomes(
-        leagues,
-        start,
-        end,
-        cache_dir=args.cache_dir,
-        refresh=args.refresh_fixtures,
-    )
+    if leagues:
+        rows, n_calls, per_league = gather_finished_outcomes(
+            leagues,
+            start,
+            end,
+            cache_dir=args.cache_dir,
+            refresh=args.refresh_fixtures,
+        )
+    else:  # orphan-only run (auto mode, nothing pending inside the window)
+        rows, n_calls, per_league = [], 0, {}
+    # 体检 — orphan rescue: exact (league, date) fetches for pending bets the
+    # window aged out of. Each pair failing (unknown league code, API error)
+    # must not poison the rest — log and continue.
+    for lg, d in orphan_pairs:
+        try:
+            r2, c2, p2 = gather_finished_outcomes(
+                [lg], d, d, cache_dir=args.cache_dir, refresh=args.refresh_fixtures,
+            )
+        except Exception:  # noqa: BLE001
+            log.warning("orphan scan failed for (%s, %s); skipping", lg, d)
+            continue
+        rows.extend(r2)
+        n_calls += c2
+        for k, v in p2.items():
+            per_league[k] = per_league.get(k, 0) + v
     log.info("Per-league finished-fixture counts: %s", per_league)
     log.info("Total: %d outcomes, %d API calls", len(rows), n_calls)
 

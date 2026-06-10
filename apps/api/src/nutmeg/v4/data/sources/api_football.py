@@ -167,6 +167,11 @@ _DOMESTIC_LEAGUE_IDS: dict[str, int] = {
     "SCO_PREMIERSHIP": 179,     # Scotland (Aug–May, European)
     "TUR_SUPER_LIG": 203,       # Turkey   (Aug–May, European)
     "SUI_SUPER_LEAGUE": 207,    # Switzerland (Jul–May, European)
+    # 体检(2026-06-10)— 国际友谊赛. The user records friendly bets via the
+    # manual reverse calculator (e.g. Croatia vs Slovenia 6/7); without this
+    # code the settle cron could NEVER fetch their results → permanent 未结算
+    # orphans. id verified against the cached envelope (league id=10).
+    "FRIENDLIES": 10,           # International friendlies (calendar-year)
 }
 
 # Cup + national-team competition IDs (V6 W11). Merged into the public
@@ -209,6 +214,9 @@ CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({
     # World Cup. The WC-specific endpoints already use on_date.year directly;
     # this aligns the generic fixture fetch with them.
     "WC", "EURO", "COPA_AMERICA",
+    # 体检(2026-06-10)— friendlies are scheduled year-round; API-Football
+    # tags them with the calendar year (cached envelope: season=2026).
+    "FRIENDLIES",
 })
 
 

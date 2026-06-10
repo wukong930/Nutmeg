@@ -982,8 +982,18 @@
           </div>
         </div>
         <div>
-          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_league_lbl">联赛代码(记一笔自动结算需要,如 JPN_J1)</label>
-          <input id="mrev-league" type="text" value="JPN_J1" class="w-40 px-2 py-1 border rounded text-sm" aria-label="league code">
+          <label class="text-xs text-secondary block mb-1" data-i18n="mrev_league_lbl">联赛(决定自动结算去哪拉赛果 — 选错会一直显示未结算)</label>
+          <select id="mrev-league" class="w-48 px-2 py-1 border rounded text-sm" aria-label="league"
+                  onchange="localStorage.setItem('mrev_league', this.value)">
+            <option value="FRIENDLIES">国际友谊赛</option>
+            <option value="WC">世界杯</option>
+            <option value="EURO">欧洲杯</option>
+            <option value="JPN_J1">日职 J1</option>
+            <option value="JPN_J2">日乙 J2</option>
+            <option value="UCL">欧冠</option>
+            <option value="UEL">欧联</option>
+            <option value="MANUAL">其他(不自动结算)</option>
+          </select>
         </div>
         <div>
           <label class="text-xs text-secondary block mb-1" data-i18n="mrev_pin1x2">Pinnacle 1X2:主 / 平 / 客</label>
@@ -2059,7 +2069,9 @@ const I18N = {
     mrev_err_hcap:    '让球数须是 -5..5 的整数',
     mrev_calculating: '计算中…',
     mrev_no_ou:       '未填大小球 → 仅用 1X2 拟合(让球略不准)',
-    mrev_league_lbl:  '联赛代码(记一笔自动结算需要,如 JPN_J1)',
+    mrev_league_lbl:  '联赛(决定自动结算去哪拉赛果 — 选错会一直显示未结算)',
+    mrev_settle_warn: '队名或联赛对不上自动结算(需 API 英文队名 + 正确联赛)。仍要记录吗?记录后可能永远显示「未结算」。',
+    mrev_record_aborted: '已取消记录(修正队名/联赛后再 📌)',
     mrev_record:      '📌 记一笔(写入追踪库)',
     mrev_record_ok:   '✅ 已记录',
     mrev_record_off:  '⚠️ 未写入:服务端记录开关未开',
@@ -2457,7 +2469,9 @@ const I18N = {
     mrev_err_hcap:    'Handicap must be an integer in -5..5',
     mrev_calculating: 'Calculating…',
     mrev_no_ou:       'No O/U entered → 1X2-only fit (handicap less precise)',
-    mrev_league_lbl:  'League code (needed for auto-settle on record, e.g. JPN_J1)',
+    mrev_league_lbl:  'League (decides where auto-settle fetches the result — wrong pick = stuck pending)',
+    mrev_settle_warn: 'Team name or league will NOT match auto-settle (needs API English names + the right league). Record anyway? It may stay "pending" forever.',
+    mrev_record_aborted: 'Record cancelled (fix team names / league, then 📌)',
     mrev_record:      '📌 Record this bet (to tracker)',
     mrev_record_ok:   '✅ Recorded',
     mrev_record_off:  '⚠️ Not written: server recording gate is off',
@@ -2724,6 +2738,28 @@ function zhTeam(name) {
   if (folded && folded !== name && TEAM_ZH_DICT[folded]) return TEAM_ZH_DICT[folded];
   return name;
 }
+// 体检(2026-06-10)— settlement joins on API-Football ENGLISH names. The manual
+// calculator lets the user type 中文 ("克罗地亚"), which can NEVER match a fetched
+// result → permanent 未结算 orphan (the Croatia/Slovenia 6/7 case). At RECORD
+// time map zh → en by reverse lookup over the SAME dict zhTeam() renders from.
+// known=false ⇒ auto-settle will likely never match (caller warns the user).
+function _enTeamForSettle(name) {
+  if (!name) return { name, known: false };
+  if (TEAM_ZH_DICT[name] !== undefined) return { name, known: true };  // already the EN key
+  for (const en in TEAM_ZH_DICT) {
+    if (TEAM_ZH_DICT[en] === name) return { name: en, known: true };
+  }
+  const folded = _zhFold(name);
+  if (folded && TEAM_ZH_DICT[folded] !== undefined) return { name: folded, known: true };
+  return { name, known: false };
+}
+// Restore the manual calculator's last-used league (the old free-text default
+// of JPN_J1 is exactly how a friendly got recorded as a J1 match).
+(function () {
+  const el = document.getElementById('mrev-league');
+  const saved = localStorage.getItem('mrev_league');
+  if (el && saved && [...el.options].some((o) => o.value === saved)) el.value = saved;
+})();
 function _zhFold(name) {
   let s = String(name).normalize('NFD').replace(/[̀-ͯ]/g, '');
   const AFFIX = /^(?:AD|CD|SD|UD|CA|SC|AC|RC|RCD|CF|FC|AFC|CP|Club)\s+|\s+(?:CF|FC|AFC|CP|SAD|SD)$/i;
@@ -5801,14 +5837,28 @@ function _mrevBuildBody(record) {
   // 不让球 1X2 的竞彩 SP — read here (nv is local) so the render doesn't call
   // an out-of-scope nv(): that ReferenceError used to hang the calc on "计算中".
   const j1 = nv('mrev-j1'), jx = nv('mrev-jx'), j2 = nv('mrev-j2');
+  // 体检 — normalise the hand-typed identity at RECORD time: settle joins on
+  // (league, date, EN home, EN away). zh names map → API English via the
+  // zhTeam dict; unknown name or league=MANUAL ⇒ confirm(), so an
+  // un-settleable bet is a conscious choice, not a silent orphan.
+  let homeT = gv('mrev-home') || '主队', awayT = gv('mrev-away') || '客队';
+  const leagueSel = gv('mrev-league') || 'MANUAL';
+  if (record) {
+    const h = _enTeamForSettle(homeT), a = _enTeamForSettle(awayT);
+    homeT = h.name; awayT = a.name;
+    if ((!h.known || !a.known || leagueSel === 'MANUAL')
+        && !window.confirm(t('mrev_settle_warn'))) {
+      return { ok: false, msg: t('mrev_record_aborted') };
+    }
+  }
   return {
     ok: true, p1, px, p2, hcap, ouline, over, under, jh, jd, ja, j1, jx, j2,
     body: {
       // 记一笔 needs a real league so auto-settle can fetch the result; a bare
       // compute call stays 'MANUAL' (it's never recorded anyway).
-      league: record ? (gv('mrev-league') || 'MANUAL') : 'MANUAL',
+      league: record ? leagueSel : 'MANUAL',
       date: new Date().toISOString().slice(0, 10),
-      home_team: gv('mrev-home') || '主队', away_team: gv('mrev-away') || '客队',
+      home_team: homeT, away_team: awayT,
       psc_home: p1, psc_draw: px, psc_away: p2,
       psc_over25: (over && under) ? over : null,
       psc_under25: (over && under) ? under : null,
