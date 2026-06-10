@@ -358,7 +358,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v38-fe-marginbands';
+const CACHE_VERSION = 'nutmeg-v39-fe-recfail';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -798,6 +798,8 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
                 "record_session failed (db=%s); recommendation returned anyway",
                 db_path,
             )
+            # 体检 A3 — surface the failure (≠ gate-off) so the UI can go red.
+            response.record_failed = True
     return response
 
 
@@ -1018,6 +1020,8 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
                 "record_single_session failed (db=%s); recommendation returned anyway",
                 db_path,
             )
+            # 体检 A3 — surface the failure (≠ gate-off) so the UI can go red.
+            response.record_failed = True
     return response
 
 
@@ -1049,7 +1053,15 @@ def record_bet(req: ManualBetRequest) -> ManualBetResponse:
         except Exception:  # noqa: BLE001
             import logging
             logging.getLogger(__name__).exception(
-                "record_manual_bet failed (db=%s); response returned anyway", db_path)
+                "record_manual_bet failed (db=%s)", db_path)
+            # 体检 A3 — recording IS this endpoint's whole job. A swallowed DB
+            # failure used to surface as recorded=False, which the 📌 button
+            # renders as "记录开关未开" — the user walks away believing the bet
+            # is tracked. Fail loudly; the button's catch shows it red.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="记录失败(数据库写入异常)— 本注未入库,请重试",
+            ) from None
     return ManualBetResponse(
         recorded=recorded, ev=ev, outcome=req.outcome,
         stake=req.stake, session_id=session_id)
@@ -1196,6 +1208,8 @@ def recommend_parlay(req: ParlayRecordRequest) -> ParlayRecordResponse:
                 "record_parlay_session failed (db=%s); recommendation returned anyway",
                 db_path,
             )
+            # 体检 A3 — surface the failure (≠ gate-off) so the UI can go red.
+            response.record_failed = True
     return response
 
 
@@ -1387,6 +1401,8 @@ def recommend_pool_endpoint(req: PoolRecommendRequest) -> PoolRecommendResponse:
                 "record_pool_session failed (db=%s); recommendation returned anyway",
                 db_path,
             )
+            # 体检 A3 — surface the failure (≠ gate-off) so the UI can go red.
+            response.record_failed = True
     return response
 
 
@@ -1615,6 +1631,8 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
                 refresh_fixtures=False, refresh_odds=refresh_odds,
                 require_odds=False,
                 min_kickoff_buffer_minutes=5,
+                snapshot_db=_observation_db_path(),
+                snapshot_source="sp_calc",
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -1864,6 +1882,11 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
                 refresh_fixtures=False, refresh_odds=refresh_odds,
                 require_odds=False,
                 min_kickoff_buffer_minutes=5,
+                # 体检 A1 — the 市场模式 board (incl. 🔄 refresh) feeds the
+                # odds_snapshots line history; near-KO refreshes are exactly
+                # the closing-line evidence CLV needs.
+                snapshot_db=_observation_db_path(),
+                snapshot_source="cup_market",
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -1963,6 +1986,7 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
 
     best_stake = None
     recorded = False
+    record_failed = False
     session_id = None
     # AUDIT FIX (R1): a leg is a recommendation only when it is genuinely +EV.
     # Under 竞彩's ~31.5% vig the market default is that ALL THREE outcomes are
@@ -2003,6 +2027,8 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
                 logging.getLogger(__name__).exception(
                     "record_market_handicap_session failed (db=%s)", db_path,
                 )
+                # 体检 A3 — surface the failure (≠ gate-off); UI goes red.
+                record_failed = True
     elif best is not None:
         # Least-negative leg is still surfaced for context (best_outcome /
         # best_ev) but it is NOT a bet — no +EV → 空仓, stake 0.
@@ -2028,8 +2054,8 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
         ev_per_unit=[ev["H"], ev["D"], ev["A"]],
         best_outcome=best,
         best_ev=(ev[best] if best is not None else None),
-        best_stake=best_stake, recorded=recorded, session_id=session_id,
-        margin_bands=margin_bands,
+        best_stake=best_stake, recorded=recorded, record_failed=record_failed,
+        session_id=session_id, margin_bands=margin_bands,
     )
 
 
@@ -2152,6 +2178,8 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             # near-kickoff Pinnacle (fixtures stay cached; only odds drift).
             refresh_odds=req.refresh_odds,
             min_kickoff_buffer_minutes=5,
+            snapshot_db=_observation_db_path(),
+            snapshot_source="today_rec",
         )
     except Exception as exc:  # noqa: BLE001
         # API-Football errors (rate limit, network, missing key) → return

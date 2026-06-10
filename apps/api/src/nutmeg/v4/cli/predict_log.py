@@ -77,6 +77,9 @@ def main(argv: list[str] | None = None) -> int:
             leagues, on_date, cache_dir=cache, bookmaker_id=PINNACLE_BOOKMAKER_ID,
             refresh_fixtures=False, refresh_odds=False,
             require_odds=False, min_kickoff_buffer_minutes=5,
+            # 体检 A1 — the 3×/day cron doubles as the line-history sampler.
+            snapshot_db=(None if args.dry_run else args.db),
+            snapshot_source="predict_log",
         )
 
     def _emit(prediction: dict, tag: str) -> None:

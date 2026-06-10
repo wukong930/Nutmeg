@@ -283,6 +283,8 @@ class RecommendResponse(BaseModel):
     recommendations: list[RecommendationResponse]
     # V11 P1-FE#5 — top-level version hash for parlay output.
     version_hash: str | None = None
+    # 体检 A3 — gate was ON but the DB write THREW (≠ gate-off). UI shows red.
+    record_failed: bool = False
 
 
 # ---------- /v4/recommend/parlay (V12 W5 — hand-picked 串关) ----------
@@ -351,6 +353,8 @@ class ParlayRecordResponse(BaseModel):
     stake: float                 # ¥2-quantized, ticket-capped
     passes_gate: bool            # meets JINGCAI thresholds (hit% + EV)
     recorded: bool
+    # 体检 A3 — gate was ON but the DB write THREW (≠ gate-off). UI shows red.
+    record_failed: bool = False
     # Per-leg full predictions (match identity + 1X2 P + handicap_home for the
     # picked line). Recorded into single_predictions so V4 settlement can
     # bridge each leg's match_id → match_outcome (it keys off this table).
@@ -524,6 +528,8 @@ class SingleRecommendResponse(BaseModel):
     version_hash: str | None = Field(None, description=
         "12-char SHA1 prefix covering this response's picks. Frontend compares "
         "to its last-seen hash to detect when recs need a refresh.")
+    # 体检 A3 — gate was ON but the DB write THREW (≠ gate-off). UI shows red.
+    record_failed: bool = False
 
 
 # ---------- /recommend/market-handicap (V12 W8 — 市场模式让球追踪) ----------
@@ -578,6 +584,8 @@ class MarketHandicapResponse(BaseModel):
     best_stake: float | None = None
     recorded: bool = False
     session_id: int | None = None
+    # 体检 A3 — gate was ON but the DB write THREW (≠ gate-off). UI shows red.
+    record_failed: bool = False
     # V14 — 净胜球分组 for the reverse-calc card (same grid, READ tool not signal)
     margin_bands: list[MarginBand] = Field(default_factory=list)
 
@@ -681,6 +689,8 @@ class PoolRecommendResponse(BaseModel):
     tickets: list[PoolTicketResponse]  # all enumerated, sorted by EV desc
     # V11 P1-FE#5 — top-level pool version hash.
     version_hash: str | None = None
+    # 体检 A3 — gate was ON but the DB write THREW (≠ gate-off). UI shows red.
+    record_failed: bool = False
 
 
 # ---------- /today-recommendations (V10 W1 Track A) ----------

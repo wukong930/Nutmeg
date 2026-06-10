@@ -1929,6 +1929,7 @@ const I18N = {
     mb_push:          '让平',
     mb_lose:          '让负',
     mb_hint:          '读法/选号辅助:从一簇相干比分里选,不是 +EV 信号(让球进拟合实测加 0 信息)。要算 EV 仍需竞彩比分 SP。',
+    rec_record_failed: '⚠️ 记录失败 — 本注未入库,请重试',
     today_no_fixtures: '今日联赛无可下注场次。明天再来。',
     today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
     health_offline:   'API 离线',
@@ -2326,6 +2327,7 @@ const I18N = {
     mb_push:          'Push',
     mb_lose:          'No cover',
     mb_hint:          'Reading / selection aid — pick from a coherent score cluster, NOT a +EV signal (handicap-into-fit measured ~0 info). EV still needs the 竞彩 score SP.',
+    rec_record_failed: '⚠️ record FAILED — bet NOT saved, retry',
     today_no_fixtures: 'No fixtures from your leagues today. Check back tomorrow.',
     today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
     health_offline:   'API offline',
@@ -3603,7 +3605,7 @@ async function _todayRecRecord(i) {
   const prev = btn.textContent;
   btn.disabled = true; btn.textContent = '…';
   try {
-    let recorded = false, ev = null;
+    let recorded = false, recordFailed = false, ev = null;
     if (tk.market_type === 'handicap_1x2') {
       const body = {
         league: tk.league, date: tk.date, home_team: tk.home_team, away_team: tk.away_team,
@@ -3618,7 +3620,7 @@ async function _todayRecRecord(i) {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const b = await res.json(); recorded = b.recorded; ev = b.best_ev;
+      const b = await res.json(); recorded = b.recorded; recordFailed = !!b.record_failed; ev = b.best_ev;
     } else {
       const fx = {
         date: tk.date, league: tk.league, home_team: tk.home_team, away_team: tk.away_team,
@@ -3633,6 +3635,7 @@ async function _todayRecRecord(i) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const b = await res.json();
       recorded = !!(b.tickets && b.tickets.length > 0);
+      recordFailed = !!b.record_failed;
       ev = recorded ? b.tickets[0].ev_per_unit : null;
     }
     if (recorded) {
@@ -3640,6 +3643,11 @@ async function _todayRecRecord(i) {
       verdict.textContent = `✓ ${t('today_rec_done')}${evs}`;
       verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
       btn.textContent = t('spcalc_recorded_btn'); btn.style.cssText = 'background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:4px 11px;font-size:12px';
+    } else if (recordFailed) {
+      // 体检 A3 — DB write threw server-side: NOT the same as gate-off. Red.
+      verdict.textContent = t('rec_record_failed');
+      verdict.style.color = '#e11d48'; verdict.style.fontWeight = '600';
+      btn.disabled = false; btn.textContent = prev; btn.style.cssText = _TODAY_REC_BTN_ON;
     } else {
       verdict.textContent = t('today_rec_gateoff'); verdict.style.color = '#b45309';
       btn.disabled = false; btn.textContent = prev; btn.style.cssText = _TODAY_REC_BTN_ON;
@@ -4931,6 +4939,10 @@ async function _cupHcRecord(idx) {
       verdict.textContent = `✓ ${t('cupmkt_hc_recorded')} · ${_hcOutcomeLabel(b.best_outcome)} EV ${ev} · ${fmtMoney(b.best_stake)}`;
       verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
       btn.textContent = t('spcalc_recorded_btn'); btn.style.cssText = 'background:#f3f4f6;color:#6b7280';
+    } else if (b.record_failed) {
+      verdict.textContent = t('rec_record_failed');
+      verdict.style.color = '#e11d48'; verdict.style.fontWeight = '600';
+      btn.disabled = false; btn.textContent = prev;
     } else {
       verdict.textContent = t('cupmkt_hc_gate_off'); verdict.style.color = '#b45309';
       btn.disabled = false; btn.textContent = prev;
@@ -5136,6 +5148,11 @@ async function _mktRecRecord(i) {
       const evs = (ev != null) ? ` ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%` : '';
       verdict.textContent = `✓ ${t('today_rec_done')}${evs}`; verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
       btn.textContent = t('spcalc_recorded_btn'); btn.style.cssText = 'background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:4px 11px;font-size:12px';
+    } else if (b.record_failed) {
+      // 体检 A3 — DB write threw server-side: NOT the same as gate-off. Red.
+      verdict.textContent = t('rec_record_failed');
+      verdict.style.color = '#e11d48'; verdict.style.fontWeight = '600';
+      btn.disabled = false; btn.textContent = prev; btn.style.cssText = _TODAY_REC_BTN_ON;
     } else {
       verdict.textContent = t('today_rec_gateoff'); verdict.style.color = '#b45309';
       btn.disabled = false; btn.textContent = prev; btn.style.cssText = _TODAY_REC_BTN_ON;
@@ -5945,6 +5962,8 @@ async function manualReverseRecord() {
     const stake = (data.best_stake || 0).toFixed(0);
     const sid = data.session_id ? ` #${data.session_id}` : '';
     st.innerHTML = `<span class="text-green-600">${t('mrev_record_ok')}: ${lab} ¥${stake}${sid}</span>`;
+  } else if (data.record_failed) {
+    st.innerHTML = `<span class="text-red-600">${t('rec_record_failed')}</span>`;
   } else {
     st.innerHTML = `<span class="text-amber-600">${t('mrev_record_off')}</span>`;
   }

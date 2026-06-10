@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # post-v9 P1#16 — one-shot install of the local Nutmeg data pipeline (macOS).
 #
-# Installs 7 launchd jobs into ~/Library/LaunchAgents:
+# Installs these launchd jobs into ~/Library/LaunchAgents:
 #   1. com.nutmeg.api_server                  always-on daemon — FastAPI dashboard server on 127.0.0.1:8080
 #   2. com.nutmeg.morning_odds                09:00 daily — V12 W0 Plan A: fetch Asian (J1) odds
 #   3. com.nutmeg.morning_recommend           10:00 daily — V12 W0 Plan A: morning wave recommendations
@@ -14,6 +14,7 @@
 #  10. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
 #  11. com.nutmeg.daily_predict               15:30 daily — V12 W8j model-board prediction log + settle + accuracy report
 #  12. com.nutmeg.weekly_elo_refresh          Saturday 04:30 — V14 national-team Elo snapshot refresh (eloratings.net → WC model prior)
+#  13. com.nutmeg.daily_backup                03:30 daily — 体检 A2: sqlite online backup (keep 7) + WAL checkpoint
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
 # (no plaintext key in plists). Logs go to logs/launchd/.
@@ -375,6 +376,13 @@ install_job "com.nutmeg.daily_settle" \
 # Output: docs/weekly/p1_19_gate_$(date +%G-W%V).md
 # Exit code: 0 within tolerance; 2 over tolerance (logged but not
 # alarmed — operator should `tail` the err log on Monday morning).
+# Job 3b: 体检 A2 — nightly DB backup + WAL checkpoint (03:30, after settle).
+# No .env needed (pure sqlite3). NO `|| true`: a failed backup must show as a
+# nonzero exit in the err log, not vanish.
+install_job "com.nutmeg.daily_backup" \
+  3 30 "" \
+  "$REPO_ROOT/scripts/backup_observation_db.sh"
+
 BACKTEST_DB="$REPO_ROOT/data/v4_observation_backtest.db"
 GATE_OUT_DIR="$REPO_ROOT/docs/weekly"
 install_job "com.nutmeg.weekly_gate" \

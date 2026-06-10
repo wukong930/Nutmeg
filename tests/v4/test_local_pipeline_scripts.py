@@ -121,6 +121,41 @@ class TestSetupScriptContent:
             "rotation must be `;`-joined (run regardless of settle/report exit)"
 
 
+class TestBackupScript:
+    """体检 A2 — backup_observation_db.sh: online backup + rotation + checkpoint."""
+
+    @pytest.fixture
+    def bk(self) -> Path:
+        return SCRIPTS_DIR / "backup_observation_db.sh"
+
+    def test_exists_executable_strict(self, bk):
+        assert bk.exists()
+        assert bk.stat().st_mode & stat.S_IXUSR
+        body = bk.read_text()
+        assert body.startswith("#!/usr/bin/env bash")
+        assert "set -euo pipefail" in body
+
+    def test_online_backup_and_checkpoint(self, bk):
+        body = bk.read_text()
+        assert '".backup' in body, "must use sqlite3 .backup (online-safe), not cp"
+        assert "wal_checkpoint(TRUNCATE)" in body
+        assert "KEEP=7" in body, "rotation keeps 7 dailies"
+
+    def test_covers_both_dbs(self, bk):
+        body = bk.read_text()
+        assert "data/v4_observation.db" in body
+        assert "data/score_ev_forward.db" in body
+
+    def test_registered_in_setup_without_or_true(self):
+        setup = (SCRIPTS_DIR / "setup_local_pipeline.sh").read_text()
+        assert "com.nutmeg.daily_backup" in setup
+        idx = setup.index('install_job "com.nutmeg.daily_backup"')
+        block = setup[idx:idx + 220]
+        assert "backup_observation_db.sh" in block
+        # 体检 P0-2: backup failures must NOT be masked
+        assert "|| true" not in block
+
+
 class TestHealthCheckScriptContent:
     @pytest.fixture
     def hc_body(self) -> str:

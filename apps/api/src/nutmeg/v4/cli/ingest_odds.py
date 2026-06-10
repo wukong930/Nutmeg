@@ -95,10 +95,17 @@ def _gather_rows(
     require_odds: bool = True,
     min_kickoff_buffer_minutes: int = 0,
     now_utc: Optional[dt.datetime] = None,
+    snapshot_db: str | Path | None = None,
+    snapshot_source: str = "gather",
 ) -> tuple[list[dict], int, int]:
     """Walk leagues × today's fixtures × /odds and produce CSV-ready rows.
 
     Returns (rows, n_api_calls, n_skipped_no_odds).
+
+    体检 A1 — pass ``snapshot_db`` to append each quoted row's line state to the
+    ``odds_snapshots`` history (CLV foundation). This is THE choke point every
+    odds flow walks (ingest crons, predict-log, sp-calc, 市场模式 + 🔄), so one
+    hook covers them all; the recorder dedups unchanged states and never raises.
 
     ``require_odds`` (default True) drops fixtures without a sharp 1X2 quote —
     correct for the cron / 国际盘口 board, which can't score odds-less fixtures.
@@ -123,6 +130,7 @@ def _gather_rows(
     rows: list[dict] = []
     api_calls = 0
     n_skipped = 0
+    n_snapshots = 0
 
     if now_utc is None:
         now_utc = dt.datetime.now(dt.UTC)
@@ -211,7 +219,16 @@ def _gather_rows(
             if envelope is not None:
                 row["sharp_flip"] = _sharp_consensus(_sharp_per_book(envelope)).pinnacle_flip
             rows.append(row)
+            if snapshot_db is not None:
+                from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
+                if record_row_snapshot(
+                    snapshot_db, row, fixture_id=fid, envelope=envelope,
+                    bookmaker_id=bookmaker_id, source=snapshot_source,
+                ):
+                    n_snapshots += 1
 
+    if snapshot_db is not None and n_snapshots:
+        log.info("line snapshots: +%d new state(s) → %s", n_snapshots, snapshot_db)
     return rows, api_calls, n_skipped
 
 
@@ -292,6 +309,20 @@ def main(argv: list[str] | None = None) -> int:
             "also dropped pre-emptively (saves /odds API calls)."
         ),
     )
+    p.add_argument(
+        "--snapshot-db",
+        default="data/v4_observation.db",
+        help=(
+            "体检 A1 — append new Pinnacle line states to odds_snapshots in this "
+            "observation DB (CLV line history). Default on so the existing "
+            "daily/morning crons accumulate history with no plist change."
+        ),
+    )
+    p.add_argument(
+        "--no-snapshot",
+        action="store_true",
+        help="Disable line-history snapshots for this run.",
+    )
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
 
@@ -311,6 +342,9 @@ def main(argv: list[str] | None = None) -> int:
         refresh_fixtures=args.refresh_fixtures,
         refresh_odds=args.refresh_odds,
         min_kickoff_buffer_minutes=args.min_kickoff_buffer_minutes,
+        snapshot_db=(None if (args.no_snapshot or not args.snapshot_db)
+                     else args.snapshot_db),
+        snapshot_source="ingest_odds",
     )
 
     log.info(
