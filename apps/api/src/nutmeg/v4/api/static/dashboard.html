@@ -4474,6 +4474,23 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
     // 体检 — recompute EV for EVERY card: the 竞彩 SP box may be filled by a
     // session-restored value (above) OR the server's jingcai_sp pre-fill (value=).
     _spcalcRecalc(idx);
+    // 让球 server pre-fill — only when no session-typed 让球 (that wins above).
+    if (!(saved && (saved.hcline || saved.hc)) && pr.jc_hc_line != null) {
+      const lsel = $(`#spcalc-hcline-${idx}`);
+      if (lsel) {
+        lsel.value = String(pr.jc_hc_line);
+        if (String(lsel.value) === String(pr.jc_hc_line)) {   // line is offered
+          ['H', 'D', 'A'].forEach(o => {
+            const v = { H: pr.jc_hc_home, D: pr.jc_hc_draw, A: pr.jc_hc_away }[o];
+            if (v != null) {
+              const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+              if (el) el.value = v;
+            }
+          });
+          _spcalcHcLine(idx);
+        }
+      }
+    }
   });
   // V12 W5 — re-check parlay legs + refresh the 串关篮子 after a re-render.
   _parlayRestore();
@@ -5453,6 +5470,23 @@ function renderCupMarket(preds, pending) {
     // 体检 — recompute EV for EVERY card: the 竞彩 SP box may be session-restored
     // OR pre-filled by the server's jingcai_sp value=.
     _cupRecalc(idx);
+    // 让球 server pre-fill — only when no session-typed 让球 (that wins above).
+    if (!(saved && (saved.hcline || saved.hc)) && pr.jc_hc_line != null) {
+      const lsel = $(`#cuphcline-${idx}`);
+      if (lsel) {
+        lsel.value = String(pr.jc_hc_line);
+        if (String(lsel.value) === String(pr.jc_hc_line)) {   // line is offered
+          ['H', 'D', 'A'].forEach(o => {
+            const v = { H: pr.jc_hc_home, D: pr.jc_hc_draw, A: pr.jc_hc_away }[o];
+            if (v != null) {
+              const el = document.querySelector(`.cuphcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+              if (el) el.value = v;
+            }
+          });
+          _cupHcLine(idx);
+        }
+      }
+    }
   });
 }
 

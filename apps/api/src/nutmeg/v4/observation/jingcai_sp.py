@@ -157,9 +157,10 @@ def fetch_jingcai_sp(db_path: str | Path, *, settled: bool | None = None) -> lis
 def fetch_sp_lookup(
     db_path: str | Path, *, market: str = "had"
 ) -> dict[tuple[str, str, str], tuple]:
-    """``{(match_date, home_team, away_team): (jc_home, jc_draw, jc_away, source)}``
-    for one market — lets the dashboard cards PRE-FILL their 竞彩 SP boxes from the
-    line on file (your market_mode hand-price, else the sporttery auto-harvest).
+    """``{(match_date, home_team, away_team): (jc_home, jc_draw, jc_away, source,
+    handicap_home)}`` for one market — lets the dashboard cards PRE-FILL their 竞彩
+    SP boxes from the line on file (your market_mode hand-price, else the sporttery
+    auto-harvest). ``handicap_home`` is the 让球 line (None for the 1X2 'had' market).
     Best-effort: returns ``{}`` on any failure so a card render never breaks."""
     out: dict[tuple[str, str, str], tuple] = {}
     try:
@@ -167,10 +168,10 @@ def fetch_sp_lookup(
             ensure_jingcai_sp_table(conn)
             rows = conn.execute(
                 "SELECT match_date, home_team, away_team, jc_home, jc_draw, jc_away, "
-                "source FROM jingcai_sp WHERE market=?", (market,)
+                "source, handicap_home FROM jingcai_sp WHERE market=?", (market,)
             ).fetchall()
         for r in rows:
-            out[(r[0], r[1], r[2])] = (r[3], r[4], r[5], r[6])
+            out[(r[0], r[1], r[2])] = (r[3], r[4], r[5], r[6], r[7])
     except sqlite3.Error:
         logging.getLogger(__name__).warning("fetch_sp_lookup failed", exc_info=True)
     return out

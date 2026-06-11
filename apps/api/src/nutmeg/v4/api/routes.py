@@ -217,8 +217,8 @@ def _should_record_session(req_record_flag: bool) -> Optional[str]:
 
 
 def _attach_jingcai_sp(preds: list) -> None:
-    """Pre-fill each prediction's 竞彩 SP (1X2) from jingcai_sp so the 市场模式 /
-    近期赛事 cards SHOW the line on file (your hand-price, else the sporttery
+    """Pre-fill each prediction's 竞彩 SP (1X2 + 让球) from jingcai_sp so the 市场模式
+    / 近期赛事 cards SHOW the line on file (your hand-price, else the sporttery
     auto-harvest) + compute EV without re-typing. Best-effort + env-gated: no
     observation DB → silent no-op; a lookup failure never breaks a card render."""
     db = _observation_db_path()
@@ -226,16 +226,21 @@ def _attach_jingcai_sp(preds: list) -> None:
         return
     try:
         from nutmeg.v4.observation.jingcai_sp import fetch_sp_lookup
-        lookup = fetch_sp_lookup(db, market="had")
+        had = fetch_sp_lookup(db, market="had")
+        hhad = fetch_sp_lookup(db, market="hhad")
     except Exception:  # noqa: BLE001
         return
-    if not lookup:
+    if not had and not hhad:
         return
     for p in preds:
         d = p.date.isoformat() if hasattr(p.date, "isoformat") else str(p.date)
-        row = lookup.get((d, p.home_team, p.away_team))
-        if row:
-            p.jc_home, p.jc_draw, p.jc_away, p.jc_source = row
+        key = (d, p.home_team, p.away_team)
+        r = had.get(key)
+        if r:
+            p.jc_home, p.jc_draw, p.jc_away, p.jc_source = r[0], r[1], r[2], r[3]
+        h = hhad.get(key)
+        if h:
+            p.jc_hc_home, p.jc_hc_draw, p.jc_hc_away, p.jc_hc_line = h[0], h[1], h[2], h[4]
 
 
 def get_artifact() -> Optional[V4Artifact]:
@@ -382,7 +387,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v45-fe-jcprefill';
+const CACHE_VERSION = 'nutmeg-v46-fe-jchcprefill';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',

@@ -53,7 +53,10 @@ _ZH_TO_EN: dict[str, str] = {}
 for _en, _zh in TEAM_NAME_ZH.items():
     _ZH_TO_EN.setdefault(_zh, _en)
 _ZH_OVERRIDES: dict[str, str] = {
-    # 竞彩-only Chinese names absent from TEAM_NAME_ZH (extend as e.g. 刚果(金) surface)
+    # 竞彩-only Chinese names absent from TEAM_NAME_ZH. value = the LIVE
+    # odds_snapshots/gather name. Both paren widths — the 竞彩 feed is inconsistent.
+    "刚果(金)": "Congo DR",
+    "刚果（金）": "Congo DR",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

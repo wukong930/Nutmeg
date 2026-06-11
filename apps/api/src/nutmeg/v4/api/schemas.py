@@ -162,6 +162,11 @@ class SinglePrediction(BaseModel):
     jc_draw: float | None = None
     jc_away: float | None = None
     jc_source: str | None = None
+    # 体检 — 竞彩 让球 (hhad) SP + its line, so the card's 让球 section pre-fills too.
+    jc_hc_home: float | None = None
+    jc_hc_draw: float | None = None
+    jc_hc_away: float | None = None
+    jc_hc_line: int | None = None
     # V14 — when API-Football last refreshed this Pinnacle snapshot (ISO). The
     # 市场模式 card shows the age so a stale de-vig prior isn't trusted near
     # kickoff (API-Football mirrors Pinnacle only every few hours).
