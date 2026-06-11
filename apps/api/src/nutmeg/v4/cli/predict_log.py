@@ -63,7 +63,11 @@ def main(argv: list[str] | None = None) -> int:
         _row_to_market_prediction,
         get_artifact,
     )
-    from nutmeg.v4.cli.ingest_odds import PINNACLE_BOOKMAKER_ID, _gather_rows
+    from nutmeg.v4.cli.ingest_odds import (
+        PINNACLE_BOOKMAKER_ID,
+        _gather_rows,
+        _odds_api_available,
+    )
 
     art = get_artifact()
     if not args.dry_run:
@@ -80,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
             # 体检 A1 — the 3×/day cron doubles as the line-history sampler.
             snapshot_db=(None if args.dry_run else args.db),
             snapshot_source="predict_log",
+            # 体检(2026-06-10)— fresher Pinnacle line via Odds API (TTL-cached).
+            use_odds_api=_odds_api_available(),
         )
 
     def _emit(prediction: dict, tag: str) -> None:

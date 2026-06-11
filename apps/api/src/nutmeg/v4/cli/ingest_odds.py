@@ -84,6 +84,54 @@ def _parse_date(s: str) -> dt.date:
     return dt.date.fromisoformat(s)
 
 
+def _odds_api_available() -> bool:
+    """True when an Odds API key is configured — the fresher-line overlay is
+    opt-in on it; absent key → graceful fallback to API-Football."""
+    try:
+        from nutmeg.config import get_settings
+        return bool(get_settings().odds_api_key)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _iso_newer(a: str | None, b: str | None) -> bool:
+    """True if ISO timestamp ``a`` is strictly newer than ``b`` (None-safe)."""
+    if not a:
+        return False
+    if not b:
+        return True
+    try:
+        return (dt.datetime.fromisoformat(a.replace("Z", "+00:00"))
+                > dt.datetime.fromisoformat(b.replace("Z", "+00:00")))
+    except (ValueError, TypeError):
+        return False
+
+
+def _apply_odds_api_overlay(row: dict, oa_lookup: dict) -> bool:
+    """Patch a row's Pinnacle 1X2 (+ O/U) from the fresher Odds API line when it
+    covers this fixture. API-Football keeps identity/results; we swap only the
+    PRICE — and only when Odds API is fresher, or AF had no line (待开盘 fill).
+    Sets ``row['odds_source']='odds_api'`` on a patch. Returns True if patched."""
+    from nutmeg.v4.data.sources.odds_api import _norm_team
+    rec = oa_lookup.get((_norm_team(row.get("home_team")),
+                         _norm_team(row.get("away_team")), row.get("date")))
+    if not rec or rec.get("psc_home") is None:
+        return False
+    af_missing = row.get("psc_home") is None
+    if not (af_missing or _iso_newer(rec.get("last_update"), row.get("odds_update"))):
+        return False  # API-Football line is as-fresh-or-fresher → keep it
+    row["psc_home"] = rec["psc_home"]
+    row["psc_draw"] = rec["psc_draw"]
+    row["psc_away"] = rec["psc_away"]
+    if rec.get("ou_line") is not None:
+        row["psc_over25"] = rec["psc_over"]
+        row["psc_under25"] = rec["psc_under"]
+        row["ou_line"] = rec["ou_line"]
+    row["odds_update"] = rec.get("last_update")
+    row["odds_source"] = "odds_api"
+    return True
+
+
 def _gather_rows(
     leagues: list[str],
     on_date: dt.date,
@@ -97,6 +145,8 @@ def _gather_rows(
     now_utc: Optional[dt.datetime] = None,
     snapshot_db: str | Path | None = None,
     snapshot_source: str = "gather",
+    use_odds_api: bool = False,
+    odds_api_refresh: bool = False,
 ) -> tuple[list[dict], int, int]:
     """Walk leagues × today's fixtures × /odds and produce CSV-ready rows.
 
@@ -131,6 +181,7 @@ def _gather_rows(
     api_calls = 0
     n_skipped = 0
     n_snapshots = 0
+    n_overlay = 0
 
     if now_utc is None:
         now_utc = dt.datetime.now(dt.UTC)
@@ -152,6 +203,22 @@ def _gather_rows(
             continue
 
         log.info("%s: %d fixtures on %s", league, len(fixtures), on_date)
+
+        # 体检(2026-06-10)— fresher Pinnacle line overlay. ONE Odds API call per
+        # league (h2h+totals), matched to AF fixtures by team identity; the AF
+        # envelope still owns identity / results / sharp-flip books. Any failure
+        # → empty lookup → silent fallback to API-Football.
+        oa_lookup: dict = {}
+        if use_odds_api:
+            from nutmeg.v4.data.sources import odds_api
+            sport_key = odds_api.SPORT_KEYS.get(league)
+            if sport_key:
+                try:
+                    oa_lookup = odds_api.fetch_pinnacle_lookup(
+                        sport_key, refresh=odds_api_refresh, ttl_seconds=1800,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("odds_api overlay failed for %s: %s", league, exc)
 
         for fixture in fixtures:
             fid = fixture.get("fixture", {}).get("id")
@@ -195,7 +262,7 @@ def _gather_rows(
                 api_calls += 1
             except api_football.ApiFootballError as exc:
                 log.warning("fixture %s odds error: %s", fid, exc)
-                if require_odds:
+                if require_odds and not use_odds_api:
                     n_skipped += 1
                     continue
                 # V12 W6 — 近期赛事 still lists the fixture (as 待开盘); the
@@ -207,7 +274,9 @@ def _gather_rows(
             row = fixture_envelope_to_csv_row(
                 fixture, envelope, league,
                 sharp_bookmaker_id=bookmaker_id,
-                require_1x2_odds=require_odds,
+                # overlay can FILL psc, so don't drop odds-less rows yet — the
+                # require_odds gate is re-applied AFTER the overlay below.
+                require_1x2_odds=(require_odds and not use_odds_api),
             )
             if row is None:
                 n_skipped += 1
@@ -218,6 +287,13 @@ def _gather_rows(
             # downgrades the EV reliability tag to ⚠️ sharp 分歧).
             if envelope is not None:
                 row["sharp_flip"] = _sharp_consensus(_sharp_per_book(envelope)).pinnacle_flip
+            # 体检 — overlay the fresher Pinnacle line where Odds API has it.
+            if oa_lookup and _apply_odds_api_overlay(row, oa_lookup):
+                n_overlay += 1
+            # require_odds re-applied POST-overlay (overlay may have filled psc).
+            if require_odds and row.get("psc_home") is None:
+                n_skipped += 1
+                continue
             rows.append(row)
             if snapshot_db is not None:
                 from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
@@ -229,6 +305,9 @@ def _gather_rows(
 
     if snapshot_db is not None and n_snapshots:
         log.info("line snapshots: +%d new state(s) → %s", n_snapshots, snapshot_db)
+    if use_odds_api and n_overlay:
+        log.info("odds_api overlay: %d/%d rows took the fresher Pinnacle line",
+                 n_overlay, len(rows))
     return rows, api_calls, n_skipped
 
 
@@ -323,6 +402,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Disable line-history snapshots for this run.",
     )
+    p.add_argument(
+        "--no-odds-api",
+        action="store_true",
+        help=(
+            "体检 — disable the Odds API fresher-Pinnacle-line overlay (default "
+            "ON when NUTMEG_ODDS_API_KEY is set). The Odds API line is ~3h "
+            "fresher than API-Football's mirror; AF still owns identity/results."
+        ),
+    )
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
 
@@ -345,6 +433,8 @@ def main(argv: list[str] | None = None) -> int:
         snapshot_db=(None if (args.no_snapshot or not args.snapshot_db)
                      else args.snapshot_db),
         snapshot_source="ingest_odds",
+        use_odds_api=(_odds_api_available() and not args.no_odds_api),
+        odds_api_refresh=args.refresh_odds,
     )
 
     log.info(

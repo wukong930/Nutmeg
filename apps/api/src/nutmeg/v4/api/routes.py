@@ -1603,7 +1603,11 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
     import datetime as _dt
     from pathlib import Path as _Path
 
-    from nutmeg.v4.cli.ingest_odds import PINNACLE_BOOKMAKER_ID, _gather_rows
+    from nutmeg.v4.cli.ingest_odds import (
+        PINNACLE_BOOKMAKER_ID,
+        _gather_rows,
+        _odds_api_available,
+    )
 
     if not 1 <= days <= 7:
         raise HTTPException(
@@ -1633,6 +1637,8 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
                 min_kickoff_buffer_minutes=5,
                 snapshot_db=_observation_db_path(),
                 snapshot_source="sp_calc",
+                use_odds_api=_odds_api_available(),
+                odds_api_refresh=refresh_odds,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -1862,7 +1868,11 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
     import datetime as _dt
     from pathlib import Path as _Path
 
-    from nutmeg.v4.cli.ingest_odds import PINNACLE_BOOKMAKER_ID, _gather_rows
+    from nutmeg.v4.cli.ingest_odds import (
+        PINNACLE_BOOKMAKER_ID,
+        _gather_rows,
+        _odds_api_available,
+    )
 
     if not 1 <= days <= 7:
         raise HTTPException(
@@ -1887,6 +1897,8 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
                 # the closing-line evidence CLV needs.
                 snapshot_db=_observation_db_path(),
                 snapshot_source="cup_market",
+                use_odds_api=_odds_api_available(),
+                odds_api_refresh=refresh_odds,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2133,6 +2145,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
     from nutmeg.v4.cli.ingest_odds import (
         PINNACLE_BOOKMAKER_ID,
         _gather_rows,
+        _odds_api_available,
     )
 
     # V11 P1-FE#4 — risk dial → Kelly fraction. The explicit
@@ -2180,6 +2193,8 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             min_kickoff_buffer_minutes=5,
             snapshot_db=_observation_db_path(),
             snapshot_source="today_rec",
+            use_odds_api=_odds_api_available(),
+            odds_api_refresh=req.refresh_odds,
         )
     except Exception as exc:  # noqa: BLE001
         # API-Football errors (rate limit, network, missing key) → return

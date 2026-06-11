@@ -65,6 +65,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -75,6 +77,11 @@ from nutmeg.config import get_settings
 
 
 log = logging.getLogger(__name__)
+# Security(体检 2026-06-10): httpx logs the FULL request URL at INFO, and our
+# Odds API key rides in the query string (?apiKey=…). A caller setting root
+# logging to INFO (e.g. the ingest cron) would otherwise write the key into log
+# files — silence httpx's request logging so the key never lands on disk.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 DEFAULT_CACHE_DIR = Path("data/external/odds_api")
 
@@ -93,6 +100,11 @@ SPORT_KEYS: dict[str, str] = {
     "ITA_SERIE_A":    "soccer_italy_serie_a",
     "GER_BUNDESLIGA": "soccer_germany_bundesliga",
     "FRA_LIGUE_1":    "soccer_france_ligue_one",
+    # 体检(2026-06-10)— in-season market-mode leagues confirmed live on The
+    # Odds API /sports; used by the _gather_rows fresher-line overlay.
+    "NOR_ELITESERIEN":   "soccer_norway_eliteserien",
+    "SWE_ALLSVENSKAN":   "soccer_sweden_allsvenskan",
+    "FIN_VEIKKAUSLIIGA": "soccer_finland_veikkausliiga",
     # Add more as needed: FA Cup, Copa del Rey etc.
 }
 
@@ -211,17 +223,25 @@ def _request(
     *,
     cache_dir: Path = DEFAULT_CACHE_DIR,
     refresh: bool = False,
+    ttl_seconds: float | None = None,
 ) -> Any:
     """Make one Odds API request; cache by (endpoint, params).
 
     Returns the JSON-decoded body as-is. Historical endpoints return
     a dict envelope; current odds return a list. Callers handle both.
+
+    ``ttl_seconds`` (live odds) — a cached file OLDER than this counts as a
+    miss, so passive page loads reuse a recent pull but never serve a day-old
+    line. ``refresh=True`` always refetches regardless of TTL.
     """
     settings = get_settings()
     cache_dir = Path(cache_dir)
     cf = _cache_path(endpoint, params, cache_dir)
     cf.parent.mkdir(parents=True, exist_ok=True)
-    if cf.exists() and not refresh:
+    fresh_enough = True
+    if ttl_seconds is not None and cf.exists():
+        fresh_enough = (time.time() - cf.stat().st_mtime) <= ttl_seconds
+    if cf.exists() and not refresh and fresh_enough:
         log.debug("cache hit %s", cf)
         return json.loads(cf.read_text())
 
@@ -259,6 +279,7 @@ def fetch_current_odds(
     markets: str = "h2h",
     odds_format: str = "decimal",
     refresh: bool = False,
+    ttl_seconds: float | None = None,
     cache_dir: Path = DEFAULT_CACHE_DIR,
 ) -> list[dict[str, Any]]:
     """Fetch all UPCOMING fixtures with odds for one sport_key.
@@ -269,10 +290,95 @@ def fetch_current_odds(
     """
     endpoint = f"sports/{sport_key}/odds"
     params = {"regions": regions, "markets": markets, "oddsFormat": odds_format}
-    body = _request(endpoint, params, cache_dir=cache_dir, refresh=refresh)
+    body = _request(endpoint, params, cache_dir=cache_dir, refresh=refresh,
+                    ttl_seconds=ttl_seconds)
     if not isinstance(body, list):
         raise OddsApiError(f"unexpected response shape: {type(body).__name__}")
     return body
+
+
+def _norm_team(name: str | None) -> str:
+    """Accent-fold + alnum-only identity key for cross-source team matching
+    ('Bosnia & Herzegovina' / 'Bosnia and Herzegovina' → 'bosniaandherzegovina')."""
+    s = unicodedata.normalize("NFKD", (name or "").replace("&", " and "))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return "".join(ch for ch in s.lower() if ch.isalnum())
+
+
+def _extract_totals(bookmaker: dict[str, Any]) -> tuple[float, float, float] | None:
+    """(line, over_price, under_price) from a bookmaker's totals market;
+    prefer the line closest to 2.5 when several are present."""
+    best: tuple[float, float, float] | None = None
+    for m in bookmaker.get("markets", []):
+        if m.get("key") != "totals":
+            continue
+        over = under = line = None
+        for o in m.get("outcomes", []):
+            nm, pt, pr = o.get("name"), o.get("point"), o.get("price")
+            if pr is None or pt is None:
+                continue
+            if nm == "Over":
+                over, line = float(pr), float(pt)
+            elif nm == "Under":
+                under = float(pr)
+        if (over is not None and under is not None and line is not None
+                and (best is None or abs(line - 2.5) < abs(best[0] - 2.5))):
+            best = (line, over, under)
+    return best
+
+
+def fetch_pinnacle_lookup(
+    sport_key: str,
+    *,
+    regions: str = "eu",
+    refresh: bool = False,
+    ttl_seconds: float | None = None,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """体检(2026-06-10)— fresh Pinnacle 1X2 + O/U for every UPCOMING fixture of
+    one sport_key, keyed by (norm_home, norm_away, commence_date) for matching
+    against API-Football.
+
+    A measured head-to-head showed The Odds API's Pinnacle line is ~3h fresher
+    than API-Football's mirror; this is the lookup the ``_gather_rows`` overlay
+    patches in. Pinnacle-STRICT: fixtures without a Pinnacle h2h are skipped (we
+    never silently substitute a softer book for the sharp prior). Each record::
+
+        {"home_team","away_team",            # Odds API spellings (debug)
+         "psc_home","psc_draw","psc_away",   # Pinnacle 1X2 (vig included)
+         "ou_line","psc_over","psc_under",   # Pinnacle O/U (None if unquoted)
+         "last_update"}                      # Pinnacle's own line timestamp
+    """
+    out: dict[tuple[str, str, str], dict[str, Any]] = {}
+    events = fetch_current_odds(
+        sport_key, regions=regions, markets="h2h,totals",
+        refresh=refresh, ttl_seconds=ttl_seconds, cache_dir=cache_dir,
+    )
+    for e in events:
+        home, away = e.get("home_team"), e.get("away_team")
+        date = (e.get("commence_time") or "")[:10]
+        if not home or not away or not date:
+            continue
+        pin = next((b for b in e.get("bookmakers", [])
+                    if (b.get("key") or "").lower() == "pinnacle"), None)
+        if not pin:
+            continue
+        h2h = _extract_h2h(pin)
+        teams = (h2h or {}).get("teams", {})
+        ph, pa = teams.get(home), teams.get(away)
+        if h2h is None or ph is None or pa is None:
+            continue  # name resolution failed → skip (caller keeps AF line)
+        rec: dict[str, Any] = {
+            "home_team": home, "away_team": away,
+            "psc_home": ph, "psc_draw": h2h["draw"], "psc_away": pa,
+            "ou_line": None, "psc_over": None, "psc_under": None,
+            "last_update": pin.get("last_update"),
+        }
+        tot = _extract_totals(pin)
+        if tot:
+            rec["ou_line"], rec["psc_over"], rec["psc_under"] = tot
+        out[(_norm_team(home), _norm_team(away), date)] = rec
+    return out
 
 
 # ----- Historical snapshot (expensive, 10 quota per call) -----------------
