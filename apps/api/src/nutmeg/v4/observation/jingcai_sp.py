@@ -79,6 +79,7 @@ def record_jingcai_sp(
     market: str = "had",
     handicap_home: int | None = None,
     source: str = "market_mode",
+    protect_manual: bool = False,
 ) -> bool:
     """Upsert ONE canonical 竞彩 SP observation for (match_date, home, away,
     market). A re-capture overwrites the line (latest = canonical) but preserves
@@ -94,6 +95,13 @@ def record_jingcai_sp(
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA busy_timeout = 3000")
             ensure_jingcai_sp_table(conn)
+            if protect_manual:
+                ex = conn.execute(
+                    "SELECT source FROM jingcai_sp WHERE match_date=? AND home_team=? "
+                    "AND away_team=? AND market=?",
+                    (match_date, home_team, away_team, market)).fetchone()
+                if ex and ex[0] == "market_mode":
+                    return False  # user's hand-priced line is canonical; don't clobber
             conn.execute(
                 "INSERT INTO jingcai_sp (captured_at, source, fixture_id, league, "
                 "match_date, home_team, away_team, kickoff_utc, market, handicap_home, "

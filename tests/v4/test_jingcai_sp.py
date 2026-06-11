@@ -134,3 +134,26 @@ def test_migration_adds_handicap_home(tmp_path):
                            market="hhad", handicap_home=-2)
     assert ok is True
     assert fetch_jingcai_sp(db)[0]["handicap_home"] == -2
+
+
+def test_protect_manual_not_clobbered(tmp_path):
+    """A sporttery harvest must NOT overwrite a line the user hand-priced."""
+    db = _db(tmp_path)
+    record_jingcai_sp(db, match_date="2026-06-20", home_team="Mexico",
+                      away_team="South Africa", jc_home=1.70, jc_draw=3.4, jc_away=4.5,
+                      source="market_mode")
+    ok = record_jingcai_sp(db, match_date="2026-06-20", home_team="Mexico",
+                           away_team="South Africa", jc_home=1.99, jc_draw=3.3,
+                           jc_away=4.0, source="sporttery", protect_manual=True)
+    assert ok is False                       # skipped
+    r = fetch_jingcai_sp(db)[0]
+    assert r["jc_home"] == 1.70 and r["source"] == "market_mode"   # manual preserved
+
+
+def test_protect_manual_inserts_when_no_manual(tmp_path):
+    db = _db(tmp_path)
+    ok = record_jingcai_sp(db, match_date="2026-06-20", home_team="A", away_team="B",
+                           jc_home=2.0, jc_draw=3.0, jc_away=3.5,
+                           source="sporttery", protect_manual=True)
+    assert ok is True
+    assert fetch_jingcai_sp(db)[0]["source"] == "sporttery"

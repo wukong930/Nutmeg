@@ -365,6 +365,15 @@ install_job "com.nutmeg.daily_settle" \
   2 0 "" \
   "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto --refresh-fixtures && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $VENV_PY -m nutmeg.v4.cli.jingcai_staleness --settle --db $DB_PATH || true; $REPO_ROOT/scripts/rotate_logs.sh || true"
 
+# 体检(2026-06-12)— 竞彩 SP harvest (23:15, after the ~23:00 竞彩 freeze).
+# Gated on NUTMEG_SPORTTERY_ENABLED=1 (a one-line kill switch in .env). Reads the
+# PUBLIC sporttery uniform endpoint (no auth/WAF) → jingcai_sp (source=sporttery,
+# never clobbers a hand-priced line). Fail-soft + low-freq (once/day). Pairs with
+# the 02:00 settle to keep the 竞彩 staleness map self-populating.
+install_job "com.nutmeg.sporttery_ingest" \
+  23 15 "" \
+  "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH; else echo sporttery-disabled; fi || true"
+
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
 # post-v9 P1#24: automate the P1#19 cross-source-aware gate.
 # Compares live lineup-aware ROI to the P1#17 historical replay
