@@ -1940,6 +1940,10 @@ const I18N = {
     mb_lose:          '让负',
     mb_hint:          '读法/选号辅助:从一簇相干比分里选,不是 +EV 信号(让球进拟合实测加 0 信息)。要算 EV 仍需竞彩比分 SP。',
     rec_record_failed: '⚠️ 记录失败 — 本注未入库,请重试',
+    pin_raw_lbl:      'Pinnacle 原盘',
+    pin_raw_ou:       '大小',
+    pin_raw_over:     '大',
+    pin_raw_under:    '小',
     today_no_fixtures: '今日联赛无可下注场次。明天再来。',
     today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
     health_offline:   'API 离线',
@@ -2340,6 +2344,10 @@ const I18N = {
     mb_lose:          'No cover',
     mb_hint:          'Reading / selection aid — pick from a coherent score cluster, NOT a +EV signal (handicap-into-fit measured ~0 info). EV still needs the 竞彩 score SP.',
     rec_record_failed: '⚠️ record FAILED — bet NOT saved, retry',
+    pin_raw_lbl:      'Pinnacle raw',
+    pin_raw_ou:       'O/U',
+    pin_raw_over:     'O',
+    pin_raw_under:    'U',
     today_no_fixtures: 'No fixtures from your leagues today. Check back tomorrow.',
     today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
     health_offline:   'API offline',
@@ -4774,6 +4782,21 @@ function _marginBandsHtml(bands, hcap) {
       <div class="mt-1">${rows}${cluster}
         <div class="text-muted mt-1" style="font-size:10px">${t('mb_hint')}</div></div></details>`;
 }
+// 体检(2026-06-10)— show the RAW Pinnacle line (1X2 + O/U) so you can eyeball
+// it straight against Pinnacle.com without de-vigging in your head. The 公允
+// rows below ARE these numbers with the ~3-4% vig stripped (the P prior); the
+// O/U is not shown per-row but DOES drive the 让球/比分 reverse-fit.
+function _pinRawHtml(pr) {
+  if (pr.psc_home == null) return '';   // 待开盘 — no Pinnacle line yet
+  const f = x => (x == null ? '—' : (+x).toFixed(2));
+  let ou = '';
+  if (pr.psc_over25 != null && pr.psc_under25 != null) {
+    ou = ` · ${t('pin_raw_ou')} ${f(pr.ou_line || 2.5)} `
+       + `${t('pin_raw_over')}${f(pr.psc_over25)}/${t('pin_raw_under')}${f(pr.psc_under25)}`;
+  }
+  return `<div class="text-xs text-muted mb-1" style="font-size:11px">`
+    + `🎯 ${t('pin_raw_lbl')} 1X2 ${f(pr.psc_home)}/${f(pr.psc_draw)}/${f(pr.psc_away)}${ou}</div>`;
+}
 function _cupCardHtml(pr, idx) {
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const rows = ['H', 'D', 'A'].map(o => {
@@ -4867,6 +4890,7 @@ function _cupCardHtml(pr, idx) {
         </span>
       </div>
       ${_oddsFreshnessHtml(pr)}
+      ${_pinRawHtml(pr)}
       ${rows}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home)}${manual}
     </div>`;
 }
