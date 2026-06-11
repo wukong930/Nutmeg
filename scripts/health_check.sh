@@ -196,6 +196,21 @@ else
 fi
 
 
+# ===== 7. 竞彩 staleness map (验证 — 实战 ROI) =====
+# daily_settle writes this nightly (settle + analysis). Realized 竞彩 ROI accrues
+# as matches settle; the report lives in logs/ (untracked — holds personal P&L).
+# Manual refresh:  nutmeg-jingcai-staleness
+section "7. 竞彩 staleness map (验证)"
+STALE_REPORT="logs/jingcai_staleness_latest.md"
+if [[ -f "$STALE_REPORT" ]]; then
+  AGE_H=$(( ( $(date +%s) - $(stat -f %m "$STALE_REPORT" 2>/dev/null || echo 0) ) / 3600 ))
+  note "$(grep -m1 '已结算观测' "$STALE_REPORT" || echo '报告已生成')  (${AGE_H}h ago)"
+  grep -m1 '全部候选:' "$STALE_REPORT" 2>/dev/null | sed 's/^[[:space:]]*//' | while read -r l; do note "$l"; done
+else
+  note "no report yet — runs nightly in daily_settle; manual: nutmeg-jingcai-staleness"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
