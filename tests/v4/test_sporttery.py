@@ -49,6 +49,14 @@ def test_synonym_override_to_live_name():
     assert sporttery.zh_to_canonical(zh_mex) == "Mexico"      # un-overridden passthrough
 
 
+def test_club_prefix_override():
+    """Club gather names are RAW API-Football (with prefixes); the override maps
+    TEAM_NAME_ZH's cleaned key to the live name so 竞彩 league rows join."""
+    zh = next((z for z, en in sporttery._ZH_TO_EN.items() if en == "Freiburg"), None)
+    assert zh is not None
+    assert sporttery.zh_to_canonical(zh) == "SC Freiburg"
+
+
 def test_fail_soft_returns_empty(monkeypatch):
     monkeypatch.setattr(sporttery, "_request", lambda *a, **k: None)
     assert sporttery.fetch_lottery_matches() == []

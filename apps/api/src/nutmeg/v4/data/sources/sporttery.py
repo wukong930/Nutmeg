@@ -63,10 +63,43 @@ _ZH_TO_EN.update(_ZH_OVERRIDES)
 # diffed against the live name universe). Extend when a new 竞彩 row reports
 # no_close despite a played match.
 _EN_OVERRIDES: dict[str, str] = {
+    # National teams (WC) — TEAM_NAME_ZH's English came from the elo source, which
+    # names them differently from the live WC gather.
     "Korea Republic": "South Korea",
     "Bosnia and Herzegovina": "Bosnia & Herzegovina",
     "Cape Verde": "Cape Verde Islands",
     "Turkey": "Türkiye",
+    # Club leagues — the gather stores RAW API-Football names (club prefixes /
+    # accents / abbreviations); sporttery's reverse-map output is the cleaned
+    # form. Pre-validated against fetch_teams_for_league_season over the top-5 +
+    # 英冠/葡超 (体检 2026-06-12, 0 conflicts / 0 unmatched) so 竞彩 league rows
+    # join the Pinnacle line when the European season resumes. Same offline diff
+    # extends it for any new league.
+    "Augsburg": "FC Augsburg",
+    "Bayern Munich": "Bayern München",
+    "Bochum": "VfL Bochum",
+    "Borussia Monchengladbach": "Borussia Mönchengladbach",
+    "Braga": "SC Braga",
+    "Brest": "Stade Brestois 29",
+    "Elversberg": "SV Elversberg",
+    "Estrela Amadora": "Estrela",
+    "Freiburg": "SC Freiburg",
+    "Gil Vicente": "GIL Vicente",
+    "Heidenheim": "1. FC Heidenheim",
+    "Hoffenheim": "1899 Hoffenheim",
+    "Mainz 05": "FSV Mainz 05",
+    "Man City": "Manchester City",
+    "Man United": "Manchester United",
+    "Oxford": "Oxford United",
+    "Paris SG": "Paris Saint Germain",
+    "Porto": "FC Porto",
+    "Roma": "AS Roma",
+    "Saint-Etienne": "Saint Etienne",
+    "Sheffield United": "Sheffield Utd",
+    "St. Pauli": "FC St. Pauli",
+    "Verona": "Hellas Verona",
+    "Vitoria Guimaraes": "Guimaraes",
+    "Wolfsburg": "VfL Wolfsburg",
 }
 
 
