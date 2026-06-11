@@ -2080,6 +2080,7 @@ const I18N = {
     mrev_record_ok:   '✅ 已记录',
     mrev_record_off:  '⚠️ 未写入:服务端记录开关未开',
     cupmkt_hc_toggle:'▸ 让球 (市场反推 · Pinnacle 1X2+大小球)',
+    jc_hhad_only:'竞彩本场只售让球(无胜平负盘)— 见下方「让球」',
     cupmkt_hc_record:'📌 记录此注',
     cupmkt_hc_recorded:'已记入观测库 (市场让球)',
     cupmkt_hc_need_sp:'先填竞彩让球 SP',
@@ -2484,6 +2485,7 @@ const I18N = {
     mrev_record_ok:   '✅ Recorded',
     mrev_record_off:  '⚠️ Not written: server recording gate is off',
     cupmkt_hc_toggle:'▸ Handicap (market-implied · Pinnacle 1X2+O/U)',
+    jc_hhad_only:'竞彩 sells only the handicap for this match (no 1X2) — see 让球 below',
     cupmkt_hc_record:'📌 Record this bet',
     cupmkt_hc_recorded:'logged to observation DB (market handicap)',
     cupmkt_hc_need_sp:'enter 竞彩 handicap SP first',
@@ -4982,7 +4984,7 @@ function _cupCardHtml(pr, idx) {
       </div>
       ${_oddsFreshnessHtml(pr)}
       ${_pinRawHtml(pr)}
-      ${rows}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home)}${manual}
+      ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home)}${manual}
     </div>`;
 }
 
