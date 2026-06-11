@@ -429,6 +429,17 @@ class JingcaiSpResponse(BaseModel):
     recorded: bool = False
 
 
+class SportteryRefreshResponse(BaseModel):
+    """Result of the 🎯 刷新竞彩 on-demand sporttery harvest."""
+    ok: bool = False
+    reason: Optional[str] = None
+    matches: int = 0
+    mapped: int = 0
+    unmapped: int = 0
+    had: int = 0
+    hhad: int = 0
+
+
 class JingcaiRecommendRequest(BaseModel):
     """V12 W5 — 竞彩盘口推荐: run single + parlay + pool over the fixtures the
     user filled with 竞彩 SP (+ 让球) in 近期赛事.

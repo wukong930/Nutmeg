@@ -67,6 +67,23 @@ def test_club_prefix_override():
     assert sporttery.zh_to_canonical(zh) == "SC Freiburg"
 
 
+def test_harvest_to_db_counts(tmp_path):
+    """harvest_to_db (shared by CLI + 🎯 刷新竞彩 endpoint) writes mapped matches +
+    skips unmapped, returning the counts."""
+    from nutmeg.v4.cli.ingest_sporttery import harvest_to_db
+    db = str(tmp_path / "obs.db")
+    matches = [
+        {"home_en": "Mexico", "away_en": "South Africa", "league_cn": "WC",
+         "match_date": "2026-06-20", "kickoff_utc": None,
+         "had": (1.7, 3.4, 4.5), "hhad": (2.0, 3.2, 3.3, -1)},
+        {"home_en": None, "away_en": "X", "league_cn": "WC",  # unmapped → skipped
+         "match_date": "2026-06-20", "had": (2.0, 3.0, 3.5), "hhad": None},
+    ]
+    r = harvest_to_db(db, matches=matches)
+    assert r["matches"] == 2 and r["mapped"] == 1 and r["unmapped"] == 1
+    assert r["had"] == 1 and r["hhad"] == 1
+
+
 def test_fail_soft_returns_empty(monkeypatch):
     monkeypatch.setattr(sporttery, "_request", lambda *a, **k: None)
     assert sporttery.fetch_lottery_matches() == []

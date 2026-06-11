@@ -43,4 +43,4 @@ class TestJingcaiCapture:
 
     def test_cache_bumped(self):
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v47-fe-jchhadonly" in routes
+        assert "nutmeg-v48-fe-jcrefreshbtn" in routes

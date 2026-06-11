@@ -15,6 +15,38 @@ import argparse
 import logging
 
 
+def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = False,
+                  matches: list[dict] | None = None) -> dict:
+    """Upsert the current 竞彩 SP into jingcai_sp (source=sporttery, protect_manual
+    so it NEVER clobbers a hand-priced line). Fetches if ``matches`` is None.
+    Returns ``{matches, mapped, unmapped, had, hhad}``. Shared by the CLI and the
+    🎯 刷新竞彩 endpoint."""
+    from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
+    if matches is None:
+        from nutmeg.v4.data.sources.sporttery import fetch_lottery_matches
+        matches = fetch_lottery_matches(pool_codes=pool_codes, refresh=refresh)
+    mapped = [m for m in matches if m["home_en"] and m["away_en"]]
+    had_w = hhad_w = 0
+    for m in mapped:
+        common = {
+            "match_date": m["match_date"], "home_team": m["home_en"],
+            "away_team": m["away_en"], "league": m["league_cn"],
+            "kickoff_utc": m.get("kickoff_utc"),
+            "source": "sporttery", "protect_manual": True,
+        }
+        if m["had"]:
+            jh, jd, ja = m["had"]
+            had_w += int(record_jingcai_sp(
+                db_path, jc_home=jh, jc_draw=jd, jc_away=ja, market="had", **common))
+        if m["hhad"]:
+            jh, jd, ja, line = m["hhad"]
+            hhad_w += int(record_jingcai_sp(
+                db_path, jc_home=jh, jc_draw=jd, jc_away=ja, market="hhad",
+                handicap_home=line, **common))
+    return {"matches": len(matches), "mapped": len(mapped),
+            "unmapped": len(matches) - len(mapped), "had": had_w, "hhad": hhad_w}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="harvest 竞彩 SP → jingcai_sp (软盘喂数)")
     ap.add_argument("--db", default="data/v4_observation.db", help="observation DB")
@@ -49,26 +81,8 @@ def main(argv: list[str] | None = None) -> int:
         print("\n(dry-run — 未写库)")
         return 0
 
-    from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
-
-    had_w = hhad_w = 0
-    for m in mapped:
-        common = {
-            "match_date": m["match_date"], "home_team": m["home_en"],
-            "away_team": m["away_en"], "league": m["league_cn"],
-            "kickoff_utc": m.get("kickoff_utc"),
-            "source": "sporttery", "protect_manual": True,
-        }
-        if m["had"]:
-            jh, jd, ja = m["had"]
-            had_w += int(record_jingcai_sp(
-                args.db, jc_home=jh, jc_draw=jd, jc_away=ja, market="had", **common))
-        if m["hhad"]:
-            jh, jd, ja, line = m["hhad"]
-            hhad_w += int(record_jingcai_sp(
-                args.db, jc_home=jh, jc_draw=jd, jc_away=ja, market="hhad",
-                handicap_home=line, **common))
-    print(f"\n写入 jingcai_sp: 胜平负 {had_w} · 让球 {hhad_w}  "
+    r = harvest_to_db(args.db, matches=matches)
+    print(f"\n写入 jingcai_sp: 胜平负 {r['had']} · 让球 {r['hhad']}  "
           f"(source=sporttery,不覆盖手填)")
     return 0
 

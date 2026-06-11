@@ -60,6 +60,7 @@ from nutmeg.v4.api.schemas import (
     SinglePrediction,
     SpCalcResponse,
     SingleTicketResponse,
+    SportteryRefreshResponse,
     TodayRecommendationsDiff,
     TodayRecommendationsRequest,
     TodayRecommendationsResponse,
@@ -387,7 +388,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v47-fe-jchhadonly';
+const CACHE_VERSION = 'nutmeg-v48-fe-jcrefreshbtn';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1118,6 +1119,23 @@ def record_jingcai_sp_endpoint(req: JingcaiSpRequest) -> JingcaiSpResponse:
         kickoff_utc=req.kickoff_utc, market=req.market,
         handicap_home=req.handicap_home, source="market_mode")
     return JingcaiSpResponse(recorded=recorded)
+
+
+@router.post("/observation/sporttery-refresh", response_model=SportteryRefreshResponse)
+def sporttery_refresh_endpoint() -> SportteryRefreshResponse:
+    """🎯 刷新竞彩 — on-demand 竞彩 SP harvest from sporttery → jingcai_sp, so the
+    cards pick up the latest frozen line WITHOUT waiting for the 23:15 cron or the
+    CLI. Read-only vs sporttery (public odds); protect_manual so it NEVER clobbers
+    a hand-priced line. Env-gated (observation DB) + fail-soft."""
+    db_path = _observation_db_path()
+    if not db_path:
+        return SportteryRefreshResponse(ok=False, reason="未配置观测库 (NUTMEG_V4_OBSERVATION_DB)")
+    try:
+        from nutmeg.v4.cli.ingest_sporttery import harvest_to_db
+        r = harvest_to_db(db_path, refresh=True)
+    except Exception:  # noqa: BLE001 — fail-soft; the button surfaces the reason
+        return SportteryRefreshResponse(ok=False, reason="竞彩抓取失败(网络/端点)")
+    return SportteryRefreshResponse(ok=True, **r)
 
 
 # ---------- /v4/recommend/parlay (V12 W5 — hand-picked 串关) ----------
