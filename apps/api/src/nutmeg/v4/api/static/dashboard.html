@@ -4482,18 +4482,20 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
 // are swallowed. Only a COMPLETE 竞彩 1X2 triple is logged. No-op server-side
 // unless NUTMEG_V4_OBSERVATION_DB is set.
 const _jcCapT = {};
-function _jcStaleCapture(idx) {
-  const pr = _SPCALC.preds[idx];
+// Board-generic: called from BOTH 标准模式 (_SPCALC/.spcalc-sp) and 市场模式
+// (_CUPMKT/.cupsp), which share the same H/D/A card shape + pr fields.
+function _jcStaleCapture(pr, selClass, idx, market) {
   if (!pr) return;
   const get = (o) => {
-    const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
+    const el = document.querySelector(`.${selClass}[data-idx="${idx}"][data-outcome="${o}"]`);
     const v = el ? parseFloat(el.value) : NaN;
     return (v && v > 1.0) ? v : null;
   };
   const oh = get('H'), od = get('D'), oa = get('A');
   if (!(oh && od && oa)) return;   // only capture a complete 竞彩 1X2 line
-  clearTimeout(_jcCapT[idx]);
-  _jcCapT[idx] = setTimeout(() => {
+  const key = `${selClass}-${idx}`;   // debounce per board+idx (标准/市场 never collide)
+  clearTimeout(_jcCapT[key]);
+  _jcCapT[key] = setTimeout(() => {
     fetch(API + '/observation/jingcai-sp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
       body: JSON.stringify({
@@ -4501,7 +4503,7 @@ function _jcStaleCapture(idx) {
         jc_home: oh, jc_draw: od, jc_away: oa,
         psc_home: pr.psc_home ?? null, psc_draw: pr.psc_draw ?? null,
         psc_away: pr.psc_away ?? null, ou_line: pr.ou_line ?? null,
-        fixture_id: pr.fixture_id ?? null, league: pr.league ?? null, market: 'had',
+        fixture_id: pr.fixture_id ?? null, league: pr.league ?? null, market: market || 'had',
       }),
     }).catch(() => {});   // silent by design
   }, 1200);
@@ -4544,7 +4546,7 @@ function _spcalcRecalc(idx) {
   }
   // V12 W5 — keep the 串关篮子 in sync when a leg's SP changes.
   if (typeof _parlayRender === 'function') _parlayRender();
-  _jcStaleCapture(idx);   // 体检 — silent staleness-map capture (debounced)
+  _jcStaleCapture(_SPCALC.preds[idx], 'spcalc-sp', idx, 'had');   // 体检 — 标准模式静默捕获
 }
 
 async function _spcalcRecord(idx) {
@@ -4950,6 +4952,7 @@ function _cupRecalc(idx) {
       evEl.removeAttribute('style');
     }
   });
+  _jcStaleCapture(_CUPMKT.preds[idx], 'cupsp', idx, 'had');   // 体检 — 市场模式静默捕获
 }
 
 // V12 W8 — market-implied 让球 live EV on a cup-market card. P comes from the

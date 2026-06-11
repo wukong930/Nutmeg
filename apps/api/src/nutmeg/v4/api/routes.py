@@ -360,7 +360,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v42-fe-jcstale';
+const CACHE_VERSION = 'nutmeg-v43-fe-jcstale2';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',

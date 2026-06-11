@@ -18,9 +18,11 @@ class TestJingcaiCapture:
     def test_helper_defined(self, html):
         assert "function _jcStaleCapture(" in html
 
-    def test_wired_into_recalc(self, html):
-        # called from _spcalcRecalc so every pre-kickoff re-price is captured
-        assert "_jcStaleCapture(idx)" in html
+    def test_wired_into_both_modes(self, html):
+        # 标准模式 (_SPCALC/_spcalcRecalc) AND 市场模式 (_CUPMKT/_cupRecalc) both
+        # capture every pre-kickoff re-price
+        assert "_jcStaleCapture(_SPCALC.preds[idx], 'spcalc-sp'" in html
+        assert "_jcStaleCapture(_CUPMKT.preds[idx], 'cupsp'" in html
 
     def test_posts_to_endpoint(self, html):
         assert "/observation/jingcai-sp" in html
@@ -34,4 +36,4 @@ class TestJingcaiCapture:
 
     def test_cache_bumped(self):
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v42-fe-jcstale" in routes
+        assert "nutmeg-v43-fe-jcstale2" in routes
