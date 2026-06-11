@@ -46,6 +46,13 @@ class TestNormTeam:
         assert odds_api._norm_team("Bosnia and Herzegovina") == "bosniaandherzegovina"
         assert odds_api._norm_team("Côte d'Ivoire") == odds_api._norm_team("Cote dIvoire")
 
+    def test_af_oa_spelling_pairs_collapse(self):
+        """API-Football vs Odds API spellings that diverge past accent-fold must
+        still key the same, else the fresher-line overlay silently misses them."""
+        assert odds_api._norm_team("Türkiye") == odds_api._norm_team("Turkey")
+        assert odds_api._norm_team("Cape Verde Islands") == odds_api._norm_team("Cape Verde")
+        assert odds_api._norm_team("Congo DR") == odds_api._norm_team("DR Congo")
+
 
 class TestExtractTotals:
     def test_picks_line_closest_to_2_5(self):

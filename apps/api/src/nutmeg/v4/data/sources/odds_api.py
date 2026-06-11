@@ -297,12 +297,26 @@ def fetch_current_odds(
     return body
 
 
+# API-Football and the Odds API spell a few teams differently enough that the
+# accent-fold/alnum key still diverges (different word, order, or extra token),
+# so the fresher-line overlay silently misses them → the card stays on the stale
+# API-Football line. Collapse the known pairs to one canonical key. Measured WC
+# pairs (体检 2026-06-12); extend via the same per-fixture overlay-miss diff.
+_NORM_ALIAS: dict[str, str] = {
+    "turkiye": "turkey",                # AF Türkiye  ↔ OA Turkey
+    "capeverdeislands": "capeverde",    # AF Cape Verde Islands ↔ OA Cape Verde
+    "congodr": "drcongo",               # AF Congo DR ↔ OA DR Congo
+}
+
+
 def _norm_team(name: str | None) -> str:
     """Accent-fold + alnum-only identity key for cross-source team matching
-    ('Bosnia & Herzegovina' / 'Bosnia and Herzegovina' → 'bosniaandherzegovina')."""
+    ('Bosnia & Herzegovina' / 'Bosnia and Herzegovina' → 'bosniaandherzegovina'),
+    then collapse known AF↔OA spelling pairs via ``_NORM_ALIAS``."""
     s = unicodedata.normalize("NFKD", (name or "").replace("&", " and "))
     s = "".join(c for c in s if not unicodedata.combining(c))
-    return "".join(ch for ch in s.lower() if ch.isalnum())
+    key = "".join(ch for ch in s.lower() if ch.isalnum())
+    return _NORM_ALIAS.get(key, key)
 
 
 def _extract_totals(bookmaker: dict[str, Any]) -> tuple[float, float, float] | None:
