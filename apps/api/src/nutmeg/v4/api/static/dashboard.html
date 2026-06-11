@@ -4475,6 +4475,38 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   _parlayRestore();
 }
 
+// 体检 — silent 竞彩 SP capture for the softness/staleness map. The user re-prices
+// a match many times pre-kickoff; we debounce (capture ~1.2s after they stop) and
+// the server upsert-latest keeps only the canonical (nearest-kickoff) line. Pure
+// fire-and-forget: a lost observation must NOT disturb the live EV view, so errors
+// are swallowed. Only a COMPLETE 竞彩 1X2 triple is logged. No-op server-side
+// unless NUTMEG_V4_OBSERVATION_DB is set.
+const _jcCapT = {};
+function _jcStaleCapture(idx) {
+  const pr = _SPCALC.preds[idx];
+  if (!pr) return;
+  const get = (o) => {
+    const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
+    const v = el ? parseFloat(el.value) : NaN;
+    return (v && v > 1.0) ? v : null;
+  };
+  const oh = get('H'), od = get('D'), oa = get('A');
+  if (!(oh && od && oa)) return;   // only capture a complete 竞彩 1X2 line
+  clearTimeout(_jcCapT[idx]);
+  _jcCapT[idx] = setTimeout(() => {
+    fetch(API + '/observation/jingcai-sp', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({
+        match_date: pr.date, home_team: pr.home_team, away_team: pr.away_team,
+        jc_home: oh, jc_draw: od, jc_away: oa,
+        psc_home: pr.psc_home ?? null, psc_draw: pr.psc_draw ?? null,
+        psc_away: pr.psc_away ?? null, ou_line: pr.ou_line ?? null,
+        fixture_id: pr.fixture_id ?? null, league: pr.league ?? null, market: 'had',
+      }),
+    }).catch(() => {});   // silent by design
+  }, 1200);
+}
+
 function _spcalcRecalc(idx) {
   const pr = _SPCALC.preds[idx];
   if (!pr) return;
@@ -4512,6 +4544,7 @@ function _spcalcRecalc(idx) {
   }
   // V12 W5 — keep the 串关篮子 in sync when a leg's SP changes.
   if (typeof _parlayRender === 'function') _parlayRender();
+  _jcStaleCapture(idx);   // 体检 — silent staleness-map capture (debounced)
 }
 
 async function _spcalcRecord(idx) {

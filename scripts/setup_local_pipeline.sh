@@ -363,7 +363,7 @@ install_job "com.nutmeg.daily_recommend" \
 # extra calls are cheap (settle window is 3 days × pending leagues only).
 install_job "com.nutmeg.daily_settle" \
   2 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto --refresh-fixtures && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $REPO_ROOT/scripts/rotate_logs.sh || true"
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto --refresh-fixtures && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $VENV_PY -m nutmeg.v4.cli.jingcai_staleness --settle --db $DB_PATH || true; $REPO_ROOT/scripts/rotate_logs.sh || true"
 
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
 # post-v9 P1#24: automate the P1#19 cross-source-aware gate.

@@ -390,6 +390,32 @@ class ManualBetResponse(BaseModel):
     session_id: int | None = None
 
 
+class JingcaiSpRequest(BaseModel):
+    """体检 — one silent 竞彩 SP capture for the softness/staleness map. 竞彩
+    freezes its SP (~23:00 daily) while Pinnacle keeps drifting to kickoff; the
+    gap is the only place edge can live. Passive measurement — NOT a bet, no
+    record flag. The user re-prices a match many times to verify, so the table
+    upsert-latest keeps the canonical (nearest-kickoff) line per (match, market)."""
+    match_date: str
+    home_team: str
+    away_team: str
+    jc_home: float | None = None
+    jc_draw: float | None = None
+    jc_away: float | None = None
+    psc_home: float | None = None
+    psc_draw: float | None = None
+    psc_away: float | None = None
+    ou_line: float | None = None
+    fixture_id: int | None = None
+    league: str | None = None
+    kickoff_utc: str | None = None
+    market: str = "had"
+
+
+class JingcaiSpResponse(BaseModel):
+    recorded: bool = False
+
+
 class JingcaiRecommendRequest(BaseModel):
     """V12 W5 — 竞彩盘口推荐: run single + parlay + pool over the fixtures the
     user filled with 竞彩 SP (+ 让球) in 近期赛事.

@@ -26,6 +26,8 @@ from nutmeg.v4.api.schemas import (
     FixtureOddsInput,
     HealthResponse,
     JingcaiRecommendRequest,
+    JingcaiSpRequest,
+    JingcaiSpResponse,
     LegResponse,
     LotteryRulesResponse,
     ManualBetRequest,
@@ -358,7 +360,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v41-fe-pinraw';
+const CACHE_VERSION = 'nutmeg-v42-fe-jcstale';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1065,6 +1067,29 @@ def record_bet(req: ManualBetRequest) -> ManualBetResponse:
     return ManualBetResponse(
         recorded=recorded, ev=ev, outcome=req.outcome,
         stake=req.stake, session_id=session_id)
+
+
+@router.post("/observation/jingcai-sp", response_model=JingcaiSpResponse)
+def record_jingcai_sp_endpoint(req: JingcaiSpRequest) -> JingcaiSpResponse:
+    """体检 — SILENT capture of the 竞彩 SP the user is pricing against, for the
+    softness/staleness map (竞彩's frozen line vs Pinnacle's drift to kickoff).
+
+    Fire-and-forget: gated ONLY on the observation-DB env (no record flag — this
+    is passive measurement the user already enters, NOT a bet). Upsert-latest
+    dedups repeated pre-kickoff re-pricing; never raises (a lost observation must
+    not break the live EV view), so the frontend can ignore the response."""
+    db_path = _observation_db_path()
+    if not db_path:
+        return JingcaiSpResponse(recorded=False)
+    from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
+    recorded = record_jingcai_sp(
+        db_path,
+        match_date=req.match_date, home_team=req.home_team, away_team=req.away_team,
+        jc_home=req.jc_home, jc_draw=req.jc_draw, jc_away=req.jc_away,
+        psc_home=req.psc_home, psc_draw=req.psc_draw, psc_away=req.psc_away,
+        ou_line=req.ou_line, fixture_id=req.fixture_id, league=req.league,
+        kickoff_utc=req.kickoff_utc, market=req.market, source="market_mode")
+    return JingcaiSpResponse(recorded=recorded)
 
 
 # ---------- /v4/recommend/parlay (V12 W5 — hand-picked 串关) ----------
