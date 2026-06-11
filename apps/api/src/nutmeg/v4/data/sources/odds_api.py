@@ -303,9 +303,22 @@ def fetch_current_odds(
 # API-Football line. Collapse the known pairs to one canonical key. Measured WC
 # pairs (体检 2026-06-12); extend via the same per-fixture overlay-miss diff.
 _NORM_ALIAS: dict[str, str] = {
+    # National teams (WC)
     "turkiye": "turkey",                # AF Türkiye  ↔ OA Turkey
     "capeverdeislands": "capeverde",    # AF Cape Verde Islands ↔ OA Cape Verde
     "congodr": "drcongo",               # AF Congo DR ↔ OA DR Congo
+    # Veikkausliiga (FIN) — AF drops the FC/IFK/IF prefix or the city suffix the
+    # Odds API keeps. AF key → OA key (体检 2026-06-12, the live overlay misses).
+    "interturku": "fcinterturku",       # Inter Turku ↔ FC Inter Turku
+    "ilves": "ilvestampere",            # Ilves ↔ Ilves Tampere
+    "turkups": "tpsturku",              # Turku PS ↔ TPS Turku
+    "ffjaro": "jaro",                   # FF Jaro ↔ Jaro
+    "vps": "vpsvaasa",                  # VPS ↔ VPS Vaasa
+    "kups": "kupskuopio",               # KuPS ↔ KuPS Kuopio
+    "lahti": "fclahti",                 # Lahti ↔ FC Lahti
+    "sjk": "sjkseinajoki",              # SJK ↔ SJK Seinäjoki
+    "mariehamn": "ifkmariehamn",        # Mariehamn ↔ IFK Mariehamn
+    "gnistan": "ifgnistan",             # Gnistan ↔ IF Gnistan
 }
 
 
