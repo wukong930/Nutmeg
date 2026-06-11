@@ -155,6 +155,13 @@ class SinglePrediction(BaseModel):
     # before recording — no trusting a client-sent probability.
     psc_over25: float | None = None
     psc_under25: float | None = None
+    # 体检 — the 竞彩 SP (1X2) on file for this match from jingcai_sp (your manual
+    # market_mode entry, else the sporttery auto-harvest). Lets the card PRE-FILL
+    # its SP boxes + compute EV without re-typing. None when no 竞彩 line on file.
+    jc_home: float | None = None
+    jc_draw: float | None = None
+    jc_away: float | None = None
+    jc_source: str | None = None
     # V14 — when API-Football last refreshed this Pinnacle snapshot (ISO). The
     # 市场模式 card shows the age so a stale de-vig prior isn't trusted near
     # kickoff (API-Football mirrors Pinnacle only every few hours).

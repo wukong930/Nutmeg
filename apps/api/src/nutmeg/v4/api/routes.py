@@ -216,6 +216,28 @@ def _should_record_session(req_record_flag: bool) -> Optional[str]:
     return _observation_db_path()
 
 
+def _attach_jingcai_sp(preds: list) -> None:
+    """Pre-fill each prediction's 竞彩 SP (1X2) from jingcai_sp so the 市场模式 /
+    近期赛事 cards SHOW the line on file (your hand-price, else the sporttery
+    auto-harvest) + compute EV without re-typing. Best-effort + env-gated: no
+    observation DB → silent no-op; a lookup failure never breaks a card render."""
+    db = _observation_db_path()
+    if not db or not preds:
+        return
+    try:
+        from nutmeg.v4.observation.jingcai_sp import fetch_sp_lookup
+        lookup = fetch_sp_lookup(db, market="had")
+    except Exception:  # noqa: BLE001
+        return
+    if not lookup:
+        return
+    for p in preds:
+        d = p.date.isoformat() if hasattr(p.date, "isoformat") else str(p.date)
+        row = lookup.get((d, p.home_team, p.away_team))
+        if row:
+            p.jc_home, p.jc_draw, p.jc_away, p.jc_source = row
+
+
 def get_artifact() -> Optional[V4Artifact]:
     """Returns the loaded artifact, or None if path doesn't exist."""
     path = _artifact_path()
@@ -360,7 +382,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v44-fe-jchhad';
+const CACHE_VERSION = 'nutmeg-v45-fe-jcprefill';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1685,6 +1707,7 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
                 date=r["date"],
                 kickoff_utc=(r.get("kickoff_utc") or None),
             ))
+    _attach_jingcai_sp(all_preds)
     return SpCalcResponse(
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
         date_start=today.isoformat(),
@@ -1940,6 +1963,7 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
                     league=r["league"], date=r["date"],
                     kickoff_utc=(r.get("kickoff_utc") or None),
                 ))
+    _attach_jingcai_sp(preds)
     return SpCalcResponse(
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
         date_start=today.isoformat(),

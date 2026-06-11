@@ -4320,6 +4320,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
         <span class="w-16 shrink-0 num-display text-secondary" title="${t('spcalc_mkt_tip')}">${Mkt ? t('spcalc_mkt') + ' ' + (Mkt[o] * 100).toFixed(0) + '%' : ''}</span>
         <input type="number" inputmode="decimal" step="0.01" min="1.01"
                class="spcalc-sp w-20 px-2 py-1 border rounded num-display"
+               value="${({H:pr.jc_home,D:pr.jc_draw,A:pr.jc_away}[o]) ?? ''}"
                placeholder="${psc[o] ? psc[o].toFixed(2) : 'SP'}"
                data-idx="${idx}" data-outcome="${o}"
                aria-label="${zhTeam(pr.home_team)} ${outcomeLabel(o)} 竞彩 SP"
@@ -4447,29 +4448,32 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   // Restore preserved SP into the freshly-rendered inputs + recompute.
   preds.forEach((pr, idx) => {
     const saved = _entered[pr.home_team + '|' + pr.away_team + '|' + pr.date];
-    if (!saved) return;
-    let any = false;
-    ['H', 'D', 'A'].forEach(o => {
-      if (saved[o]) {
-        const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
-        if (el) { el.value = saved[o]; any = true; }
-      }
-    });
-    if (any) _spcalcRecalc(idx);
-    // Restore handicap line + SP, then repopulate P labels & recompute.
-    if (saved.hcline) {
-      const lsel = $(`#spcalc-hcline-${idx}`);
-      if (lsel) lsel.value = saved.hcline;
-    }
-    if (saved.hc) {
+    if (saved) {
+      // Session-typed SP wins over the server pre-fill (it's the freshest line).
       ['H', 'D', 'A'].forEach(o => {
-        if (saved.hc[o]) {
-          const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
-          if (el) el.value = saved.hc[o];
+        if (saved[o]) {
+          const el = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
+          if (el) el.value = saved[o];
         }
       });
+      // Restore handicap line + SP, then repopulate P labels & recompute.
+      if (saved.hcline) {
+        const lsel = $(`#spcalc-hcline-${idx}`);
+        if (lsel) lsel.value = saved.hcline;
+      }
+      if (saved.hc) {
+        ['H', 'D', 'A'].forEach(o => {
+          if (saved.hc[o]) {
+            const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+            if (el) el.value = saved.hc[o];
+          }
+        });
+      }
+      if (saved.hcline || saved.hc) _spcalcHcLine(idx);
     }
-    if (saved.hcline || saved.hc) _spcalcHcLine(idx);
+    // 体检 — recompute EV for EVERY card: the 竞彩 SP box may be filled by a
+    // session-restored value (above) OR the server's jingcai_sp pre-fill (value=).
+    _spcalcRecalc(idx);
   });
   // V12 W5 — re-check parlay legs + refresh the 串关篮子 after a re-render.
   _parlayRestore();
@@ -4876,6 +4880,7 @@ function _cupCardHtml(pr, idx) {
         <span class="text-xs text-muted ml-auto">竞彩</span>
         <input type="number" inputmode="decimal" step="0.01" min="1.01"
                class="cupsp w-20 px-2 py-1 border rounded num-display" data-idx="${idx}" data-outcome="${o}"
+               value="${({H:pr.jc_home,D:pr.jc_draw,A:pr.jc_away}[o]) ?? ''}"
                oninput="_cupRecalc(${idx})" placeholder="SP"
                aria-label="${zhTeam(pr.home_team)} ${outcomeLabel(o)} 竞彩 SP">
         <span class="cupev text-xs text-muted shrink-0" data-idx="${idx}" data-outcome="${o}">—</span>
@@ -5423,28 +5428,31 @@ function renderCupMarket(preds, pending) {
   // Restore preserved 竞彩 SP / 让球线 into the freshly-rendered inputs + recompute.
   preds.forEach((pr, idx) => {
     const saved = _entered[pr.home_team + '|' + pr.away_team + '|' + pr.date];
-    if (!saved) return;
-    let any = false;
-    ['H', 'D', 'A'].forEach(o => {
-      if (saved[o]) {
-        const el = document.querySelector(`.cupsp[data-idx="${idx}"][data-outcome="${o}"]`);
-        if (el) { el.value = saved[o]; any = true; }
-      }
-    });
-    if (any) _cupRecalc(idx);
-    if (saved.hcline) {
-      const lsel = $(`#cuphcline-${idx}`);
-      if (lsel) lsel.value = saved.hcline;
-    }
-    if (saved.hc) {
+    if (saved) {
+      // Session-typed SP wins over the server pre-fill (it's the freshest line).
       ['H', 'D', 'A'].forEach(o => {
-        if (saved.hc[o]) {
-          const el = document.querySelector(`.cuphcsp[data-idx="${idx}"][data-outcome="${o}"]`);
-          if (el) el.value = saved.hc[o];
+        if (saved[o]) {
+          const el = document.querySelector(`.cupsp[data-idx="${idx}"][data-outcome="${o}"]`);
+          if (el) el.value = saved[o];
         }
       });
+      if (saved.hcline) {
+        const lsel = $(`#cuphcline-${idx}`);
+        if (lsel) lsel.value = saved.hcline;
+      }
+      if (saved.hc) {
+        ['H', 'D', 'A'].forEach(o => {
+          if (saved.hc[o]) {
+            const el = document.querySelector(`.cuphcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+            if (el) el.value = saved.hc[o];
+          }
+        });
+      }
+      if (saved.hcline || saved.hc) _cupHcLine(idx);
     }
-    if (saved.hcline || saved.hc) _cupHcLine(idx);
+    // 体检 — recompute EV for EVERY card: the 竞彩 SP box may be session-restored
+    // OR pre-filled by the server's jingcai_sp value=.
+    _cupRecalc(idx);
   });
 }
 
