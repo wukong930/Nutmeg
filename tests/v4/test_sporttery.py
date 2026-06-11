@@ -8,7 +8,7 @@ def _payload():
     return {"success": True, "value": {"matchInfoList": [
         {"subMatchList": [
             {"homeTeamAllName": "墨西哥", "awayTeamAllName": "南非",
-             "matchDate": "2026-06-12", "matchNumStr": "周四001",
+             "matchDate": "2026-06-12", "matchTime": "07:00:00", "matchNumStr": "周四001",
              "leagueAbbName": "世界杯",
              "had": {"h": "1.26", "d": "4.45", "a": "9.00"},
              "hhad": {"h": "2.00", "d": "3.25", "a": "3.11", "goalLine": "-1"}},
@@ -28,9 +28,19 @@ def test_parse_had_hhad_and_map(monkeypatch):
     assert mex["away_en"] is not None
     assert mex["had"] == (1.26, 4.45, 9.00)
     assert mex["hhad"] == (2.00, 3.25, 3.11, -1)   # incl. goalLine as int
-    assert mex["match_date"] == "2026-06-12"
+    assert mex["match_date"] == "2026-06-11"   # 07:00 北京 → 前一 UTC 日
+    assert mex["kickoff_utc"] == "2026-06-11T23:00:00+00:00"
     # second match: unmapped team + no 让球 pool
     assert ms[1]["home_en"] is None and ms[1]["hhad"] is None
+
+
+def test_beijing_to_utc_date():
+    """竞彩 matchDate is the Beijing (UTC+8) date; the join keys on the UTC date,
+    so an early-morning Beijing kickoff must roll back to the previous UTC day."""
+    f = sporttery._utc_date_and_kickoff
+    assert f("2026-06-12", "07:00:00") == ("2026-06-11", "2026-06-11T23:00:00+00:00")
+    assert f("2026-06-12", "20:00:00")[0] == "2026-06-12"   # 20:00 北京 → 同 UTC 日
+    assert f("2026-06-12", None) == ("2026-06-12", None)     # no time → fallback
 
 
 def test_zh_to_canonical():

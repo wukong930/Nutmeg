@@ -56,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         common = {
             "match_date": m["match_date"], "home_team": m["home_en"],
             "away_team": m["away_en"], "league": m["league_cn"],
+            "kickoff_utc": m.get("kickoff_utc"),
             "source": "sporttery", "protect_manual": True,
         }
         if m["had"]:

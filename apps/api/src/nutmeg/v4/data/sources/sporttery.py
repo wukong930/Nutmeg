@@ -24,6 +24,7 @@ import contextlib
 import json
 import logging
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -176,6 +177,22 @@ def _odds3(pool: dict | None):
     return (h, d, a)
 
 
+def _utc_date_and_kickoff(match_date: str | None, match_time: str | None):
+    """竞彩 gives the Beijing (UTC+8) calendar date + kickoff time. Convert to the
+    UTC kickoff date + ISO — the gather/predictions/settler all key on the UTC date,
+    so a Beijing matchDate runs one day ahead for any post-16:00-UTC kickoff and the
+    row would miss the join (pre-fill + settle). Fall back to ``(match_date, None)``
+    if the time is absent/malformed."""
+    if not match_date or not match_time:
+        return match_date, None
+    try:
+        bj = datetime.strptime(f"{match_date} {match_time}", "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return match_date, None
+    utc = (bj - timedelta(hours=8)).replace(tzinfo=UTC)
+    return utc.date().isoformat(), utc.isoformat()
+
+
 def fetch_lottery_matches(
     *,
     pool_codes: str = "had,hhad",
@@ -209,8 +226,11 @@ def fetch_lottery_matches(
                         hhad = (*hhad3, line)
                 home_cn = g.get("homeTeamAllName")
                 away_cn = g.get("awayTeamAllName")
+                mdate, kickoff_utc = _utc_date_and_kickoff(
+                    g.get("matchDate"), g.get("matchTime"))
                 out.append({
-                    "match_date": g.get("matchDate"),
+                    "match_date": mdate,
+                    "kickoff_utc": kickoff_utc,
                     "match_num": g.get("matchNumStr"),
                     "league_cn": g.get("leagueAbbName") or g.get("leagueAllName"),
                     "home_cn": home_cn, "away_cn": away_cn,
