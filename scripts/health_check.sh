@@ -178,6 +178,24 @@ if [[ -d ~/Library/Caches/ms-playwright ]]; then
 fi
 
 
+# ===== 6. Name-mismatch sentinel (overlay freshness) =====
+# Shows the latest AF↔Odds API team-name mismatch report. Mismatches = matches the
+# fresher-line overlay silently skips → stale Pinnacle line + wrong EV on the card.
+# Refresh on demand:  nutmeg-name-sentinel
+section "6. Name-mismatch sentinel (Odds API overlay)"
+SENTINEL_REPORT="logs/name_sentinel_latest.txt"
+if [[ -f "$SENTINEL_REPORT" ]]; then
+  AGE_H=$(( ( $(date +%s) - $(stat -f %m "$SENTINEL_REPORT" 2>/dev/null || echo 0) ) / 3600 ))
+  SUMLINE="$(sed -n '2p' "$SENTINEL_REPORT")"
+  MISS="$(printf '%s' "$SUMLINE" | sed -E 's/.*疑似错配 ([0-9]+).*/\1/')"
+  if [[ "$MISS" == "0" ]]; then ok "$SUMLINE  (${AGE_H}h ago)"; else warn "$SUMLINE  (${AGE_H}h ago)"; fi
+  if [[ "$MISS" != "0" ]]; then grep -E '^\s*\[' "$SENTINEL_REPORT" | head -8 | while read -r l; do note "$l"; done; fi
+  [[ "$AGE_H" -ge 24 ]] && note "stale report — run: nutmeg-name-sentinel"
+else
+  note "no report yet — run: nutmeg-name-sentinel"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
