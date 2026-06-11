@@ -103,3 +103,34 @@ def test_settle_preserved_on_recapture(tmp_path):
     r = fetch_jingcai_sp(db)[0]
     assert r["jc_home"] == 1.9                       # line refreshed
     assert r["ft_outcome"] == 1 and r["settled_at"]  # draw result preserved
+
+
+def test_handicap_home_stored(tmp_path):
+    db = _db(tmp_path)
+    record_jingcai_sp(db, match_date="2026-06-20", home_team="A", away_team="B",
+                      jc_home=2.5, jc_draw=3.2, jc_away=2.6,
+                      market="hhad", handicap_home=-1)
+    r = fetch_jingcai_sp(db)[0]
+    assert r["market"] == "hhad" and r["handicap_home"] == -1
+
+
+def test_migration_adds_handicap_home(tmp_path):
+    """A jingcai_sp table created before 让球 support lacks handicap_home; ensure()
+    must ALTER it in so an hhad capture doesn't fail."""
+    import sqlite3
+    db = _db(tmp_path)
+    with sqlite3.connect(db) as c:   # simulate the OLD (pre-hhad) schema
+        c.execute(
+            "CREATE TABLE jingcai_sp (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "captured_at TEXT NOT NULL, source TEXT NOT NULL, fixture_id INTEGER, "
+            "league TEXT, match_date TEXT NOT NULL, home_team TEXT NOT NULL, "
+            "away_team TEXT NOT NULL, kickoff_utc TEXT, market TEXT NOT NULL DEFAULT 'had', "
+            "jc_home REAL, jc_draw REAL, jc_away REAL, psc_home REAL, psc_draw REAL, "
+            "psc_away REAL, ou_line REAL, home_goals INTEGER, away_goals INTEGER, "
+            "ft_outcome INTEGER, settled_at TEXT, "
+            "UNIQUE(match_date, home_team, away_team, market))")
+    ok = record_jingcai_sp(db, match_date="2026-06-20", home_team="A", away_team="B",
+                           jc_home=2.5, jc_draw=3.2, jc_away=2.6,
+                           market="hhad", handicap_home=-2)
+    assert ok is True
+    assert fetch_jingcai_sp(db)[0]["handicap_home"] == -2

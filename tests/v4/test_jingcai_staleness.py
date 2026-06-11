@@ -71,3 +71,44 @@ def test_no_pinnacle_close_is_skipped(tmp_path):
     _seed(db, jc_home=2.10)              # settled, but NO odds_snapshot recorded
     rep = analyze(db)
     assert rep["no_close"] == 1 and rep["candidates"] == []
+
+
+def test_hhad_reverse_fit_candidate_and_realized(tmp_path):
+    """让球: reverse-fit Pinnacle's cover P at the 竞彩 line from its CLOSE 1X2+O/U,
+    +EV candidate, realized via (margin + handicap)."""
+    from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+    db = str(tmp_path / "obs.db")
+    _snapshot_pinn_close(db, fixture_id=12345, h=1.50, d=4.0, a=6.0)   # strong home + O/U 1.9/1.9
+    # the 让胜 cover P at line −1, computed the SAME way the analysis does
+    fair = _devig3(1.50, 4.0, 6.0)
+    p_letwin = implied_handicap_lines(
+        fair[0], fair[1], fair[2], devig_over(1.9, 1.9), ou_line=2.5, lines=(-1,))[0][1]
+    jc_letwin = round(1.12 / p_letwin, 2)            # ⇒ EV ≈ +12% on 让胜
+    record_jingcai_sp(
+        db, match_date="2026-06-20", home_team="Mexico", away_team="South Africa",
+        jc_home=jc_letwin, jc_draw=2.0, jc_away=2.0,
+        market="hhad", handicap_home=-1, fixture_id=12345)
+    # home wins 3-0 → margin 3, +(−1) = 2 > 0 → 让胜 covered (idx 0)
+    settle_jingcai_sp(db, fetch_fixtures=lambda d: [_fx("Mexico", "South Africa", 3, 0)],
+                      today=dt.date(2026, 6, 21))
+    rep = analyze(db)
+    hh = [c for c in rep["candidates"] if c["market"] == "hhad"]
+    assert hh, "no 让球 candidate produced"
+    win = next(c for c in hh if c["pick"] == "让胜")
+    assert win["ev"] > 0.05 and win["won"] is True
+    assert abs(win["profit"] - (jc_letwin - 1.0)) < 1e-9
+
+
+def test_hhad_realized_loss_when_not_covered(tmp_path):
+    """让胜 at −1 but home only wins 1-0 (margin 1, +(−1)=0 → 让平) → 让胜 loses."""
+    db = str(tmp_path / "obs.db")
+    _snapshot_pinn_close(db, fixture_id=99, h=1.50, d=4.0, a=6.0)
+    record_jingcai_sp(
+        db, match_date="2026-06-20", home_team="Mexico", away_team="South Africa",
+        jc_home=5.0, jc_draw=2.0, jc_away=2.0,   # jc_home huge → 让胜 is +EV
+        market="hhad", handicap_home=-1, fixture_id=99)
+    settle_jingcai_sp(db, fetch_fixtures=lambda d: [_fx("Mexico", "South Africa", 1, 0)],
+                      today=dt.date(2026, 6, 21))
+    rep = analyze(db)
+    win = next(c for c in rep["candidates"] if c["market"] == "hhad" and c["pick"] == "让胜")
+    assert win["won"] is False and win["profit"] == -1.0   # push on the line → 让胜 lost

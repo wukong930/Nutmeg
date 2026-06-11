@@ -410,6 +410,7 @@ class JingcaiSpRequest(BaseModel):
     league: str | None = None
     kickoff_utc: str | None = None
     market: str = "had"
+    handicap_home: int | None = None   # 竞彩 让球线 (market='hhad'); DC sign −1=主队让1球
 
 
 class JingcaiSpResponse(BaseModel):

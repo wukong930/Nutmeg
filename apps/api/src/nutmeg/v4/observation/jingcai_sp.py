@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS jingcai_sp (
     home_team    TEXT NOT NULL,
     away_team    TEXT NOT NULL,
     kickoff_utc  TEXT,
-    market       TEXT NOT NULL DEFAULT 'had',   -- had(1X2) | hhad | ttg ...
+    market       TEXT NOT NULL DEFAULT 'had',   -- had(1X2) | hhad(让球) | ttg ...
+    handicap_home INTEGER,   -- 竞彩 让球线 (DC: −1=主队让1球); NULL for 'had'
     -- 竞彩 SP (the frozen lottery line the user is pricing against)
     jc_home      REAL, jc_draw REAL, jc_away REAL,
     -- Pinnacle raw at capture time (vig included) — 竞彩 vs Pinnacle-at-capture
@@ -50,8 +51,13 @@ CREATE INDEX IF NOT EXISTS idx_jingcai_sp_unsettled
 
 
 def ensure_jingcai_sp_table(conn: sqlite3.Connection) -> None:
-    """Idempotent DDL — safe to call on every write."""
+    """Idempotent DDL — safe to call on every write. Includes a forward
+    migration: a table created before 让球 support lacks handicap_home, and
+    CREATE TABLE IF NOT EXISTS won't add it."""
     conn.executescript(_DDL)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(jingcai_sp)")}
+    if "handicap_home" not in cols:
+        conn.execute("ALTER TABLE jingcai_sp ADD COLUMN handicap_home INTEGER")
 
 
 def record_jingcai_sp(
@@ -71,6 +77,7 @@ def record_jingcai_sp(
     league: str | None = None,
     kickoff_utc: str | None = None,
     market: str = "had",
+    handicap_home: int | None = None,
     source: str = "market_mode",
 ) -> bool:
     """Upsert ONE canonical 竞彩 SP observation for (match_date, home, away,
@@ -89,20 +96,22 @@ def record_jingcai_sp(
             ensure_jingcai_sp_table(conn)
             conn.execute(
                 "INSERT INTO jingcai_sp (captured_at, source, fixture_id, league, "
-                "match_date, home_team, away_team, kickoff_utc, market, "
+                "match_date, home_team, away_team, kickoff_utc, market, handicap_home, "
                 "jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, ou_line) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(match_date, home_team, away_team, market) DO UPDATE SET "
                 "captured_at=excluded.captured_at, source=excluded.source, "
                 "fixture_id=COALESCE(excluded.fixture_id, jingcai_sp.fixture_id), "
                 "league=COALESCE(excluded.league, jingcai_sp.league), "
                 "kickoff_utc=COALESCE(excluded.kickoff_utc, jingcai_sp.kickoff_utc), "
+                "handicap_home=excluded.handicap_home, "
                 "jc_home=excluded.jc_home, jc_draw=excluded.jc_draw, jc_away=excluded.jc_away, "
                 "psc_home=excluded.psc_home, psc_draw=excluded.psc_draw, "
                 "psc_away=excluded.psc_away, ou_line=excluded.ou_line",
                 (
                     now, source, fixture_id, league, match_date, home_team,
                     away_team, kickoff_utc, market,
+                    int(handicap_home) if handicap_home is not None else None,
                     float(jc_home), float(jc_draw), float(jc_away),
                     _f(psc_home), _f(psc_draw), _f(psc_away), _f(ou_line),
                 ),

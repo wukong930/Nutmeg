@@ -4509,6 +4509,39 @@ function _jcStaleCapture(pr, selClass, idx, market) {
   }, 1200);
 }
 
+// 让球 (hhad) variant: needs a picked 让球线 (dropdown) + the 3 让球 SP. Stored
+// under market='hhad' with handicap_home; the analysis reverse-fits Pinnacle's
+// cover P at that line. Same debounce / fire-and-forget / both-modes design.
+function _jcStaleCaptureHc(pr, hcspClass, lineSelId, idx) {
+  if (!pr) return;
+  const sel = document.getElementById(lineSelId);
+  if (!sel || sel.value === '') return;   // no 让球线 picked yet → nothing canonical
+  const line = parseInt(sel.value, 10);
+  if (!Number.isInteger(line)) return;
+  const get = (o) => {
+    const el = document.querySelector(`.${hcspClass}[data-idx="${idx}"][data-outcome="${o}"]`);
+    const v = el ? parseFloat(el.value) : NaN;
+    return (v && v > 1.0) ? v : null;
+  };
+  const oh = get('H'), od = get('D'), oa = get('A');
+  if (!(oh && od && oa)) return;
+  const key = `${hcspClass}-${idx}`;
+  clearTimeout(_jcCapT[key]);
+  _jcCapT[key] = setTimeout(() => {
+    fetch(API + '/observation/jingcai-sp', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({
+        match_date: pr.date, home_team: pr.home_team, away_team: pr.away_team,
+        jc_home: oh, jc_draw: od, jc_away: oa,
+        psc_home: pr.psc_home ?? null, psc_draw: pr.psc_draw ?? null,
+        psc_away: pr.psc_away ?? null, ou_line: pr.ou_line ?? null,
+        fixture_id: pr.fixture_id ?? null, league: pr.league ?? null,
+        market: 'hhad', handicap_home: line,
+      }),
+    }).catch(() => {});   // silent by design
+  }, 1200);
+}
+
 function _spcalcRecalc(idx) {
   const pr = _SPCALC.preds[idx];
   if (!pr) return;
@@ -4655,6 +4688,7 @@ function _spcalcHcRecalc(idx) {
     verdict.removeAttribute('style');
     btn.disabled = true; btn.style.cssText = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed';
   }
+  _jcStaleCaptureHc(_SPCALC.preds[idx], 'spcalc-hcsp', 'spcalc-hcline-' + idx, idx);   // 体检 — 标准模式让球捕获
 }
 async function _spcalcHcRecord(idx) {
   const pr = _SPCALC.preds[idx];
@@ -4994,6 +5028,7 @@ function _cupHcRecalc(idx) {
       evEl.removeAttribute('style');
     }
   });
+  _jcStaleCaptureHc(_CUPMKT.preds[idx], 'cuphcsp', 'cuphcline-' + idx, idx);   // 体检 — 市场模式让球捕获
 }
 // V12 W8 — record a market-mode 让球 pick for tracking. Server recomputes the
 // market-implied P from Pinnacle (de-vig 1X2 + O/U), picks the highest-EV leg,

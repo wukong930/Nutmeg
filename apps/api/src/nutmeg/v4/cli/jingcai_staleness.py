@@ -20,6 +20,7 @@ from collections import defaultdict
 
 # outcome index: 0=home, 1=draw, 2=away (matches jingcai_sp.ft_outcome)
 _LABELS = ("主胜", "平局", "客胜")
+_HC_LABELS = ("让胜", "让平", "让负")
 _MIN_EV = 0.05  # the project's +EV betting threshold
 
 
@@ -37,20 +38,48 @@ def _devig3(h, d, a) -> tuple[float, float, float] | None:
 
 
 def _pinn_close(conn: sqlite3.Connection, row: dict) -> tuple | None:
-    """Pinnacle CLOSING 1X2 (last observed state) for this match, by fixture_id
-    then by (date, teams)."""
+    """Pinnacle CLOSING line (last observed state): (psc_home, psc_draw, psc_away,
+    psc_over, psc_under, ou_line). 1X2 for 'had'; the O/U is needed to reverse-fit
+    the grid for 'hhad'. By fixture_id, then by (date, teams)."""
+    cols = "psc_home, psc_draw, psc_away, psc_over, psc_under, ou_line"
     if row.get("fixture_id"):
         r = conn.execute(
-            "SELECT psc_home, psc_draw, psc_away FROM odds_snapshots "
+            f"SELECT {cols} FROM odds_snapshots "
             "WHERE fixture_id=? ORDER BY captured_at DESC, id DESC LIMIT 1",
             (row["fixture_id"],)).fetchone()
         if r:
             return r
     return conn.execute(
-        "SELECT psc_home, psc_draw, psc_away FROM odds_snapshots "
+        f"SELECT {cols} FROM odds_snapshots "
         "WHERE match_date=? AND home_team=? AND away_team=? "
         "ORDER BY captured_at DESC, id DESC LIMIT 1",
         (row["match_date"], row["home_team"], row["away_team"])).fetchone()
+
+
+def _hhad_pinn_and_outcome(close: tuple, row: dict) -> tuple | None:
+    """For a 让球 (hhad) row: reverse-fit Pinnacle's grid from its CLOSING 1X2 +
+    O/U, read the (让胜, 让平, 让负) cover P at the 竞彩 handicap line, and the
+    realized covered outcome (0 让胜 / 1 让平 / 2 让负). None if not computable."""
+    line = row["handicap_home"]
+    if line is None or row["home_goals"] is None or row["away_goals"] is None:
+        return None
+    fair = _devig3(close[0], close[1], close[2])
+    if fair is None:
+        return None
+    from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+    p_over = devig_over(close[3], close[4]) if (close[3] and close[4]) else None
+    ou_line = close[5] if close[5] is not None else 2.5
+    try:
+        lines = implied_handicap_lines(
+            fair[0], fair[1], fair[2], p_over, ou_line=ou_line, lines=(int(line),))
+    except Exception:  # noqa: BLE001 — a fit failure just drops this row
+        return None
+    if not lines:
+        return None
+    _, ph, pd_, pa = lines[0]
+    m = (row["home_goals"] - row["away_goals"]) + int(line)   # margin after handicap
+    covered = 0 if m > 0 else (1 if m == 0 else 2)
+    return (ph, pd_, pa), covered
 
 
 def _ev_band(ev: float) -> str:
@@ -83,7 +112,8 @@ def analyze(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS odds_snapshots (id INTEGER PRIMARY KEY, "
             "captured_at TEXT, fixture_id INTEGER, match_date TEXT, home_team TEXT, "
-            "away_team TEXT, psc_home REAL, psc_draw REAL, psc_away REAL)")
+            "away_team TEXT, psc_home REAL, psc_draw REAL, psc_away REAL, "
+            "psc_over REAL, psc_under REAL, ou_line REAL)")
         rows = fetch_jingcai_sp(db_path, settled=True)
         candidates: list[dict] = []
         no_close = 0
@@ -93,25 +123,36 @@ def analyze(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
             if close is None:
                 no_close += 1
                 continue
-            pinn_close = _devig3(*close)
-            pinn_cap = _devig3(r["psc_home"], r["psc_draw"], r["psc_away"])
-            if pinn_close is None:
+            pinn_1x2 = _devig3(close[0], close[1], close[2])   # close 1X2 (for drift + had EV)
+            if pinn_1x2 is None:
+                no_close += 1
                 continue
-            drift = (max(abs(pinn_close[i] - pinn_cap[i]) for i in range(3))
+            pinn_cap = _devig3(r["psc_home"], r["psc_draw"], r["psc_away"])
+            drift = (max(abs(pinn_1x2[i] - pinn_cap[i]) for i in range(3))
                      if pinn_cap else 0.0)
+            market = r["market"] or "had"
+            if market == "hhad":          # 让球: reverse-fit Pinnacle's cover P at the line
+                truth = _hhad_pinn_and_outcome(close, r)
+                if truth is None:
+                    no_close += 1
+                    continue
+                p_close, covered = truth
+                labels = _HC_LABELS
+            else:                         # 1X2: de-vig Pinnacle close, W/D/L outcome
+                p_close, covered, labels = pinn_1x2, r["ft_outcome"], _LABELS
             for i in range(3):
                 sp = jc[i]
                 if not sp or sp <= 1:
                     continue
-                ev = pinn_close[i] * float(sp) - 1.0
+                ev = p_close[i] * float(sp) - 1.0
                 if ev < min_ev:
                     continue
-                won = (r["ft_outcome"] == i)
                 candidates.append({
                     "match": f'{r["home_team"]} vs {r["away_team"]}',
-                    "league": r["league"] or "?", "pick": _LABELS[i],
-                    "jc_sp": float(sp), "ev": ev, "drift": drift, "won": won,
-                    "profit": (float(sp) - 1.0) if won else -1.0,
+                    "league": r["league"] or "?", "market": market, "pick": labels[i],
+                    "jc_sp": float(sp), "ev": ev, "drift": drift,
+                    "won": (covered == i),
+                    "profit": (float(sp) - 1.0) if covered == i else -1.0,
                 })
         return {"n_settled": len(rows), "no_close": no_close, "candidates": candidates}
 
@@ -150,6 +191,8 @@ def _print(report: dict, min_ev: float) -> None:
             print(f"  {k:28} {n:3} 注 · 命中 {wr:4.0%} · ROI {roi:+6.1%}")
         print()
 
+    _bucket(lambda c: {"had": "1X2 胜平负", "hhad": "让球胜平负"}.get(
+        c.get("market", "had"), c.get("market")), "玩法")
     _bucket(lambda c: c["league"], "联赛")
     _bucket(lambda c: _ev_band(c["ev"]), "EV 档")
     _bucket(lambda c: _drift_band(c["drift"]), "Pinnacle 冻结后漂移")

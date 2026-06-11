@@ -24,6 +24,13 @@ class TestJingcaiCapture:
         assert "_jcStaleCapture(_SPCALC.preds[idx], 'spcalc-sp'" in html
         assert "_jcStaleCapture(_CUPMKT.preds[idx], 'cupsp'" in html
 
+    def test_handicap_wired_both_modes(self, html):
+        # 让球 (hhad) capture wired into both boards' handicap recompute
+        assert "function _jcStaleCaptureHc(" in html
+        assert "_jcStaleCaptureHc(_SPCALC.preds[idx], 'spcalc-hcsp'" in html
+        assert "_jcStaleCaptureHc(_CUPMKT.preds[idx], 'cuphcsp'" in html
+        assert "market: 'hhad', handicap_home: line" in html
+
     def test_posts_to_endpoint(self, html):
         assert "/observation/jingcai-sp" in html
 
@@ -36,4 +43,4 @@ class TestJingcaiCapture:
 
     def test_cache_bumped(self):
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v43-fe-jcstale2" in routes
+        assert "nutmeg-v44-fe-jchhad" in routes

@@ -360,7 +360,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v43-fe-jcstale2';
+const CACHE_VERSION = 'nutmeg-v44-fe-jchhad';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -1088,7 +1088,8 @@ def record_jingcai_sp_endpoint(req: JingcaiSpRequest) -> JingcaiSpResponse:
         jc_home=req.jc_home, jc_draw=req.jc_draw, jc_away=req.jc_away,
         psc_home=req.psc_home, psc_draw=req.psc_draw, psc_away=req.psc_away,
         ou_line=req.ou_line, fixture_id=req.fixture_id, league=req.league,
-        kickoff_utc=req.kickoff_utc, market=req.market, source="market_mode")
+        kickoff_utc=req.kickoff_utc, market=req.market,
+        handicap_home=req.handicap_home, source="market_mode")
     return JingcaiSpResponse(recorded=recorded)
 
 
