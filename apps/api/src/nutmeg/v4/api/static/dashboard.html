@@ -4524,6 +4524,11 @@ function _jcStaleCapture(pr, selClass, idx, market) {
   };
   const oh = get('H'), od = get('D'), oa = get('A');
   if (!(oh && od && oa)) return;   // only capture a complete 竞彩 1X2 line
+  // Skip the official pre-fill — ONLY a genuine user override (value differs from the
+  // attached 竞彩 SP) writes market_mode. Else every render re-stamps the pre-fill and
+  // undoes the official sporttery feed (the "🎯 refreshed but didn't update" bug).
+  const _eq = (a, b) => a != null && b != null && Math.abs(a - b) < 0.001;
+  if (_eq(oh, pr.jc_home) && _eq(od, pr.jc_draw) && _eq(oa, pr.jc_away)) return;
   const key = `${selClass}-${idx}`;   // debounce per board+idx (标准/市场 never collide)
   clearTimeout(_jcCapT[key]);
   _jcCapT[key] = setTimeout(() => {
@@ -4556,6 +4561,11 @@ function _jcStaleCaptureHc(pr, hcspClass, lineSelId, idx) {
   };
   const oh = get('H'), od = get('D'), oa = get('A');
   if (!(oh && od && oa)) return;
+  // Same guard as 1X2: skip the official 让球 pre-fill (same line + same SP); only a
+  // genuine user override writes market_mode (else render re-stamps it).
+  const _eq = (a, b) => a != null && b != null && Math.abs(a - b) < 0.001;
+  if (line === pr.jc_hc_line && _eq(oh, pr.jc_hc_home) && _eq(od, pr.jc_hc_draw)
+      && _eq(oa, pr.jc_hc_away)) return;
   const key = `${hcspClass}-${idx}`;
   clearTimeout(_jcCapT[key]);
   _jcCapT[key] = setTimeout(() => {

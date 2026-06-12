@@ -41,6 +41,13 @@ class TestJingcaiCapture:
     def test_only_complete_1x2_captured(self, html):
         assert "if (!(oh && od && oa)) return;" in html
 
+    def test_skips_official_prefill(self, html):
+        # Render pre-fills the input with the attached 竞彩 SP; re-capturing it as
+        # market_mode re-stamps the official feed (the "🎯 refreshed but didn't
+        # update" bug). Only a genuine override (value ≠ attached) may write.
+        assert "_eq(oh, pr.jc_home) && _eq(od, pr.jc_draw) && _eq(oa, pr.jc_away)) return;" in html
+        assert "line === pr.jc_hc_line && _eq(oh, pr.jc_hc_home)" in html
+
     def test_cache_bumped(self):
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v48-fe-jcrefreshbtn" in routes
+        assert "nutmeg-v49-fe-jccapture-no-prefill" in routes
