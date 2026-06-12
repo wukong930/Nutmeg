@@ -1132,7 +1132,9 @@ def sporttery_refresh_endpoint() -> SportteryRefreshResponse:
         return SportteryRefreshResponse(ok=False, reason="未配置观测库 (NUTMEG_V4_OBSERVATION_DB)")
     try:
         from nutmeg.v4.cli.ingest_sporttery import harvest_to_db
-        r = harvest_to_db(db_path, refresh=True)
+        # protect_manual=False: an explicit 🎯 refresh OVERWRITES the stale
+        # market_mode capture with the latest official SP (that IS the button's job).
+        r = harvest_to_db(db_path, refresh=True, protect_manual=False)
     except Exception:  # noqa: BLE001 — fail-soft; the button surfaces the reason
         return SportteryRefreshResponse(ok=False, reason="竞彩抓取失败(网络/端点)")
     return SportteryRefreshResponse(ok=True, **r)

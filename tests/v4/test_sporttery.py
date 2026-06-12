@@ -84,6 +84,26 @@ def test_harvest_to_db_counts(tmp_path):
     assert r["had"] == 1 and r["hhad"] == 1
 
 
+def test_harvest_protect_manual_toggle(tmp_path):
+    """The cron (protect_manual=True) preserves a hand-priced row; the 🎯 刷新竞彩
+    endpoint (protect_manual=False) overwrites the stale market_mode capture with the
+    latest official SP — otherwise the button fetches fresh data but can't show it."""
+    from nutmeg.v4.cli.ingest_sporttery import harvest_to_db
+    from nutmeg.v4.observation.jingcai_sp import fetch_sp_lookup, record_jingcai_sp
+    db = str(tmp_path / "obs.db")
+    key = ("2026-06-20", "Mexico", "South Africa")
+    record_jingcai_sp(db, match_date="2026-06-20", home_team="Mexico",
+                      away_team="South Africa", jc_home=1.78, jc_draw=3.4, jc_away=4.5,
+                      market="had", source="market_mode")        # stale hand-capture
+    fresh = [{"home_en": "Mexico", "away_en": "South Africa", "league_cn": "WC",
+              "match_date": "2026-06-20", "kickoff_utc": None,
+              "had": (1.71, 3.5, 4.7), "hhad": None}]
+    harvest_to_db(db, matches=fresh, protect_manual=True)         # cron: blocked
+    assert fetch_sp_lookup(db, market="had")[key][0] == 1.78
+    harvest_to_db(db, matches=fresh, protect_manual=False)        # 🎯: overwrites
+    assert fetch_sp_lookup(db, market="had")[key][0] == 1.71
+
+
 def test_fail_soft_returns_empty(monkeypatch):
     monkeypatch.setattr(sporttery, "_request", lambda *a, **k: None)
     assert sporttery.fetch_lottery_matches() == []

@@ -16,11 +16,15 @@ import logging
 
 
 def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = False,
-                  matches: list[dict] | None = None) -> dict:
-    """Upsert the current 竞彩 SP into jingcai_sp (source=sporttery, protect_manual
-    so it NEVER clobbers a hand-priced line). Fetches if ``matches`` is None.
-    Returns ``{matches, mapped, unmapped, had, hhad}``. Shared by the CLI and the
-    🎯 刷新竞彩 endpoint."""
+                  matches: list[dict] | None = None, protect_manual: bool = True) -> dict:
+    """Upsert the current 竞彩 SP into jingcai_sp (source=sporttery). Fetches if
+    ``matches`` is None. Returns ``{matches, mapped, unmapped, had, hhad}``. Shared
+    by the CLI and the 🎯 刷新竞彩 endpoint.
+
+    ``protect_manual``: True (default, for the unattended cron) skips any row a user
+    hand-priced in 市场/标准 模式. The 🎯 button passes False — an *explicit* refresh
+    means "give me the latest official SP", so it must overwrite the (often stale)
+    market_mode capture; otherwise the button fetches fresh data but can't show it."""
     from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
     if matches is None:
         from nutmeg.v4.data.sources.sporttery import fetch_lottery_matches
@@ -32,7 +36,7 @@ def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = Fals
             "match_date": m["match_date"], "home_team": m["home_en"],
             "away_team": m["away_en"], "league": m["league_cn"],
             "kickoff_utc": m.get("kickoff_utc"),
-            "source": "sporttery", "protect_manual": True,
+            "source": "sporttery", "protect_manual": protect_manual,
         }
         if m["had"]:
             jh, jd, ja = m["had"]
