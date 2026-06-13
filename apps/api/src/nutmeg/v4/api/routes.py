@@ -364,6 +364,13 @@ def app_icon() -> Response:
     return Response(content=svg, media_type="image/svg+xml")
 
 
+# Single source of truth for the frontend/SW version. Bump on ANY frontend
+# change → the /version endpoint + the new-version banner trigger a reload so an
+# open tab never silently runs stale code (the recurring "refreshed but didn't
+# update" trap was an old tab running pre-fix JS).
+_FE_VERSION = "nutmeg-v50-fe-versionbanner"
+
+
 @router.get("/sw.js", include_in_schema=False)
 def service_worker() -> Response:
     """post-v9 P1#14 + V12 W4: minimal service worker.
@@ -388,7 +395,7 @@ def service_worker() -> Response:
 // offline fallback. Only manifest + icon stay cache-first (truly static).
 // The activate handler deletes any cache != this constant, so a CACHE_VERSION
 // bump still auto-purges old caches on the next load.
-const CACHE_VERSION = 'nutmeg-v49-fe-jccapture-no-prefill';
+const CACHE_VERSION = '__FE_VERSION__';
 const SHELL_URLS = [
   '/api/v4/dashboard',
   '/api/v4/manifest.json',
@@ -446,8 +453,16 @@ self.addEventListener('fetch', (event) => {
     fetch(event.request).catch(() => caches.match(event.request))
   );
 });
-""".lstrip()
+""".lstrip().replace("__FE_VERSION__", _FE_VERSION)
     return Response(content=sw_js, media_type="application/javascript")
+
+
+@router.get("/version", include_in_schema=False)
+def version() -> dict:
+    """Current frontend/SW version. The dashboard captures this at load, polls it
+    on tab-focus, and shows a 'new version ready → reload' banner when it differs
+    — so an open tab never silently keeps running stale code."""
+    return {"version": _FE_VERSION}
 
 
 # ---------- /v4/rules (V6 W10) -------------------------------------------

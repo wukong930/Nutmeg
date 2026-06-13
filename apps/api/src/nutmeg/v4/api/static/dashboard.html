@@ -667,6 +667,11 @@
 </style>
 </head>
 <body><!-- bg + text now via :root[data-theme] -->
+<!-- 新版本横幅:服务器代码版本变了就提示刷新,杜绝"开着的旧标签页跑旧 JS" -->
+<div id="ver-banner" role="status" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#6366f1;color:#fff;padding:8px 16px;align-items:center;justify-content:center;gap:12px;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.25)">
+  <span data-i18n="ver_new">🔄 新版本已就绪</span>
+  <button type="button" onclick="location.reload()" style="background:#fff;color:#6366f1;border:none;border-radius:6px;padding:4px 14px;font-weight:600;cursor:pointer" data-i18n="ver_reload">点此刷新</button>
+</div>
 
 <!-- P1#13: tighter mobile padding (px-3) widening at sm breakpoint. -->
 <div class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -2086,6 +2091,8 @@ const I18N = {
     cupmkt_hc_toggle:'▸ 让球 (市场反推 · Pinnacle 1X2+大小球)',
     jc_hhad_only:'竞彩本场只售让球(无胜平负盘)— 见下方「让球」',
     jc_refresh_btn:'🎯 刷新竞彩',
+    ver_new:'🔄 新版本已就绪',
+    ver_reload:'点此刷新',
     jc_refreshing:'抓取竞彩中…',
     cupmkt_hc_record:'📌 记录此注',
     cupmkt_hc_recorded:'已记入观测库 (市场让球)',
@@ -2493,6 +2500,8 @@ const I18N = {
     cupmkt_hc_toggle:'▸ Handicap (market-implied · Pinnacle 1X2+O/U)',
     jc_hhad_only:'竞彩 sells only the handicap for this match (no 1X2) — see 让球 below',
     jc_refresh_btn:'🎯 Refresh 竞彩 SP',
+    ver_new:'🔄 New version ready',
+    ver_reload:'Reload',
     jc_refreshing:'fetching 竞彩…',
     cupmkt_hc_record:'📌 Record this bet',
     cupmkt_hc_recorded:'logged to observation DB (market handicap)',
@@ -5886,8 +5895,25 @@ loadTodayRecommendations = async function() {
 
 // Visibility API: pause both timers when the tab is hidden; resume when
 // it becomes visible again.
+// ── 新版本检测:服务器代码版本变了 → 顶部横幅提示刷新(终结"开着的旧标签页跑旧 JS")──
+let _loadedVer = null;
+async function _checkVersion() {
+  try {
+    const j = await fetch(API + '/version', { cache: 'no-store' }).then(r => r.json());
+    if (!j || !j.version) return;
+    if (_loadedVer === null) { _loadedVer = j.version; return; }   // capture load-time version
+    if (j.version !== _loadedVer) {
+      const b = document.getElementById('ver-banner');
+      if (b) b.style.display = 'flex';
+    }
+  } catch (e) { /* offline — ignore */ }
+}
+_checkVersion();                              // capture the version this tab loaded with
+setInterval(_checkVersion, 10 * 60 * 1000);   // re-check every 10 min
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
+    _checkVersion();                 // new build shipped while tab was hidden? → banner
     _renderStaleLabel();             // immediate update on return
     _startStaleTicker();
     if (_todayCurrentTab === 'today') _startTodayPolling();

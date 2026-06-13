@@ -50,4 +50,4 @@ class TestJingcaiCapture:
 
     def test_cache_bumped(self):
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v49-fe-jccapture-no-prefill" in routes
+        assert "nutmeg-v50-fe-versionbanner" in routes
