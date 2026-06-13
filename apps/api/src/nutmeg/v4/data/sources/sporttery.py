@@ -58,6 +58,16 @@ _ZH_OVERRIDES: dict[str, str] = {
     # odds_snapshots/gather name. Both paren widths — the 竞彩 feed is inconsistent.
     "刚果(金)": "Congo DR",
     "刚果（金）": "Congo DR",
+    # 芬超 Veikkausliiga — 竞彩 uses descriptive 中文 (坦佩雷山猫=Tampere Lynx=Ilves,
+    # 赫尔辛基火花=Helsinki Spark=Gnistan) that TEAM_NAME_ZH lacks. Aligned to the live
+    # 市场模式 (cup-market) gather name by pairing each 竞彩 match to its fixture
+    # (体检 2026-06-13) so the 竞彩 SP pre-fills. 芬超 is market-mode (no model).
+    "坦佩雷山猫": "Ilves",
+    "TPS图尔库": "Turku PS",
+    "国际图尔库": "Inter Turku",
+    "AC奥卢": "AC Oulu",
+    "赫尔辛基": "HJK Helsinki",
+    "赫尔辛基火花": "Gnistan",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

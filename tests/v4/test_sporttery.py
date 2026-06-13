@@ -84,6 +84,15 @@ def test_harvest_to_db_counts(tmp_path):
     assert r["had"] == 1 and r["hhad"] == 1
 
 
+def test_finnish_zh_override():
+    """芬超 (market-mode league) — 竞彩's descriptive 中文 maps to the live cup-market
+    gather name so the 竞彩 SP pre-fills (was 4/6 matches blank: 体检 2026-06-13)."""
+    assert sporttery.zh_to_canonical("坦佩雷山猫") == "Ilves"            # Tampere Lynx
+    assert sporttery.zh_to_canonical("赫尔辛基火花") == "Gnistan"        # Helsinki Spark
+    assert sporttery.zh_to_canonical("国际图尔库") == "Inter Turku"
+    assert sporttery.zh_to_canonical("AC奥卢") == "AC Oulu"
+
+
 def test_harvest_protect_manual_toggle(tmp_path):
     """The cron (protect_manual=True) preserves a hand-priced row; the 🎯 刷新竞彩
     endpoint (protect_manual=False) overwrites the stale market_mode capture with the
