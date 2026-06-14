@@ -959,11 +959,11 @@
          SP / 让球 / 手填反推 here; the 今日推荐 💠 block is a read-only mirror. -->
     <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #b8860b">
       <div class="flex items-center gap-3 flex-wrap">
-        <button id="cupmkt-load" onclick="loadCupMarket()"
+        <button id="cupmkt-load" onclick="loadCupMarket({manual:true})"
                 class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
                 title="加载市场模式盘口 (走缓存, 不额外消耗 API)"
                 data-i18n="cupmkt_load_btn">💹 加载市场模式盘口</button>
-        <button id="cupmkt-refresh" onclick="loadCupMarket({refreshOdds:true})"
+        <button id="cupmkt-refresh" onclick="loadCupMarket({refreshOdds:true, manual:true})"
                 class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
                 title="强制拉取最新 Pinnacle 赔率 (消耗 API 调用)"
                 data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
@@ -4829,7 +4829,7 @@ async function refreshJingcai() {
     if (st) st.textContent = '⚠️ 竞彩刷新失败(网络)';
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = t('jc_refresh_btn'); }
-    loadCupMarket();   // re-read jingcai_sp + re-prefill (cached Pinnacle, no API)
+    loadCupMarket({manual:true});   // re-read jingcai_sp + 新数据为主(竞彩刷新=手动)
   }
 }
 
@@ -5446,28 +5446,33 @@ function renderCupMarket(preds, pending) {
   // identity, so a 🔄 refresh updates Pinnacle P/odds WITHOUT wiping the SP
   // (mirrors renderTodaySpCalc's model-board preservation). Read the *old* DOM
   // before _CUPMKT.preds is reassigned below.
+  // 体检 — 手动刷新(🔄 刷新盘口 / 🎯 刷新竞彩 / 加载)时 _freshWins=true:丢掉本次会话
+  // 的所有手填覆盖,让刷新后的服务端数据(Pinnacle + 竞彩 + 让球)全胜出、重算显示
+  // (用户要「手动刷新后以刷新数据为主」)。静默 60s 轮询不带此标志 → 仍保留正在输入
+  // 的值,避免后台把手输的抹掉。
+  const _freshWins = _CUPMKT._freshWins; _CUPMKT._freshWins = false;
   const _entered = {};
-  // 体检 — preserve only a GENUINE user override (value ≠ the server pre-fill the
-  // input already shows), NEVER the pre-fill itself. Else a 🎯 刷新竞彩 (which
-  // fetches a FRESHER jingcai_sp pre-fill) gets clobbered by the stale displayed
-  // value we'd otherwise "preserve" → the recurring "刷新了却没更新". p is the OLD
-  // pred (read before _CUPMKT.preds is reassigned), so its jc_* IS that pre-fill.
-  const _isPf = (v, pf) => pf != null && v !== '' && Math.abs(parseFloat(v) - pf) < 0.001;
-  (_CUPMKT.preds || []).forEach((p, i) => {
-    const key = p.home_team + '|' + p.away_team + '|' + p.date;
-    const bucket = {};
-    ['H', 'D', 'A'].forEach(o => {
-      const pf = { H: p.jc_home, D: p.jc_draw, A: p.jc_away }[o];
-      const el = document.querySelector(`.cupsp[data-idx="${i}"][data-outcome="${o}"]`);
-      if (el && el.value && !_isPf(el.value, pf)) bucket[o] = el.value;
-      const hpf = { H: p.jc_hc_home, D: p.jc_hc_draw, A: p.jc_hc_away }[o];
-      const hel = document.querySelector(`.cuphcsp[data-idx="${i}"][data-outcome="${o}"]`);
-      if (hel && hel.value && !_isPf(hel.value, hpf)) { bucket.hc = bucket.hc || {}; bucket.hc[o] = hel.value; }
+  if (!_freshWins) {
+    // preserve only a GENUINE override (value ≠ the server pre-fill), NEVER the
+    // pre-fill itself — so a non-manual re-render (poll) keeps in-progress typing
+    // yet still lets a fresher pre-fill through for un-touched cards (v51 guard).
+    const _isPf = (v, pf) => pf != null && v !== '' && Math.abs(parseFloat(v) - pf) < 0.001;
+    (_CUPMKT.preds || []).forEach((p, i) => {
+      const key = p.home_team + '|' + p.away_team + '|' + p.date;
+      const bucket = {};
+      ['H', 'D', 'A'].forEach(o => {
+        const pf = { H: p.jc_home, D: p.jc_draw, A: p.jc_away }[o];
+        const el = document.querySelector(`.cupsp[data-idx="${i}"][data-outcome="${o}"]`);
+        if (el && el.value && !_isPf(el.value, pf)) bucket[o] = el.value;
+        const hpf = { H: p.jc_hc_home, D: p.jc_hc_draw, A: p.jc_hc_away }[o];
+        const hel = document.querySelector(`.cuphcsp[data-idx="${i}"][data-outcome="${o}"]`);
+        if (hel && hel.value && !_isPf(hel.value, hpf)) { bucket.hc = bucket.hc || {}; bucket.hc[o] = hel.value; }
+      });
+      const lsel = document.querySelector(`#cuphcline-${i}`);
+      if (lsel && lsel.value !== '' && String(lsel.value) !== String(p.jc_hc_line)) bucket.hcline = lsel.value;
+      if (Object.keys(bucket).length) _entered[key] = bucket;
     });
-    const lsel = document.querySelector(`#cuphcline-${i}`);
-    if (lsel && lsel.value !== '' && String(lsel.value) !== String(p.jc_hc_line)) bucket.hcline = lsel.value;
-    if (Object.keys(bucket).length) _entered[key] = bucket;
-  });
+  }
   _CUPMKT.preds = preds;
   _CUPMKT.pending = pending;   // V14 — kept so _cupManualReprice can re-render in place
   const sec = $('#cupmkt-section'), list = $('#cupmkt-list'), empty = $('#cupmkt-empty');
@@ -5569,6 +5574,8 @@ async function loadCupMarket(opts = {}) {
     const r = await fetch(API + '/predictions/cup-market' + qs);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const body = await r.json();
+    // 手动刷新(opts.manual:🔄/🎯/加载)→ 新数据为主:renderCupMarket 据此丢掉会话手填。
+    _CUPMKT._freshWins = !!opts.manual;
     renderCupMarket(body.predictions, body.pending_fixtures);   // full board (近期赛事)
     renderMarketPred(body.predictions);                         // lean mirror (今日推荐)
     if (statusEl) statusEl.textContent =

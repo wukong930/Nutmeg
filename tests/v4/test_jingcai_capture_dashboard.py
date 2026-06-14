@@ -58,6 +58,17 @@ class TestJingcaiCapture:
         assert "if (el && el.value && !_isPf(el.value, pf)) bucket[o] = el.value;" in html  # both boards
         assert "String(lsel.value) !== String(p.jc_hc_line)) bucket.hcline" in html
 
+    def test_manual_refresh_fresh_wins(self, html):
+        # 用户要「手动刷新后以刷新数据为主」: 手动刷新(🔄/🎯/加载)带 manual:true →
+        # loadCupMarket 置 _CUPMKT._freshWins → renderCupMarket 跳过 _entered 保留 →
+        # 服务端新数据(Pinnacle + 竞彩 + 让球)全胜出、重算显示。静默 60s 轮询不带
+        # manual → 仍保留正在输入的值,避免后台抹掉手输。
+        assert "_CUPMKT._freshWins = !!opts.manual;" in html
+        assert "const _freshWins = _CUPMKT._freshWins; _CUPMKT._freshWins = false;" in html
+        assert "if (!_freshWins) {" in html
+        assert "loadCupMarket({manual:true})" in html                    # 加载 + 🎯 刷新竞彩
+        assert "loadCupMarket({refreshOdds:true, manual:true})" in html  # 🔄 刷新盘口
+
     def test_cache_bumped(self):
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v51-fe-prefillwins" in routes
+        assert "nutmeg-v52-fe-freshwins" in routes
