@@ -48,6 +48,16 @@ class TestJingcaiCapture:
         assert "_eq(oh, pr.jc_home) && _eq(od, pr.jc_draw) && _eq(oa, pr.jc_away)) return;" in html
         assert "line === pr.jc_hc_line && _eq(oh, pr.jc_hc_home)" in html
 
+    def test_preserve_only_genuine_overrides(self, html):
+        # The 4th-layer "刷新了却没更新" root cause: renderCupMarket/renderTodaySpCalc
+        # preserved the displayed 竞彩 SP across a re-render, but the displayed value
+        # IS the (now-stale) server pre-fill — so a 🎯 刷新竞彩 fetching a FRESHER
+        # pre-fill got clobbered by the value being "preserved". Fix: preserve only a
+        # genuine override (value ≠ the pre-fill p.jc_*), letting the fresh pre-fill win.
+        assert "const _isPf = (v, pf) => pf != null" in html
+        assert "if (el && el.value && !_isPf(el.value, pf)) bucket[o] = el.value;" in html  # both boards
+        assert "String(lsel.value) !== String(p.jc_hc_line)) bucket.hcline" in html
+
     def test_cache_bumped(self):
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v50-fe-versionbanner" in routes
+        assert "nutmeg-v51-fe-prefillwins" in routes

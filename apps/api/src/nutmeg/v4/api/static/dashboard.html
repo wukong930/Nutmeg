@@ -4290,17 +4290,23 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   // so a re-render (e.g. 🔄 刷新盘口) updates model P / Pinnacle odds WITHOUT
   // wiping the entered SP. Read from the *previous* render's state + DOM.
   const _entered = {};
+  // 体检 — same guard as 市场模式: preserve only a GENUINE override (≠ the server
+  // pre-fill), never the pre-fill itself, so a fresher jingcai_sp pre-fill on
+  // re-render isn't clobbered by the stale displayed value ("刷新了却没更新").
+  const _isPf = (v, pf) => pf != null && v !== '' && Math.abs(parseFloat(v) - pf) < 0.001;
   (_SPCALC.preds || []).forEach((p, i) => {
     const key = p.home_team + '|' + p.away_team + '|' + p.date;
     const bucket = {};
     ['H', 'D', 'A'].forEach(o => {
+      const pf = { H: p.jc_home, D: p.jc_draw, A: p.jc_away }[o];
       const el = document.querySelector(`.spcalc-sp[data-idx="${i}"][data-outcome="${o}"]`);
-      if (el && el.value) bucket[o] = el.value;
+      if (el && el.value && !_isPf(el.value, pf)) bucket[o] = el.value;
+      const hpf = { H: p.jc_hc_home, D: p.jc_hc_draw, A: p.jc_hc_away }[o];
       const hel = document.querySelector(`.spcalc-hcsp[data-idx="${i}"][data-outcome="${o}"]`);
-      if (hel && hel.value) { bucket.hc = bucket.hc || {}; bucket.hc[o] = hel.value; }
+      if (hel && hel.value && !_isPf(hel.value, hpf)) { bucket.hc = bucket.hc || {}; bucket.hc[o] = hel.value; }
     });
     const lsel = document.querySelector(`#spcalc-hcline-${i}`);
-    if (lsel && lsel.value !== '') bucket.hcline = lsel.value;
+    if (lsel && lsel.value !== '' && String(lsel.value) !== String(p.jc_hc_line)) bucket.hcline = lsel.value;
     if (Object.keys(bucket).length) _entered[key] = bucket;
   });
   // V13 — the sp-calc fixture list is VOLATILE (a match can vanish from a later
@@ -5441,17 +5447,25 @@ function renderCupMarket(preds, pending) {
   // (mirrors renderTodaySpCalc's model-board preservation). Read the *old* DOM
   // before _CUPMKT.preds is reassigned below.
   const _entered = {};
+  // 体检 — preserve only a GENUINE user override (value ≠ the server pre-fill the
+  // input already shows), NEVER the pre-fill itself. Else a 🎯 刷新竞彩 (which
+  // fetches a FRESHER jingcai_sp pre-fill) gets clobbered by the stale displayed
+  // value we'd otherwise "preserve" → the recurring "刷新了却没更新". p is the OLD
+  // pred (read before _CUPMKT.preds is reassigned), so its jc_* IS that pre-fill.
+  const _isPf = (v, pf) => pf != null && v !== '' && Math.abs(parseFloat(v) - pf) < 0.001;
   (_CUPMKT.preds || []).forEach((p, i) => {
     const key = p.home_team + '|' + p.away_team + '|' + p.date;
     const bucket = {};
     ['H', 'D', 'A'].forEach(o => {
+      const pf = { H: p.jc_home, D: p.jc_draw, A: p.jc_away }[o];
       const el = document.querySelector(`.cupsp[data-idx="${i}"][data-outcome="${o}"]`);
-      if (el && el.value) bucket[o] = el.value;
+      if (el && el.value && !_isPf(el.value, pf)) bucket[o] = el.value;
+      const hpf = { H: p.jc_hc_home, D: p.jc_hc_draw, A: p.jc_hc_away }[o];
       const hel = document.querySelector(`.cuphcsp[data-idx="${i}"][data-outcome="${o}"]`);
-      if (hel && hel.value) { bucket.hc = bucket.hc || {}; bucket.hc[o] = hel.value; }
+      if (hel && hel.value && !_isPf(hel.value, hpf)) { bucket.hc = bucket.hc || {}; bucket.hc[o] = hel.value; }
     });
     const lsel = document.querySelector(`#cuphcline-${i}`);
-    if (lsel && lsel.value !== '') bucket.hcline = lsel.value;
+    if (lsel && lsel.value !== '' && String(lsel.value) !== String(p.jc_hc_line)) bucket.hcline = lsel.value;
     if (Object.keys(bucket).length) _entered[key] = bucket;
   });
   _CUPMKT.preds = preds;
