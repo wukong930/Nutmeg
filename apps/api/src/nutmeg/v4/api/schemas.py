@@ -418,6 +418,8 @@ class JingcaiSpRequest(BaseModel):
     psc_draw: float | None = None
     psc_away: float | None = None
     ou_line: float | None = None
+    psc_over: float | None = None       # capture-time O/U — lets the CLV ledger reverse-fit
+    psc_under: float | None = None      # the hhad cover-P at bet time (no look-ahead)
     fixture_id: int | None = None
     league: str | None = None
     kickoff_utc: str | None = None

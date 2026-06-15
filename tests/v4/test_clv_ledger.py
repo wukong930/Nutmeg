@@ -70,3 +70,18 @@ def test_below_threshold_not_selected(tmp_path):
     _seed_close(db, "2026-06-22", "E", "F", (1.9, 3.3, 4.0))
     rep = compute_ledger(db, min_ev=0.05)
     assert len(rep["legs"]) == 3 and rep["selected"] == []
+
+
+def test_hhad_selected_reverse_fits_capture_ou(tmp_path):
+    """让球选中腿: capture-time cover-P is reverse-fit from the stored 1X2 + O/U
+    (psc_over/under), so an hhad +EV pick enters the validation counter."""
+    db = str(tmp_path / "obs.db")
+    record_jingcai_sp(db, match_date="2026-06-23", home_team="G", away_team="H",
+                      jc_home=5.0, jc_draw=5.0, jc_away=5.0,   # absurdly soft → some leg +EV
+                      psc_home=1.5, psc_draw=4.0, psc_away=7.0,
+                      psc_over=1.9, psc_under=1.9, ou_line=2.5,
+                      market="hhad", handicap_home=-1)
+    _seed_close(db, "2026-06-23", "G", "H", (1.55, 3.9, 6.5))
+    rep = compute_ledger(db, min_ev=0.05)
+    assert len(rep["legs"]) == 3
+    assert len(rep["selected"]) == 1 and rep["selected"][0]["market"] == "hhad"

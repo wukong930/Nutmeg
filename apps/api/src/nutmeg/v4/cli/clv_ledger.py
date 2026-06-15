@@ -87,7 +87,8 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
             "psc_over REAL, psc_under REAL, ou_line REAL)")
         raw = conn.execute(
             "SELECT match_date, home_team, away_team, fixture_id, market, captured_at, "
-            "jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, handicap_home "
+            "jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, handicap_home, "
+            "psc_over, psc_under, ou_line "
             "FROM jingcai_sp").fetchall()
         # one observation per (match, market): the FRESHEST 竞彩 SP capture
         latest: dict[tuple, dict] = {}
@@ -125,19 +126,26 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
                     "tier": _tier(p_close[i]), "rank": rankname[i],
                     "pos": labels[i], "market": market,
                 })
-            # selected leg — 1X2 only: pick argmax CAPTURE-time EV (no look-ahead),
-            # then record its CLV vs the close.
-            if market == "had":
+            # selected leg: pick argmax CAPTURE-time EV (no look-ahead), record CLV vs
+            # the close. had → de-vig capture 1X2; hhad → reverse-fit capture cover-P
+            # from capture 1X2 + O/U (psc_over/under; falls back to default total if a
+            # pre-O/U-storage row lacks them).
+            if market == "hhad":
+                cap = _hhad_cover_p((d["psc_home"], d["psc_draw"], d["psc_away"],
+                                     d["psc_over"], d["psc_under"], d["ou_line"]),
+                                    d["handicap_home"])
+            else:
                 cap = _devig3(d["psc_home"], d["psc_draw"], d["psc_away"])
-                if cap:
-                    evs = [cap[i] * float(jc[i]) - 1.0 if (jc[i] and jc[i] > 1) else -9.0
-                           for i in range(3)]
-                    j = max(range(3), key=lambda i: evs[i])
-                    if evs[j] >= min_ev:
-                        selected.append({
-                            "clv": p_close[j] * float(jc[j]) - 1.0, "cap_ev": evs[j],
-                            "pos": labels[j], "match": f'{d["home_team"]} vs {d["away_team"]}',
-                        })
+            if cap:
+                evs = [cap[i] * float(jc[i]) - 1.0 if (jc[i] and jc[i] > 1) else -9.0
+                       for i in range(3)]
+                j = max(range(3), key=lambda i: evs[i])
+                if evs[j] >= min_ev:
+                    selected.append({
+                        "clv": p_close[j] * float(jc[j]) - 1.0, "cap_ev": evs[j],
+                        "pos": labels[j], "market": market,
+                        "match": f'{d["home_team"]} vs {d["away_team"]}',
+                    })
         return {"legs": legs, "selected": selected, "no_close": no_close,
                 "n_matches": len(latest)}
 
@@ -185,9 +193,9 @@ def render(report: dict, min_ev: float = _MIN_EV) -> str:
 
     out.append("\n" + "-" * 66)
     n, mean, beat = _agg(sel)
-    out.append(f"【验证计数器】选中腿(1X2 · 下注时 EV≥{min_ev:.0%} · 无前视):"
+    out.append(f"【验证计数器】选中腿(1X2 + 让球 · 下注时 EV≥{min_ev:.0%} · 无前视):"
                f"  N={n}  ·  平均 CLV {mean*100:+.1f}%" if n else
-               "【验证计数器】选中腿(1X2 · 下注时 EV≥5%):  N=0 —— 还没攒到一条 +EV 选中腿")
+               "【验证计数器】选中腿(1X2 + 让球 · 下注时 EV≥5%):  N=0 —— 还没攒到一条 +EV 选中腿")
     if n:
         out.append("  打败收盘 " + f"{beat}/{n}")
     for tgt, edge in _TARGETS:
@@ -195,7 +203,7 @@ def render(report: dict, min_ev: float = _MIN_EV) -> str:
         status = "✅ 够了" if n >= tgt else f"还差 {tgt - n}"
         out.append(f"  验证 {edge} 边(需 {tgt:>2}): [{bar}] {n}/{tgt}  {status}")
     out.append("\n  诚实: 选中按「下注时 EV」选、CLV 对「收盘」量 → 无前视偏差,正的才算真信号。")
-    out.append("        让球(hhad)选中腿待 jingcai_sp 存下捕获时 O/U 后接入;现仅入分布。")
+    out.append("        让球(hhad)选中腿用捕获时 1X2+O/U 反推;旧行无存 O/U 时退化用默认总进球。")
     return "\n".join(out)
 
 

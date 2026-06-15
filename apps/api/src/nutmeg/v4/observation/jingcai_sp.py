@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS jingcai_sp (
     jc_home      REAL, jc_draw REAL, jc_away REAL,
     -- Pinnacle raw at capture time (vig included) — 竞彩 vs Pinnacle-at-capture
     psc_home     REAL, psc_draw REAL, psc_away REAL,
-    ou_line      REAL,
+    ou_line      REAL, psc_over REAL, psc_under REAL,   -- capture-time O/U (hhad CLV reverse-fit)
     -- settle-later (filled by settle_jingcai_sp; never clobbered on re-capture)
     home_goals   INTEGER, away_goals INTEGER, ft_outcome INTEGER, settled_at TEXT,
     UNIQUE(match_date, home_team, away_team, market)
@@ -58,6 +58,9 @@ def ensure_jingcai_sp_table(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(jingcai_sp)")}
     if "handicap_home" not in cols:
         conn.execute("ALTER TABLE jingcai_sp ADD COLUMN handicap_home INTEGER")
+    for _c in ("psc_over", "psc_under"):   # capture-time O/U — added for hhad CLV reverse-fit
+        if _c not in cols:
+            conn.execute(f"ALTER TABLE jingcai_sp ADD COLUMN {_c} REAL")
 
 
 def record_jingcai_sp(
@@ -73,6 +76,8 @@ def record_jingcai_sp(
     psc_draw: float | None = None,
     psc_away: float | None = None,
     ou_line: float | None = None,
+    psc_over: float | None = None,
+    psc_under: float | None = None,
     fixture_id: int | None = None,
     league: str | None = None,
     kickoff_utc: str | None = None,
@@ -105,8 +110,9 @@ def record_jingcai_sp(
             conn.execute(
                 "INSERT INTO jingcai_sp (captured_at, source, fixture_id, league, "
                 "match_date, home_team, away_team, kickoff_utc, market, handicap_home, "
-                "jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, ou_line) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                "jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, ou_line, "
+                "psc_over, psc_under) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(match_date, home_team, away_team, market) DO UPDATE SET "
                 "captured_at=excluded.captured_at, source=excluded.source, "
                 "fixture_id=COALESCE(excluded.fixture_id, jingcai_sp.fixture_id), "
@@ -115,13 +121,15 @@ def record_jingcai_sp(
                 "handicap_home=excluded.handicap_home, "
                 "jc_home=excluded.jc_home, jc_draw=excluded.jc_draw, jc_away=excluded.jc_away, "
                 "psc_home=excluded.psc_home, psc_draw=excluded.psc_draw, "
-                "psc_away=excluded.psc_away, ou_line=excluded.ou_line",
+                "psc_away=excluded.psc_away, ou_line=excluded.ou_line, "
+                "psc_over=excluded.psc_over, psc_under=excluded.psc_under",
                 (
                     now, source, fixture_id, league, match_date, home_team,
                     away_team, kickoff_utc, market,
                     int(handicap_home) if handicap_home is not None else None,
                     float(jc_home), float(jc_draw), float(jc_away),
                     _f(psc_home), _f(psc_draw), _f(psc_away), _f(ou_line),
+                    _f(psc_over), _f(psc_under),
                 ),
             )
         return True

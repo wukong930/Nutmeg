@@ -71,4 +71,4 @@ class TestJingcaiCapture:
 
     def test_cache_bumped(self):
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v52-fe-freshwins" in routes
+        assert "nutmeg-v53-fe-hhadou" in routes

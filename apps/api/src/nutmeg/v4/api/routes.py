@@ -368,7 +368,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v52-fe-freshwins"
+_FE_VERSION = "nutmeg-v53-fe-hhadou"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1130,7 +1130,8 @@ def record_jingcai_sp_endpoint(req: JingcaiSpRequest) -> JingcaiSpResponse:
         match_date=req.match_date, home_team=req.home_team, away_team=req.away_team,
         jc_home=req.jc_home, jc_draw=req.jc_draw, jc_away=req.jc_away,
         psc_home=req.psc_home, psc_draw=req.psc_draw, psc_away=req.psc_away,
-        ou_line=req.ou_line, fixture_id=req.fixture_id, league=req.league,
+        ou_line=req.ou_line, psc_over=req.psc_over, psc_under=req.psc_under,
+        fixture_id=req.fixture_id, league=req.league,
         kickoff_utc=req.kickoff_utc, market=req.market,
         handicap_home=req.handicap_home, source="market_mode")
     return JingcaiSpResponse(recorded=recorded)
