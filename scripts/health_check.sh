@@ -211,6 +211,23 @@ else
 fi
 
 
+# ===== 8. CLV 账本 (软水验证 — 不依赖结算) =====
+# daily_settle writes this nightly. CLV (竞彩 SP vs Pinnacle 收盘) needs no result,
+# so it accrues per OFFERED match (not per settled one); the 验证计数器 (selected-leg
+# CLV + N toward ~15) is the soft-water edge signal. Manual:  nutmeg-clv-ledger
+section "8. CLV 账本 (软水验证)"
+CLV_REPORT="logs/clv_ledger_latest.md"
+if [[ -f "$CLV_REPORT" ]]; then
+  AGE_H=$(( ( $(date +%s) - $(stat -f %m "$CLV_REPORT" 2>/dev/null || echo 0) ) / 3600 ))
+  note "$(grep -m1 '配对比赛:' "$CLV_REPORT" | sed 's/^[[:space:]]*//' || echo '报告已生成')  (${AGE_H}h ago)"
+  grep -m1 '【整体】' "$CLV_REPORT" 2>/dev/null | sed 's/^[[:space:]]*//;s/  ←.*//' | while read -r l; do note "$l"; done
+  grep -m1 '【验证计数器】' "$CLV_REPORT" 2>/dev/null | sed 's/^[[:space:]]*//' | while read -r l; do note "$l"; done
+  grep -m1 '验证 +5%' "$CLV_REPORT" 2>/dev/null | sed 's/^[[:space:]]*//' | while read -r l; do note "$l"; done
+else
+  note "no report yet — runs nightly in daily_settle; manual: nutmeg-clv-ledger"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
