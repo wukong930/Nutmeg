@@ -363,7 +363,8 @@ install_job "com.nutmeg.daily_recommend" \
 # extra calls are cheap (settle window is 3 days × pending leagues only).
 install_job "com.nutmeg.daily_settle" \
   2 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto --refresh-fixtures && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $VENV_PY -m nutmeg.v4.cli.jingcai_staleness --settle --db $DB_PATH > $REPO_ROOT/logs/jingcai_staleness_latest.md 2>/dev/null || true; $VENV_PY -m nutmeg.v4.cli.clv_ledger --db $DB_PATH --out '' > $REPO_ROOT/logs/clv_ledger_latest.md 2>/dev/null || true; $VENV_PY -m nutmeg.v4.cli.name_sentinel --quiet || true; $REPO_ROOT/scripts/rotate_logs.sh || true"
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto --refresh-fixtures && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $VENV_PY -m nutmeg.v4.cli.jingcai_staleness --settle --db $DB_PATH > $REPO_ROOT/logs/jingcai_staleness_latest.md 2>/dev/null || true; $VENV_PY -m nutmeg.v4.cli.clv_ledger --db $DB_PATH --out '' > $REPO_ROOT/logs/clv_ledger_latest.md 2>/dev/null || true; $VENV_PY -m nutmeg.v4.cli.name_sentinel --quiet || true; $REPO_ROOT/scripts/rotate_logs.sh || true" \
+  "13:00 20:00"   # 防睡眠(同 #356):02:00 睡过去 → 白天 13:00/20:00 兜底(launchd 唤醒后合并跑一次)
 
 # 体检(2026-06-12)— 竞彩 SP harvest (23:15, after the ~23:00 竞彩 freeze).
 # Gated on NUTMEG_SPORTTERY_ENABLED=1 (a one-line kill switch in .env). Reads the
