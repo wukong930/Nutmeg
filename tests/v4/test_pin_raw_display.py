@@ -34,5 +34,10 @@ class TestPinRawDisplay:
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing a locale"
 
     def test_cache_bumped(self):
+        import re
         routes = (REPO_ROOT / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v41-fe-pinraw" in routes
+        # pin-raw shipped at v41; _FE_VERSION is the version source (the SW
+        # CACHE_VERSION '__FE_VERSION__' placeholder is substituted from it).
+        # Assert ≥ v41, not the exact slug (which moves on every legitimate bump).
+        m = re.search(r'_FE_VERSION = "nutmeg-v(\d+)-', routes)
+        assert m and int(m.group(1)) >= 41

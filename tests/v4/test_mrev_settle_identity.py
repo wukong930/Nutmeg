@@ -54,5 +54,7 @@ class TestCacheBumped:
     def test_at_least_v40(self):
         import re
         routes = (REPO_ROOT / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        m = re.search(r"CACHE_VERSION = 'nutmeg-v(\d+)-", routes)
+        # _FE_VERSION is the version source; the SW CACHE_VERSION is its
+        # `__FE_VERSION__` placeholder substituted at serve time.
+        m = re.search(r'_FE_VERSION = "nutmeg-v(\d+)-', routes)
         assert m and int(m.group(1)) >= 40

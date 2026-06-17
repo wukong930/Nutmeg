@@ -14,13 +14,11 @@ access). Structural correctness is what we can verify automatically.
 """
 from __future__ import annotations
 
-import os
 import stat
 import subprocess
 from pathlib import Path
 
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -114,7 +112,10 @@ class TestSetupScriptContent:
         # install_job invocation (not the header summary line that also names
         # the job).
         idx = setup_body.index('install_job "com.nutmeg.daily_settle"')
-        block = setup_body[idx:idx + 700]
+        # Capture the WHOLE daily_settle block (up to the next install_job) —
+        # the command line grows as steps are appended (data_freshness sentinel,
+        # etc.), so a fixed-width window would miss the trailing rotate_logs.sh.
+        block = setup_body[idx:].split("\ninstall_job", 1)[0]
         assert "rotate_logs.sh" in block, \
             "rotate_logs.sh must be wired into the daily_settle job specifically"
         assert "; $REPO_ROOT/scripts/rotate_logs.sh" in block, \

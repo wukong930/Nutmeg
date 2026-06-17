@@ -156,5 +156,5 @@ class TestDashboardWiring:
         # pins broke the moment v40 landed.
         import re
         routes = (REPO_ROOT / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        m = re.search(r"CACHE_VERSION = 'nutmeg-v(\d+)-", routes)
+        m = re.search(r'_FE_VERSION = "nutmeg-v(\d+)-', routes)
         assert m and int(m.group(1)) >= 39

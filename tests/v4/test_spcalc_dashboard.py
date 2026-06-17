@@ -61,7 +61,7 @@ class TestSpCalcMarkup:
         """V13 — 市场模式 gets a 🔄 刷新盘口 button that forces a live Pinnacle
         pull (refresh_odds=true); the plain 加载 button stays cache-only."""
         assert 'id="cupmkt-refresh"' in html
-        assert "loadCupMarket({refreshOdds:true})" in html
+        assert "loadCupMarket({refreshOdds:true" in html  # may carry , manual:true (freshWins)
         assert "'?days=3&refresh_odds=true'" in html
         assert "async function loadCupMarket(opts = {})" in html
 
@@ -84,7 +84,7 @@ class TestSpCalcMarkup:
         assert ".cuphcsp[data-idx=" in html
         # V14 — the FULL board lives in 近期赛事 (manual 加载 button restored); the
         # 今日推荐 💠 block is a read-only mirror, and loadCupMarket also auto-loads.
-        assert 'onclick="loadCupMarket()"' in html
+        assert 'loadCupMarket({manual:true})' in html  # 加载 button (manual → fresh wins)
         assert "if (typeof loadCupMarket === 'function') loadCupMarket();" in html
         assert "async function loadCupMarket" in html
         assert "function renderCupMarket" in html
@@ -182,8 +182,12 @@ class TestSpCalcCacheBust:
         # the slug changes on every bump (w3-spcalc → … → v13-jc-diag), so
         # pinning the week/slug makes the test break on each ship (it did, 3×).
         src = ROUTES.read_text(encoding="utf-8")
-        assert "const CACHE_VERSION = 'nutmeg-v" in src, (
-            "SW CACHE_VERSION missing or not in the nutmeg-v* family"
+        # SW CACHE_VERSION is the `_FE_VERSION` placeholder, substituted at serve
+        # time (routes.py: .replace("__FE_VERSION__", _FE_VERSION)). Assert the
+        # placeholder wiring + that _FE_VERSION is in the nutmeg-v* family.
+        assert "const CACHE_VERSION = '__FE_VERSION__'" in src
+        assert '_FE_VERSION = "nutmeg-v' in src, (
+            "_FE_VERSION missing or not in the nutmeg-v* family"
         )
 
 
@@ -430,9 +434,11 @@ class TestTodayInlineRecord:
 
     def test_cache_version_bumped_in_family(self):
         txt = ROUTES.read_text(encoding="utf-8")
-        # Just assert a CACHE_VERSION constant in the stable nutmeg-v* family —
-        # not a specific week/slug (that pin broke on every legitimate bump).
-        assert "const CACHE_VERSION = 'nutmeg-v" in txt
+        # SW CACHE_VERSION is the `_FE_VERSION` placeholder, substituted at serve
+        # time. Assert the placeholder wiring + _FE_VERSION in the nutmeg-v* family
+        # (not a specific week/slug — that pin broke on every legitimate bump).
+        assert "const CACHE_VERSION = '__FE_VERSION__'" in txt
+        assert '_FE_VERSION = "nutmeg-v' in txt
 
 
 class TestSelfCheckScoreboard:
