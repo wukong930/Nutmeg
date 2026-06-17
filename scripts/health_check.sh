@@ -228,6 +228,35 @@ else
 fi
 
 
+# ===== 9. 捕获表漏数据哨兵 (data-freshness) =====
+# 捕获型 cron (daily_odds→odds_snapshots, sporttery_ingest→jingcai_sp,
+# daily_predict→league_predictions, daily_wc_predict→wc_predictions) 抓的是
+# 点-in-时数据,漏一次永久没了(settle 能 --refresh 补,capture 不能)。这一节
+# 对每张捕获表判"多久没长了":odds/竞彩 是 CRITICAL,停长 ⇒ ✗ fail;季节性
+# (夏歇/WC 赛会) ⇒ ⚠ warn。把"几周后偶然发现 cron 死了"变成"隔天就报警"。
+# 手动:  nutmeg-data-freshness   (porcelain 给脚本, 普通输出给人看)
+section "9. 捕获表漏数据哨兵 (data-freshness)"
+if [[ -f "$DB" ]]; then
+  FRESH="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.data_freshness \
+             --db "$DB" --porcelain 2>/dev/null)"
+  if [[ -n "$FRESH" ]]; then
+    while IFS=$'\t' read -r st tab rows last days crit note; do
+      [[ -z "$tab" ]] && continue
+      case "$st" in
+        OK)    ok   "$tab — 最后 $last (${days}d), 共 $rows 行 · $note" ;;
+        OLD)   warn "$tab 偏旧 — 最后 $last (${days}d) · $note(季节性, 非致命)" ;;
+        STALE) fail "$tab 停长! 最后 $last (${days}d) · $note — 捕获 cron 可能静默死了" ;;
+        *)     note "$tab: $st $last" ;;
+      esac
+    done <<< "$FRESH"
+  else
+    warn "data-freshness 哨兵无输出(DB query 失败? 包未安装?)"
+  fi
+else
+  fail "$DB not found — 无捕获数据可查"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
