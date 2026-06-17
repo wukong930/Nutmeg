@@ -440,7 +440,8 @@ install_job "com.nutmeg.daily_wc_predict" \
 # Then writes a fresh aggregate hit-rate / log-loss report.
 install_job "com.nutmeg.daily_wc_settle" \
   2 0 "" \
-  "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_settle --db $DB_PATH --quiet && $VENV_PY -m nutmeg.v4.cli.wc_report --db $DB_PATH --season 2026 --out $WC_OUT_DIR/wc_report_\$(date +%Y-%m-%d).md --quiet || true"
+  "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_settle --db $DB_PATH --refresh --quiet && $VENV_PY -m nutmeg.v4.cli.wc_report --db $DB_PATH --season 2026 --out $WC_OUT_DIR/wc_report_\$(date +%Y-%m-%d).md --quiet || true" \
+  "13:00 20:00"   # 防睡眠(同 daily_settle/#356):单 02:00 窗口睡过去 → 白天 13:00/20:00 兜底(launchd 唤醒后合并跑一次)。--refresh 取实时结果:否则 wc_settle 读到赛前缓存(status=NS、无比分)→ 找到 0 finished → settle 0。
 
 # Job 8: V14 weekly national-team Elo refresh (Saturday 04:30)
 # The WC model's national-strength prior reads the LATEST
