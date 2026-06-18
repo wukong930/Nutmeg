@@ -307,6 +307,7 @@ _NORM_ALIAS: dict[str, str] = {
     "turkiye": "turkey",                # AF Türkiye  ↔ OA Turkey
     "capeverdeislands": "capeverde",    # AF Cape Verde Islands ↔ OA Cape Verde
     "congodr": "drcongo",               # AF Congo DR ↔ OA DR Congo
+    "czechia": "czechrepublic",         # AF Czechia ↔ OA Czech Republic (捷克vs南非 overlay miss)
     # Veikkausliiga (FIN) — AF drops the FC/IFK/IF prefix or the city suffix the
     # Odds API keeps. AF key → OA key (体检 2026-06-12, the live overlay misses).
     "interturku": "fcinterturku",       # Inter Turku ↔ FC Inter Turku

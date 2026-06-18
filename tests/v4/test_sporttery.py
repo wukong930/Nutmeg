@@ -113,6 +113,33 @@ def test_harvest_protect_manual_toggle(tmp_path):
     assert fetch_sp_lookup(db, market="had")[key][0] == 1.71
 
 
+def test_attach_jingcai_sp_normalizes_team_names(tmp_path, monkeypatch):
+    """市场模式/近期赛事 boards key on API-Football names ('Czechia'), but jingcai_sp
+    stores the sporttery/Odds-API spelling ('Czech Republic'). _attach_jingcai_sp must
+    normalize both sides so the SP pre-fill still joins — else the 竞彩 SP boxes stay
+    empty (the bug seen on 捷克 vs 南非, 2026-06-19)."""
+    import datetime
+
+    from nutmeg.v4.api import routes
+    from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
+    db = str(tmp_path / "obs.db")
+    record_jingcai_sp(db, match_date="2026-06-18", home_team="Czech Republic",
+                      away_team="South Africa", jc_home=1.66, jc_draw=3.6, jc_away=4.35,
+                      market="had", source="sporttery")
+    monkeypatch.setattr(routes, "_observation_db_path", lambda: db)
+
+    class _Pred:
+        date = datetime.date(2026, 6, 18)
+        home_team = "Czechia"            # API-Football spelling, diverges from jingcai_sp
+        away_team = "South Africa"
+        jc_home = jc_draw = jc_away = jc_source = None
+        jc_hc_home = jc_hc_draw = jc_hc_away = jc_hc_line = None
+
+    p = _Pred()
+    routes._attach_jingcai_sp([p])
+    assert p.jc_home == 1.66 and p.jc_away == 4.35  # joined across Czechia↔Czech Republic
+
+
 def test_fail_soft_returns_empty(monkeypatch):
     monkeypatch.setattr(sporttery, "_request", lambda *a, **k: None)
     assert sporttery.fetch_lottery_matches() == []

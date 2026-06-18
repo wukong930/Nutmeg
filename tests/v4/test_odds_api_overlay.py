@@ -52,6 +52,7 @@ class TestNormTeam:
         assert odds_api._norm_team("Türkiye") == odds_api._norm_team("Turkey")
         assert odds_api._norm_team("Cape Verde Islands") == odds_api._norm_team("Cape Verde")
         assert odds_api._norm_team("Congo DR") == odds_api._norm_team("DR Congo")
+        assert odds_api._norm_team("Czechia") == odds_api._norm_team("Czech Republic")
         # Veikkausliiga (FIN) prefix/suffix/reorder pairs
         assert odds_api._norm_team("Inter Turku") == odds_api._norm_team("FC Inter Turku")
         assert odds_api._norm_team("VPS") == odds_api._norm_team("VPS Vaasa")

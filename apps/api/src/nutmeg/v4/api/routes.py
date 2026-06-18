@@ -226,6 +226,7 @@ def _attach_jingcai_sp(preds: list) -> None:
     if not db or not preds:
         return
     try:
+        from nutmeg.v4.data.sources.odds_api import _norm_team
         from nutmeg.v4.observation.jingcai_sp import fetch_sp_lookup
         had = fetch_sp_lookup(db, market="had")
         hhad = fetch_sp_lookup(db, market="hhad")
@@ -233,9 +234,14 @@ def _attach_jingcai_sp(preds: list) -> None:
         return
     if not had and not hhad:
         return
+    # Re-key by the cross-source normalized team name so a board ↔ jingcai_sp
+    # spelling divergence (AF 'Czechia' vs 竞彩/OA 'Czech Republic') still joins —
+    # else the SP boxes stay empty, mirroring the fresher-line overlay miss.
+    had = {(d, _norm_team(h), _norm_team(a)): v for (d, h, a), v in had.items()}
+    hhad = {(d, _norm_team(h), _norm_team(a)): v for (d, h, a), v in hhad.items()}
     for p in preds:
         d = p.date.isoformat() if hasattr(p.date, "isoformat") else str(p.date)
-        key = (d, p.home_team, p.away_team)
+        key = (d, _norm_team(p.home_team), _norm_team(p.away_team))
         r = had.get(key)
         if r:
             p.jc_home, p.jc_draw, p.jc_away, p.jc_source = r[0], r[1], r[2], r[3]
