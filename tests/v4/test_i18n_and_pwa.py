@@ -97,9 +97,9 @@ class TestI18nMarkup:
         assert 'id="lang-toggle"' in html
 
     def test_tab_buttons_marked(self, html):
-        # V11 P1-FE#1 removed 4 engineer tabs (outcomes/roi/sessions/rules).
-        # P1-FE#3 added 推荐追溯 (history). 6 tabs all carry data-i18n.
-        for key in ("tab_today", "tab_wc", "tab_single", "tab_parlay",
+        # V11 P1-FE#1 removed 4 engineer tabs; P1-FE#3 added 推荐追溯; V14 removed
+        # WC 2026 (now in 市场模式). Remaining user tabs carry data-i18n.
+        for key in ("tab_today", "tab_single", "tab_parlay",
                     "tab_pool", "tab_history"):
             assert f'data-i18n="{key}"' in html, f"tab missing data-i18n={key}"
 

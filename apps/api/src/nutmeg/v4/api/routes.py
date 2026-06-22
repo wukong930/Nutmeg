@@ -58,6 +58,8 @@ from nutmeg.v4.api.schemas import (
     HandicapLineProb,
     PendingFixture,
     SinglePrediction,
+    EvBoardResponse,
+    EvLeg,
     SpCalcResponse,
     SingleTicketResponse,
     SportteryRefreshResponse,
@@ -374,7 +376,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v53-fe-hhadou"
+_FE_VERSION = "nutmeg-v54-fe-evboard"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1763,6 +1765,138 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
         fixtures_fetched=len(all_preds) + len(pending),
         predictions=all_preds,
         pending_fixtures=pending,
+    )
+
+
+def _ev_board_legs(predictions, *, min_ev, bankroll, kelly_fraction):
+    """Pure core of the 真 EV 板: a SinglePrediction list → (legs, n_fixtures,
+    n_legs_with_sp, n_positive). EV = P(Pinnacle de-vig) × 竞彩SP − 1 per leg. 'had' legs
+    price the 竞彩 1X2 SP (jc_*) off the de-vig Pinnacle 1X2; 'hhad' legs price the 竞彩
+    让球 SP (jc_hc_*) off the prediction's O/U-double-anchored ``handicap_lines`` at
+    ``jc_hc_line`` (validated vs Pinnacle's own AH ~1pp). Only predictions carrying BOTH a
+    Pinnacle line AND a 竞彩 SP qualify. Dedup by (date, home, away). Injectable for testing."""
+    seen: set = set()
+    legs: list[EvLeg] = []
+
+    def _push(pred, diso, market, outcome, line, prob, odds):
+        if prob is None or not odds or float(odds) <= 1.0:
+            return
+        o = float(odds)
+        ev = prob * o - 1.0
+        b = o - 1.0
+        frac = max(0.0, ev / b) if b > 0 else 0.0
+        legs.append(EvLeg(
+            date=diso, home_team=pred.home_team, away_team=pred.away_team,
+            league=pred.league, kickoff_utc=pred.kickoff_utc, market=market,
+            outcome=outcome, handicap_line=line, p_pinnacle=round(float(prob), 4),
+            jc_sp=o, ev=ev,
+            kelly_stake=round(bankroll * kelly_fraction * frac, 2),
+        ))
+
+    for p in predictions:
+        diso = p.date.isoformat() if hasattr(p.date, "isoformat") else str(p.date)
+        key = (diso, p.home_team, p.away_team)
+        if key in seen:
+            continue
+        dv = _pinnacle_devig_1x2(p.psc_home, p.psc_draw, p.psc_away)
+        if dv is None:
+            continue
+        has_had = bool(p.jc_home and p.jc_draw and p.jc_away)
+        has_hhad = bool(
+            p.jc_hc_home and p.jc_hc_draw and p.jc_hc_away and p.jc_hc_line is not None
+        )
+        if not (has_had or has_hhad):
+            continue
+        seen.add(key)
+        if has_had:
+            for oc, prob, odds in zip(
+                ("home", "draw", "away"), dv,
+                (p.jc_home, p.jc_draw, p.jc_away), strict=True,
+            ):
+                _push(p, diso, "had", oc, None, prob, odds)
+        if has_hhad:
+            line = int(p.jc_hc_line)
+            hl = next((x for x in p.handicap_lines if x.line == line), None)
+            if hl is not None:
+                for oc, prob, odds in zip(
+                    ("home", "draw", "away"),
+                    (hl.p_home, hl.p_draw, hl.p_away),
+                    (p.jc_hc_home, p.jc_hc_draw, p.jc_hc_away), strict=True,
+                ):
+                    _push(p, diso, "hhad", oc, line, prob, odds)
+
+    # n_fixtures = fixtures that actually produced ≥1 priceable leg (a fixture with
+    # 竞彩 SP but no matching handicap_line yields 0 legs and must NOT inflate the count).
+    n_fixtures = len({(leg.date, leg.home_team, leg.away_team) for leg in legs})
+    n_positive = sum(1 for leg in legs if leg.ev >= 0.05)
+    kept = sorted((leg for leg in legs if leg.ev >= min_ev),
+                  key=lambda leg: leg.ev, reverse=True)
+    return kept, n_fixtures, len(legs), n_positive
+
+
+@router.get(
+    "/recommend/ev-board",
+    response_model=EvBoardResponse,
+    summary="真 EV 推荐板 — P(Pinnacle 去vig)×竞彩SP−1, 仅有竞彩 SP 的腿, 按 EV 排",
+)
+def recommend_ev_board(
+    days: int = 3,
+    min_ev: float = 0.05,
+    bankroll: float = 1000.0,
+    kelly_fraction: float = 0.25,
+    refresh_odds: bool = False,
+) -> EvBoardResponse:
+    """The honest EV board behind 单关/串关/复式. Gathers the SAME live surfaces the
+    近期赛事 tab shows — ``predictions_sp_calc`` (13 受训联赛) + ``predictions_cup_market``
+    (WC/EURO/杯赛 + 芬超/日职, market-mode) — both carrying FRESH Pinnacle (→ de-vig fair
+    P) + the 竞彩 SP on file (``_attach_jingcai_sp``). For every fixture with BOTH, EV =
+    P_pinnacle_devig × 竞彩SP − 1 per leg (NOT model-vs-market, NOT Pinnacle's own price).
+    Gated at ``min_ev``, sorted by EV desc, fractional-Kelly staked. Returns SINGLES; the
+    frontend forms 串/复 from them. Usually empty (the ~12% 竞彩 vig wall) — that empty
+    state IS the honest 空仓 signal. See [[soft-water-leg-finding-measured]]."""
+    import datetime as _dt
+    import logging as _logging
+
+    if not 1 <= days <= 7:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="days must be in [1, 7]",
+        )
+    if bankroll <= 0 or not 0.0 < kelly_fraction <= 1.0 or not -1.0 <= min_ev <= 1.0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="bankroll>0, kelly_fraction∈(0,1], min_ev∈[-1,1] required",
+        )
+    preds: list = []
+    gathered_ok = 0
+    for gather in (predictions_sp_calc, predictions_cup_market):
+        try:
+            preds.extend(gather(days=days, refresh_odds=refresh_odds).predictions)
+            gathered_ok += 1
+        except Exception:  # noqa: BLE001 — one surface failing must not 500 the board
+            _logging.getLogger(__name__).warning(
+                "ev-board gather %s failed",
+                getattr(gather, "__name__", "gather"), exc_info=True,
+            )
+    # Both surfaces down → a real outage, NOT an honest 空仓. Surface it as 503 so an
+    # empty board can only ever mean "no +EV legs", never "system unavailable".
+    if gathered_ok == 0:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ev-board prediction surfaces unavailable; try again shortly",
+        )
+    legs, n_fixtures, n_with_sp, n_positive = _ev_board_legs(
+        preds, min_ev=min_ev, bankroll=bankroll, kelly_fraction=kelly_fraction,
+    )
+    return EvBoardResponse(
+        generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
+        days=days,
+        min_ev=min_ev,
+        bankroll=bankroll,
+        n_fixtures=n_fixtures,
+        n_legs_with_sp=n_with_sp,
+        n_positive=n_positive,
+        legs=legs,
     )
 
 

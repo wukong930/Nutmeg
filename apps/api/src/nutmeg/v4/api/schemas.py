@@ -240,6 +240,41 @@ class SpCalcResponse(BaseModel):
     pending_fixtures: list[PendingFixture] = Field(default_factory=list)
 
 
+class EvLeg(BaseModel):
+    """V14 — one bettable leg on the 真 EV 板. EV = P(Pinnacle de-vig) × 竞彩SP − 1 —
+    the ONLY honest edge: a sharp fair probability priced against the actual 竞彩 SP
+    you bet at (NOT the model, NOT Pinnacle's own price). Only legs carrying BOTH a
+    Pinnacle line (→ P) AND a 竞彩 SP on file qualify."""
+    date: str
+    home_team: str
+    away_team: str
+    league: str
+    kickoff_utc: str | None = None
+    market: Literal["had", "hhad"]
+    outcome: Literal["home", "draw", "away"]
+    handicap_line: int | None = None  # 竞彩 让球线 (hhad only)
+    p_pinnacle: float                 # de-vig fair P for this outcome
+    jc_sp: float                      # 竞彩 SP you'd actually bet at
+    ev: float                         # p_pinnacle × jc_sp − 1
+    kelly_stake: float                # fractional-Kelly stake on the bankroll
+
+
+class EvBoardResponse(BaseModel):
+    """V14 — the 真 EV 推荐板 feeding 单关/串关/复式 (replaces the old
+    'best by hit-rate vs Pinnacle' boards). ``legs`` are gated at ``min_ev`` and
+    sorted by EV desc; ``n_positive`` counts genuine +EV (≥+5%) legs regardless of
+    the slider, so the UI can honestly say '0 条真 +EV → 空仓'. Usually empty (the
+    ~12% 竞彩 vig wall) — that empty state IS the signal."""
+    generated_at_utc: str
+    days: int
+    min_ev: float
+    bankroll: float
+    n_fixtures: int       # fixtures with a Pinnacle line + at least one 竞彩 SP
+    n_legs_with_sp: int   # eligible legs (had + hhad) carrying both P and 竞彩 SP
+    n_positive: int       # of those, how many are genuinely +EV (≥ +5%)
+    legs: list[EvLeg] = Field(default_factory=list)
+
+
 class SelectionResponse(BaseModel):
     outcome: Literal["H", "D", "A"]
     odds: float

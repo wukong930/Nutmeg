@@ -593,9 +593,11 @@ class TestParlayLegMarketBadge:
         assert not bad, f"leg outcome rendered with no 市场 badge near line(s) {bad}"
 
     def test_today_and_quick_renderers_have_badge(self, html):
-        # The 5 leg renderers fixed/confirmed: today parlay+pool, quick
-        # parlay+pool, legacy pool — all key off l.market_type for the badge.
-        assert html.count("l.market_type === 'handicap_1x2' ? '让球'") >= 5
+        # today parlay/pool + legacy pool still key off l.market_type for the badge;
+        # the V14 真 EV 板 renderers (单关/串关/复式) use _evOutcomeLabel (incl. 让球/胜平负
+        # + the line), so the leg's market is always labelled.
+        assert html.count("l.market_type === 'handicap_1x2' ? '让球'") >= 3
+        assert html.count("_evOutcomeLabel(") >= 3
 
     def test_agree_chip_suppressed_for_handicap_ticket(self, html):
         # renderTodaySingle's 市场同意/信市场 chip is a 1X2 model↔sharp argmax

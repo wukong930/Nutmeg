@@ -70,5 +70,8 @@ class TestJingcaiCapture:
         assert "loadCupMarket({refreshOdds:true, manual:true})" in html  # 🔄 刷新盘口
 
     def test_cache_bumped(self):
+        # Format-based (not pinned to one slug): _FE_VERSION must follow the
+        # nutmeg-vN-fe-<slug> convention so the SW cache-busts each deploy.
+        import re
         routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
-        assert "nutmeg-v53-fe-hhadou" in routes
+        assert re.search(r'_FE_VERSION = "nutmeg-v\d+-fe-[a-z0-9-]+"', routes)

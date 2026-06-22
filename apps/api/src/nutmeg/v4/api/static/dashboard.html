@@ -712,7 +712,6 @@
       <button data-tab="today"     role="tab" aria-controls="tab-today"     aria-selected="true"  data-i18n="tab_today"  class="tab-btn active whitespace-nowrap px-4 py-3 text-sm font-medium">🎯 今日推荐</button>
       <button data-tab="upcoming"  role="tab" aria-controls="tab-upcoming"  aria-selected="false" data-i18n="tab_upcoming" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">📅 近期赛事</button>
       <!-- V10 W1 Day 5: WC 2026 special tab (visible during tournament window). -->
-      <button data-tab="wc"        role="tab" aria-controls="tab-wc"        aria-selected="false" data-i18n="tab_wc"     class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">🏆 WC 2026</button>
       <!-- 3 retained 玩法 tabs (engineer tabs removed in P1-FE#1). -->
       <button data-tab="single"    role="tab" aria-controls="tab-single"    aria-selected="false" data-i18n="tab_single" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">① 单关</button>
       <button data-tab="recommend" role="tab" aria-controls="tab-recommend" aria-selected="false" data-i18n="tab_parlay" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">② 串关</button>
@@ -1090,150 +1089,6 @@
   </div>
 
   <!-- Tab: WC 2026 (V10 W1 Day 5) -->
-  <div id="tab-wc" role="tabpanel" aria-labelledby="tab-wc" class="tab-panel hidden">
-    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <div>
-          <h2 class="font-bold" data-i18n="h_wc_title">🏆 2026 世界杯预测</h2>
-          <!-- V12 W0 (2026-05-27): subtitle + caveat removed per UX request -->
-        </div>
-        <div class="flex items-center gap-2">
-          <label class="text-sm">
-            <span data-i18n="lbl_date">日期</span>
-            <input id="wc-date" type="date" value="2026-06-11" min="2026-06-11" max="2026-07-19"
-                   class="px-2 py-1 border rounded text-sm">
-          </label>
-          <label class="text-sm flex items-center gap-1" title="拉取实时 Pinnacle 盘口做加权混合 (消耗 10 quota / 次)">
-            <input id="wc-fetch-odds" type="checkbox" class="mr-1">
-            <span data-i18n="lbl_use_pinnacle">用实时盘口</span>
-          </label>
-          <button id="wc-refresh"
-                  data-i18n="btn_refresh"
-                  class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
-            刷新
-          </button>
-        </div>
-      </div>
-      <div id="wc-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
-    </div>
-
-    <!-- V12 W0 (2026-05-28) — Lookahead top-N single picks across N days.
-         Same UX pattern as the 3 simplified league tabs (budget + size +
-         ✨ generate, 高级 ▾ folds Kelly + min_ev). -->
-    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
-      <h3 class="font-bold mb-2" data-i18n="h_wc_lookahead_title">
-        🔮 未来 N 天 最优单关推荐 (按命中率排序)
-      </h3>
-      <p class="text-sm text-secondary mb-4" data-i18n="wc_lookahead_sub">
-        WC 比赛少, 但跨日期范围里能挑出好场次。仅单关 (1X2) — WC 模型样本只有 128 场, 不做串关 / 复式。
-      </p>
-
-      <div class="flex items-end flex-wrap gap-3 mb-3">
-        <label class="text-sm">
-          <span class="block mb-1" data-i18n="lbl_bankroll">预算 ¥</span>
-          <input id="wc-up-bankroll" type="number" inputmode="numeric"
-                 value="1000" min="2" step="50"
-                 class="w-32 px-3 py-2 border rounded text-sm">
-        </label>
-      </div>
-
-      <div class="mb-3">
-        <div class="text-sm mb-2" data-i18n="lbl_wc_window">时间窗口</div>
-        <div class="flex flex-wrap gap-2 quick-wc-window-row">
-          <button data-days="3" class="quick-wc-window-btn px-3 py-2 border rounded text-sm">3 天</button>
-          <button data-days="5" class="quick-wc-window-btn px-3 py-2 border rounded text-sm active">5 天</button>
-          <button data-days="7" class="quick-wc-window-btn px-3 py-2 border rounded text-sm">7 天</button>
-        </div>
-      </div>
-
-      <div class="mb-3">
-        <div class="text-sm mb-2" data-i18n="lbl_wc_topn">推荐数</div>
-        <div class="flex flex-wrap gap-2 quick-wc-topn-row">
-          <button data-n="3" class="quick-wc-topn-btn px-3 py-2 border rounded text-sm">3 张</button>
-          <button data-n="5" class="quick-wc-topn-btn px-3 py-2 border rounded text-sm active">5 张</button>
-          <button data-n="8" class="quick-wc-topn-btn px-3 py-2 border rounded text-sm">8 张</button>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-3 mb-2">
-        <button id="btn-wc-up-quick"
-                class="px-5 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium"
-                data-i18n="btn_wc_up_generate">
-          ✨ 生成最优 WC 单关
-        </button>
-        <span id="wc-up-quick-status" role="status" aria-live="polite"
-              class="text-sm text-secondary"></span>
-      </div>
-
-      <details class="mt-4 quick-advanced-fold">
-        <summary class="cursor-pointer text-sm text-secondary py-2" data-i18n="advanced_fold">
-          高级 ▾
-        </summary>
-        <div class="mt-3 p-4 rounded" style="background-color: var(--bg-surface-2); border: 1px solid var(--border-subtle);">
-          <div class="mb-4">
-            <div class="text-sm font-medium mb-1" data-i18n="kelly_tooltip_title">
-              凯利分数 (控制单注金额占预算的比例)
-            </div>
-            <div class="text-xs text-muted mb-2 leading-relaxed" data-i18n="kelly_tooltip_body">
-              • 保守 (0.15): 风险低 / 收益慢<br>
-              • 中 (0.25): 平衡 — 推荐 (默认)<br>
-              • 激进 (0.40): 高风险高收益, 适合资金充足
-            </div>
-            <div class="flex gap-2 quick-risk-row" data-target="wc">
-              <button data-risk="conservative" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_conservative">保守</button>
-              <button data-risk="balanced" class="quick-risk-btn px-3 py-1 border rounded text-sm active" data-i18n="risk_balanced">中</button>
-              <button data-risk="aggressive" class="quick-risk-btn px-3 py-1 border rounded text-sm" data-i18n="risk_aggressive">激进</button>
-            </div>
-          </div>
-          <div class="mb-4">
-            <label class="text-sm font-medium block mb-1">
-              <span data-i18n="lbl_min_ev">最低期望值</span>:
-              <span id="wc-up-quick-min-ev-label" class="text-primary font-medium ml-1">+5%</span>
-            </label>
-            <input id="wc-up-quick-min-ev" type="range" min="-0.05" max="0.10" step="0.05" value="0.05" class="w-full">
-            <div class="flex justify-between text-xs text-muted mt-0.5">
-              <span>-5%</span><span>0%</span><span>+5%</span><span>+10%</span>
-            </div>
-          </div>
-          <div class="text-xs text-muted">
-            <span data-i18n="wc_lookahead_quota_note">
-              ⚠️ 每次"生成" 消耗 Pinnacle SP quota: 1 call × 时间窗口天数 (5 天 = ~50 quota). 没 SP 的 fixture (Pinnacle 还没挂盘) 会被跳过。
-            </span>
-          </div>
-        </div>
-      </details>
-    </div>
-
-    <!-- Top-N picks output -->
-    <div id="wc-up-quick-output" class="hidden">
-      <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
-        <h3 class="font-bold mb-3">
-          <span id="wc-up-quick-h3-label" data-i18n="h_wc_up_results">未来 5 天最优单关 (top-5)</span>
-          <span id="wc-up-quick-summary" class="text-sm font-normal text-secondary ml-2"></span>
-        </h3>
-        <div id="wc-up-quick-list" class="space-y-2"></div>
-        <div id="wc-up-quick-empty" class="hidden text-sm text-secondary" data-i18n="wc_up_no_recs">
-          时间范围内无可推荐组合 — 可能 Pinnacle 还未挂盘, 或所有候选未通过 EV 门槛。
-        </div>
-      </div>
-    </div>
-
-    <!-- WC predictions list -->
-    <div id="wc-list-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6">
-      <h3 class="font-bold mb-3"><span data-i18n="h_wc_matches">今日 WC 比赛</span> <span id="wc-count" class="text-sm font-normal text-gray-500"></span></h3>
-      <div id="wc-list" class="space-y-2"></div>
-    </div>
-
-    <!-- Empty state -->
-    <div id="wc-empty" class="hidden bg-white shadow-sm rounded-lg p-6 text-center text-gray-600">
-      <p data-i18n="wc_empty">该日无 WC 比赛。试试 2026-06-11 (开幕) 或 2026-06-14 (5 场密集日)。</p>
-    </div>
-  </div>
-
-  <!-- Tab: Single (单关) — V8 W6 -->
-  <!-- V12 W0 (2026-05-28) — simplified UX. JSON input + Kelly knobs
-       hidden under <details> "高级 ▾". Quick mode: budget → top-3
-       single recommendations sorted by hit_probability descending. -->
   <div id="tab-single" role="tabpanel" aria-labelledby="tab-single" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h2 class="font-bold mb-2" data-i18n="h_single_rec">🎯 单关推荐</h2>
@@ -2982,7 +2837,6 @@ function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
   const panel = $('#tab-' + name);
   if (panel) panel.classList.remove('hidden');
-  if (name === 'wc') loadWcPredictions();
   // V12 W3 — auto-load the 近期赛事 (3-day SP calculator) tab on open.
   if (name === 'upcoming' && typeof loadSpCalc === 'function') loadSpCalc();
   // V11 P1-FE#3 — auto-load history on tab open (no manual refresh needed).
@@ -6245,42 +6099,7 @@ async function manualReverseRecord() {
   }
 }
 
-async function loadWcPredictions() {
-  const date = $('#wc-date').value;
-  const useOdds = $('#wc-fetch-odds').checked;
-  if (!date) return;
-  setStatus('#wc-status', 'loading', t('wc_loading'));
-  try {
-    const url = `${API}/predictions/wc?date=${encodeURIComponent(date)}` +
-                `&fetch_current_odds=${useOdds ? 'true' : 'false'}`;
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status}`);
-    }
-    const body = await resp.json();
-    if (body.n_fixtures === 0) {
-      $('#wc-list-section').classList.add('hidden');
-      $('#wc-empty').classList.remove('hidden');
-      setStatus('#wc-status', 'success', `0 场比赛 · season ${body.season}`);
-      return;
-    }
-    $('#wc-empty').classList.add('hidden');
-    $('#wc-list-section').classList.remove('hidden');
-    $('#wc-count').textContent = ` · ${body.n_fixtures} 场 · α=${body.blend_alpha}`;
-    $('#wc-list').innerHTML = body.predictions.map(renderWcMatch).join('');
-    const n_blend = body.predictions.filter(p => p.has_pinnacle).length;
-    // V11 P1-FE#1: removed engineer info (elo_snapshot path) from status.
-    setStatus('#wc-status', 'success', `${body.n_fixtures} 场预测`);
-  } catch (err) {
-    setStatus('#wc-status', 'error', t('wc_api_error') + ': ' + err.message);
-    $('#wc-list-section').classList.add('hidden');
-    $('#wc-empty').classList.add('hidden');
-  }
-}
 
-$('#wc-refresh').addEventListener('click', loadWcPredictions);
-$('#wc-date').addEventListener('change', loadWcPredictions);
-$('#wc-fetch-odds').addEventListener('change', loadWcPredictions);
 
 // =====================================================================
 // V11 P1-FE#3 — 推荐追溯 tab loader + renderer
@@ -6476,11 +6295,9 @@ document.querySelectorAll('.history-range-btn').forEach(btn => {
 // =====================================================================
 
 // State (per-tab risk preference + selected combo size)
-let _quickRisk = { single: 'balanced', parlay: 'balanced', pool: 'balanced', wc: 'balanced' };
+let _quickRisk = { single: 'balanced', parlay: 'balanced', pool: 'balanced' };
 let _quickComboK = 4;        // 串关 default 4 串 1
 let _quickPoolM = 5;         // 复式 default 5 场
-let _quickWcDays = 5;        // WC lookahead default 5 天
-let _quickWcTopN = 5;        // WC top-N default 5 张
 
 // Quick risk button toggles (used by all 3 tabs)
 document.querySelectorAll('.quick-risk-row').forEach(row => {
@@ -6519,32 +6336,8 @@ document.querySelectorAll('.quick-pool-m-row .quick-pool-m-btn').forEach(btn => 
   });
 });
 
-// WC lookahead window toggle (3/5/7 天)
-document.querySelectorAll('.quick-wc-window-row .quick-wc-window-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.quick-wc-window-row .quick-wc-window-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    _quickWcDays = parseInt(btn.dataset.days, 10);
-    const lbl = $('#wc-up-quick-h3-label');
-    if (lbl) lbl.textContent = (t('h_wc_up_results_template') || '未来 {d} 天最优单关 (top-{n})')
-      .replace('{d}', _quickWcDays).replace('{n}', _quickWcTopN);
-  });
-});
-
-// WC top-N toggle (3/5/8 张)
-document.querySelectorAll('.quick-wc-topn-row .quick-wc-topn-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.quick-wc-topn-row .quick-wc-topn-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    _quickWcTopN = parseInt(btn.dataset.n, 10);
-    const lbl = $('#wc-up-quick-h3-label');
-    if (lbl) lbl.textContent = (t('h_wc_up_results_template') || '未来 {d} 天最优单关 (top-{n})')
-      .replace('{d}', _quickWcDays).replace('{n}', _quickWcTopN);
-  });
-});
-
 // Min-EV slider label updates (per-tab, mirror today-min-ev pattern)
-['single', 'parlay', 'pool', 'wc-up'].forEach(target => {
+['single', 'parlay', 'pool'].forEach(target => {
   const slider = $(`#${target}-quick-min-ev`);
   const label = $(`#${target}-quick-min-ev-label`);
   if (slider && label) {
@@ -6557,332 +6350,212 @@ document.querySelectorAll('.quick-wc-topn-row .quick-wc-topn-btn').forEach(btn =
 
 const _RISK_TO_KELLY = { conservative: 0.15, balanced: 0.25, aggressive: 0.40 };
 
-async function _quickFetchTodayRecs({ bankroll, include, risk, minEv, poolN }) {
-  const body = {
-    bankroll,
-    include,
-    risk_preference: risk,
-    min_ev: minEv,
-    kelly_fraction: _RISK_TO_KELLY[risk] || 0.25,
-  };
-  if (poolN !== undefined) body.pool_n = poolN;
-  const resp = await fetch(API + '/today-recommendations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+// V14 — 真 EV 板: 单关/串关/复式 all read /recommend/ev-board. EV = P(Pinnacle 去vig) ×
+// 竞彩SP − 1 (NOT model, NOT Pinnacle's price); only legs with BOTH a Pinnacle line AND a
+// 竞彩 SP. Replaces the old "best by hit-rate vs Pinnacle" boards. Usually empty — that
+// empty state IS the honest 空仓 signal (the ~12% 竞彩 vig wall).
+async function _fetchEvBoard({ bankroll, minEv, risk }) {
+  const params = new URLSearchParams({
+    days: '3', min_ev: String(minEv), bankroll: String(bankroll),
+    kelly_fraction: String(_RISK_TO_KELLY[risk] || 0.25),
   });
+  const resp = await fetch(API + '/recommend/ev-board?' + params.toString());
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return await resp.json();
 }
 
-// Render top-3 single tickets sorted by hit_probability desc
-function _renderQuickSingleList(tickets) {
-  const list = $('#single-quick-list');
-  const output = $('#single-quick-output');
-  const empty = $('#single-quick-empty');
-  if (!tickets || tickets.length === 0) {
-    output.classList.remove('hidden');
-    list.innerHTML = '';
-    empty.classList.remove('hidden');
-    return;
+function _evOutcomeLabel(leg) {
+  if (leg.market === 'hhad') {
+    const sign = leg.handicap_line > 0 ? '+' + leg.handicap_line : String(leg.handicap_line);
+    return `让球${sign} · ${({ home: '让胜', draw: '让平', away: '让负' })[leg.outcome]}`;
   }
-  output.classList.remove('hidden');
-  empty.classList.add('hidden');
-  const medals = ['🥇', '🥈', '🥉'];
-  list.innerHTML = tickets.map((tk, i) => {
-    const medal = medals[i] || '';
-    const marketLabel = tk.market_type === 'handicap_1x2' ? '让球' : '胜平负';
-    return `
-      <div class="card-rec mb-3">
-        <div class="flex items-start justify-between gap-3 mb-3">
-          <div class="flex-1 min-w-0">
-            <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
-              <span class="text-lg">${medal}</span>
-              ${teamLogo(tk.home_team)} <span>${zhTeam(tk.home_team)}</span>
-              <span class="text-muted font-normal">vs</span>
-              ${teamLogo(tk.away_team)} <span>${zhTeam(tk.away_team)}</span>
-            </div>
-            <div class="text-xs text-muted mt-1">${tk.league} · ${tk.date}</div>
-          </div>
-          <span class="badge-gold whitespace-nowrap">${marketLabel} · ${outcomeLabel(tk.outcome)}</span>
-        </div>
-        <div class="flex items-end justify-between gap-3">
-          <div>
-            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(tk.stake)}</div>
-            <div class="text-xs text-muted mt-0.5">建议投注</div>
-          </div>
-          <div class="flex flex-col items-end gap-1 text-xs">
-            <div class="text-secondary">命中率 <span class="num-display text-primary">${(tk.hit_probability * 100).toFixed(1)}%</span></div>
-            <div class="text-secondary">赔率 <span class="num-display text-primary">${tk.odds.toFixed(2)}</span></div>
-            ${evBar(tk.ev_per_unit)}
-          </div>
-        </div>
-      </div>`;
-  }).join('');
+  return `胜平负 · ${({ home: '主胜', draw: '平局', away: '客胜' })[leg.outcome]}`;
 }
 
-// Render top-3 N-leg parlay recommendations sorted by hit_probability desc
-function _renderQuickParlayList(recs, k_target) {
-  const list = $('#parlay-quick-list');
-  const output = $('#parlay-quick-output');
-  const empty = $('#parlay-quick-empty');
-  output.classList.remove('hidden');
-  if (!recs || recs.length === 0) {
-    list.innerHTML = '';
-    empty.classList.remove('hidden');
-    empty.textContent = (t('quick_no_recs_for_k') || '今日没有合适的 {k}串1 组合, 试试别的串关大小')
-      .replace('{k}', k_target);
-    return;
-  }
-  empty.classList.add('hidden');
-  const medals = ['🥇', '🥈', '🥉'];
-  list.innerHTML = recs.map((r, i) => {
-    const medal = medals[i] || '';
-    const legsHtml = r.legs.map(l => {
-      const market = l.market_type === 'handicap_1x2' ? '让球' : '胜平负';
-      const sels = l.selections.map(s =>
-        `<span class="badge-ok ml-1">${outcomeLabel(s.outcome)} @ <span class="num-display">${s.odds.toFixed(2)}</span></span>`
-      ).join('');
-      const raw = (l.match_id || '').replace(/^[A-Z0-9_]+_/, '');
-      const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
-      const matchHtml = parts[1]
-        ? `${zhTeam(parts[0])} <span class="text-muted">vs</span> ${zhTeam(parts[1])}`
-        : zhTeam(parts[0]);
-      return `<div class="text-sm py-1 text-primary">${matchHtml} <span class="text-xs text-muted">[${market}]</span>${sels}</div>`;
-    }).join('');
-    return `
-      <div class="card-rec mb-3">
-        <div class="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <div class="font-display font-semibold text-base text-primary">
-              <span class="text-lg">${medal}</span> ${r.legs.length} 串 1
-            </div>
-            <div class="text-xs text-muted mt-1">
-              联合赔率 <span class="num-display text-primary">${(r.combined_odds || 0).toFixed(2)}</span>
-            </div>
-          </div>
-          <div class="flex flex-col items-end gap-1">
-            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(r.stake_units || 0)}</div>
-            <div class="text-xs text-muted">建议投注</div>
-          </div>
-        </div>
-        <div class="mb-3" style="border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">${legsHtml}</div>
-        <div class="flex items-center justify-between text-xs pt-1">
-          <span class="text-secondary">命中率 <span class="num-display text-primary">${(r.hit_probability * 100).toFixed(1)}%</span></span>
-          ${evBar(r.ev_per_unit)}
-        </div>
-      </div>`;
-  }).join('');
+// Reliability: a big-underdog longshot (low de-vig P) is the noisiest EV — de-vig noise
+// / 竞彩 generous on longshots can fake a +EV (the 冷门陷阱). Flag it so a phantom +EV
+// isn't blindly bet.
+function _evReliability(leg) {
+  if (leg.p_pinnacle < 0.20) return '⚠️ 冷门 · EV 可能虚高(去vig 噪声大)';
+  if (leg.market === 'hhad' && Math.abs(leg.handicap_line) >= 2) return '⚠️ 大让球 · 极端尾部噪声大';
+  return '';
 }
 
-// Render complete pool (1 set of tickets)
-function _renderQuickPoolList(pool) {
-  const list = $('#pool-quick-list');
-  const output = $('#pool-quick-output');
-  const empty = $('#pool-quick-empty');
-  const summary = $('#pool-quick-summary');
-  output.classList.remove('hidden');
-  if (!pool || !pool.tickets || pool.n_selected === 0) {
-    list.innerHTML = '';
-    summary.textContent = '';
-    empty.classList.remove('hidden');
-    return;
-  }
-  empty.classList.add('hidden');
-  summary.textContent = ` · ${pool.m} 选 ${pool.n} · 共 ${pool.n_combinations} 张候选, 选中 ${pool.n_selected} 张, 总投注 ${fmtMoney(pool.total_stake)}`;
-  const selected = pool.tickets.filter(t => t.stake > 0);
-  list.innerHTML = selected.map((tk, i) => {
-    const legsHtml = tk.legs.map(l => {
-      const raw = (l.match_id || '').replace(/^[A-Z0-9_]+_/, '');
-      const parts = raw.includes('_vs_') ? raw.split('_vs_') : [raw, ''];
-      const matchHtml = parts[1]
-        ? `${zhTeam(parts[0])} <span class="text-muted">vs</span> ${zhTeam(parts[1])}`
-        : zhTeam(parts[0]);
-      const market = l.market_type === 'handicap_1x2' ? '让球' : '胜平负';
-      return `<div class="text-xs flex items-center justify-between gap-2 py-1">
-        <span class="text-secondary truncate">${matchHtml}</span>
-        <span class="shrink-0 flex items-center gap-1">
-          <span class="text-muted">[${market}]</span>
-          <span class="badge-ok">${outcomeLabel(l.outcome)} @ <span class="num-display">${l.odds.toFixed(2)}</span></span>
-        </span>
-      </div>`;
-    }).join('');
-    return `<div class="card-rec mb-3">
-      <div class="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <div class="font-display font-semibold text-base text-primary">${pool.n} 串 1 · 第 ${i+1} 张</div>
-          <div class="text-xs text-muted mt-1">联合赔率 <span class="num-display text-primary">${tk.combined_odds.toFixed(2)}</span></div>
+function _evColor(ev) { return ev >= 0.05 ? 'text-gold' : ev >= 0 ? 'text-secondary' : 'text-muted'; }
+
+function _evLegCard(leg, medal) {
+  const warn = _evReliability(leg);
+  const warnHtml = warn ? `<span class="text-xs" style="color:#d97706">${warn}</span>` : '';
+  return `
+    <div class="card-rec mb-3">
+      <div class="flex items-start justify-between gap-3 mb-2">
+        <div class="flex-1 min-w-0">
+          <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
+            ${medal ? `<span class="text-lg">${medal}</span>` : ''}
+            ${teamLogo(leg.home_team)} <span>${zhTeam(leg.home_team)}</span>
+            <span class="text-muted font-normal">vs</span>
+            ${teamLogo(leg.away_team)} <span>${zhTeam(leg.away_team)}</span>
+          </div>
+          <div class="text-xs text-muted mt-1">${leg.league} · ${leg.date}</div>
         </div>
-        <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(tk.stake)}</div>
+        <span class="badge-gold whitespace-nowrap">${_evOutcomeLabel(leg)}</span>
       </div>
-      <div class="mb-2" style="border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">${legsHtml}</div>
-      <div class="flex items-center justify-between text-xs pt-1">
-        <span class="text-secondary">命中率 <span class="num-display text-primary">${(tk.hit_probability * 100).toFixed(1)}%</span></span>
-        ${evBar(tk.ev_per_unit)}
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <div class="num-display text-2xl ${_evColor(leg.ev)} font-semibold">EV ${leg.ev >= 0 ? '+' : ''}${(leg.ev * 100).toFixed(1)}%</div>
+          <div class="text-xs text-muted mt-0.5">P去vig ${(leg.p_pinnacle * 100).toFixed(0)}% × 竞彩SP ${leg.jc_sp}</div>
+        </div>
+        <div class="flex flex-col items-end gap-1 text-xs">
+          <div class="text-secondary">Kelly <span class="num-display text-gold">${fmtMoney(leg.kelly_stake)}</span></div>
+          ${warnHtml}
+        </div>
       </div>
     </div>`;
-  }).join('');
 }
 
-// === Quick generate handlers ===
+// best-EV leg per fixture, for forming cross-match 串/复 (one leg per match)
+function _evDistinctLegs(legs) {
+  const byMatch = {};
+  for (const leg of (legs || [])) {
+    const k = leg.date + '|' + leg.home_team + '|' + leg.away_team;
+    if (!byMatch[k] || leg.ev > byMatch[k].ev) byMatch[k] = leg;
+  }
+  return Object.values(byMatch).sort((a, b) => b.ev - a.ev);
+}
+
+function _evCombine(legs, bankroll, kf) {
+  const odds = legs.reduce((a, l) => a * l.jc_sp, 1);
+  const p = legs.reduce((a, l) => a * l.p_pinnacle, 1);
+  const ev = p * odds - 1;
+  const f = odds > 1 ? Math.max(0, ev / (odds - 1)) : 0;
+  return { odds, p, ev, stake: Math.round(bankroll * kf * f * 100) / 100 };
+}
+
+function _nCr(m, n) { let r = 1; for (let i = 0; i < n; i++) r = r * (m - i) / (i + 1); return Math.round(r); }
+
+function _evHeader(d) {
+  return `<div class="text-xs text-muted mb-2">扫 ${d.n_fixtures} 场 · ${d.n_legs_with_sp} 条腿有竞彩SP · `
+    + `<span class="${d.n_positive > 0 ? 'text-gold' : ''}">${d.n_positive} 条真 +EV(≥+5%)</span></div>`;
+}
+
+function _evEmpty(d, extra) {
+  const head = d.n_positive === 0 ? '当前无 +EV 腿 — 建议空仓' : '';
+  return `${_evHeader(d)}
+    <div class="card-rec text-center py-6">
+      <div class="text-base text-secondary mb-1">${head}${extra ? (head ? ' · ' : '') + extra : ''}</div>
+      <div class="text-xs text-muted">真 EV = P(Pinnacle 去vig) × 竞彩SP − 1;门槛内无腿,就是诚实的空仓信号(竞彩 ~12% 抽水墙)。拉低门槛可看"最不坏"。</div>
+    </div>`;
+}
+
+// 单关: list +EV legs (sorted by EV desc). Empty = 空仓.
+function _renderEvSingle(data) {
+  const out = $('#single-quick-output'), list = $('#single-quick-list'), empty = $('#single-quick-empty');
+  out.classList.remove('hidden'); empty.classList.add('hidden');
+  if (!data.legs || data.legs.length === 0) { list.innerHTML = _evEmpty(data); return; }
+  const medals = ['🥇', '🥈', '🥉'];
+  list.innerHTML = _evHeader(data) + data.legs.map((leg, i) => _evLegCard(leg, medals[i] || '')).join('');
+}
+
+// 串关: a k-fold from the top-k distinct-match +EV legs (cross-match → EV multiplies).
+function _renderEvParlay(data, k, bankroll, kf) {
+  const out = $('#parlay-quick-output'), list = $('#parlay-quick-list'), empty = $('#parlay-quick-empty');
+  out.classList.remove('hidden'); empty.classList.add('hidden');
+  const distinct = _evDistinctLegs(data.legs);
+  if (distinct.length < k) {
+    list.innerHTML = _evEmpty(data, `+EV 腿不足 ${k} 条不同场次(当前 ${distinct.length} 条)→ 组不出 ${k} 串 1`);
+    return;
+  }
+  const legs = distinct.slice(0, k), c = _evCombine(legs, bankroll, kf);
+  const legsHtml = legs.map(l =>
+    `<div class="text-sm py-1 text-primary">${zhTeam(l.home_team)} <span class="text-muted">vs</span> ${zhTeam(l.away_team)} <span class="text-xs text-muted">[${_evOutcomeLabel(l)}]</span> <span class="badge-ok ml-1">SP ${l.jc_sp} · EV ${(l.ev * 100).toFixed(0)}%</span></div>`
+  ).join('');
+  list.innerHTML = _evHeader(data) + `
+    <div class="card-rec mb-3">
+      <div class="flex items-start justify-between gap-3 mb-2">
+        <div><div class="font-display font-semibold text-base text-primary">${k} 串 1</div>
+          <div class="text-xs text-muted mt-1">联合赔率 <span class="num-display text-primary">${c.odds.toFixed(2)}</span></div></div>
+        <div class="flex flex-col items-end">
+          <div class="num-display text-2xl ${_evColor(c.ev)} font-semibold">EV ${c.ev >= 0 ? '+' : ''}${(c.ev * 100).toFixed(1)}%</div>
+          <div class="text-xs text-muted">Kelly ${fmtMoney(c.stake)}</div></div>
+      </div>
+      <div style="border-top:1px solid var(--border-subtle);border-bottom:1px solid var(--border-subtle);">${legsHtml}</div>
+      <div class="text-xs text-muted mt-2">⚠️ 即便每条腿 +EV,跨场串关方差远大于单关;同样的边,拆成单关(Kelly)长期增长更快、回撤更小。</div>
+    </div>`;
+}
+
+// 复式: from all distinct-match +EV legs (M), N-leg tickets. Shows C(M,N) + the best ticket.
+function _renderEvPool(data, n, poolM, bankroll, kf) {
+  const out = $('#pool-quick-output'), list = $('#pool-quick-list'), empty = $('#pool-quick-empty'), summary = $('#pool-quick-summary');
+  out.classList.remove('hidden'); empty.classList.add('hidden'); if (summary) summary.textContent = '';
+  const distinct = _evDistinctLegs(data.legs);
+  const m = Math.min(distinct.length, poolM);   // 复式 M = min(可用 +EV 腿, 用户选的"M 场")
+  if (m < n) {
+    list.innerHTML = _evEmpty(data, `+EV 腿不足 ${n} 条不同场次(当前 ${distinct.length} 条, 选 M=${poolM})→ 组不出 ${n} 串复式`);
+    return;
+  }
+  const combos = _nCr(m, n), legs = distinct.slice(0, n), c = _evCombine(legs, bankroll, kf);
+  if (summary) summary.textContent = ` · ${m} 选 ${n} · ${combos} 张候选`;
+  const legsHtml = legs.map(l =>
+    `<div class="text-xs flex items-center justify-between gap-2 py-1"><span class="text-secondary truncate">${zhTeam(l.home_team)} vs ${zhTeam(l.away_team)}</span><span class="badge-ok shrink-0">${_evOutcomeLabel(l)} · SP ${l.jc_sp}</span></div>`
+  ).join('');
+  list.innerHTML = _evHeader(data) + `
+    <div class="card-rec mb-3">
+      <div class="text-sm text-secondary mb-2">${m} 选 ${n} 复式 · 共 ${combos} 张子票(全 +EV 腿)· 下示最优 1 张</div>
+      <div style="border-top:1px solid var(--border-subtle);border-bottom:1px solid var(--border-subtle);">${legsHtml}</div>
+      <div class="flex items-center justify-between text-xs pt-2">
+        <span class="text-secondary">联合赔率 ${c.odds.toFixed(2)}</span>
+        <span class="num-display ${_evColor(c.ev)}">EV ${c.ev >= 0 ? '+' : ''}${(c.ev * 100).toFixed(1)}% · Kelly ${fmtMoney(c.stake)}</span></div>
+    </div>`;
+}
+
+// === 真 EV 板生成 handlers (单关/串关/复式 all read /recommend/ev-board) ===
 $('#btn-single-quick')?.addEventListener('click', async () => {
   const bankroll = parseFloat($('#single-quick-bankroll').value) || 1000;
   const risk = _quickRisk.single;
-  const minEv = parseFloat($('#single-quick-min-ev').value) || 0.05;
+  const mevRaw = parseFloat($('#single-quick-min-ev').value);
+  const mev = isNaN(mevRaw) ? 0.05 : mevRaw;
   setStatus('#single-quick-status', 'loading', t('quick_loading') || '生成中...');
   try {
-    const body = await _quickFetchTodayRecs({
-      bankroll, include: ['single'], risk, minEv,
-    });
-    const tickets = (body.single?.tickets || [])
-      .slice()
-      .sort((a, b) => b.hit_probability - a.hit_probability)
-      .slice(0, 3);
-    _renderQuickSingleList(tickets);
+    const data = await _fetchEvBoard({ bankroll, minEv: mev, risk });
+    _renderEvSingle(data);
     setStatus('#single-quick-status', 'success',
-      tickets.length > 0
-        ? (t('quick_status_ok') || `已抓 ${body.fixtures_fetched} 场, top ${tickets.length}`).replace('{n}', body.fixtures_fetched).replace('{k}', tickets.length)
-        : `已抓 ${body.fixtures_fetched} 场, 0 推荐`);
+      `${data.n_fixtures} 场 · ${data.legs.length} 条腿(门槛 ${(mev * 100).toFixed(0)}%)`);
   } catch (err) {
-    console.warn('quick single failed:', err);
+    console.warn('ev single failed:', err);
     setStatus('#single-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
   }
 });
 
 $('#btn-parlay-quick')?.addEventListener('click', async () => {
   const bankroll = parseFloat($('#parlay-quick-bankroll').value) || 1000;
-  const risk = _quickRisk.parlay;
-  const minEv = parseFloat($('#parlay-quick-min-ev').value) || 0.05;
+  const risk = _quickRisk.parlay, kf = _RISK_TO_KELLY[risk] || 0.25;
+  const mevRaw = parseFloat($('#parlay-quick-min-ev').value);
+  const mev = isNaN(mevRaw) ? 0.05 : mevRaw;
   setStatus('#parlay-quick-status', 'loading', t('quick_loading') || '生成中...');
   try {
-    const body = await _quickFetchTodayRecs({
-      bankroll, include: ['parlay'], risk, minEv,
-    });
-    const recs = (body.parlay?.recommendations || [])
-      .filter(r => (r.legs || []).length === _quickComboK)
-      .slice()
-      .sort((a, b) => b.hit_probability - a.hit_probability)
-      .slice(0, 3);
-    _renderQuickParlayList(recs, _quickComboK);
+    const data = await _fetchEvBoard({ bankroll, minEv: mev, risk });
+    _renderEvParlay(data, _quickComboK, bankroll, kf);
     setStatus('#parlay-quick-status', 'success',
-      recs.length > 0
-        ? `已抓 ${body.fixtures_fetched} 场, ${_quickComboK} 串 1 top ${recs.length}`
-        : `已抓 ${body.fixtures_fetched} 场, 0 个 ${_quickComboK} 串 1 通过`);
+      `${data.n_fixtures} 场 · +EV 腿 ${_evDistinctLegs(data.legs).length} 条`);
   } catch (err) {
-    console.warn('quick parlay failed:', err);
+    console.warn('ev parlay failed:', err);
     setStatus('#parlay-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
-  }
-});
-
-// V12 W0 — WC lookahead render + handler
-function _renderQuickWcUpcoming(picks) {
-  const list = $('#wc-up-quick-list');
-  const output = $('#wc-up-quick-output');
-  const empty = $('#wc-up-quick-empty');
-  output.classList.remove('hidden');
-  if (!picks || picks.length === 0) {
-    list.innerHTML = '';
-    empty.classList.remove('hidden');
-    return;
-  }
-  empty.classList.add('hidden');
-  const medals = ['🥇', '🥈', '🥉', '🏅', '🏅', '🏅', '🏅', '🏅'];
-  const outcomeMap = { H: '主胜', D: '平局', A: '客胜' };
-  list.innerHTML = picks.map((p, i) => {
-    const medal = medals[i] || '';
-    const dayLbl = p.days_until_kickoff === 0 ? '今天' :
-                   p.days_until_kickoff === 1 ? '明天' :
-                   `+${p.days_until_kickoff} 天`;
-    // Format kickoff: 2026-06-11T19:00:00 → "06-11 19:00"
-    const kickoff = p.kickoff_utc
-      ? p.kickoff_utc.slice(5, 16).replace('T', ' ')
-      : '';
-    return `
-      <div class="card-rec mb-3">
-        <div class="flex items-start justify-between gap-3 mb-3">
-          <div class="flex-1 min-w-0">
-            <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
-              <span class="text-lg">${medal}</span>
-              ${teamLogo(p.home_team)} <span>${zhTeam(p.home_team)}</span>
-              <span class="text-muted font-normal">vs</span>
-              ${teamLogo(p.away_team)} <span>${zhTeam(p.away_team)}</span>
-            </div>
-            <div class="text-xs text-muted mt-1">${kickoff} · ${dayLbl}</div>
-          </div>
-          <span class="badge-gold whitespace-nowrap">${outcomeMap[p.outcome] || p.outcome}</span>
-        </div>
-        <div class="flex items-end justify-between gap-3">
-          <div>
-            <div class="num-display text-2xl text-gold font-semibold">${fmtMoney(p.stake)}</div>
-            <div class="text-xs text-muted mt-0.5">建议投注</div>
-          </div>
-          <div class="flex flex-col items-end gap-1 text-xs">
-            <div class="text-secondary">命中率 <span class="num-display text-primary">${(p.hit_probability * 100).toFixed(1)}%</span></div>
-            <div class="text-secondary">赔率 <span class="num-display text-primary">${p.odds.toFixed(2)}</span></div>
-            ${evBar(p.ev_per_unit)}
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-$('#btn-wc-up-quick')?.addEventListener('click', async () => {
-  const bankroll = parseFloat($('#wc-up-bankroll').value) || 1000;
-  const risk = _quickRisk.wc;
-  const minEv = parseFloat($('#wc-up-quick-min-ev').value) || 0.05;
-  const days = _quickWcDays;
-  const topN = _quickWcTopN;
-  setStatus('#wc-up-quick-status', 'loading', t('quick_loading') || '生成中...');
-  try {
-    const params = new URLSearchParams({
-      days: String(days),
-      top_n: String(topN),
-      fetch_current_odds: 'true',  // EV gate needs SP
-      min_ev: String(minEv),
-      bankroll: String(bankroll),
-      kelly_fraction: String(_RISK_TO_KELLY[risk] || 0.25),
-    });
-    const resp = await fetch(API + '/predictions/wc-upcoming?' + params.toString());
-    if (!resp.ok) {
-      setStatus('#wc-up-quick-status', 'error', `HTTP ${resp.status}`);
-      return;
-    }
-    const body = await resp.json();
-    _renderQuickWcUpcoming(body.picks);
-    const summary = $('#wc-up-quick-summary');
-    if (summary) {
-      summary.textContent = ` · 扫了 ${body.n_fixtures_scanned} 场, 通过 EV 门槛 ${body.n_picks_after_ev_gate} 张`;
-    }
-    setStatus('#wc-up-quick-status', 'success',
-      body.picks.length > 0
-        ? `${body.date_start} → ${body.date_end} · top ${body.picks.length}`
-        : `${body.date_start} → ${body.date_end} · 0 张通过`);
-  } catch (err) {
-    console.warn('quick WC upcoming failed:', err);
-    setStatus('#wc-up-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
   }
 });
 
 $('#btn-pool-quick')?.addEventListener('click', async () => {
   const bankroll = parseFloat($('#pool-quick-bankroll').value) || 1000;
-  const risk = _quickRisk.pool;
-  const minEv = parseFloat($('#pool-quick-min-ev').value) || 0.05;
-  // Phase 1: poolN=3 (固定 3 串 1 per ticket). The M selector is a
-  // UI signal but the backend uses all passing fixtures; Phase 2 will
-  // add a server-side M cap.
-  const poolN = 3;
+  const risk = _quickRisk.pool, kf = _RISK_TO_KELLY[risk] || 0.25;
+  const mevRaw = parseFloat($('#pool-quick-min-ev').value);
+  const mev = isNaN(mevRaw) ? 0.05 : mevRaw;
   setStatus('#pool-quick-status', 'loading', t('quick_loading') || '生成中...');
   try {
-    const body = await _quickFetchTodayRecs({
-      bankroll, include: ['pool'], risk, minEv, poolN,
-    });
-    _renderQuickPoolList(body.pool);
+    const data = await _fetchEvBoard({ bankroll, minEv: mev, risk });
+    _renderEvPool(data, 3, _quickPoolM, bankroll, kf);
     setStatus('#pool-quick-status', 'success',
-      body.pool && body.pool.n_selected > 0
-        ? `已抓 ${body.fixtures_fetched} 场, 选 M=${body.pool.m} 场配复式`
-        : `已抓 ${body.fixtures_fetched} 场, 0 张子票通过`);
+      `${data.n_fixtures} 场 · +EV 腿 ${_evDistinctLegs(data.legs).length} 条`);
   } catch (err) {
-    console.warn('quick pool failed:', err);
+    console.warn('ev pool failed:', err);
     setStatus('#pool-quick-status', 'error', t('quick_api_error') || '生成失败 - 后端不可用');
   }
 });
