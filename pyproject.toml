@@ -99,6 +99,7 @@ nutmeg-beta-test = "nutmeg.v4.cli.beta_test:main"
 nutmeg-score-ev = "nutmeg.v4.cli.score_ev:main"
 nutmeg-score-ev-forward = "nutmeg.v4.cli.score_ev_forward:main"
 nutmeg-polymarket-gaps = "nutmeg.v4.cli.polymarket_gaps:main"
+nutmeg-handicap-triples = "nutmeg.v4.cli.handicap_triples:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
