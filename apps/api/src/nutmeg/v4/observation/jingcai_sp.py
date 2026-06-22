@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS jingcai_sp (
     -- Pinnacle raw at capture time (vig included) — 竞彩 vs Pinnacle-at-capture
     psc_home     REAL, psc_draw REAL, psc_away REAL,
     ou_line      REAL, psc_over REAL, psc_under REAL,   -- capture-time O/U (hhad CLV reverse-fit)
+    -- 初盘 (11:00 开售) 竞彩 SP — set ONCE, preserved across the latest=终盘 overwrites
+    -- (lets us measure 竞彩's own line movement open→freeze; jc_* stays the canonical 终盘)
+    jc_open_home REAL, jc_open_draw REAL, jc_open_away REAL, opened_at TEXT,
     -- settle-later (filled by settle_jingcai_sp; never clobbered on re-capture)
     home_goals   INTEGER, away_goals INTEGER, ft_outcome INTEGER, settled_at TEXT,
     UNIQUE(match_date, home_team, away_team, market)
@@ -61,6 +64,11 @@ def ensure_jingcai_sp_table(conn: sqlite3.Connection) -> None:
     for _c in ("psc_over", "psc_under"):   # capture-time O/U — added for hhad CLV reverse-fit
         if _c not in cols:
             conn.execute(f"ALTER TABLE jingcai_sp ADD COLUMN {_c} REAL")
+    for _c in ("jc_open_home", "jc_open_draw", "jc_open_away"):  # 初盘 SP (line-movement)
+        if _c not in cols:
+            conn.execute(f"ALTER TABLE jingcai_sp ADD COLUMN {_c} REAL")
+    if "opened_at" not in cols:
+        conn.execute("ALTER TABLE jingcai_sp ADD COLUMN opened_at TEXT")
 
 
 def record_jingcai_sp(
@@ -85,17 +93,29 @@ def record_jingcai_sp(
     handicap_home: int | None = None,
     source: str = "market_mode",
     protect_manual: bool = False,
+    phase: str = "close",
 ) -> bool:
     """Upsert ONE canonical 竞彩 SP observation for (match_date, home, away,
     market). A re-capture overwrites the line (latest = canonical) but preserves
     any settle-later result. Requires the 竞彩 1X2 triple — returns False (no-op)
-    if it is absent, or on ANY internal failure (logged, never raised)."""
+    if it is absent, or on ANY internal failure (logged, never raised).
+
+    ``phase='open'`` additionally stamps the 开售 (11:00) 初盘 into ``jc_open_*``
+    (+ ``opened_at``), set ONCE and preserved across the latest=终盘 overwrites, so
+    竞彩's own open→freeze line movement can be measured. ``jc_*`` always stays the
+    canonical 终盘. ``phase='close'`` (default) leaves ``jc_open_*`` untouched."""
     try:
         if jc_home is None or jc_draw is None or jc_away is None:
             return False  # no 竞彩 line to log
         if not (match_date and home_team and away_team):
             return False
         now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+        # 初盘:仅 phase=='open' 记开售 SP;set-once(下方 COALESCE),之后被终盘覆盖也不丢。
+        _open = phase == "open"
+        o_h = float(jc_home) if _open else None
+        o_d = float(jc_draw) if _open else None
+        o_a = float(jc_away) if _open else None
+        o_at = now if _open else None
         with sqlite3.connect(str(db_path)) as conn:
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA busy_timeout = 3000")
@@ -111,8 +131,8 @@ def record_jingcai_sp(
                 "INSERT INTO jingcai_sp (captured_at, source, fixture_id, league, "
                 "match_date, home_team, away_team, kickoff_utc, market, handicap_home, "
                 "jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, ou_line, "
-                "psc_over, psc_under) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                "psc_over, psc_under, jc_open_home, jc_open_draw, jc_open_away, opened_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(match_date, home_team, away_team, market) DO UPDATE SET "
                 "captured_at=excluded.captured_at, source=excluded.source, "
                 "fixture_id=COALESCE(excluded.fixture_id, jingcai_sp.fixture_id), "
@@ -122,7 +142,12 @@ def record_jingcai_sp(
                 "jc_home=excluded.jc_home, jc_draw=excluded.jc_draw, jc_away=excluded.jc_away, "
                 "psc_home=excluded.psc_home, psc_draw=excluded.psc_draw, "
                 "psc_away=excluded.psc_away, ou_line=excluded.ou_line, "
-                "psc_over=excluded.psc_over, psc_under=excluded.psc_under",
+                "psc_over=excluded.psc_over, psc_under=excluded.psc_under, "
+                # 初盘 set-once:只在还没记过开售盘时填,终盘(phase='close')传 NULL 不覆盖。
+                "jc_open_home=COALESCE(jingcai_sp.jc_open_home, excluded.jc_open_home), "
+                "jc_open_draw=COALESCE(jingcai_sp.jc_open_draw, excluded.jc_open_draw), "
+                "jc_open_away=COALESCE(jingcai_sp.jc_open_away, excluded.jc_open_away), "
+                "opened_at=COALESCE(jingcai_sp.opened_at, excluded.opened_at)",
                 (
                     now, source, fixture_id, league, match_date, home_team,
                     away_team, kickoff_utc, market,
@@ -130,6 +155,7 @@ def record_jingcai_sp(
                     float(jc_home), float(jc_draw), float(jc_away),
                     _f(psc_home), _f(psc_draw), _f(psc_away), _f(ou_line),
                     _f(psc_over), _f(psc_under),
+                    o_h, o_d, o_a, o_at,
                 ),
             )
         return True

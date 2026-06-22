@@ -16,7 +16,8 @@ import logging
 
 
 def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = False,
-                  matches: list[dict] | None = None, protect_manual: bool = True) -> dict:
+                  matches: list[dict] | None = None, protect_manual: bool = True,
+                  phase: str = "close") -> dict:
     """Upsert the current 竞彩 SP into jingcai_sp (source=sporttery). Fetches if
     ``matches`` is None. Returns ``{matches, mapped, unmapped, had, hhad}``. Shared
     by the CLI and the 🎯 刷新竞彩 endpoint.
@@ -37,6 +38,7 @@ def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = Fals
             "away_team": m["away_en"], "league": m["league_cn"],
             "kickoff_utc": m.get("kickoff_utc"),
             "source": "sporttery", "protect_manual": protect_manual,
+            "phase": phase,  # 'open' (11:00 开售) stamps jc_open_*; 'close' = 终盘 (default)
         }
         if m["had"]:
             jh, jd, ja = m["had"]
@@ -57,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pool-codes", default="had,hhad", help="竞彩 pools to pull")
     ap.add_argument("--refresh", action="store_true", help="bypass the TTL cache")
     ap.add_argument("--dry-run", action="store_true", help="show what would be written")
+    ap.add_argument("--phase", choices=["open", "close"], default="close",
+                    help="open=11:00 开售初盘(记 jc_open_*,set-once) | close=终盘(默认)")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -85,9 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         print("\n(dry-run — 未写库)")
         return 0
 
-    r = harvest_to_db(args.db, matches=matches)
+    r = harvest_to_db(args.db, matches=matches, phase=args.phase)
     print(f"\n写入 jingcai_sp: 胜平负 {r['had']} · 让球 {r['hhad']}  "
-          f"(source=sporttery,不覆盖手填)")
+          f"(source=sporttery, phase={args.phase}, 不覆盖手填)")
     return 0
 
 

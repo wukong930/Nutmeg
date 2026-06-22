@@ -375,6 +375,15 @@ install_job "com.nutmeg.sporttery_ingest" \
   23 15 "" \
   "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH; else echo sporttery-disabled; fi || true"
 
+# 体检(2026-06-23)— 竞彩 开售初盘 harvest (11:05, just after the 11:00 竞彩 开售).
+# Same source/gate/fail-soft as sporttery_ingest, but --phase open: stamps the 开售
+# SP into jc_open_* (set-once, preserved across the 23:15 终盘 overwrite into jc_*),
+# so 竞彩's own open→freeze line movement is recorded first-hand — no Okooo (which
+# only re-displays the same 竞彩 SP behind anti-bot). jc_* stays the canonical 终盘.
+install_job "com.nutmeg.sporttery_open" \
+  11 5 "" \
+  "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH --phase open; else echo sporttery-disabled; fi || true"
+
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
 # post-v9 P1#24: automate the P1#19 cross-source-aware gate.
 # Compares live lineup-aware ROI to the P1#17 historical replay
