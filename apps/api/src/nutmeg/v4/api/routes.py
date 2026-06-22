@@ -376,7 +376,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v54-fe-evboard"
+_FE_VERSION = "nutmeg-v55-fe-wc-deadcode"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -3242,9 +3242,10 @@ def predictions_wc_upcoming(
 # to the O/U line instead of a 2.6 prior + 128-match model blend. Path A++
 # also blends TOWARD the 竞彩 SP, which shrinks any real edge. WC/EURO/
 # WC_QUAL_UEFA are in ``_CUP_MARKET_COMPETITIONS`` so they already serve
-# market-reverse 让球 via 市场模式. The dashboard WC tab now redirects its
-# 让球 section here (see ``renderWcHandicapSection``). This endpoint is kept
-# only so any cached client mid-session keeps working; do not extend it.
+# market-reverse 让球 via 市场模式. The dashboard WC tab (and its
+# ``renderWcHandicapSection`` 让球 redirect) was since removed entirely in the
+# V14 真-EV-board cleanup. This endpoint is kept only so any cached client
+# mid-session keeps working; do not extend it.
 
 @router.post(
     "/recommend/wc/single",

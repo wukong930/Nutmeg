@@ -159,7 +159,7 @@ class TestDashboardLogoWiring:
         """All 5 render functions should call teamLogo()."""
         for fn in ("renderTodaySingle", "renderRecommendations",
                    "renderSingleRecommendations", "renderPoolRecommendations",
-                   "renderWcMatch"):
+                   "_evLegCard"):
             idx = html.index(f"function {fn}")
             # Window 4000 (was 3000): renderTodaySingle grew with the V12 W8m
             # 3-tier confidence badge, pushing the teamLogo() call further down.

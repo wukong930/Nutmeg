@@ -1,26 +1,21 @@
-"""V12 W8 — WC handicap unified into 市场模式 (was: Path A++ inline form).
+"""WC blocks that survive in 今日推荐 (today's recommendations) + SW cache-bust.
 
 History
 -------
-V11 post-ship shipped a per-fixture Path A++ 让球推荐 form inside each WC
-card: enter an integer line + 3 竞彩 SP → POST ``/recommend/wc/single`` →
-model-vs-market Bayesian blend. V12 W8 retired that path. A leakage-free
-walk-forward (4330 EU matches, 24/25) measured pure **market-reverse**
-(de-vig Pinnacle 1X2 + O/U(2.5) → Dixon-Coles grid → read the let-line)
-at 0.20452 AH-cover Brier — sitting on Pinnacle's own AH ceiling (0.20444)
-and beating the fair model (0.20690) by 2.4e-3. WC/EURO/WC_QUAL_UEFA are
-in ``_CUP_MARKET_COMPETITIONS``, so 市场模式 already prices their 让球 that
-way. Path A++ also blended *toward* the 竞彩 SP, shrinking any real edge.
+The standalone 🏆 WC 2026 prediction tab (1X2 forecast cards + a 让球 redirect
+into 市场模式) was removed in the V14 真-EV-board cleanup, along with its
+``renderWcMatch`` / ``renderWcHandicapSection`` renderers and every WC-tab i18n
+key (``tab_wc`` / ``h_wc_*`` / ``wc_hc_*`` / ``wc_lookahead_*`` …). The earlier
+``TestRendererPresent`` / ``TestHandicapRedirect`` / ``TestRedirectI18nKeys``
+classes pinned those now-deleted artifacts and were removed with them.
 
-So the WC tab now:
-  - keeps its 1X2 pre-line forecast (``renderWcMatch`` / ``loadWcPredictions``)
-  - replaces the 让球 section with a redirect button into 市场模式
-  - the old form renderer + ``_wcHcCalc`` / ``_wcHcOutcomeRow`` JS and the
-    ``wc_hc_toggle`` / ``wc_hc_line`` / ``wc_hc_sp_*`` / ``wc_hc_calc`` /
-    ``wc_hc_needs_pin`` i18n keys were deleted.
+What remains — and what these tests still guard:
+  - the 🏆 WC section inside 今日推荐 (``renderTodayWc`` / ``today-wc-*`` ids),
+    which deep-links 让球 to 市场模式 like every other competition;
+  - its i18n keys (``h_today_wc`` / ``today_wc_*``), zh + en parity;
+  - the service-worker ``CACHE_VERSION`` format (PWA cache-bust on deploy).
 
-These tests pin the new redirect + guard the dead artifacts from creeping
-back. Lightweight — HTML/JS substring checks, no Playwright.
+Lightweight — HTML/JS substring checks, no Playwright.
 """
 from __future__ import annotations
 
@@ -53,77 +48,6 @@ def sw_js(client):
     r = client.get("/api/v4/sw.js")
     assert r.status_code == 200
     return r.text
-
-
-# ============ Renderer still wired into the WC card ====================
-
-class TestRendererPresent:
-
-    def test_renderwcmatch_calls_handicap_section(self, html):
-        """The base WC card still invokes the handicap section (now a redirect)."""
-        assert "renderWcHandicapSection(p)" in html
-
-    def test_handicap_section_function_defined(self, html):
-        assert "function renderWcHandicapSection(p)" in html
-
-
-# ============ Section is now a redirect into 市场模式 ==================
-
-class TestHandicapRedirect:
-    """The 让球 section renders a hint + a button that jumps to 市场模式
-    (the 今日推荐 tab's 国际盘口 board) instead of an inline Path A++ form."""
-
-    def test_redirect_copy_present(self, html):
-        assert 'data-i18n="wc_hc_moved"' in html
-        assert 'data-i18n="wc_hc_goto_market"' in html
-
-    def test_redirect_button_loads_market_mode(self, html):
-        """The button switches to 今日推荐 and triggers loadCupMarket()."""
-        assert "switchTab('today'); setTimeout(loadCupMarket, 150);" in html
-
-    def test_old_path_a_form_artifacts_removed(self, html):
-        """Guardrail — the retired Path A++ form must not creep back."""
-        for dead in (
-            'data-fld="handicap_home"',
-            'data-fld="odds_h"',
-            "wc-hc-calc-btn",
-            "wc-hc-record-session",
-            "function _wcHcCalc",
-            "function _wcHcOutcomeRow",
-        ):
-            assert dead not in html, f"retired Path A++ artifact resurfaced: {dead}"
-
-    def test_no_live_fetch_to_deprecated_endpoint(self, html):
-        """No client code may POST to the deprecated /recommend/wc/single.
-        (A doc comment may *name* it, but there must be no fetch template.)"""
-        assert "${API}/recommend/wc/single" not in html
-
-
-# ============ i18n: only the 2 redirect keys remain ===================
-
-class TestRedirectI18nKeys:
-    """Both zh + en locales keep exactly the redirect keys; the old form
-    keys are gone."""
-
-    REDIRECT_KEYS = ("wc_hc_moved", "wc_hc_goto_market")
-    RETIRED_KEYS = (
-        "wc_hc_toggle", "wc_hc_needs_pin", "wc_hc_line",
-        "wc_hc_sp_h", "wc_hc_sp_d", "wc_hc_sp_a", "wc_hc_calc",
-    )
-
-    def test_redirect_keys_present_twice(self, html):
-        """One occurrence in zh + one in en = each key shows ≥2 times."""
-        for key in self.REDIRECT_KEYS:
-            assert html.count(f"{key}:") >= 2, (
-                f"{key} appears < 2 times — i18n parity broken"
-            )
-
-    def test_retired_form_keys_absent(self, html):
-        """The orphaned Path A++ form keys were removed from both locales."""
-        for key in self.RETIRED_KEYS:
-            assert f"{key}:" not in html, (
-                f"retired i18n key {key} still defined — cleanup regressed"
-            )
 
 
 # ============ Service worker cache busted ==============================

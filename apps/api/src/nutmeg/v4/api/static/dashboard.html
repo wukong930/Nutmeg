@@ -472,9 +472,7 @@
      hover/non-active are subtle. */
   .quick-risk-btn,
   .quick-combo-btn,
-  .quick-pool-m-btn,
-  .quick-wc-window-btn,
-  .quick-wc-topn-btn {
+  .quick-pool-m-btn {
     background: var(--bg-surface-1);
     color: var(--text-secondary);
     border-color: var(--border-subtle);
@@ -483,18 +481,14 @@
   }
   .quick-risk-btn:hover,
   .quick-combo-btn:hover,
-  .quick-pool-m-btn:hover,
-  .quick-wc-window-btn:hover,
-  .quick-wc-topn-btn:hover {
+  .quick-pool-m-btn:hover {
     background: var(--bg-surface-2);
     border-color: var(--border-strong);
     color: var(--text-primary);
   }
   .quick-risk-btn.active,
   .quick-combo-btn.active,
-  .quick-pool-m-btn.active,
-  .quick-wc-window-btn.active,
-  .quick-wc-topn-btn.active {
+  .quick-pool-m-btn.active {
     background: var(--accent-gold);
     color: #0a0e1a;
     border-color: var(--accent-gold);
@@ -502,9 +496,7 @@
   }
   [data-theme="dark"] .quick-risk-btn.active,
   [data-theme="dark"] .quick-combo-btn.active,
-  [data-theme="dark"] .quick-pool-m-btn.active,
-  [data-theme="dark"] .quick-wc-window-btn.active,
-  [data-theme="dark"] .quick-wc-topn-btn.active {
+  [data-theme="dark"] .quick-pool-m-btn.active {
     color: #0a0e1a;
   }
 
@@ -1814,18 +1806,8 @@ const I18N = {
     health_offline_tip: '后端服务未连接。等服务恢复后页面会自动刷新。',
     btn_advanced_show: '高级 ▾',
     btn_advanced_hide: '高级 ▴',
-    // V10 W1 Day 5: WC tab  (sub_wc + wc_caveat removed 2026-05-27)
-    tab_wc:           '🏆 WC 2026',
-    h_wc_title:       '🏆 2026 世界杯预测',
     lbl_date:         '日期',
     lbl_use_pinnacle: '用实时盘口',
-    h_wc_matches:     '今日 WC 比赛',
-    wc_empty:         '该日无 WC 比赛。试试 2026-06-11 (开幕) 或 2026-06-14 (5 场密集日)。',
-    wc_loading:       '加载 WC 预测 ...',
-    wc_api_error:     '加载预测失败',
-    // V12 W8 — WC 让球已统一至 市场模式 (旧 Path A++ 表单 i18n 键已移除)
-    wc_hc_moved:      '🎯 世界杯让球已统一至 💹 市场模式（去vig 1X2 + 大小球反推 · 实测贴 Pinnacle 亚盘、优于模型）。本页只做 1X2 赛前预测。',
-    wc_hc_goto_market:'💹 前往市场模式下世界杯让球 →',
     // V11 post-ship — 今日推荐里的 🏆 WC 板块
     h_today_wc:       '🏆 WC 板块',
     today_wc_hint:    '世界杯让球已统一至 💹 市场模式(去vig 1X2 + 大小球反推、实测最优);本页是 1X2 赛前预测.',
@@ -2023,16 +2005,6 @@ const I18N = {
     btn_recommend_single_json: '生成 (JSON 模式)',
     btn_recommend_parlay_json: '生成 (JSON 模式)',
     btn_recommend_pool_json:   '生成 (JSON 模式)',
-    // V12 W0 (2026-05-28) — WC lookahead top-N picks
-    h_wc_lookahead_title:    '🔮 未来 N 天 最优单关推荐 (按命中率排序)',
-    wc_lookahead_sub:        'WC 比赛少, 但跨日期范围里能挑出好场次。仅单关 (1X2) — WC 模型样本只有 128 场, 不做串关 / 复式。',
-    lbl_wc_window:           '时间窗口',
-    lbl_wc_topn:             '推荐数',
-    btn_wc_up_generate:      '✨ 生成最优 WC 单关',
-    h_wc_up_results:         '未来 5 天最优单关 (top-5)',
-    h_wc_up_results_template: '未来 {d} 天最优单关 (top-{n})',
-    wc_up_no_recs:           '时间范围内无可推荐组合 — 可能 Pinnacle 还未挂盘, 或所有候选未通过 EV 门槛。',
-    wc_lookahead_quota_note: '⚠️ 每次"生成"消耗 Pinnacle SP quota: 1 call × 时间窗口天数 (5 天 = ~50 quota). 没 SP 的 fixture (Pinnacle 还没挂盘) 会被跳过。',
     // V11 P1-FE#3 — 推荐追溯
     tab_history:         '📜 推荐追溯',
     h_history_title:     '推荐追溯',
@@ -2223,18 +2195,8 @@ const I18N = {
     health_offline_tip: 'Backend service not connected. The page will refresh automatically once it comes back.',
     btn_advanced_show: 'Advanced ▾',
     btn_advanced_hide: 'Advanced ▴',
-    // V10 W1 Day 5: WC tab  (sub_wc + wc_caveat removed 2026-05-27)
-    tab_wc:           '🏆 WC 2026',
-    h_wc_title:       "🏆 2026 World Cup Predictions",
     lbl_date:         'Date',
     lbl_use_pinnacle: 'Use live odds',
-    h_wc_matches:     "Today's WC matches",
-    wc_empty:         "No WC matches on this date. Try 2026-06-11 (opener) or 2026-06-14 (5 fixtures).",
-    wc_loading:       'Loading WC predictions ...',
-    wc_api_error:     'Failed to load predictions',
-    // V12 W8 — WC handicap unified into Market mode (old Path A++ form i18n keys removed)
-    wc_hc_moved:      '🎯 World Cup handicap is unified into 💹 Market mode (de-vig 1X2 + O/U reverse — measured on Pinnacle\'s AH ceiling, beats the model). This tab now only forecasts 1X2.',
-    wc_hc_goto_market:'💹 Go to Market mode for WC handicap →',
     // V11 post-ship — 🏆 WC block in today's recommendations
     h_today_wc:       '🏆 WC',
     today_wc_hint:    'World Cup handicap is unified into 💹 Market mode (de-vig 1X2 + O/U reverse, measured best). This tab forecasts 1X2.',
@@ -2430,16 +2392,6 @@ const I18N = {
     btn_recommend_single_json: 'Generate (JSON mode)',
     btn_recommend_parlay_json: 'Generate (JSON mode)',
     btn_recommend_pool_json:   'Generate (JSON mode)',
-    // V12 W0 (2026-05-28) — WC lookahead top-N picks
-    h_wc_lookahead_title:    '🔮 Best WC single picks (next N days, sorted by hit rate)',
-    wc_lookahead_sub:        "WC has few matches per day, but across a date window we can pick the best. 1X2 only — WC model has only 128 training matches, so no parlay/pool.",
-    lbl_wc_window:           'Date window',
-    lbl_wc_topn:             'Top N',
-    btn_wc_up_generate:      '✨ Generate best WC single picks',
-    h_wc_up_results:         'Best WC single picks · next 5 days (top-5)',
-    h_wc_up_results_template: 'Best WC single picks · next {d} days (top-{n})',
-    wc_up_no_recs:           "No qualifying picks in this window — Pinnacle may not have opened yet, or candidates didn't pass the EV gate.",
-    wc_lookahead_quota_note: '⚠️ Each "Generate" costs Pinnacle SP quota: 1 call × window days (5d = ~50 quota). Fixtures without SP (Pinnacle not yet open) are skipped.',
     // V11 P1-FE#3 — Recommendations history
     tab_history:         '📜 History',
     h_history_title:     'Recommendation history',
@@ -5822,83 +5774,6 @@ switchTab = function(name) {
 // Kick everything off at startup (today is the default landing tab).
 _startStaleTicker();
 _startTodayPolling();
-
-// =====================================================================
-// V10 W1 Day 5 — WC 2026 predictions tab
-// =====================================================================
-// Calls GET /v4/predictions/wc?date=YYYY-MM-DD&fetch_current_odds=...
-// Renders compact card list with probabilities. Show Pure-Elo baseline
-// as a smaller secondary line for transparency.
-function renderWcMatch(p) {
-  // V11 P1-FE#1 Day 2: card-rec WC style. Removed Elo numerical values,
-  // pure-Elo baseline row (engineer info), and "+市场盘口" / "仅模型"
-  // technical tags. Kept: teams, kickoff, top tip, probability bars.
-  const probs = [
-    {key: 'H', label: '主胜', team: zhTeam(p.home_team), prob: p.p_home},
-    {key: 'D', label: '平局', team: '平', prob: p.p_draw},
-    {key: 'A', label: '客胜', team: zhTeam(p.away_team), prob: p.p_away},
-  ];
-  probs.sort((a, b) => b.prob - a.prob);
-  const top = probs[0];
-  // Format kickoff: 2026-06-11T19:00:00 → "06-11 19:00"
-  const kickoff = p.kickoff_utc
-    ? p.kickoff_utc.slice(5, 16).replace('T', ' ')
-    : '';
-  return `
-    <div class="card-rec">
-      <div class="flex items-start justify-between gap-3 mb-3">
-        <div class="flex-1 min-w-0">
-          <div class="font-display font-semibold text-base text-primary flex items-center gap-2 flex-wrap">
-            ${teamLogo(p.home_team)}
-            <span>${zhTeam(p.home_team)}</span>
-            <span class="text-muted font-normal">vs</span>
-            ${teamLogo(p.away_team)}
-            <span>${zhTeam(p.away_team)}</span>
-          </div>
-          <div class="text-xs text-muted mt-1">${kickoff} · ${p.round || 'WC 2026'}</div>
-        </div>
-        <span class="badge-gold whitespace-nowrap">${top.label}</span>
-      </div>
-      <div class="space-y-2">
-        ${probs.map(o => `
-          <div class="flex items-center gap-3 text-sm">
-            <span class="text-secondary w-12 shrink-0">${o.label}</span>
-            <span class="ev-bar flex-1"><span class="ev-bar-fill" style="width: ${(o.prob*100).toFixed(0)}%; background: ${o.key === top.key ? 'var(--accent-gold)' : 'var(--text-secondary)'};"></span></span>
-            <span class="num-display text-xs ${o.key === top.key ? 'text-gold font-semibold' : 'text-secondary'} w-10 text-right">${(o.prob*100).toFixed(0)}%</span>
-          </div>
-        `).join('')}
-      </div>
-      ${renderWcHandicapSection(p)}
-    </div>`;
-}
-
-// =====================================================================
-// V12 W8 — WC handicap unified into 市场模式 (was: Path A++ inline form)
-// =====================================================================
-// Each WC card embedded a collapsible Path A++ 让球推荐 form (handicap
-// line + 3 竞彩 SP → POST /recommend/wc/single). That path was retired:
-// market-reverse (de-vig Pinnacle 1X2 + O/U → DC grid) measured 2.4e-3
-// Brier better on a leakage-free walk-forward, and WC/EURO already serve
-// it via 市场模式. The section now renders a redirect to 市场模式 instead;
-// the old form renderer + _wcHcCalc / _wcHcOutcomeRow helpers were deleted.
-function renderWcHandicapSection(p) {
-  // V12 W8 — WC/EURO 让球 unified into 市场模式. The legacy Path A++ handicap
-  // (λ_total fixed at a 2.6 prior + 128-match national-team model blend + a
-  // Bayesian blend TOWARD the 竞彩 SP) was superseded: a 4330-match walk-forward
-  // showed pure market-reverse (de-vig Pinnacle 1X2 + O/U → DC grid) sits on
-  // Pinnacle's own AH ceiling and beats the model for handicap. WC/EURO are in
-  // _CUP_MARKET_COMPETITIONS, so 市场模式 already prices their 让球 that way.
-  // This tab now only forecasts 1X2 (pre-line); 让球 redirects to 市场模式.
-  return `
-    <div class="mt-3 pt-3 border-t border-gray-100">
-      <div class="text-xs text-secondary mb-2" data-i18n="wc_hc_moved">
-        🎯 世界杯让球已统一至 💹 市场模式（去vig 1X2 + 大小球反推 · 实测贴 Pinnacle 亚盘、优于模型）。本页只做 1X2 赛前预测。
-      </div>
-      <button type="button" onclick="switchTab('today'); setTimeout(loadCupMarket, 150);"
-              class="px-3 py-1.5 text-xs font-medium bg-amber-600 text-white rounded hover:bg-amber-700"
-              data-i18n="wc_hc_goto_market">💹 前往市场模式下世界杯让球 →</button>
-    </div>`;
-}
 
 // V12 W8c — 🧮 手动反推计算器. The market-reverse fit (λ from 1X2 + O/U) is
 // server-side scipy, so 让球 must POST to /recommend/market-handicap (now

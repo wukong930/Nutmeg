@@ -343,7 +343,7 @@ class TestDashboardWiring:
         # Each render function should reference zhTeam somewhere
         for fn in ("renderTodaySingle", "renderRecommendations",
                    "renderSingleRecommendations", "renderPoolRecommendations",
-                   "renderWcMatch"):
+                   "_evLegCard"):
             idx = html.index(f"function {fn}")
             # Look in the next 4000 chars (renderTodaySingle grew with the V12
             # W8i inline 竞彩 SP row + W8k prediction body before the header).
