@@ -1581,18 +1581,13 @@ _PLAYOFF_BLEND_ALPHA = 0.3
 
 
 def _pinnacle_devig_1x2(h, d, a):
-    """Normalize 1/odds over H/D/A → fair (de-vig) market probabilities.
-    Returns None if any leg is missing."""
-    if h is None or d is None or a is None or pd.isna(h) or pd.isna(d) or pd.isna(a):
-        return None
-    # Decimal odds are definitionally > 1.0; anything ≤ 1.0 (or ≤ 0) is a
-    # fat-finger / garbage input — reject it instead of dividing by zero or
-    # emitting a >1 "probability". Lets the API return 422, not a 500.
-    if float(h) <= 1.0 or float(d) <= 1.0 or float(a) <= 1.0:
-        return None
-    inv = [1.0 / float(h), 1.0 / float(d), 1.0 / float(a)]
-    s = sum(inv)
-    return [x / s for x in inv] if s > 0 else None
+    """De-vig Pinnacle 1X2 → fair [P_home, P_draw, P_away] via WPO (corrects the
+    favourite-longshot bias; single source = ``nutmeg.v4.model.devig``). Returns
+    None on missing/NaN/≤1.0 input (so the API returns 422, not a 500). The
+    model-feature de-vigs stay on basic normalization — this is the EV/analysis path."""
+    from nutmeg.v4.model.devig import devig_1x2
+    p = devig_1x2(h, d, a)
+    return list(p) if p else None
 
 
 def _model_board_handicap_lines(f, model_grid, corr) -> list[HandicapLineProb]:

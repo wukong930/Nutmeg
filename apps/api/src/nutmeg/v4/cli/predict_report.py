@@ -38,11 +38,11 @@ _LABELS = ("主胜", "平局", "客胜")
 
 
 def _devig(h, d, a):
-    if not (h and d and a):
-        return None
-    inv = [1.0 / h, 1.0 / d, 1.0 / a]
-    s = sum(inv)
-    return [x / s for x in inv]
+    """Pinnacle 1X2 → fair [P_home, P_draw, P_away] (WPO; single source =
+    nutmeg.v4.model.devig). None on missing/invalid input."""
+    from nutmeg.v4.model.devig import devig_1x2
+    p = devig_1x2(h, d, a)
+    return list(p) if p else None
 
 
 def _model_p(r):

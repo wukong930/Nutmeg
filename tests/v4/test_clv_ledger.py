@@ -4,6 +4,7 @@ from __future__ import annotations
 import sqlite3
 
 from nutmeg.v4.cli.clv_ledger import _hhad_cover_p, _tier, compute_ledger
+from nutmeg.v4.model.devig import devig_1x2
 from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
 
 
@@ -45,12 +46,11 @@ def test_settlement_independent_and_selected(tmp_path):
     _seed_close(db, "2026-06-20", "A", "B", (1.85, 3.5, 4.6))
     rep = compute_ledger(db, min_ev=0.05)
     assert len(rep["legs"]) == 3 and rep["no_close"] == 0 and rep["n_matches"] == 1
-    # capture home EV = devig(1.8,3.6,4.8)[0]*2.0 − 1 ≈ +6.7% ≥ 5% → selected, 主胜
+    # capture home EV = devig(1.8,3.6,4.8)[0]*2.0 − 1 ≈ +8.3% (WPO) ≥ 5% → selected, 主胜
     assert len(rep["selected"]) == 1
     s = rep["selected"][0]
     assert s["pos"] == "主胜"
-    inv = [1 / 1.85, 1 / 3.5, 1 / 4.6]
-    p_close_home = inv[0] / sum(inv)
+    p_close_home = devig_1x2(1.85, 3.5, 4.6)[0]   # WPO, production de-vig (single source)
     assert abs(s["clv"] - (p_close_home * 2.0 - 1)) < 1e-6  # CLV vs CLOSE, not capture
 
 

@@ -12,13 +12,14 @@ import pandas as pd
 
 from nutmeg.v4.api.routes import _fixture_to_match_input
 from nutmeg.v4.combo.selections import MatchInput, build_selections_from_match
+from nutmeg.v4.model.devig import devig_1x2
 from nutmeg.v4.model.market_handicap import devig_over, fit_lambdas
 
 
 def _devig(h, d, a):
-    inv = [1.0 / h, 1.0 / d, 1.0 / a]
-    s = sum(inv)
-    return [x / s for x in inv]
+    # Delegate to the production de-vig (WPO) so 市场模式 expectations stay in sync
+    # with the single source of truth (nutmeg.v4.model.devig); was basic-norm.
+    return list(devig_1x2(h, d, a))
 
 
 def _row(league, **over):

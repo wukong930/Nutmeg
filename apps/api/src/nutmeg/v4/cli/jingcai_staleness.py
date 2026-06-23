@@ -25,16 +25,12 @@ _MIN_EV = 0.05  # the project's +EV betting threshold
 
 
 def _devig3(h, d, a) -> tuple[float, float, float] | None:
-    """3-way de-vig (proportional) → fair (P_home, P_draw, P_away)."""
-    try:
-        h, d, a = float(h), float(d), float(a)
-    except (TypeError, ValueError):
-        return None
-    if not (h > 1 and d > 1 and a > 1):
-        return None
-    inv = (1.0 / h, 1.0 / d, 1.0 / a)
-    s = sum(inv)
-    return (inv[0] / s, inv[1] / s, inv[2] / s)
+    """3-way de-vig (WPO — corrects favourite-longshot bias) → fair
+    (P_home, P_draw, P_away). Single source = ``nutmeg.v4.model.devig``. This is
+    the soft-water EV measurement口径; the WPO upgrade tightens longshot fair P
+    (fewer false +EV cold-traps). See ``docs/devig_method_comparison.md``."""
+    from nutmeg.v4.model.devig import devig_1x2
+    return devig_1x2(h, d, a)
 
 
 def _pinn_close(conn: sqlite3.Connection, row: dict) -> tuple | None:

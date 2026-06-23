@@ -136,8 +136,8 @@ class TestLog:
         record_league_prediction(db, mp.model_dump())
         stored = fetch_league_predictions(db)[0]
         assert stored["market_mode"] == 1 and stored["league"] == "JPN_J2"
-        # p_home is the Pinnacle DE-VIG (not a model output), psc echoed for the report
-        fair_h = (1 / 2.30) / (1 / 2.30 + 1 / 3.30 + 1 / 3.10)
+        # p_home is the Pinnacle DE-VIG (WPO; not a model output), psc echoed for the report
+        fair_h = _devig(2.30, 3.30, 3.10)[0]   # production de-vig (single source)
         assert abs(stored["p_home"] - fair_h) < 1e-9 and stored["psc_home"] == 2.30
         # settles on the 90' score like any other row
         n = settle_league_predictions(
