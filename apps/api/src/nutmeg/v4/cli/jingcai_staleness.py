@@ -208,7 +208,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.settle:
         from nutmeg.v4.observation.jingcai_sp import settle_jingcai_sp
         n = settle_jingcai_sp(args.db)
-        print(f"结算: 新填 {n} 场结果\n")
+        print(f"结算: 新填 {n} 场结果")
+        # also settle 比分/总进球 (jingcai_exotic_sp) — best-effort, the staleness
+        # map must not break if the (newer) exotic table hiccups.
+        try:
+            from nutmeg.v4.observation.jingcai_exotic import settle_exotic_sp
+            ne = settle_exotic_sp(args.db)
+            print(f"冷门玩法结算: 新填 {ne} 行(比分/总进球)")
+        except Exception as e:  # noqa: BLE001 — secondary feed, never block the map
+            print(f"冷门玩法结算跳过: {e}")
+        print()
 
     _print(analyze(args.db, min_ev=args.min_ev), args.min_ev)
     return 0

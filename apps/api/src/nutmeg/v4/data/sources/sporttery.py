@@ -23,6 +23,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -187,6 +188,44 @@ def _odds3(pool: dict | None):
     return (h, d, a)
 
 
+# 比分 (crs) 的 3 个「其他」桶键 → 竞彩标准标签
+_CRS_OTHER = {"s1sh": "胜其他", "s1sd": "平其他", "s1sa": "负其他"}
+_CRS_META = {"goalLine", "goalLineValue", "updateDate", "updateTime"}
+
+
+def _crs_outcomes(pool: dict | None) -> dict[str, float]:
+    """``{结果: SP}`` from a 比分 (crs) pool. ``s{HH}s{AA}`` → ``'H:A'``;
+    ``s1sh/s1sd/s1sa`` → 胜/平/负其他. Skips the ``*f`` flag keys + metadata."""
+    out: dict[str, float] = {}
+    for k, v in (pool or {}).items():
+        if k.endswith("f") or k in _CRS_META:
+            continue
+        if k in _CRS_OTHER:
+            label = _CRS_OTHER[k]
+        else:
+            m = re.fullmatch(r"s(\d\d)s(\d\d)", k)
+            if not m:
+                continue
+            label = f"{int(m.group(1))}:{int(m.group(2))}"
+        try:
+            out[label] = float(v)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _ttg_outcomes(pool: dict | None) -> dict[str, float]:
+    """``{'0'..'7': SP}`` from a 总进球 (ttg) pool; ``'7'`` = 7 或更多."""
+    out: dict[str, float] = {}
+    for k, v in (pool or {}).items():
+        m = re.fullmatch(r"s(\d)", k)
+        if not m:
+            continue
+        with contextlib.suppress(TypeError, ValueError):
+            out[m.group(1)] = float(v)
+    return out
+
+
 def _utc_date_and_kickoff(match_date: str | None, match_time: str | None):
     """竞彩 gives the Beijing (UTC+8) calendar date + kickoff time. Convert to the
     UTC kickoff date + ISO — the gather/predictions/settler all key on the UTC date,
@@ -213,8 +252,10 @@ def fetch_lottery_matches(
 ) -> list[dict]:
     """Current 竞彩 football matches with frozen SP. Each dict:
     ``{match_date, match_num, league_cn, home_cn, away_cn, home_en, away_en,
-    had: (h,d,a)|None, hhad: (h,d,a,goalLine)|None}``. ``*_en`` is the canonical
-    English name (None if unmapped). Returns [] on any failure (fail-soft)."""
+    had: (h,d,a)|None, hhad: (h,d,a,goalLine)|None,
+    crs: {结果:SP}, ttg: {'0'..'7':SP}}``. ``*_en`` is the canonical English name
+    (None if unmapped). ``crs``/``ttg`` are ``{}`` unless those poolCodes were
+    requested. Returns [] on any failure (fail-soft)."""
     data = _request(pool_codes, channel, cache_dir=cache_dir, refresh=refresh,
                     ttl_seconds=ttl_seconds)
     if not data:
@@ -247,6 +288,9 @@ def fetch_lottery_matches(
                     "home_en": zh_to_canonical(home_cn),
                     "away_en": zh_to_canonical(away_cn),
                     "had": had, "hhad": hhad,
+                    # 玩法扩展:比分 {结果:SP} + 总进球 {'0'..'7':SP}(pool 缺则空 dict)
+                    "crs": _crs_outcomes(g.get("crs")),
+                    "ttg": _ttg_outcomes(g.get("ttg")),
                 })
     except Exception:  # noqa: BLE001 — a parse failure must not raise
         log.warning("sporttery parse failed", exc_info=True)

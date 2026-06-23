@@ -369,11 +369,13 @@ install_job "com.nutmeg.daily_settle" \
 # 体检(2026-06-12)— 竞彩 SP harvest (23:15, after the ~23:00 竞彩 freeze).
 # Gated on NUTMEG_SPORTTERY_ENABLED=1 (a one-line kill switch in .env). Reads the
 # PUBLIC sporttery uniform endpoint (no auth/WAF) → jingcai_sp (source=sporttery,
-# never clobbers a hand-priced line). Fail-soft + low-freq (once/day). Pairs with
-# the 02:00 settle to keep the 竞彩 staleness map self-populating.
+# never clobbers a hand-priced line). --exotics also captures 比分(crs)/总进球(ttg)
+# frozen SP → jingcai_exotic_sp (long-format, forward-only for the autumn soft-water
+# EV test; see docs/parlay_soft_water_research.md §7). Fail-soft + low-freq (once/day).
+# Pairs with the 02:00 settle to keep the 竞彩 staleness map self-populating.
 install_job "com.nutmeg.sporttery_ingest" \
   23 15 "" \
-  "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH; else echo sporttery-disabled; fi || true"
+  "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH --exotics; else echo sporttery-disabled; fi || true"
 
 # 体检(2026-06-23)— 竞彩 开售初盘 harvest (11:05, just after the 11:00 竞彩 开售).
 # Same source/gate/fail-soft as sporttery_ingest, but --phase open: stamps the 开售
