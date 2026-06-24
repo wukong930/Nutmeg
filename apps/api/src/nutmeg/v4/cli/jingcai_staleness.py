@@ -36,7 +36,8 @@ def _devig3(h, d, a) -> tuple[float, float, float] | None:
 def _pinn_close(conn: sqlite3.Connection, row: dict) -> tuple | None:
     """Pinnacle CLOSING line (last observed state): (psc_home, psc_draw, psc_away,
     psc_over, psc_under, ou_line). 1X2 for 'had'; the O/U is needed to reverse-fit
-    the grid for 'hhad'. By fixture_id, then by (date, teams)."""
+    the grid for 'hhad'. By fixture_id, then by (date, teams), then a national-team
+    alias fallback (Czech Republic↔Czechia &c)."""
     cols = "psc_home, psc_draw, psc_away, psc_over, psc_under, ou_line"
     if row.get("fixture_id"):
         r = conn.execute(
@@ -45,11 +46,39 @@ def _pinn_close(conn: sqlite3.Connection, row: dict) -> tuple | None:
             (row["fixture_id"],)).fetchone()
         if r:
             return r
-    return conn.execute(
+    r = conn.execute(
         f"SELECT {cols} FROM odds_snapshots "
         "WHERE match_date=? AND home_team=? AND away_team=? "
         "ORDER BY captured_at DESC, id DESC LIMIT 1",
         (row["match_date"], row["home_team"], row["away_team"])).fetchone()
+    if r:
+        return r
+    return _alias_close(conn, row, cols)
+
+
+def _alias_close(conn: sqlite3.Connection, row: dict, cols: str) -> tuple | None:
+    """National-team alias fallback when the exact (date, home, away) join misses.
+
+    Resolve both 竞彩 names to eloratings codes and accept the freshest same-day
+    odds_snapshots row whose BOTH teams resolve to the SAME (home, away) code pair —
+    but only when that resolves to a UNIQUE fixture (≥2 distinct fixtures sharing
+    codes → bail, never guess). Fixes spelling splits like 'Czech Republic'(竞彩) vs
+    'Czechia'(Pinnacle) without the false-join risk of fuzzy matching. Club aliases
+    stay autumn-gated: a non-national name → code None → return None.
+    See [[cross-source-team-name-mismatch]]."""
+    from nutmeg.v4.data.national_team_name_to_elo import lookup_elo_code
+    hc, ac = lookup_elo_code(row["home_team"]), lookup_elo_code(row["away_team"])
+    if hc is None or ac is None:
+        return None
+    rows = conn.execute(
+        f"SELECT {cols}, home_team, away_team FROM odds_snapshots "
+        "WHERE match_date=? ORDER BY captured_at DESC, id DESC",
+        (row["match_date"],)).fetchall()
+    hits = [r for r in rows
+            if lookup_elo_code(r[6]) == hc and lookup_elo_code(r[7]) == ac]
+    if not hits or len({(r[6], r[7]) for r in hits}) != 1:
+        return None  # no alias match, or ambiguous (≥2 distinct fixtures) → don't guess
+    return tuple(hits[0][i] for i in range(6))  # the cols, dropping the trailing names
 
 
 def _hhad_pinn_and_outcome(close: tuple, row: dict) -> tuple | None:

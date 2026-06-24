@@ -112,3 +112,28 @@ def test_hhad_realized_loss_when_not_covered(tmp_path):
     rep = analyze(db)
     win = next(c for c in rep["candidates"] if c["market"] == "hhad" and c["pick"] == "让胜")
     assert win["won"] is False and win["profit"] == -1.0   # push on the line → 让胜 lost
+
+
+def test_pinn_close_national_team_alias_fallback(tmp_path):
+    """When the exact (date, home, away) join misses, _pinn_close resolves national
+    teams via the elo-code alias: 竞彩 'Czech Republic' joins Pinnacle's 'Czechia'
+    close. A club name (no elo code) must NOT alias-guess (stays autumn-gated)."""
+    import sqlite3
+
+    from nutmeg.v4.cli.jingcai_staleness import _pinn_close
+    db = str(tmp_path / "obs.db")
+    record_row_snapshot(db, {
+        "psc_home": 1.85, "psc_draw": 3.5, "psc_away": 4.6,
+        "date": "2026-06-25", "league": "WC",
+        "home_team": "Czechia", "away_team": "Mexico",          # Pinnacle spelling
+        "ou_line": 2.5, "psc_over25": 1.9, "psc_under25": 1.9,
+        "odds_update": "2026-06-25T18:00:00Z", "kickoff_utc": None,
+    }, fixture_id=None, source="test")
+    with sqlite3.connect(db) as c:
+        c.row_factory = sqlite3.Row
+        got = _pinn_close(c, {"fixture_id": None, "match_date": "2026-06-25",
+                              "home_team": "Czech Republic", "away_team": "Mexico"})
+        assert got is not None and abs(got[0] - 1.85) < 1e-9   # alias resolved → close found
+        # not a national team → no elo code → must not guess a join
+        assert _pinn_close(c, {"fixture_id": None, "match_date": "2026-06-25",
+                               "home_team": "Some Club", "away_team": "Mexico"}) is None

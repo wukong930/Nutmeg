@@ -80,6 +80,11 @@ TEAM_NAME_TO_ELO_CODE: dict[str, str] = {
     "Peru":                 "PE",
     "Iceland":              "IS",
     "Nigeria":              "NG",
+    # Alternate spellings the cross-source feeds use interchangeably (FIFA /
+    # official-short names). MEASURED, not guessed — the CLV name-join sentinel
+    # surfaced "Czechia" live in odds_snapshots. See [[cross-source-team-name-mismatch]].
+    "Czechia":              "CZ",   # = Czech Republic (Pinnacle/odds_snapshots spelling)
+    "Korea Republic":       "KR",   # = South Korea (FIFA spelling)
 }
 
 
