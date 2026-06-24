@@ -69,9 +69,10 @@
 
 ## §4 · 范围边界:不在本清单里(在别处,没忘 —— 都不卡软水数据门)
 
-> 这张表只管**软水/市场量化攒数据 campaign**。下面三条是**独立轨**,故意不当 §1–§3 的行项,但在这里点名,免得「以为忘了」。
+> 这张表只管**软水/市场量化攒数据 campaign**。下面几条是**独立轨**,故意不当 §1–§3 的行项,但在这里点名,免得「以为忘了」。
 
 - **建模线 = 已收敛/关闭(负结论,别重追)**:文章 #6 四候选(战意 / 球员 xG / 裁判 / 赔率路径)全测完**搁置** —— 模型对 Pinnacle 1X2 收盘**零独立信号**(β≤0),校准已透。这是 pivot 到市场量化的**证据**,不是待办。(球员 xG 仅在「**实时竞彩 SP 监控**」搭起来才值得回看,而那条本身在 §3 否决。)`docs/model_improvement_findings.md` / `v12_deep_audit.md`
+  - **同格 · MCMC 分层贝叶斯进球模型 = 待确认候选 `V12-8`**(替 DC MLE 骨架):V11 Phase 0 手搓 MH 在 EPL 单季 −6.4 milli log-loss、R-hat 1.058(借线收敛)。**决策准则**:NumPyro NUTS 复核 **≥3/4 季 ≥−0.005 且 R-hat<1.05 才迁移**,否则留 DC MLE(3–5 天 + ~500MB 依赖)。**但 MCMC(1.0567)仍 +0.0227 输 Pinnacle**(只是把模型↔市场差距从 +291 收窄到 +227 万分之一 nat,没越过)→ 同属建模线、被 pivot 降权。**注意 ≠ §1B 的 `bayesian_blend`**:V12-8 是换**骨架**,§1B 是 serving **融合**,同名不同物。`docs/v11_phase0_mcmc_report.md` / `V12_BACKLOG_DRAFT.md V12-8`
 - **V13 产品/UI roadmap(独立轨,不卡数据)**:闭门 banner(P0)· 人为 override `data/overrides.yaml` · 半自动 SP UX(cron 稳定后)· 单关/复式 web 下注 directional_combo arm。`docs/V13_ROADMAP.md`
 - **Polymarket 错价探测器(真·开放决策)**:Phase A 已上线(只读源+匹配+缺口+CLI),**B/C(面板+cron)等你看一次真实 `nutmeg-polymarket-gaps --dry-run` 再定**;若全是薄盘/翻盘排除/陈旧 = 诚实「此路不通」,停在 A。**无决策 doc,易忘。** `计划 codex-flickering-dewdrop`
 - **V12 收尾 housekeeping(低优先)**:真实 ROI 靠 `nutmeg-ab-report` 攒数周 · 生僻新队拉丁名回退看到就补 · 删 DEPRECATED `/recommend/wc/single` + `national_team_handicap.py`。`docs/V12_MARKET_MODE_WRAPUP.md`
