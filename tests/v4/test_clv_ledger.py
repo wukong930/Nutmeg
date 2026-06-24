@@ -72,6 +72,25 @@ def test_below_threshold_not_selected(tmp_path):
     assert len(rep["legs"]) == 3 and rep["selected"] == []
 
 
+def test_name_join_tripwire_splits_miss_reason(tmp_path):
+    """A join miss where Pinnacle HAS the fixture same-day under a different spelling
+    is flagged name-suspect (alias gap); a genuinely-absent day is plain no_quote."""
+    db = str(tmp_path / "obs.db")
+    # 竞彩 spells it "Korea Republic"; the Pinnacle close is stored as "South Korea"
+    # (Japan side matches, home side differs) → exact join fails, name overlaps.
+    record_jingcai_sp(db, match_date="2026-08-01", home_team="Korea Republic",
+                      away_team="Japan", jc_home=2.0, jc_draw=3.5, jc_away=4.5,
+                      psc_home=1.8, psc_draw=3.6, psc_away=4.8, market="had")
+    _seed_close(db, "2026-08-01", "South Korea", "Japan", (1.85, 3.5, 4.6))
+    # genuinely no Pinnacle quote that day
+    record_jingcai_sp(db, match_date="2026-08-09", home_team="Foo", away_team="Bar",
+                      jc_home=2.0, jc_draw=3.5, jc_away=4.5, market="had")
+    rep = compute_ledger(db, min_ev=0.05)
+    assert rep["legs"] == [] and rep["no_close"] == 2
+    assert rep["miss_quote"] == 1                                  # Foo v Bar
+    assert [m["home"] for m in rep["miss_name"]] == ["Korea Republic"]  # name-suspect
+
+
 def test_hhad_selected_reverse_fits_capture_ou(tmp_path):
     """让球选中腿: capture-time cover-P is reverse-fit from the stored 1X2 + O/U
     (psc_over/under), so an hhad +EV pick enters the validation counter."""

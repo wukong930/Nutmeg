@@ -20,12 +20,20 @@ signal, not a circular artifact. No ``ft_outcome`` is touched.
 honest scope: 让球 (hhad) legs are in the distribution (close-side reverse-fit,
 no result needed) but the SELECTED counter is 1X2-only for now — hhad selection
 needs the capture-time O/U, which ``jingcai_sp`` does not yet store.
+
+Name-join tripwire: a join MISS is split into name-suspect (Pinnacle has the
+fixture same-day under a different spelling → an alias gap that silently drops
+soft-water rows) vs genuine no-quote, so an autumn team-name break self-announces
+in the report instead of hiding inside one ``no_close`` count. Fixing the alias
+table itself stays autumn-gated — it must be built against the MEASURED 竞彩-source
+spellings, not guessed ones (see [[cross-source-team-name-mismatch]]).
 """
 from __future__ import annotations
 
 import argparse
 import sqlite3
 import statistics as st
+import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
@@ -80,6 +88,29 @@ def _hhad_cover_p(close: tuple, line) -> tuple | None:
     return (ph, pd_, pa)
 
 
+def _norm(s: str | None) -> str:
+    """Accent-fold + casefold for loose team-name comparison (Türkiye≈Turkey)."""
+    s = unicodedata.normalize("NFD", s or "")
+    return "".join(c for c in s if unicodedata.category(c) != "Mn").casefold().strip()
+
+
+def _same_day_name_overlap(conn: sqlite3.Connection, d: dict) -> bool:
+    """A join MISS where Pinnacle has a same-day fixture sharing ≥1 (normalized)
+    team name with this row → the fixture is almost certainly present under a
+    different spelling (a name-synonym break, fixable with an alias), NOT a
+    genuine missing quote. Mirrors ``name_sentinel``'s mismatch-vs-not-covered
+    split, but for the jingcai_sp↔odds_snapshots join the CLV ledger turns on.
+    (We only reach here after the exact (date, home, away) join already failed,
+    so a shared name necessarily means the OTHER side is spelt differently.)"""
+    want = {_norm(d["home_team"]), _norm(d["away_team"])}
+    want.discard("")
+    rows = conn.execute(
+        "SELECT home_team, away_team FROM odds_snapshots WHERE match_date=?",
+        (d["match_date"],)).fetchall()
+    return any(_norm(r["home_team"]) in want or _norm(r["away_team"]) in want
+               for r in rows)
+
+
 def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
     """Per-leg CLV (vs Pinnacle close) over ALL captured 竞彩 SP — settled or not.
     Returns legs (each tagged tier/rank/market) + the selected-leg (1X2) subset."""
@@ -108,11 +139,19 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
 
         legs: list[dict] = []
         selected: list[dict] = []
-        no_close = 0
+        # split a join MISS by cause so an autumn name-break self-announces instead
+        # of hiding in one undifferentiated no_close count:
+        miss_name: list[dict] = []   # Pinnacle has the fixture under another spelling
+        miss_quote = 0               # genuinely no same-day Pinnacle quote
+        miss_devig = 0               # close found but de-vig failed (bad odds, not a name)
         for d in latest.values():
             close = _pinn_close(conn, d)
             if close is None:
-                no_close += 1
+                if _same_day_name_overlap(conn, d):
+                    miss_name.append({"date": d["match_date"], "league": d["league"],
+                                      "home": d["home_team"], "away": d["away_team"]})
+                else:
+                    miss_quote += 1
                 continue
             market = d["market"] or "had"
             jc = (d["jc_home"], d["jc_draw"], d["jc_away"])
@@ -121,7 +160,7 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
             else:
                 p_close, labels = _devig3(close[0], close[1], close[2]), _HAD
             if p_close is None:
-                no_close += 1
+                miss_devig += 1
                 continue
             order = sorted(range(3), key=lambda i: -p_close[i])
             rankname = {order[0]: "热门", order[1]: "居中", order[2]: "冷门"}
@@ -156,8 +195,10 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
                         "date": d["match_date"],
                         "match": f'{d["home_team"]} vs {d["away_team"]}',
                     })
-        return {"legs": legs, "selected": selected, "no_close": no_close,
-                "n_matches": len(latest)}
+        return {"legs": legs, "selected": selected,
+                "no_close": len(miss_name) + miss_quote + miss_devig,
+                "miss_name": miss_name, "miss_quote": miss_quote,
+                "miss_devig": miss_devig, "n_matches": len(latest)}
 
 
 def _agg(items: list[dict]) -> tuple[int, float, int]:
@@ -174,8 +215,17 @@ def render(report: dict, min_ev: float = _MIN_EV) -> str:
     out.append("=" * 66)
     out.append("CLV 账本 — 软盘 vs Pinnacle 收盘(不依赖结算)")
     out.append("=" * 66)
-    out.append(f"配对比赛: {report['n_matches']}  ·  无收盘线(跳过): {report['no_close']}  "
-               f"·  总腿数: {len(legs)}")
+    nm = report.get("miss_name", [])
+    out.append(
+        f"配对比赛: {report['n_matches']}  ·  无收盘线: {report['no_close']}"
+        f"(名字疑似不配 {len(nm)} / 真没报价 {report.get('miss_quote', 0)}"
+        f" / 去vig失败 {report.get('miss_devig', 0)})  ·  总腿数: {len(legs)}")
+    if nm:
+        out.append("  ⚠️ 队名 join 哨兵 — 同日 Pinnacle 有该队却没配上(疑似别名缺失, 该补 alias):")
+        for m in nm[:8]:
+            out.append(f"      [{m['league'] or '?'}] {m['date']} {m['home']} v {m['away']}")
+        if len(nm) > 8:
+            out.append(f"      … 共 {len(nm)} 条")
     if not legs:
         out.append("\n  还没有可配对的(竞彩 SP × Pinnacle 收盘)—— 攒着,每开一场就长一条。")
         return "\n".join(out)
