@@ -18,7 +18,7 @@
 ## §0 · 现在就能做的 pre-work(便宜、不等数据,让秋天口径干净)
 
 - [x] **WPO 去 vig**(纠正冷门偏差,治冷门假 +EV)—— ✅ 已做(commit `1d2c4df`)。`docs/devig_method_comparison.md`
-- [ ] **CLV 闸门升级**(⭐ 最该先做,纯逻辑、便宜):把「选中计数器 N≥15/38」改成 **① 每注 CLV 的 t 检验(t≈2.8,非 p=0.05)② FDR/BHY 跨 13 联赛校正 ③ 预警(N≥15)/确认(t 过关 + N 到几百)两层**。真边在 672 注都可能 p=0.089,跨 13 联赛筛=多重检验。`docs/clv_statistical_methodology.md`
+- [x] **CLV 闸门升级**(⭐)—— ✅ 已做。「选中计数器 N≥15/38」→ **① 每注 CLV 的 t 检验 ② BHY-FDR 跨联赛校正 ③ 预警(N≥15)/确认(t≥2.8·过FDR·N≥200)两层**;额外硬化:**CLV 按比赛日聚类**(防同轮相关高估 t)+ 单边检验。引擎 `nutmeg.v4.model.clv_gate`(纯函数 + 14 测试,含「同一联赛单独→确认 / 混入 11 个 null→仅预警」的多重检验铁证),已接进 `nutmeg-clv-ledger`。`docs/clv_statistical_methodology.md`
 - [ ] **仪表盘 JS 去 vig → WPO**(前端 PR + bump CACHE_VERSION):客户端还是基础归一,与服务端 WPO 差 sub-1pp。`记忆 devig-js-server-mismatch`
 - [ ] **队名 join 卫生(信 CLV 数字前的前提)**:每条跨源 join(`sporttery↔odds_snapshots`、`TEAM_NAME_ZH↔gather`、Odds-API 叠加)都会在**国家队同义词**上静默断裂 → 漏/错算软水 CLV。`name-sentinel` 已每日跑,但秋天读数前要**确认 join 命中率干净**,否则数字不可信。`记忆 cross-source-team-name-mismatch`
 - [ ] **(可选)⑤ Kelly 补对抗核查**:下一轮额度重置时重跑(前台版无核查)。`docs/kelly_staking_uncertainty_correlation.md`

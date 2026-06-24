@@ -9,10 +9,13 @@ down by tier × leg-rank × market — so it accrues ~6× faster than the settle
 map (every offered match is a data point, not every settled one).
 
 The headline the validation timeline turns on: the mean CLV of the **selected**
-leg (the EV≥5% pick our filter makes AT CAPTURE) + N, tracked toward the ~15–40
-legs needed to read the edge. Selection is on capture-time EV (no look-ahead);
-CLV is measured vs the close — so a positive selected-CLV is a real signal, not
-a circular artifact. No ``ft_outcome`` is touched.
+leg (the EV≥5% pick our filter makes AT CAPTURE), sliced **per league** and run
+through the upgraded gate — a cluster-robust t-test + BHY-FDR across the league
+family + a warn/confirm split (``nutmeg.v4.model.clv_gate``), NOT the old
+``N≥15/38`` counter (a count is not a significance test, and screening 13 leagues
+for the softest is multiple testing). Selection is on capture-time EV (no
+look-ahead); CLV is measured vs the close — so a positive selected-CLV is a real
+signal, not a circular artifact. No ``ft_outcome`` is touched.
 
 honest scope: 让球 (hhad) legs are in the distribution (close-side reverse-fit,
 no result needed) but the SELECTED counter is 1X2-only for now — hhad selection
@@ -27,12 +30,17 @@ from collections import defaultdict
 from pathlib import Path
 
 from nutmeg.v4.cli.jingcai_staleness import _devig3, _pinn_close
+from nutmeg.v4.model.clv_gate import (
+    CONFIRM_MIN_N,
+    CONFIRM_T,
+    WARN_MIN_N,
+    evaluate,
+    pooled_test,
+)
 
 _MIN_EV = 0.05
 _HAD = ("主胜", "平局", "客胜")
 _HC = ("让胜", "让平", "让负")
-# validation targets from the power calc (σ≈6.6%/leg): N to detect a given edge
-_TARGETS = ((15, "+5%"), (38, "+3%"))
 
 
 def _tier(p: float) -> str:
@@ -86,9 +94,9 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
             "away_team TEXT, psc_home REAL, psc_draw REAL, psc_away REAL, "
             "psc_over REAL, psc_under REAL, ou_line REAL)")
         raw = conn.execute(
-            "SELECT match_date, home_team, away_team, fixture_id, market, captured_at, "
-            "jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, handicap_home, "
-            "psc_over, psc_under, ou_line "
+            "SELECT match_date, home_team, away_team, fixture_id, league, market, "
+            "captured_at, jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, "
+            "handicap_home, psc_over, psc_under, ou_line "
             "FROM jingcai_sp").fetchall()
         # one observation per (match, market): the FRESHEST 竞彩 SP capture
         latest: dict[tuple, dict] = {}
@@ -144,6 +152,8 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
                     selected.append({
                         "clv": p_close[j] * float(jc[j]) - 1.0, "cap_ev": evs[j],
                         "pos": labels[j], "market": market,
+                        "league": d["league"] or "(未标联赛)",
+                        "date": d["match_date"],
                         "match": f'{d["home_team"]} vs {d["away_team"]}',
                     })
         return {"legs": legs, "selected": selected, "no_close": no_close,
@@ -193,17 +203,55 @@ def render(report: dict, min_ev: float = _MIN_EV) -> str:
 
     out.append("\n" + "-" * 66)
     n, mean, beat = _agg(sel)
-    out.append(f"【验证计数器】选中腿(1X2 + 让球 · 下注时 EV≥{min_ev:.0%} · 无前视):"
-               f"  N={n}  ·  平均 CLV {mean*100:+.1f}%" if n else
-               "【验证计数器】选中腿(1X2 + 让球 · 下注时 EV≥5%):  N=0 —— 还没攒到一条 +EV 选中腿")
+    out.append(
+        f"【选中腿】(1X2 + 让球 · 下注时 EV≥{min_ev:.0%} · 无前视):"
+        f"  N={n}  ·  平均 CLV {mean*100:+.1f}%" if n else
+        "【选中腿】(1X2 + 让球 · 下注时 EV≥5%):  N=0 —— 还没攒到一条 +EV 选中腿")
     if n:
-        out.append("  打败收盘 " + f"{beat}/{n}")
-    for tgt, edge in _TARGETS:
-        bar = "█" * min(n, tgt) + "░" * max(0, tgt - n)
-        status = "✅ 够了" if n >= tgt else f"还差 {tgt - n}"
-        out.append(f"  验证 {edge} 边(需 {tgt:>2}): [{bar}] {n}/{tgt}  {status}")
-    out.append("\n  诚实: 选中按「下注时 EV」选、CLV 对「收盘」量 → 无前视偏差,正的才算真信号。")
-    out.append("        让球(hhad)选中腿用捕获时 1X2+O/U 反推;旧行无存 O/U 时退化用默认总进球。")
+        out.append(f"  打败收盘 {beat}/{n}")
+
+    # 闸门(升级): t 检验 + BHY-FDR 跨联赛 + 预警/确认两层 —— 取代旧的 N≥15/38 计数器。
+    # (一个计数不是显著性检验;按 13 联赛挑「最软」= 多重检验, p=0.05 必造假阳。)
+    per_league: dict[str, dict] = defaultdict(lambda: {"values": [], "clusters": []})
+    for s in sel:
+        per_league[s["league"]]["values"].append(s["clv"])
+        per_league[s["league"]]["clusters"].append(s["date"])
+    out.append("")
+    out.append(
+        f"【软水闸门 · 升级】t 检验 + BHY-FDR 跨联赛 + 两层"
+        f"(预警 N≥{WARN_MIN_N} / 确认 t≥{CONFIRM_T:g}·过FDR·N≥{CONFIRM_MIN_N})")
+    out.append("  口径: CLV 按比赛日聚类(防同轮相关高估 t) · 单边检验 mean>0 · BHY 控假阳比例")
+    if not per_league:
+        out.append("  还没有 +EV 选中腿 → 无联赛可检验(空仓继续攒, 这是诚实状态)。")
+    else:
+        verdicts = evaluate(dict(per_league))
+        zh = {"confirm": "✅ 确认", "warn": "⚠️ 预警", "—": "—"}
+        out.append(f"  {'联赛':<12}{'N':>4}{'簇':>4}{'CLV':>9}{'t':>7}{'p':>8}{'FDR':>5} 层")
+        for v in verdicts:
+            tt = f"{v.t:.2f}" if v.t is not None else "n/a"
+            pp = f"{v.p:.3f}" if v.p is not None else "n/a"
+            fdr = "过" if v.fdr_pass else ("否" if v.in_family else "·")
+            out.append(
+                f"  {v.league:<12}{v.n:>4}{v.n_clusters:>4}{v.mean*100:>+8.1f}%"
+                f"{tt:>7}{pp:>8}{fdr:>5}  {zh[v.layer]}")
+        pooled = pooled_test(dict(per_league))
+        if pooled.t is not None:
+            out.append(
+                f"  {'合并·仅参考':<12}{pooled.n:>4}{pooled.n_clusters:>4}"
+                f"{pooled.mean*100:>+8.1f}%{pooled.t:>7.2f}{pooled.p:>8.3f}"
+                f"{'·':>5}  (忽略多重检验, 仅 sanity)")
+        conf = [v.league for v in verdicts if v.layer == "confirm"]
+        warn = [v.league for v in verdicts if v.layer == "warn"]
+        if conf:
+            out.append(f"  → 确认有边(可动手): {', '.join(conf)}")
+        elif warn:
+            out.append(f"  → 仅预警(观察, 别下注): {', '.join(warn)} —— 未达统计确认。")
+        else:
+            out.append("  → 无联赛达预警门槛 —— 继续空仓攒数据。")
+
+    out.append("\n  诚实: 选中按「下注时 EV」选、CLV 对「收盘」量 → 无前视偏差, 正的才算真信号。")
+    out.append("        预警≠确认: 真边在 672 注都可能 p≈0.09 → 确认要 N 到几百 + t≥2.8 + 过 FDR。")
+    out.append("        让球(hhad)选中腿用捕获时 1X2+O/U 反推; 旧行无存 O/U 时退化用默认总进球。")
     return "\n".join(out)
 
 
