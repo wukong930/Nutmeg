@@ -1,0 +1,86 @@
+# 秋天重启总清单(软水攒数据 → 测 → 决策)
+
+**状态:🗺️ 主清单(master TODO)** · 记于 2026-06-24 · **下次真起点 = 欧洲受训联赛复赛(~8 月)**
+
+> **怎么用**:这是把散在各 doc/记忆里的「秋天要做的事」**汇成一张表**,免得忘。每条带 ① 状态 ② 是「现在能做(cheap)」还是「数据门(等秋天)」③ 详情 doc。**机器基本就位;缺的只是受训联赛的前向已结算数据。**
+>
+> **一句话**:现在**空仓**,因为能测的市场(6 月只有锐利 WC + 薄盘)是错的;**13 个受训欧洲联赛 8 月复赛 = 真起点**。在那之前先做完 §0 的便宜 pre-work,让秋天的 EV 口径一开始就干净。
+
+---
+
+## 🔔 触发信号(已自动化,无需盯)
+- **CLV 账本「选中计数器」**(`clv_ledger`,每日 02:00 settle cron 跑):受训联赛 +EV 腿首次出现时自动点名。
+- **数据漏哨兵**(`data_freshness`):`jingcai_sp` / `odds_snapshots` 停长即桌面报警 —— 保证攒数据不静默中断。
+- ⚠️ **但闸门阈值要先升级**(见 §0-2),否则点名了也不可信。
+
+---
+
+## §0 · 现在就能做的 pre-work(便宜、不等数据,让秋天口径干净)
+
+- [x] **WPO 去 vig**(纠正冷门偏差,治冷门假 +EV)—— ✅ 已做(commit `1d2c4df`)。`docs/devig_method_comparison.md`
+- [ ] **CLV 闸门升级**(⭐ 最该先做,纯逻辑、便宜):把「选中计数器 N≥15/38」改成 **① 每注 CLV 的 t 检验(t≈2.8,非 p=0.05)② FDR/BHY 跨 13 联赛校正 ③ 预警(N≥15)/确认(t 过关 + N 到几百)两层**。真边在 672 注都可能 p=0.089,跨 13 联赛筛=多重检验。`docs/clv_statistical_methodology.md`
+- [ ] **仪表盘 JS 去 vig → WPO**(前端 PR + bump CACHE_VERSION):客户端还是基础归一,与服务端 WPO 差 sub-1pp。`记忆 devig-js-server-mismatch`
+- [ ] **队名 join 卫生(信 CLV 数字前的前提)**:每条跨源 join(`sporttery↔odds_snapshots`、`TEAM_NAME_ZH↔gather`、Odds-API 叠加)都会在**国家队同义词**上静默断裂 → 漏/错算软水 CLV。`name-sentinel` 已每日跑,但秋天读数前要**确认 join 命中率干净**,否则数字不可信。`记忆 cross-source-team-name-mismatch`
+- [ ] **(可选)⑤ Kelly 补对抗核查**:下一轮额度重置时重跑(前台版无核查)。`docs/kelly_staking_uncertainty_correlation.md`
+
+---
+
+## §1 · 秋天核心测量(数据门:受训联赛复赛 + 攒够已结算腿)
+
+机器已就位(`nutmeg-handicap-triples` + `jingcai_sp` 初/终 + `clv_ledger` + `jingcai_exotic_sp`),到点喂数据即出。
+
+- [ ] **① 按联赛切软水 CLV**:13 个受训欧洲联赛**单独**量(别混 WC/杯/北欧),`jc_* × Pinnacle 收盘 × 捕获 EV`。检验竞彩 SP 在公众钱重的盘上是否真软。`parlay_soft_water_research §8`
+- [ ] **② 按「散户重仓 vs 冷门」切**(🆕 来自竞彩市场研究):竞彩按国内 handle 调线 → 偏差应在**大球队/大球/热门**。**这条可能比只按联赛切更能找到偏差。** `docs/jingcai_market_microstructure.md`
+- [ ] **③ 冻结缺口测试**:`CLV vs 冻结→开球时长`;H1=**深夜欧洲场缝最大**(阵容在竞彩冻结后才出)。实证后盾:Kaunitz 开球前 1–5h +9.9% vs 收盘 +3.5%。`docs/freeze_gap_test_card.md`
+- [ ] **④ 初盘 vs 终盘 EV**:`jc_open_*` vs `jc_*`,哪个对 Pinnacle 更划算。(最便宜的两个之一)
+- [ ] **⑤ 比分/总进球 EV**:`jingcai_exotic_sp × DC 网格 P`。**权重排序锁死:聚合/「其他」桶 ≫ 总进球 ≫ 具体比分单格**;预期比分=最厚 vig 墙。`docs/score_grid_cell_calibration.md`
+- [ ] **⑥ 数据源优化:500 档案当让球收盘 benchmark**(向前用,**≠** §3 的历史回填):一旦竞彩**让球 SP 向前**有了,500 的免费收盘级**亚洲盘口直接线**(Crown≈Pinnacle 收盘 1–4pp,回溯 2013)可直接算让球 CLV → **省 Odds API 配额 + 免 DC 反推让球**。`记忆 500-historical-odds-archive`
+
+> 全部用 §3 方法(本会话测量脚本)。**结构 ≠ 绝对 +EV**:缝最大的桶仍可能整个埋在 −11% 墙里;绝对能不能投仍是软水数据门。
+
+---
+
+## §1B · 秋天数据门 · 贝叶斯引擎完善(显示侧,优先级低于软水)
+
+> **为什么单列**:它改善的是**显示的模型 P + 模型↔市场融合**,**不是下注 EV**(软水才是下注 EV)→ 优先级低于 §1;但它**确实是秋天 PENDING**(需要 held-out 数据,与软水同一个数据门),**不是 §3 的「否决不建」**。`记忆 bayesian-blend-serving-gap`
+
+- [ ] **serving 半**:当前 `bayesian_blend` = 粗糙的 **fixed-0.6 线性平均**,与那套 sound 的**几何 pooling** eval **脱节** → 把 serving 接上几何 pooling。
+- [ ] **eval 半(`independent_signal.py`)**:补 ① **held-out/CV 的 β**(别用样本内)② **bootstrap 显著性**(防小 N 假阳)③ **per-regime / per-outcome β** ④ **下注相关指标**(ECE + 甜区,非纯 logloss)⑤ **model↔market 相关性**。
+- **数据门**:需 held-out 数据(秋天攒的受训联赛预测)。**现在建 = 空转**(无 held-out)。
+
+---
+
+## §2 · 测出 +EV 才建(决策闸门过了再动手,否则空转)
+
+- [ ] **串关决策引擎**:EV 门 + 单关/串关建议 + 分数 Kelly + 破产模拟。**设计已想清**(`parlay_soft_water_research §2`),有腿几天能上。
+- [ ] **注额层**(加固):**默认半 Kelly**(对冲 P 是估的)+ **同时多注解联合 stake 向量**(别相加单注 Kelly)+ **相关/串关最小注**。`docs/kelly_staking_uncertainty_correlation.md`
+
+---
+
+## §3 · 搁置 / 不做(有理由,别手痒去建)
+
+- [ ] **半全场(HT/FT)** —— 搁置:需半场模型 + Pinnacle 半场盘(仅顶级联赛覆盖)。`parlay_soft_water_research §7`
+- [ ] **阵容反应管道** —— 不建:阵容边温和 + 「可利用滞后」被对抗核查否决;只经冻结缺口体现。`docs/lineup_information_edge.md`
+- [ ] **密采竞彩日内轨迹** —— 不建:净位移就够,初/终两点是对的粒度。`parlay_soft_water_research §6`
+- [ ] **Okooo/Betfair/价格侧历史回填** —— 不建:投入大产出薄 / 竞彩价格侧历史拿不到。**注意**:这里只否「**历史**回填」;500 档案当**向前**让球 benchmark 是 §1⑥(要做,别混)。`记忆 okooo-* / 500-historical-*`
+- [ ] **让球反推 95%+ 大热区 calibration** —— 暂搁:10k 回测已证让球反推对 ≤92% 热门校准良好(略 OVER 热门,反方向),**唯 95%+ regime 未测**;等这类场攒够再抽查,别预设有问题。`记忆 handicap-reconstruction-calibration-tested`
+
+---
+
+## §4 · 范围边界:不在本清单里(在别处,没忘 —— 都不卡软水数据门)
+
+> 这张表只管**软水/市场量化攒数据 campaign**。下面三条是**独立轨**,故意不当 §1–§3 的行项,但在这里点名,免得「以为忘了」。
+
+- **建模线 = 已收敛/关闭(负结论,别重追)**:文章 #6 四候选(战意 / 球员 xG / 裁判 / 赔率路径)全测完**搁置** —— 模型对 Pinnacle 1X2 收盘**零独立信号**(β≤0),校准已透。这是 pivot 到市场量化的**证据**,不是待办。(球员 xG 仅在「**实时竞彩 SP 监控**」搭起来才值得回看,而那条本身在 §3 否决。)`docs/model_improvement_findings.md` / `v12_deep_audit.md`
+- **V13 产品/UI roadmap(独立轨,不卡数据)**:闭门 banner(P0)· 人为 override `data/overrides.yaml` · 半自动 SP UX(cron 稳定后)· 单关/复式 web 下注 directional_combo arm。`docs/V13_ROADMAP.md`
+- **Polymarket 错价探测器(真·开放决策)**:Phase A 已上线(只读源+匹配+缺口+CLI),**B/C(面板+cron)等你看一次真实 `nutmeg-polymarket-gaps --dry-run` 再定**;若全是薄盘/翻盘排除/陈旧 = 诚实「此路不通」,停在 A。**无决策 doc,易忘。** `计划 codex-flickering-dewdrop`
+- **V12 收尾 housekeeping(低优先)**:真实 ROI 靠 `nutmeg-ab-report` 攒数周 · 生僻新队拉丁名回退看到就补 · 删 DEPRECATED `/recommend/wc/single` + `national_team_handicap.py`。`docs/V12_MARKET_MODE_WRAPUP.md`
+
+---
+
+## 🧭 大方向(本会话研究的总结论,定 V12+)
+1. **预测已到顶,市场赢了** → 别堆模型,深耕**市场量化**(CLV/冻结缺口/软水/只赌方向)。`docs/forecasting_frontier_vs_market.md`
+2. **软水论无外部文献 → 我们是唯一研究者** → 自建测量栈 = 唯一证据通道,继续投。`docs/jingcai_market_microstructure.md`
+3. **CLV 是记分牌,但要严格量**(t 检验 + FDR),不臆造 +EV,空仓等秋天。
+
+*详情索引:`parlay_soft_water_research.md`(软水主文)· `freeze_gap_test_card.md` · `score_grid_cell_calibration.md` · `devig_method_comparison.md` · `clv_statistical_methodology.md` · `kelly_staking_uncertainty_correlation.md` · `lineup_information_edge.md` · `sharp_money_market_microstructure.md` · `forecasting_frontier_vs_market.md` · `jingcai_market_microstructure.md`*
