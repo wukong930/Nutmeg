@@ -65,7 +65,7 @@ install_job() {
   local minute="$3"
   local weekday="$4"   # 0-6 (0=Sun); empty for "every day"
   local script="$5"
-  local extra_times="$6"   # optional space-separated "H:M" EXTRA daily run times.
+  local extra_times="${6:-}"   # optional space-separated "H:M" EXTRA daily run times.
                            # When set, StartCalendarInterval becomes an ARRAY (primary +
                            # extras) so the job has several wake-windows per day. This is
                            # what survives a sleeping laptop: launchd runs a missed
