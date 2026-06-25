@@ -21,7 +21,7 @@
 - [x] **CLV 闸门升级**(⭐)—— ✅ 已做。「选中计数器 N≥15/38」→ **① 每注 CLV 的 t 检验 ② BHY-FDR 跨联赛校正 ③ 预警(N≥15)/确认(t≥2.8·过FDR·N≥200)两层**;额外硬化:**CLV 按比赛日聚类**(防同轮相关高估 t)+ 单边检验。引擎 `nutmeg.v4.model.clv_gate`(纯函数 + 14 测试,含「同一联赛单独→确认 / 混入 11 个 null→仅预警」的多重检验铁证),已接进 `nutmeg-clv-ledger`。`docs/clv_statistical_methodology.md`
 - [x] ~~**仪表盘 JS 去 vig → WPO**~~ —— ❌ 划掉(前提陈旧):EV 路径早已用服务端 WPO P(`_spcalcRecalc` 只算 `P×SP−1`),JS 里唯一的 basic 归一 `_devigArgmax1x2` 只挑 argmax 标签、换 WPO 不改结果。无 sub-1pp 缺口。`记忆 devig-js-server-mismatch`
 - [x] **队名 join 卫生(信 CLV 数字前的前提)** —— ✅ 现在能做的已做。CLV 那条 join(`jingcai_sp↔odds_snapshots`)双重覆盖:① **哨兵**(`nutmeg-clv-ledger` 把 `no_close` 拆「名字疑似不配/真没报价/去vig失败」+ 自动报警,commit `ec094de`)② **国家队层别名感知**(`_pinn_close` 走 elo-code 唯一配 + 补 `Czechia/Korea Republic`,commit `792683d`;真库 151→**153/153**)。哨兵实跑当场抓到 `Czech Republic↔Czechia`。**俱乐部别名仍数据门**(秋天对真拼写补,哨兵兜底不静默漏)。`记忆 cross-source-team-name-mismatch`
-- [ ] **(可选)⑤ Kelly 补对抗核查**:下一轮额度重置时重跑(前台版无核查)。`docs/kelly_staking_uncertainty_correlation.md`
+- [x] **(可选)⑤ Kelly 补对抗核查** —— ✅ 已做(2026-06-25,两轮多 agent 对抗核查,5 条结论 5/5 已核、39 confirmed)。抓出 3 处改:§1 回撤数字降级为玩具算术、§3「外积」加条件(0-3 否决无条件版)、§4 删错引用 Laureti(改 Baker-McHale + Nekrasov)。结论方向不变:半 Kelly 默认 + 联合 stake 向量 + 强分数/RCK。`docs/kelly_staking_uncertainty_correlation.md`
 
 ---
 
