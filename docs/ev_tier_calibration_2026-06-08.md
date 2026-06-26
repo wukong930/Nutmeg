@@ -1,5 +1,7 @@
 # EV 可靠性分级 — 实测校准 (Pinnacle 去 vig P)
 
+> ⚠️ **部分作废(2026-06-26,28,407 场 football-data Pinnacle 收盘重测,样本 ×20+ 且改用 WPO 去 vig)**:本文的 **「高估区 [0.15,0.20) −6.9pp」是 n=323 的多重检验幻觉**(11 个细桶里最差的一个);28k 重测下该桶 **basic −0.75pp(CI 跨 0)/ WPO −0.21pp(CI [−1.2,+0.7] 跨 0)= 已校准**。其余「大」偏差([0.50,0.67) +4.0pp/n420、[0.77,0.85) +10.2pp/n44)同样在大样本下塌回噪声内。**更关键:WPO 去 vig(06-24 上线)已把 FLB 偏差抹平**(basic 在 28k 上仍有显著残差,WPO 全 ns)→ 这套**按 P 分桶测「偏差」**的分级已无信号可测。**已据此把 dashboard `_evRelTier` 的 ⛔「高估区」trap band 退役**(folds into edge),并把可靠性语义从「偏差」改成「方差(EV 误差 ∝ SP)」。详见 `docs/devig_method_comparison.md` + memory `devig-ou-leg-measured-null`。下表保留作历史记录。
+
 只读测量,基于已缓存的 API-Football /odds + 赛果。每场贡献 3 个样本(主/平/客),样本 = (该结果的 Pinnacle 去 vig 隐含概率, 是否真的发生)。**口径仅 EV 的 P 一侧**(去 vig 先验),不含竞彩 SP 抽水 —— 竞彩赔率不在此缓存。
 
 - 样本数: **3921** · 整体真实发生率(基线 1/3 健全性): 33.3%

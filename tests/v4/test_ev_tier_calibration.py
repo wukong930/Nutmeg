@@ -14,13 +14,13 @@ from nutmeg.v4.model.ev_tier_calibration import (
 
 class TestTierOf:
     def test_mirrors_dashboard_boundaries(self):
-        # cold p<0.15 ; overpriced 0.15..0.20 ; chalk p>0.77 ; sweet 0.25..0.67 ; edge else
+        # cold p<0.15 ; chalk p>0.77 ; sweet 0.25..0.67 ; edge else (incl 0.15..0.25)
         assert tier_of(0.10) == "cold"
         assert tier_of(0.149) == "cold"
-        assert tier_of(0.15) == "overpriced"   # Feature B: carved out of edge
-        assert tier_of(0.18) == "overpriced"
-        assert tier_of(0.199) == "overpriced"
-        assert tier_of(0.20) == "edge"         # 0.20 is NOT <0.20 → back to edge
+        assert tier_of(0.15) == "edge"   # 'overpriced' RETIRED (n=323 phantom) → edge
+        assert tier_of(0.18) == "edge"
+        assert tier_of(0.199) == "edge"
+        assert tier_of(0.20) == "edge"
         assert tier_of(0.25) == "sweet"
         assert tier_of(0.50) == "sweet"
         assert tier_of(0.67) == "sweet"
@@ -47,8 +47,8 @@ class TestStat:
         assert abs(st.gap) < 1e-12
         assert abs(st.abs_gap) < 1e-12
 
-    def test_overpriced_longshot_negative_gap(self):
-        # implied 0.20 but only 1/10 actually happen → realised < implied (FLB)
+    def test_negative_gap_when_realised_below_implied(self):
+        # implied 0.20 but only 1/10 actually happen → realised < implied
         samples = [(0.20, 1)] + [(0.20, 0)] * 9
         st = by_tier(samples)["edge"]
         assert st.n == 10
@@ -69,8 +69,7 @@ class TestByTier:
         res = by_tier(samples)
         assert set(res) == set(TIERS)
         assert res["cold"].n == 1
-        assert res["overpriced"].n == 1   # 0.17 → overpriced
-        assert res["edge"].n == 1         # 0.22 → edge (0.20–0.25)
+        assert res["edge"].n == 2         # 0.17 and 0.22 both → edge (0.15–0.25)
         assert res["sweet"].n == 1
         assert res["chalk"].n == 1
 

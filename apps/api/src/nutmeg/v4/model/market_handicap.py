@@ -67,7 +67,17 @@ _LAMBDA_X0 = (1.20, 1.05)
 
 def devig_over(odds_over, odds_under) -> float | None:
     """2-way de-vig of an over/under pair → P(over). None if either leg is
-    missing or non-positive (caller then fits 1X2-only)."""
+    missing or non-positive (caller then fits 1X2-only).
+
+    DELIBERATELY basic normalization (the 1X2 de-vig is WPO; this stays basic) —
+    don't "fix" the inconsistency. MEASURED 2026-06-26 on 23,840 football-data
+    Pinnacle-closing matches: routing this through WPO shifts the reconstructed
+    让球 P by ~0.05pp median (p99 0.22pp, max 0.71pp on the most lopsided totals)
+    with ZERO calibration change (3-way logloss Δ=−6e-6, paired-bootstrap 95% CI
+    [−2e-5,+1e-5] straddles 0). 0.05pp P ≈ 0.1pp EV vs the +5% bar → ~50× too
+    small to flip any pick. The O/U leg only nudges λ_total (2nd-order for
+    integer-line cover); the already-WPO 1X2 split dominates. See
+    docs/devig_method_comparison.md §5."""
     try:
         o = float(odds_over)
         u = float(odds_under)

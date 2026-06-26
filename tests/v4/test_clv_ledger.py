@@ -23,7 +23,7 @@ def _seed_close(db, date, h, a, psc):
 
 def test_tier_boundaries():
     assert _tier(0.10).startswith("cold")
-    assert _tier(0.17).startswith("高估区")
+    assert _tier(0.17).startswith("边缘")   # '高估区' retired (n=323 phantom) → 边缘 (15–25%)
     assert _tier(0.22).startswith("边缘")
     assert _tier(0.45).startswith("甜区")
     assert _tier(0.72).startswith("边缘")

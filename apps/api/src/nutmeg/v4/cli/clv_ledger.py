@@ -52,13 +52,13 @@ _HC = ("让胜", "让平", "让负")
 
 
 def _tier(p: float) -> str:
-    """EV reliability tier by P (cuts 0.15/0.20/0.25/0.67/0.77 — ev_tier_calibration)."""
+    """EV reliability tier by P (cuts 0.15/0.25/0.67/0.77 — ev_tier_calibration). The
+    old 0.20 '高估区/overpriced' cut was RETIRED 2026-06-26 (an n=323 phantom; −0.21pp
+    on a 28k WPO recheck) → [0.15,0.25) folds into 边缘/edge."""
     if p < 0.15:
         return "cold (P<15%)"
-    if p < 0.20:
-        return "高估区 (15–20%)"
     if p < 0.25:
-        return "边缘 (20–25%)"
+        return "边缘 (15–25%)"
     if p <= 0.67:
         return "甜区 (25–67%)"
     if p <= 0.77:

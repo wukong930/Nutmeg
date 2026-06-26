@@ -921,10 +921,10 @@ class TestEvReliability:
         assert "return 'sweet'" in html and "return 'edge'" in html
         assert "p < 0.15" in html
         assert "p > 0.77" in html
-        # V14 (Feature B) — the calibrated trap band [0.15,0.20) carved out of edge.
-        assert "return 'overpriced'" in html
-        assert "p < 0.20" in html
-        assert "overpriced: '⛔'" in html
+        # The 'overpriced' ⛔ trap band ([0.15,0.20)) was RETIRED 2026-06-26 — an
+        # n=323 phantom (−0.21pp on a 28k WPO recheck), folds into edge. Stay gone.
+        assert "return 'overpriced'" not in html
+        assert "overpriced:" not in html
 
     def test_wired_into_all_ev_calc_surfaces(self, html):
         # EVERY live SP→EV calc surface tags the EV by the OUTCOME's P.
@@ -942,8 +942,8 @@ class TestEvReliability:
         assert "ev >= 0.05 ? ' ✅' : ''" not in html
 
     def test_i18n_keys_both_locales(self, html):
-        for k in ("rel_sweet", "rel_edge", "rel_overpriced", "rel_cold", "rel_chalk",
-                  "rel_sweet_hint", "rel_edge_hint", "rel_overpriced_hint",
+        for k in ("rel_sweet", "rel_edge", "rel_cold", "rel_chalk",
+                  "rel_sweet_hint", "rel_edge_hint",
                   "rel_cold_hint", "rel_chalk_hint"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
 

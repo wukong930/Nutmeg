@@ -20,31 +20,36 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# The five tiers, ordered as the dashboard shows them (best → worst-ish).
-TIERS = ("sweet", "edge", "overpriced", "cold", "chalk")
+# The tiers, ordered as the dashboard shows them (best → worst-ish).
+TIERS = ("sweet", "edge", "cold", "chalk")
 
 
 def tier_of(p: float) -> str | None:
     """Mirror dashboard ``_evRelTier`` EXACTLY — these are the boundaries the
     dashboard ships, so they must not drift from the live badge.
 
-      cold       : p < 0.15        (deep longshot, odds > ~6.7)
-      overpriced : 0.15 ≤ p < 0.20 (the measured trap band, −6.9pp, n=323)
-      chalk      : p > 0.77        (super-short favourite, odds < ~1.30)
-      sweet      : 0.25 ≤ p ≤ 0.67 (odds ~1.5–4)
-      edge       : otherwise       (0.20–0.25 or 0.67–0.77)
+      cold  : p < 0.15        (deep longshot, odds > ~6.7)
+      chalk : p > 0.77        (super-short favourite, odds < ~1.30)
+      sweet : 0.25 ≤ p ≤ 0.67 (odds ~1.5–4)
+      edge  : otherwise       (0.15–0.25 or 0.67–0.77)
 
-    The ``overpriced`` band was carved out of the old ``edge`` band by Feature B:
-    a fine reliability sweep showed [0.15,0.20) is overpriced by −6.9pp while the
-    rest of edge (0.20–0.25) is fine. Returns None for a non-probability so junk
-    is dropped, not binned.
+    These tiers now encode EV-ESTIMATE VARIANCE, not a calibration bias. The
+    old ``overpriced`` band ([0.15,0.20), "−6.9pp trap") was RETIRED 2026-06-26:
+    it came from an n=323 fine-bin sweep (worst of 11 bins → multiple-testing
+    noise); a 28,407-match / 85k-sample WPO recheck puts that band at −0.21pp
+    (95% CI [−1.2,+0.7], ns) — calibrated. More broadly, WPO de-vig nulled the
+    favourite-longshot BIAS (basic still shows significant residuals at 28k;
+    WPO flattens all bands to ns), so the surviving reliability signal is
+    VARIANCE: EV = P·SP − 1 ⇒ σ_EV = SP·σ_P, so a longshot's +EV carries SP×
+    (=1/P×) the uncertainty of a sweet-spot pick. cold/chalk earn their ⚠️ on
+    variance, not bias. [0.15,0.20) folds back into ``edge``. See
+    docs/devig_method_comparison.md; ev_tier_calibration_2026-06-08.md is
+    superseded for that band. Returns None for a non-probability.
     """
     if not (p > 0.0 and p < 1.0):
         return None
     if p < 0.15:
         return "cold"
-    if p < 0.20:
-        return "overpriced"
     if p > 0.77:
         return "chalk"
     if 0.25 <= p <= 0.67:
