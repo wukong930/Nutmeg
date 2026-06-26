@@ -913,6 +913,11 @@ class TestEvReliability:
     def test_grader_defined(self, html):
         assert "function _evRelTier(" in html
         assert "function _evRelTag(" in html
+        # B2 — variance-adjusted bar mirrors model/ev_threshold.py (keep in sync):
+        # threshold = base + z·σ_P·lf·SP. Display-only (shown beside flat 5%, not gating).
+        assert "function _evVarThreshold(" in html
+        assert "base + z * sigmaP * lf * (1 / p)" in html
+        assert "_evVarThreshold(p)" in html   # wired into the reliability tag
 
     def test_thresholds_present(self, html):
         # deep-longshot floor (mirrors the Polymarket detector's LONGSHOT_FLOOR
@@ -944,7 +949,8 @@ class TestEvReliability:
     def test_i18n_keys_both_locales(self, html):
         for k in ("rel_sweet", "rel_edge", "rel_cold", "rel_chalk",
                   "rel_sweet_hint", "rel_edge_hint",
-                  "rel_cold_hint", "rel_chalk_hint"):
+                  "rel_cold_hint", "rel_chalk_hint",
+                  "rel_var_thr", "rel_var_thr_short", "rel_var_thr_vs"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
 
 
