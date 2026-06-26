@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     v4_observation_db: str = "data/v4_observation.db"
     log_level: str = "INFO"
 
+    # Personal-center (个人中心) admin controls. The READ-ONLY status panel is
+    # always available; the WRITE controls (restart API daemon / reinstall
+    # launchd jobs) are OFF unless NUTMEG_ADMIN_ENABLED is truthy. Default off so
+    # a stray localhost page can never trigger a restart / cron reinstall.
+    admin_enabled: bool = False
+
     # V6 W1: API-Football credentials. Stored in `.env` (gitignored) only;
     # never commit. The key is sent as `x-apisports-key` header on each
     # request to api_football_base_url.

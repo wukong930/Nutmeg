@@ -111,14 +111,13 @@ class TestPageLoadsAndRenders:
         text = h1.text_content().strip()
         assert text   # i18n applied → either Chinese or English title
 
-    def test_all_6_tabs_render(self, page, server):
-        # V11 P1-FE#1: deleted 4 engineer tabs (outcomes / roi / sessions /
-        # rules); 5 user-facing remained (today / wc / single / parlay / pool).
-        # V11 P1-FE#3 added 推荐追溯 → 6 tabs total.
+    def test_all_7_tabs_render(self, page, server):
+        # User-facing tabs: today / upcoming / single / parlay / pool /
+        # history / admin (个人中心). The 个人中心 tab added the 7th.
         page.goto(f"{server}/api/v4/dashboard")
         page.wait_for_load_state("networkidle")
         tabs = page.locator("button.tab-btn")
-        assert tabs.count() == 6  # V14 removed WC 2026 tab (7→6)
+        assert tabs.count() == 7  # + 个人中心 admin tab (6→7)
 
 
 class TestTabSwitching:

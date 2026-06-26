@@ -150,12 +150,12 @@ class TestAriaSemantics:
         # `role="tab"` Tailwind class-list strings ⚠ — match on the literal
         # attribute form (with quotes) only.
         assert 'role="tablist"' in html
-        assert html.count('role="tab"') >= 6  # V11 P1-FE#3 added 推荐追溯 (5→6)
+        assert html.count('role="tab"') >= 7  # + 个人中心 admin tab (6→7)
 
     def test_tabpanels_have_role(self, html):
-        # V11 P1-FE#1: 4 engineer tabpanels removed. 5 remain:
-        # 今日推荐 + WC 2026 + 单关 + 串关 + 复式.
-        assert html.count('role="tabpanel"') == 6  # V14 removed WC 2026 tab (7→6)
+        # User-facing tabpanels: 今日推荐 + 近期赛事 + 单关 + 串关 + 复式 +
+        # 推荐追溯 + 个人中心 (admin).
+        assert html.count('role="tabpanel"') == 7  # + 个人中心 admin tab (6→7)
 
     def test_status_spans_have_aria_live(self, html):
         # V11 P1-FE#1: outcomes-status removed (engineer tab gone).

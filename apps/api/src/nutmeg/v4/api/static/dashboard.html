@@ -710,6 +710,8 @@
       <button data-tab="pool"      role="tab" aria-controls="tab-pool"      aria-selected="false" data-i18n="tab_pool"   class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">③ 复式</button>
       <!-- V11 P1-FE#3 — 推荐追溯: timeline of past recs + outcomes. -->
       <button data-tab="history"   role="tab" aria-controls="tab-history"   aria-selected="false" data-i18n="tab_history" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">📜 推荐追溯</button>
+      <!-- 个人中心 — read-only status + hard-gated restart controls (localhost only). -->
+      <button data-tab="admin"     role="tab" aria-controls="tab-admin"     aria-selected="false" data-i18n="tab_admin"   class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">⚙️ 个人中心</button>
     </nav>
   </div>
 
@@ -1594,6 +1596,51 @@
     </div>
   </div>
 
+  <!-- Tab: 个人中心 (admin) — read-only status + hard-gated restart controls.
+       Backend: /api/v4/admin/* (localhost-only). The restart POSTs also need
+       NUTMEG_ADMIN_ENABLED=1 + the X-Nutmeg-Admin header. See admin.py. -->
+  <div id="tab-admin" role="tabpanel" aria-labelledby="tab-admin" class="tab-panel hidden">
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+        <div>
+          <h2 class="font-bold" data-i18n="admin_title">⚙️ 个人中心</h2>
+          <p class="text-sm text-gray-500" data-i18n="admin_sub">数据源额度 · 运行状态 · 重启控制 · 仅本机可见</p>
+        </div>
+        <button id="btn-admin-refresh" class="px-3 py-1.5 text-xs rounded border self-start" data-i18n="admin_refresh">🔄 刷新状态</button>
+      </div>
+      <div id="admin-status" role="status" aria-live="polite" class="text-sm text-gray-500"></div>
+    </div>
+
+    <!-- ① 数据源 API — read-only masked status + on-demand live quota probe -->
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold" data-i18n="admin_sec_api">① 数据源 API</h2>
+        <button id="btn-admin-probe" class="px-3 py-1 text-xs rounded border" data-i18n="admin_probe">🔄 检测额度</button>
+      </div>
+      <div id="admin-api-cards" class="grid gap-3 sm:grid-cols-2"></div>
+      <p id="admin-probe-status" class="text-xs text-gray-500 mt-2" aria-live="polite"></p>
+      <p class="text-xs text-gray-400 mt-2" data-i18n="admin_key_hint">🔒 密钥只显示末 4 位 · 修改请编辑项目根目录的 .env 文件后重启 API 服务</p>
+    </div>
+
+    <!-- ② 运行状态 — daemon staleness (提交≠上线) + cron + data freshness -->
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h2 class="font-bold mb-3" data-i18n="admin_sec_run">② 运行状态</h2>
+      <div id="admin-run-status" class="space-y-3 text-sm"></div>
+    </div>
+
+    <!-- ③ 控制 — triple-gated restart buttons (localhost + env flag + header) -->
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h2 class="font-bold mb-1" data-i18n="admin_sec_ctrl">③ 控制</h2>
+      <p class="text-sm text-gray-500 mb-3" data-i18n="admin_ctrl_sub">重启会中断正在进行的请求几秒钟。</p>
+      <div id="admin-ctrl-gate" class="text-sm mb-3"></div>
+      <div class="flex flex-wrap gap-3">
+        <button id="btn-admin-restart-api" class="btn-primary text-sm" data-i18n="admin_restart_api">♻️ 重启 API 服务</button>
+        <button id="btn-admin-restart-auto" class="btn-primary text-sm" data-i18n="admin_restart_auto">♻️ 重装自动化任务</button>
+      </div>
+      <p id="admin-ctrl-status" class="text-sm mt-3" aria-live="polite"></p>
+    </div>
+  </div>
+
 
 </div>
 
@@ -2007,6 +2054,46 @@ const I18N = {
     btn_recommend_pool_json:   '生成 (JSON 模式)',
     // V11 P1-FE#3 — 推荐追溯
     tab_history:         '📜 推荐追溯',
+    tab_admin:           '⚙️ 个人中心',
+    admin_title:         '⚙️ 个人中心',
+    admin_sub:           '数据源额度 · 运行状态 · 重启控制 · 仅本机可见',
+    admin_refresh:       '🔄 刷新状态',
+    admin_loading:       '加载中…',
+    admin_loaded:        '已更新',
+    admin_sec_api:       '① 数据源 API',
+    admin_probe:         '🔄 检测额度',
+    admin_key_hint:      '🔒 密钥只显示末 4 位 · 修改请编辑项目根目录的 .env 文件后重启 API 服务',
+    admin_af_note:       'API-Football · 阵容/赛果/比分',
+    admin_oa_note:       'The Odds API · Pinnacle 收盘线',
+    admin_key_present:   '已配置',
+    admin_key_missing:   '未配置 (.env 缺 key)',
+    admin_probe_loading: '检测中…(实时查询额度)',
+    admin_probe_done:    '额度已更新',
+    admin_probe_fail:    '检测失败',
+    admin_sec_run:       '② 运行状态',
+    admin_lbl_daemon:    'API 服务',
+    admin_lbl_uptime:    '已运行',
+    admin_lbl_commit:    '运行中代码',
+    admin_stale_warn:    '⚠️ 运行中代码落后于已提交版本(提交≠上线)。点下方「重启 API 服务」让新代码生效。',
+    admin_fresh_ok:      '✓ 与最新提交一致',
+    admin_lbl_cron:      '自动化任务',
+    admin_cron_healthy:  '✓ 全部就绪',
+    admin_cron_unhealthy:'⚠️ 有任务缺失或异常退出',
+    admin_lbl_data:      '数据新鲜度',
+    admin_lbl_expiry:    '套餐到期',
+    admin_expiry_warn:   '⚠️ 即将到期 — 记得续费',
+    admin_sec_ctrl:      '③ 控制',
+    admin_ctrl_sub:      '重启会中断正在进行的请求几秒钟。',
+    admin_restart_api:   '♻️ 重启 API 服务',
+    admin_restart_auto:  '♻️ 重装自动化任务',
+    admin_ctrl_disabled: '🔒 控制已禁用。在项目根目录 .env 设 NUTMEG_ADMIN_ENABLED=1,再用命令行重启一次 API 服务即可启用(安全默认关闭)。',
+    admin_ctrl_enabled:  '✓ 控制已启用(本机)。',
+    admin_confirm_api:   '确定重启 API 服务?面板会断开约几秒后自动恢复。',
+    admin_confirm_auto:  '确定重装全部 18 个自动化任务?约 10 秒,期间 API 服务也会一并重启。',
+    admin_restarting:    '正在重启…约 10 秒后自动复查',
+    admin_restart_ok:    '✓ 已触发重启 — 复查中',
+    admin_restart_fail:  '重启请求失败',
+    admin_rows_unit:     '条',
     h_history_title:     '推荐追溯',
     sub_history:         '查看过去的推荐 + 是否命中 · 时间倒序',
     h_scoreboard:        '📊 模型自我体检 · 非竞彩',
@@ -2394,6 +2481,46 @@ const I18N = {
     btn_recommend_pool_json:   'Generate (JSON mode)',
     // V11 P1-FE#3 — Recommendations history
     tab_history:         '📜 History',
+    tab_admin:           '⚙️ Admin',
+    admin_title:         '⚙️ Personal Center',
+    admin_sub:           'Data-source quota · Run status · Restart controls · Localhost only',
+    admin_refresh:       '🔄 Refresh',
+    admin_loading:       'Loading…',
+    admin_loaded:        'Updated',
+    admin_sec_api:       '① Data-source APIs',
+    admin_probe:         '🔄 Check quota',
+    admin_key_hint:      '🔒 Only the last 4 chars are shown · Edit the project-root .env then restart the API to change keys',
+    admin_af_note:       'API-Football · lineups/results/scores',
+    admin_oa_note:       'The Odds API · Pinnacle closing lines',
+    admin_key_present:   'configured',
+    admin_key_missing:   'missing (.env has no key)',
+    admin_probe_loading: 'Checking… (live quota query)',
+    admin_probe_done:    'Quota updated',
+    admin_probe_fail:    'Check failed',
+    admin_sec_run:       '② Run status',
+    admin_lbl_daemon:    'API service',
+    admin_lbl_uptime:    'Uptime',
+    admin_lbl_commit:    'Running code',
+    admin_stale_warn:    '⚠️ Running code is behind the committed version (commit ≠ live). Click "Restart API service" below to apply.',
+    admin_fresh_ok:      '✓ matches latest commit',
+    admin_lbl_cron:      'Automation jobs',
+    admin_cron_healthy:  '✓ all ready',
+    admin_cron_unhealthy:'⚠️ jobs missing or bad exit',
+    admin_lbl_data:      'Data freshness',
+    admin_lbl_expiry:    'Plan expiry',
+    admin_expiry_warn:   '⚠️ expiring soon — renew',
+    admin_sec_ctrl:      '③ Controls',
+    admin_ctrl_sub:      'Restarting interrupts in-flight requests for a few seconds.',
+    admin_restart_api:   '♻️ Restart API service',
+    admin_restart_auto:  '♻️ Reinstall automation jobs',
+    admin_ctrl_disabled: '🔒 Controls disabled. Set NUTMEG_ADMIN_ENABLED=1 in the project-root .env, then restart the API once from the CLI to enable (safe default-off).',
+    admin_ctrl_enabled:  '✓ Controls enabled (localhost).',
+    admin_confirm_api:   'Restart the API service? The panel will disconnect for a few seconds, then recover.',
+    admin_confirm_auto:  'Reinstall all 18 automation jobs? ~10s; the API service also restarts.',
+    admin_restarting:    'Restarting… auto-recheck in ~10s',
+    admin_restart_ok:    '✓ Restart triggered — rechecking',
+    admin_restart_fail:  'Restart request failed',
+    admin_rows_unit:     'rows',
     h_history_title:     'Recommendation history',
     sub_history:         'Past recommendations + outcomes · most recent first',
     h_scoreboard:        '📊 Model self-check · non-竞彩',
@@ -2793,6 +2920,8 @@ function switchTab(name) {
   if (name === 'upcoming' && typeof loadSpCalc === 'function') loadSpCalc();
   // V11 P1-FE#3 — auto-load history on tab open (no manual refresh needed).
   if (name === 'history' && typeof loadHistory === 'function') loadHistory();
+  // 个人中心 — read-only status (NO outbound API calls; quota probe is a button).
+  if (name === 'admin' && typeof loadAdminStatus === 'function') loadAdminStatus();
 }
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -6158,6 +6287,190 @@ document.querySelectorAll('.history-range-btn').forEach(btn => {
     loadHistory();
   });
 });
+
+// =====================================================================
+// 个人中心 (admin) — read-only status + hard-gated restart controls.
+// Calls hit /api/v4/admin/* (localhost-only on the backend; the restart
+// POSTs additionally require NUTMEG_ADMIN_ENABLED=1 + the X-Nutmeg-Admin
+// header). Loading the tab does NO outbound API calls — the live quota
+// probe is a separate, cached, on-demand button. See admin.py.
+// =====================================================================
+const _admEsc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function _admUptime(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+// ISO date string → whole days from now (browser clock); null if unparseable.
+function _admDaysUntil(s) {
+  if (!s) return null;
+  const ms = Date.parse(s);
+  if (isNaN(ms)) return null;
+  return Math.round((ms - Date.now()) / 86400000);
+}
+
+let _admEnabled = false;   // mirrors backend settings.admin_enabled — gates the restart buttons
+
+async function loadAdminStatus() {
+  setStatus('#admin-status', 'loading', t('admin_loading'));
+  try {
+    const r = await fetch(API + '/admin/status');
+    if (!r.ok) { setStatus('#admin-status', 'error', `HTTP ${r.status}`); return; }
+    const j = await r.json();
+    _admEnabled = !!j.admin_enabled;
+    renderAdminApiKeys(j.api_keys || {});
+    renderAdminRunStatus(j);
+    renderAdminCtrlGate();
+    setStatus('#admin-status', 'success', t('admin_loaded'));
+  } catch (err) {
+    setStatus('#admin-status', 'error', err.message);
+  }
+}
+
+function renderAdminApiKeys(keys) {
+  const meta = {
+    api_football: { name: 'API-Football', note: t('admin_af_note') },
+    odds_api:     { name: 'The Odds API', note: t('admin_oa_note') },
+  };
+  const cards = ['api_football', 'odds_api'].filter(k => k in keys).map(k => {
+    const v = keys[k] || {};
+    const m = meta[k] || { name: k, note: '' };
+    const badge = v.present
+      ? `<span class="text-pos">✓ ${t('admin_key_present')}</span> · <code>····${_admEsc(v.last4)}</code>`
+      : `<span class="text-neg">✗ ${t('admin_key_missing')}</span>`;
+    return `<div class="border rounded p-3" id="admin-api-${k}" style="border-color: var(--border-subtle)">
+      <div class="font-medium">${_admEsc(m.name)}</div>
+      <div class="text-xs text-gray-500 mb-1">${_admEsc(m.note)}</div>
+      <div class="text-sm">${badge}</div>
+      <div class="admin-probe-slot text-xs text-gray-500 mt-1"></div>
+    </div>`;
+  }).join('');
+  $('#admin-api-cards').innerHTML = cards || '<p class="text-sm text-gray-500">—</p>';
+}
+
+function renderAdminRunStatus(j) {
+  const rows = [];
+  const d = j.daemon || {};
+  // Daemon staleness — surfaces the 提交≠上线 trap (committed code newer than serving).
+  const staleBadge = d.stale
+    ? `<div class="mt-1 px-2 py-1 rounded text-xs" style="background:#fef3c7;color:#92400e">${t('admin_stale_warn')}</div>`
+    : `<span class="text-pos text-xs">${t('admin_fresh_ok')}</span>`;
+  rows.push(`<div>
+    <span class="text-gray-500">${t('admin_lbl_daemon')}:</span>
+    <code>${_admEsc(d.running_commit)}</code>${d.stale ? ' → HEAD <code>' + _admEsc(d.head_commit) + '</code>' : ''}
+    · ${t('admin_lbl_uptime')} ${_admUptime(d.uptime_seconds)} ${staleBadge}
+  </div>`);
+  // Cron jobs (launchd)
+  const c = j.cron || {};
+  rows.push(`<div>
+    <span class="text-gray-500">${t('admin_lbl_cron')}:</span>
+    ${_admEsc(c.loaded)}/${_admEsc(c.expected)}
+    ${c.healthy ? '<span class="text-pos">' + t('admin_cron_healthy') + '</span>' : '<span class="text-neg">' + t('admin_cron_unhealthy') + '</span>'}
+    ${(c.bad_exits && c.bad_exits.length) ? '<span class="text-xs text-neg"> · ' + _admEsc(c.bad_exits.join(', ')) + '</span>' : ''}
+    ${(typeof c.persisted_plists === 'number') ? '<span class="text-xs text-gray-400"> · ' + _admEsc(c.persisted_plists) + ' plist</span>' : ''}
+  </div>`);
+  // Data freshness (observation DB tables)
+  const data = Array.isArray(j.data) ? j.data : [];
+  const dataRows = data.map(row => {
+    if (row.error) return `<li class="text-neg">${_admEsc(row.error)}</li>`;
+    const n = row.rows == null ? '—' : row.rows;
+    const last = row.last ? _admEsc(String(row.last).slice(0, 16).replace('T', ' ')) : '—';
+    return `<li><span class="text-gray-500">${_admEsc(row.label || row.table)}:</span> ${n} ${t('admin_rows_unit')} · ${last}</li>`;
+  }).join('');
+  rows.push(`<div>
+    <span class="text-gray-500">${t('admin_lbl_data')}:</span>
+    <ul class="mt-1 ml-1 space-y-0.5 text-xs">${dataRows || '<li>—</li>'}</ul>
+  </div>`);
+  $('#admin-run-status').innerHTML = rows.join('');
+}
+
+function renderAdminCtrlGate() {
+  const gate = $('#admin-ctrl-gate');
+  const btns = [$('#btn-admin-restart-api'), $('#btn-admin-restart-auto')];
+  if (_admEnabled) {
+    gate.innerHTML = `<span class="text-pos">${t('admin_ctrl_enabled')}</span>`;
+    btns.forEach(b => { if (b) { b.disabled = false; b.style.opacity = '1'; b.style.cursor = 'pointer'; } });
+  } else {
+    gate.innerHTML = `<div class="px-2 py-1 rounded text-xs" style="background:#f3f4f6;color:#4b5563">${t('admin_ctrl_disabled')}</div>`;
+    btns.forEach(b => { if (b) { b.disabled = true; b.style.opacity = '0.5'; b.style.cursor = 'not-allowed'; } });
+  }
+}
+
+async function probeAdminApis() {
+  setStatus('#admin-probe-status', 'loading', t('admin_probe_loading'));
+  try {
+    const r = await fetch(API + '/admin/api-probe');
+    if (!r.ok) { setStatus('#admin-probe-status', 'error', `HTTP ${r.status}`); return; }
+    const j = await r.json();
+    _admProbeSlot('api_football', _admAfProbe(j.api_football || {}));
+    _admProbeSlot('odds_api', _admOaProbe(j.odds_api || {}));
+    setStatus('#admin-probe-status', 'success', t('admin_probe_done') + (j.cached ? ' (cache)' : ''));
+  } catch (err) {
+    setStatus('#admin-probe-status', 'error', t('admin_probe_fail') + ': ' + err.message);
+  }
+}
+
+function _admProbeSlot(key, html) {
+  const card = $('#admin-api-' + key);
+  if (!card) return;
+  const slot = card.querySelector('.admin-probe-slot');
+  if (slot) slot.innerHTML = html;
+}
+
+function _admAfProbe(p) {
+  if (!p.ok) return `<span class="text-neg">✗ ${_admEsc(p.error || 'error')}</span>`;
+  const days = _admDaysUntil(p.expires);
+  const warn = (days != null && days <= 45) ? ` <span style="color:#b45309">${t('admin_expiry_warn')} (${days}d)</span>` : '';
+  const exp = p.expires ? `${t('admin_lbl_expiry')} ${_admEsc(String(p.expires).slice(0, 10))}${warn}` : '';
+  const q = (p.requests_today != null) ? ` · ${_admEsc(p.requests_today)}/${_admEsc(p.limit_day)}` : '';
+  return `<span class="text-pos">${_admEsc(p.plan || 'ok')}</span>${q}${exp ? '<br>' + exp : ''}`;
+}
+
+function _admOaProbe(p) {
+  if (!p.ok) return `<span class="text-neg">✗ ${_admEsc(p.error || 'error')}</span>`;
+  return `<span class="text-pos">✓</span> ${_admEsc(p.remaining)} left · ${_admEsc(p.used)} used`;
+}
+
+// Triple-gated restart. The backend re-checks localhost + env flag + header;
+// this client-side guard just avoids a pointless POST when controls are off.
+async function _admRestart(action, confirmKey) {
+  if (!_admEnabled) return;
+  if (!window.confirm(t(confirmKey))) return;
+  setStatus('#admin-ctrl-status', 'loading', t('admin_restarting'));
+  try {
+    const r = await fetch(API + '/admin/' + action, {
+      method: 'POST', headers: { 'X-Nutmeg-Admin': '1' },
+    });
+    if (!r.ok) { setStatus('#admin-ctrl-status', 'error', t('admin_restart_fail') + ` (HTTP ${r.status})`); return; }
+    setStatus('#admin-ctrl-status', 'success', t('admin_restart_ok'));
+    // The daemon drops for a few seconds then returns; poll status back.
+    let tries = 0;
+    const poll = setInterval(async () => {
+      tries++;
+      try {
+        const s = await fetch(API + '/admin/status');
+        if (s.ok) { clearInterval(poll); loadAdminStatus(); }
+      } catch (_e) { /* daemon still restarting — keep polling */ }
+      if (tries >= 12) clearInterval(poll);
+    }, 2000);
+  } catch (err) {
+    setStatus('#admin-ctrl-status', 'error', t('admin_restart_fail') + ': ' + err.message);
+  }
+}
+
+// Wire admin controls (elements live in the static panel above).
+(function wireAdmin() {
+  const ref = $('#btn-admin-refresh'); if (ref) ref.addEventListener('click', loadAdminStatus);
+  const prb = $('#btn-admin-probe'); if (prb) prb.addEventListener('click', probeAdminApis);
+  const ra = $('#btn-admin-restart-api'); if (ra) ra.addEventListener('click', () => _admRestart('restart-api', 'admin_confirm_api'));
+  const rt = $('#btn-admin-restart-auto'); if (rt) rt.addEventListener('click', () => _admRestart('restart-automation', 'admin_confirm_auto'));
+})();
+
 // =====================================================================
 // V12 W0 (2026-05-28) — Quick-mode handlers for 3 simplified tabs.
 // =====================================================================

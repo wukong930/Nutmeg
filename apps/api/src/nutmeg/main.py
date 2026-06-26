@@ -1,9 +1,10 @@
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse
 
 from nutmeg.config import get_settings
 from nutmeg.v4.api import v4_router
+from nutmeg.v4.api.admin import admin_router
 
 
 def create_app() -> FastAPI:
@@ -15,6 +16,7 @@ def create_app() -> FastAPI:
     )
     app.state.settings = settings
     app.include_router(v4_router, prefix="/api")
+    app.include_router(admin_router, prefix="/api")  # 个人中心 — /api/v4/admin/*
 
     # V10 W1 polish: convenience redirects so visiting the bare host
     # lands on the dashboard instead of a 404. Without this, users see
