@@ -1890,6 +1890,13 @@ const I18N = {
     pin_raw_under:    '小',
     today_no_fixtures: '今日联赛无可下注场次。明天再来。',
     today_api_error:  '抓取盘口失败 (API 暂不可用)。请稍后刷新。',
+    health_running:   '运行中',
+    health_degraded:  '部分异常',
+    health_model:     '模型',
+    health_obsdb:     '观测库',
+    health_teams:     '球队',
+    health_settled:   '已结算',
+    health_off:       '未就绪',
     health_offline:   'API 离线',
     health_offline_tip: '后端服务未连接。等服务恢复后页面会自动刷新。',
     btn_advanced_show: '高级 ▾',
@@ -2322,6 +2329,13 @@ const I18N = {
     pin_raw_under:    'U',
     today_no_fixtures: 'No fixtures from your leagues today. Check back tomorrow.',
     today_api_error:  'Could not fetch odds (API unavailable). Refresh in a moment.',
+    health_running:   'Running',
+    health_degraded:  'Degraded',
+    health_model:     'Model',
+    health_obsdb:     'Obs DB',
+    health_teams:     'teams',
+    health_settled:   'settled',
+    health_off:       'not ready',
     health_offline:   'API offline',
     health_offline_tip: 'Backend service not connected. The page will refresh automatically once it comes back.',
     btn_advanced_show: 'Advanced ▾',
@@ -2979,28 +2993,37 @@ document.addEventListener('click', (e) => {
 });
 
 // --- Health pill ---
+// V60+ — collapse the two verbose health pills (model / obs-DB) into ONE
+// compact status dot: green=running, amber=degraded, red=offline. The detail
+// moves to the tooltip; clicking the dot re-checks. The #health-pill target +
+// the periodic re-poll are unchanged.
+function _healthDot(state, label, tip) {
+  const color = { ok: 'var(--accent-green)', warn: 'var(--accent-orange)',
+                  err: 'var(--accent-rose)' }[state] || 'var(--text-muted)';
+  return `<button onclick="loadHealth()" title="${tip}" aria-label="${label}" `
+    + `style="display:inline-flex;align-items:center;gap:6px;font-size:13px;background:none;`
+    + `border:none;cursor:pointer;color:var(--text-secondary);white-space:nowrap">`
+    + `<span style="width:9px;height:9px;border-radius:50%;background:${color};`
+    + `box-shadow:0 0 6px ${color};flex:none"></span>${label}</button>`;
+}
 async function loadHealth() {
   try {
     const [coreRes, obsRes] = await Promise.all([
       fetch(API + '/health').then(r => r.json()),
       fetch(API + '/observation/health').then(r => r.json()),
     ]);
-    const core = coreRes.status === 'ok' ?
-      '<span class="badge-ok">模型 ✓ ' + coreRes.n_teams + ' 球队</span>' :
-      '<span class="badge-warn">模型未加载</span>';
-    const obs = obsRes.status === 'ok' ?
-      '<span class="badge-ok">观测库 ✓ ' + obsRes.n_settled + '/' + obsRes.n_recommendations + ' 已结算</span>' :
-      '<span class="badge-warn">观测库为空</span>';
-    $('#health-pill').innerHTML = core + ' ' + obs;
+    const coreOk = coreRes.status === 'ok';
+    const obsOk = obsRes.status === 'ok';
+    const tip =
+      `${t('health_model')}: ${coreOk ? coreRes.n_teams + ' ' + t('health_teams') : t('health_off')}`
+      + ` · ${t('health_obsdb')}: ${obsOk ? obsRes.n_settled + '/' + obsRes.n_recommendations + ' ' + t('health_settled') : t('health_off')}`;
+    const ok = coreOk && obsOk;
+    $('#health-pill').innerHTML = _healthDot(ok ? 'ok' : 'warn',
+      ok ? t('health_running') : t('health_degraded'), tip);
   } catch (e) {
-    // V12 W0 (2026-05-27) — soften "连接失败" from red badge-err to a
-    // less alarming warn pill. The underlying issue (API server down)
-    // shows the same way regardless of badge color; the raw exception
-    // is kept in console for devs but hidden from end users.
+    // API server down → red dot; raw exception to console only (not the user).
     console.warn('health check failed:', e);
-    $('#health-pill').innerHTML =
-      '<span class="badge-warn" title="' + t('health_offline_tip') + '">' +
-      t('health_offline') + '</span>';
+    $('#health-pill').innerHTML = _healthDot('err', t('health_offline'), t('health_offline_tip'));
   }
 }
 
