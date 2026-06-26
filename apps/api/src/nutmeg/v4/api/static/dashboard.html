@@ -1644,6 +1644,19 @@
 
 </div>
 
+<!-- EV 可靠性 / 门槛 说明弹窗 (B2) — 点 EV 旁的 ⓘ 弹出 (showEvHelp) -->
+<div id="ev-help-modal" class="hidden" onclick="if(event.target===this)hideEvHelp()"
+     style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px">
+  <div role="dialog" aria-modal="true" aria-labelledby="ev-help-title"
+       style="background:var(--bg-surface-hi,#fff);color:var(--text-primary,#1c1917);max-width:560px;max-height:85vh;overflow:auto;border-radius:12px;padding:20px 22px;box-shadow:0 10px 40px rgba(0,0,0,0.35)">
+    <div class="flex items-center justify-between mb-2">
+      <h3 id="ev-help-title" class="font-bold" data-i18n="evhelp_title">EV 可靠性 & 门槛 — 怎么看</h3>
+      <button onclick="hideEvHelp()" aria-label="关闭" style="font-size:20px;line-height:1;color:var(--text-muted);cursor:pointer;background:none;border:none">✕</button>
+    </div>
+    <div id="ev-help-body" class="text-sm" style="line-height:1.65"></div>
+  </div>
+</div>
+
 <script>
 const API = window.NUTMEG_V4_API || '/api/v4';
 
@@ -1765,10 +1778,23 @@ function _evRelTag(p, flip) {
   const color = { sweet: '#059669', edge: '#b45309', cold: '#e11d48', chalk: '#e11d48' }[tier];
   // B2 side-by-side: show the variance-adjusted bar next to the flat 5% (display-only).
   const vthr = Math.round(_evVarThreshold(p) * 100);
-  const thr = `<span style="color:var(--text-muted);font-weight:400"> ·${t('rel_var_thr_short')}~${vthr}%</span>`;
+  const thr = `<span onclick="showEvHelp(event)" title="${t('rel_var_thr_vs')} — 点看说明" style="color:var(--text-muted);font-weight:400;cursor:pointer"> ·${t('rel_var_thr_short')}~${vthr}%ⓘ</span>`;
   const title = `${t('rel_' + tier + '_hint')} · ${t('rel_var_thr')} ≈${vthr}% (${t('rel_var_thr_vs')})`;
   return `<span class="ev-rel" title="${title}" style="font-size:11px;font-weight:500;color:${color};white-space:nowrap">${badge} ${t('rel_' + tier)}${thr}</span>`;
 }
+// EV 可靠性 / 门槛 说明弹窗 (B2) — opened by the ⓘ next to any EV's 门槛.
+function showEvHelp(e) {
+  if (e) e.stopPropagation();
+  const body = $('#ev-help-body');
+  if (body) body.innerHTML = t('evhelp_body');
+  const m = $('#ev-help-modal');
+  if (m) m.classList.remove('hidden');
+}
+function hideEvHelp() {
+  const m = $('#ev-help-modal');
+  if (m) m.classList.add('hidden');
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideEvHelp(); });
 
 // V11 P1-FE#1 Day 2: outcome label (主胜/平/客胜) for 1X2 or handicap_1x2.
 function outcomeLabel(outcome) {
@@ -1843,6 +1869,8 @@ const I18N = {
     rel_var_thr:       '方差校正门槛(σ_EV∝SP)',
     rel_var_thr_short: '门槛',
     rel_var_thr_vs:    'vs 平 5%;σ_EV=σ_P·SP,冷门腿放大;仅显示、不拦截',
+    evhelp_title:      'EV 可靠性 & 门槛 — 怎么看',
+    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b>(P = Pinnacle 去 vig 公允概率)。<b>门槛</b>不是 EV,是"这注因为有多冷,EV 至少要达到多少才算可信"。</p><p style="margin-top:8px"><b>怎么读 EV 旁那个门槛:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ 门槛</b> → ✅ 可信的 +EV</li><li><b>5% ≤ EV &lt; 门槛</b> → ⚠️ 冷门陷阱:过了老的平 5% 线,但 EV 不够盖住冷门腿的估计噪声,多半假信号</li><li><b>EV &lt; 5%</b> → 空仓</li></ul><p style="margin-top:8px"><b>为什么冷门门槛高:</b>EV 的误差 = SP × P 的误差。冷门 SP 大 → 同样的 P 噪声放大成大得多的 EV 噪声,所以冷门的 EV 要求更高才算数。</p><p style="margin-top:8px"><b>四档(同一件事的颜色版):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>甜区</b>(P 25–67%,赔率 1.5–4):SP 最小,+EV 最可信,门槛最低(~6–8%)</li><li>🟡 <b>边缘</b>(P 15–25% 或 67–77%):方差略大,略谨慎</li><li>⚠️ <b>冷门</b>(P&lt;15%,赔率&gt;6.7):SP 大,EV 估计最晃,门槛最高(~17%+)</li><li>⚠️ <b>超短</b>(P&gt;77%,赔率&lt;1.3):不是方差问题,而是 EV 空间极薄、赔率一动就没</li></ul><p style="margin-top:8px;color:var(--text-muted)">注:门槛<b>只显示、不拦截</b>(真正 gate 仍是平 5%)。旧「高估区」档已退役 —— 那是 n=323 小样本噪声,2.8 万场实测显示该区间其实已校准。</p>',
     rel_flip:         'sharp 分歧',
     rel_flip_hint:    'Pinnacle 与其它 sharp 盘(Betfair/SBOBET)对热门判断相反 → Pinnacle 线可能陈旧/有误,这个 EV 建在可疑的公允价上,慎下',
     mb_toggle:        '净胜球分组(读法·选号辅助)',
@@ -2273,6 +2301,8 @@ const I18N = {
     rel_var_thr:       'variance-adjusted bar (σ_EV∝SP)',
     rel_var_thr_short: 'bar',
     rel_var_thr_vs:    'vs the flat 5%; σ_EV=σ_P·SP amplifies longshots; shown, not gated',
+    evhelp_title:      'EV reliability & bar — how to read it',
+    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b> (P = Pinnacle de-vig fair prob). The <b>bar</b> is not the EV — it is "how high the EV must be for this pick to count as a reliable +EV".</p><p style="margin-top:8px"><b>Reading the bar next to an EV:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ bar</b> → ✅ a trustworthy +EV</li><li><b>5% ≤ EV &lt; bar</b> → ⚠️ longshot trap: clears the old flat 5% but the EV is not enough to cover the estimate noise — likely a mirage</li><li><b>EV &lt; 5%</b> → pass</li></ul><p style="margin-top:8px"><b>Why longshots need a higher bar:</b> the EV error = SP × the P error. A longshot has a big SP, so the same P noise blows up into far larger EV noise — its EV must be higher to count.</p><p style="margin-top:8px"><b>The four tiers (same thing, colour-coded):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>sweet</b> (P 25–67%, odds 1.5–4): smallest SP, most trustworthy +EV, lowest bar (~6–8%)</li><li>🟡 <b>edge</b> (P 15–25% or 67–77%): a bit more variance, mild caution</li><li>⚠️ <b>longshot</b> (P&lt;15%, odds&gt;6.7): big SP, shakiest EV, highest bar (~17%+)</li><li>⚠️ <b>heavy fav</b> (P&gt;77%, odds&lt;1.3): not a variance issue — razor-thin EV that dies on any line move</li></ul><p style="margin-top:8px;color:var(--text-muted)">Note: the bar is <b>shown, not gating</b> (the real gate is still flat 5%). The old "overpriced" tier was retired — it was n=323 noise; a 28k-match recheck shows that band is actually calibrated.</p>',
     rel_flip:         'sharp split',
     rel_flip_hint:    'Pinnacle disagrees with the other sharps (Betfair/SBOBET) on the favourite → its line may be stale/wrong, so this EV rests on a suspect fair price — be cautious',
     mb_toggle:        'Goal-margin bands (read / selection aid)',

@@ -919,6 +919,14 @@ class TestEvReliability:
         assert "base + z * sigmaP * lf * (1 / p)" in html
         assert "_evVarThreshold(p)" in html   # wired into the reliability tag
 
+    def test_ev_help_modal(self, html):
+        # The ⓘ next to each 门槛 opens a shared explainer modal (showEvHelp).
+        assert "function showEvHelp(" in html and "function hideEvHelp(" in html
+        assert 'id="ev-help-modal"' in html
+        assert "showEvHelp(event)" in html          # wired into the 门槛 span
+        for k in ("evhelp_title", "evhelp_body"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
     def test_thresholds_present(self, html):
         # deep-longshot floor (mirrors the Polymarket detector's LONGSHOT_FLOOR
         # 0.15) + super-short-favourite ceiling + the sweet/edge tiers.
