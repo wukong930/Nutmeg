@@ -926,6 +926,11 @@ class TestEvReliability:
         assert "showEvHelp(event)" in html          # wired into the 门槛 span
         for k in ("evhelp_title", "evhelp_body"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+        # REGRESSION (v59 bug): the modal MUST start hidden via inline display:none.
+        # An inline display:flex overrides class="hidden" → shows + jams on load.
+        tag = html[html.index('id="ev-help-modal"'):][:260]
+        assert "display:none" in tag and "display:flex" not in tag
+        assert "m.style.display = 'flex'" in html   # show toggles inline display, not a class
 
     def test_thresholds_present(self, html):
         # deep-longshot floor (mirrors the Polymarket detector's LONGSHOT_FLOOR

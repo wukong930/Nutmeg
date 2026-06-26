@@ -1645,8 +1645,8 @@
 </div>
 
 <!-- EV 可靠性 / 门槛 说明弹窗 (B2) — 点 EV 旁的 ⓘ 弹出 (showEvHelp) -->
-<div id="ev-help-modal" class="hidden" onclick="if(event.target===this)hideEvHelp()"
-     style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px">
+<div id="ev-help-modal" onclick="if(event.target===this)hideEvHelp()"
+     style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;padding:16px">
   <div role="dialog" aria-modal="true" aria-labelledby="ev-help-title"
        style="background:var(--bg-surface-hi,#fff);color:var(--text-primary,#1c1917);max-width:560px;max-height:85vh;overflow:auto;border-radius:12px;padding:20px 22px;box-shadow:0 10px 40px rgba(0,0,0,0.35)">
     <div class="flex items-center justify-between mb-2">
@@ -1788,11 +1788,11 @@ function showEvHelp(e) {
   const body = $('#ev-help-body');
   if (body) body.innerHTML = t('evhelp_body');
   const m = $('#ev-help-modal');
-  if (m) m.classList.remove('hidden');
+  if (m) m.style.display = 'flex';   // NOT a class — inline flex must win to center
 }
 function hideEvHelp() {
   const m = $('#ev-help-modal');
-  if (m) m.classList.add('hidden');
+  if (m) m.style.display = 'none';
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideEvHelp(); });
 
