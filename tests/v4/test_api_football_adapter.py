@@ -111,6 +111,30 @@ class _FlakyClient:
         return self.response
 
 
+class _Resp429:
+    status_code = 429
+    text = "rate limited"
+    headers = {"Retry-After": "0"}  # numeric → _retry_after_seconds honors it
+
+    def json(self):
+        return {}
+
+
+class _RateThenOkClient:
+    """Returns a 429 the first ``limit_times`` calls, then ``ok_response``."""
+
+    def __init__(self, limit_times, ok_response):
+        self.limit_times = limit_times
+        self.ok_response = ok_response
+        self.calls = 0
+
+    def get(self, endpoint, params=None):
+        self.calls += 1
+        if self.calls <= self.limit_times:
+            return _Resp429()
+        return self.ok_response
+
+
 class TestRequestRetry:
     """V13 — a single transient timeout must not abort the call (the 2026-05-31
     settle cron died on one httpx.ReadTimeout, leaving the UCL final pending)."""
@@ -145,6 +169,26 @@ class TestRequestRetry:
         with pytest.raises(api_football.ApiFootballError, match="HTTP 500"):
             api_football._request("/x", {"a": 1}, cache_dir=tmp_path, refresh=True)
         assert flaky.calls == 1   # HTTP errors are not transient → no retry
+
+    def test_rate_limit_429_retried_then_succeeds(self, tmp_path, monkeypatch):
+        # fetch-perf B — concurrency can briefly trip the per-second rate limit;
+        # a 429 must be retried (with backoff) so the fixture isn't dropped.
+        client = _RateThenOkClient(limit_times=2, ok_response=_Resp())
+        monkeypatch.setattr(api_football, "_client", lambda: client)
+        monkeypatch.setattr(api_football.time, "sleep", lambda s: None)
+        out = api_football._request("/odds", {"fixture": 1},
+                                    cache_dir=tmp_path, refresh=True)
+        assert out == [{"ok": 1}]
+        assert client.calls == 3   # 2× 429 + 1 success
+
+    def test_rate_limit_429_exhausts_then_raises(self, tmp_path, monkeypatch):
+        client = _RateThenOkClient(limit_times=99, ok_response=_Resp())
+        monkeypatch.setattr(api_football, "_client", lambda: client)
+        monkeypatch.setattr(api_football.time, "sleep", lambda s: None)
+        with pytest.raises(api_football.ApiFootballError, match="HTTP 429"):
+            api_football._request("/odds", {"fixture": 2},
+                                  cache_dir=tmp_path, refresh=True)
+        assert client.calls == 3   # capped at _MAX_REQUEST_ATTEMPTS
 
 
 class TestComputeXiMinutesShare:

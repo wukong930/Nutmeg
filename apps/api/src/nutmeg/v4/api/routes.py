@@ -2480,7 +2480,11 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             # "best bet". The real bet decision (EV) happens when the user types
             # a 竞彩 SP into the per-card input.
             _art = get_artifact()
-            _preds = _calc_predictions(_art, fixtures) if _art is not None else []
+            # fetch-perf D — reuse single_match_predictions computed above on the
+            # SAME fixtures + artifact. _calc_predictions runs
+            # build_features_for_fixtures (~880ms clubelo/ratings disk load,
+            # measured) and was being paid a 2nd time here for identical output.
+            _preds = single_match_predictions
             pred_tickets = _argmax_prediction_tickets(_preds)
             if pred_tickets:
                 single_resp = SingleRecommendResponse(

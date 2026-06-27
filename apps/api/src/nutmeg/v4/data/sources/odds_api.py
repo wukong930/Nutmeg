@@ -65,6 +65,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import time
 import unicodedata
 from datetime import datetime
@@ -195,16 +196,28 @@ class OddsApiError(RuntimeError):
     """Raised on non-2xx, missing key, or parse failure."""
 
 
+# Process-wide persistent client (keep-alive) — same rationale as
+# api_football._client: skip the per-call TLS+TCP handshake.
+_CLIENT_LOCK = threading.Lock()
+_CLIENT: httpx.Client | None = None
+_CLIENT_FOR: tuple[str, float] | None = None  # (base_url, timeout)
+
+
 def _client() -> httpx.Client:
+    global _CLIENT, _CLIENT_FOR
     settings = get_settings()
     if not settings.odds_api_key:
         raise OddsApiError(
             "NUTMEG_ODDS_API_KEY is not set. Add it to .env or env vars."
         )
-    return httpx.Client(
-        base_url=settings.odds_api_base_url,
-        timeout=settings.odds_api_timeout_seconds,
-    )
+    want = (settings.odds_api_base_url, settings.odds_api_timeout_seconds)
+    with _CLIENT_LOCK:
+        if _CLIENT is None or _CLIENT.is_closed or want != _CLIENT_FOR:
+            if _CLIENT is not None and not _CLIENT.is_closed:
+                _CLIENT.close()
+            _CLIENT = httpx.Client(base_url=want[0], timeout=want[1])
+            _CLIENT_FOR = want
+        return _CLIENT
 
 
 def _cache_path(endpoint: str, params: dict[str, Any], cache_dir: Path) -> Path:
@@ -247,8 +260,7 @@ def _request(
 
     # Attach key at request time; don't cache it
     full_params = {**params, "apiKey": settings.odds_api_key}
-    with _client() as c:
-        r = c.get(endpoint, params=full_params)
+    r = _client().get(endpoint, params=full_params)
     if r.status_code != 200:
         # Surface API error code if present for easier debugging
         try:

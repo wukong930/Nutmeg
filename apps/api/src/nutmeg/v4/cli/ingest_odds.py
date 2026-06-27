@@ -34,6 +34,7 @@ import csv
 import datetime as dt
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
 from pathlib import Path
 from typing import Optional
@@ -132,6 +133,22 @@ def _apply_odds_api_overlay(row: dict, oa_lookup: dict) -> bool:
     return True
 
 
+# Concurrency cap for the per-fixture /odds fetch. The constraint is
+# API-Football's per-second rate limit (not the daily quota); 6 in-flight is
+# well within it for a slate of ~25-40 calls, and _request's 429 retry absorbs
+# any momentary burst so no fixture is dropped.
+_ODDS_FETCH_CONCURRENCY = 6
+
+
+def _fetch_odds_safe(fid: int, cache_dir, refresh: bool):
+    """fetch_odds wrapper for the concurrent pool: returns ('ok', payload) or
+    ('err', exc) so one fixture's failure never aborts the whole batch."""
+    try:
+        return ("ok", api_football.fetch_odds(fid, cache_dir=cache_dir, refresh=refresh))
+    except api_football.ApiFootballError as exc:
+        return ("err", exc)
+
+
 def _gather_rows(
     leagues: list[str],
     on_date: dt.date,
@@ -220,6 +237,8 @@ def _gather_rows(
                 except Exception as exc:  # noqa: BLE001
                     log.warning("odds_api overlay failed for %s: %s", league, exc)
 
+        # fetch-perf B (V14) — phase 1: time-window filter → fixtures needing /odds
+        pending: list[tuple[dict, int]] = []
         for fixture in fixtures:
             fid = fixture.get("fixture", {}).get("id")
             if fid is None:
@@ -254,20 +273,37 @@ def _gather_rows(
                         # Bad/missing ISO timestamp — let it through, the
                         # downstream model will deal with it
                         pass
+            pending.append((fixture, fid))
 
-            try:
-                odds_payload = api_football.fetch_odds(
-                    fid, cache_dir=cache_dir, refresh=refresh_odds,
-                )
-                api_calls += 1
-            except api_football.ApiFootballError as exc:
-                log.warning("fixture %s odds error: %s", fid, exc)
+        # phase 2 — fetch /odds concurrently (bounded). The keep-alive client is
+        # shared across threads; a burst past the per-second rate limit is
+        # absorbed by _request's 429 retry, so no fixture is silently dropped.
+        odds_results: dict[int, tuple] = {}
+        if pending:
+            workers = min(_ODDS_FETCH_CONCURRENCY, len(pending))
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futs = {
+                    ex.submit(_fetch_odds_safe, fid, cache_dir, refresh_odds): fid
+                    for _, fid in pending
+                }
+                for fut in as_completed(futs):
+                    odds_results[futs[fut]] = fut.result()
+
+        # phase 3 — assemble rows sequentially (preserves snapshot ordering +
+        # shared-state counters; body is identical to the old per-fixture loop).
+        for fixture, fid in pending:
+            kind, val = odds_results[fid]
+            if kind == "err":
+                log.warning("fixture %s odds error: %s", fid, val)
                 if require_odds and not use_odds_api:
                     n_skipped += 1
                     continue
                 # V12 W6 — 近期赛事 still lists the fixture (as 待开盘); the
                 # row gets psc_* = None from the empty envelope below.
                 odds_payload = []
+            else:
+                odds_payload = val
+                api_calls += 1
 
             # /odds returns a list; take the first envelope (one per fixture).
             envelope = odds_payload[0] if odds_payload else None

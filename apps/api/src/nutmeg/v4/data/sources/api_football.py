@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -39,6 +40,10 @@ from nutmeg.config import get_settings
 # (2026-05-31) and left the UCL final unsettled. 3 attempts with linear backoff.
 _MAX_REQUEST_ATTEMPTS = 3
 _RETRY_BACKOFF_SECONDS = 1.5
+# A 429 (rate limit) is transient — back off and retry, honoring Retry-After
+# but never sleeping longer than this (a misbehaving header shouldn't hang a
+# request for minutes).
+_RETRY_AFTER_CAP_SECONDS = 10.0
 
 
 log = logging.getLogger(__name__)
@@ -50,17 +55,51 @@ class ApiFootballError(RuntimeError):
     """Raised when the API returns a non-2xx, an error payload, or no key is set."""
 
 
+# Process-wide persistent client (keep-alive). A fresh httpx.Client per request
+# re-paid a TLS+TCP handshake every call (~300ms each CN→EU, measured); reusing
+# one connection pool removes that. httpx.Client is thread-safe for requests, so
+# the concurrent odds fetch in ingest_odds._gather_rows can share it.
+_CLIENT_LOCK = threading.Lock()
+_CLIENT: httpx.Client | None = None
+_CLIENT_FOR: tuple[str, str, float] | None = None  # (base_url, key, timeout)
+
+
 def _client() -> httpx.Client:
+    global _CLIENT, _CLIENT_FOR
     settings = get_settings()
     if not settings.api_football_key:
         raise ApiFootballError(
             "NUTMEG_API_FOOTBALL_KEY is not set. Add it to .env or env vars."
         )
-    return httpx.Client(
-        base_url=settings.api_football_base_url,
-        headers={"x-apisports-key": settings.api_football_key},
-        timeout=settings.api_football_timeout_seconds,
+    want = (
+        settings.api_football_base_url,
+        settings.api_football_key,
+        settings.api_football_timeout_seconds,
     )
+    with _CLIENT_LOCK:
+        if _CLIENT is None or _CLIENT.is_closed or want != _CLIENT_FOR:
+            if _CLIENT is not None and not _CLIENT.is_closed:
+                _CLIENT.close()
+            _CLIENT = httpx.Client(
+                base_url=want[0],
+                headers={"x-apisports-key": want[1]},
+                timeout=want[2],
+                limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+            )
+            _CLIENT_FOR = want
+        return _CLIENT
+
+
+def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
+    """Back-off before retrying a 429: honor a numeric Retry-After, else the
+    linear backoff, capped at ``_RETRY_AFTER_CAP_SECONDS``."""
+    ra = resp.headers.get("Retry-After")
+    if ra:
+        try:
+            return min(float(ra), _RETRY_AFTER_CAP_SECONDS)
+        except (TypeError, ValueError):
+            pass  # HTTP-date form — fall back to linear backoff
+    return _RETRY_BACKOFF_SECONDS * (attempt + 1)
 
 
 def _cache_path(endpoint: str, params: dict[str, Any], cache_dir: Path) -> Path:
@@ -100,13 +139,21 @@ def _request(
     r = None
     for attempt in range(_MAX_REQUEST_ATTEMPTS):
         try:
-            with _client() as c:
-                r = c.get(endpoint, params=params)
-            break
+            r = _client().get(endpoint, params=params)
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
             last_exc = exc
+            r = None
             if attempt + 1 < _MAX_REQUEST_ATTEMPTS:
                 time.sleep(_RETRY_BACKOFF_SECONDS * (attempt + 1))
+            continue
+        # 429 (rate limit) IS transient — the concurrent odds fetch can briefly
+        # exceed API-Football's per-second cap. Back off (Retry-After) and retry
+        # so a burst slows down instead of dropping the fixture. A 500/other 4xx
+        # is NOT transient → break and raise below.
+        if r.status_code == 429 and attempt + 1 < _MAX_REQUEST_ATTEMPTS:
+            time.sleep(_retry_after_seconds(r, attempt))
+            continue
+        break
     if r is None:
         raise ApiFootballError(
             f"{endpoint} network error after {_MAX_REQUEST_ATTEMPTS} attempts: "
