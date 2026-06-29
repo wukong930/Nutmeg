@@ -118,9 +118,12 @@ def _apply_odds_api_overlay(row: dict, oa_lookup: dict) -> bool:
                          _norm_team(row.get("away_team")), row.get("date")))
     if not rec or rec.get("psc_home") is None:
         return False
-    af_missing = row.get("psc_home") is None
-    if not (af_missing or _iso_newer(rec.get("last_update"), row.get("odds_update"))):
-        return False  # API-Football line is as-fresh-or-fresher → keep it
+    # V14 — PREFER the Odds API Pinnacle line whenever it covers this fixture.
+    # A measured head-to-head (荷兰–摩洛哥 WC, 2026-06-29) showed it matched
+    # Pinnacle.com exactly while API-Football's mirror drifted (off 1X2 + a
+    # different O/U line); the old "newest source wins" rule occasionally
+    # surfaced the less-accurate AF line. Staleness is still surfaced to the user
+    # via the card's odds_update freshness badge (>2h → ⚠️ 陈旧).
     row["psc_home"] = rec["psc_home"]
     row["psc_draw"] = rec["psc_draw"]
     row["psc_away"] = rec["psc_away"]

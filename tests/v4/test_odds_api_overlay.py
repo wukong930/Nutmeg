@@ -124,11 +124,13 @@ class TestApplyOverlay:
         assert _apply_odds_api_overlay(row, _lookup()) is True
         assert row["psc_home"] == 1.43 and row["odds_source"] == "odds_api"
 
-    def test_never_replaces_a_fresher_af_line(self):
-        # AF line is NEWER than Odds API → keep AF, no patch.
+    def test_prefers_odds_api_even_when_af_newer(self):
+        # V14 — even when AF's line is NEWER, PREFER the Odds API Pinnacle: it
+        # tracks real Pinnacle more closely (AF mirror drifts). The card's
+        # freshness badge still surfaces staleness to the user.
         row = self._af_row(odds_update="2026-06-11T12:00:00Z")
-        assert _apply_odds_api_overlay(row, _lookup()) is False
-        assert row["psc_home"] == 1.60 and "odds_source" not in row
+        assert _apply_odds_api_overlay(row, _lookup()) is True
+        assert row["psc_home"] == 1.43 and row["odds_source"] == "odds_api"
 
     def test_unmatched_fixture_is_noop(self):
         row = self._af_row(home_team="Brazil", away_team="Morocco")
