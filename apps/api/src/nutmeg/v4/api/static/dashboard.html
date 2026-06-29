@@ -4901,7 +4901,7 @@ function _mbLabel(m, isTail) {
   if (m === 0) return t('mb_draw');
   return (m > 0 ? t('mb_home') : t('mb_away')) + Math.abs(m) + (isTail ? '+' : '') + t('mb_goals');
 }
-function _marginBandsHtml(bands, hcap) {
+function _marginBandsHtml(bands, hcap, foldAttrs) {
   if (!bands || !bands.length) return '';
   const sc = s => `${s.home}:${s.away}`;
   const rows = bands.filter(b => b.p >= 0.005).map(b => {
@@ -4926,7 +4926,7 @@ function _marginBandsHtml(bands, hcap) {
         <div class="text-muted mb-0.5">${t('mb_cluster')} (主${L >= 0 ? '+' : ''}${L})</div>
         ${ln(t('mb_win'), g.win)}${ln(t('mb_push'), g.push)}${ln(t('mb_lose'), g.lose)}</div>`;
   }
-  return `<details class="mt-2 pt-2 text-xs" style="border-top:1px dashed var(--border-subtle)">
+  return `<details class="mt-2 pt-2 text-xs" ${foldAttrs || ''} style="border-top:1px dashed var(--border-subtle)">
       <summary class="cursor-pointer select-none text-secondary">${t('mb_toggle')}</summary>
       <div class="mt-1">${rows}${cluster}
         <div class="text-muted mt-1" style="font-size:10px">${t('mb_hint')}</div></div></details>`;
@@ -4946,7 +4946,27 @@ function _pinRawHtml(pr) {
   return `<div class="text-xs text-muted mb-1" style="font-size:11px">`
     + `🎯 ${t('pin_raw_lbl')} 1X2 ${f(pr.psc_home)}/${f(pr.psc_draw)}/${f(pr.psc_away)}${ou}</div>`;
 }
+// V14 fix — remember which folds (让球 / 净胜球) the user opened so a re-render
+// doesn't snap them shut. Both 手填 apply and 🔄 刷新 rebuild the card via
+// innerHTML, which resets a native <details> to closed. Keyed by match identity
+// (encoded → attribute-safe) so it also survives a refresh that re-fetches +
+// reorders the slate. (手填 already persists separately via pr._manual.)
+const _cupOpenFolds = new Set();
+function _cupFoldKey(pr) {
+  return encodeURIComponent((pr.home_team || '') + '|' + (pr.away_team || '')
+    + '|' + (pr.kickoff_utc || pr.date || ''));
+}
+function _cupFold(el) {
+  const k = el.getAttribute('data-fold');
+  if (!k) return;
+  if (el.open) _cupOpenFolds.add(k); else _cupOpenFolds.delete(k);
+}
+function _cupFoldAttrs(kind, fk) {
+  const key = kind + '::' + fk;
+  return `data-fold="${key}" ontoggle="_cupFold(this)"` + (_cupOpenFolds.has(key) ? ' open' : '');
+}
 function _cupCardHtml(pr, idx) {
+  const _fk = _cupFoldKey(pr);
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const rows = ['H', 'D', 'A'].map(o => {
     const fairOdds = P[o] > 0 ? (1 / P[o]) : 0;
@@ -4969,7 +4989,7 @@ function _cupCardHtml(pr, idx) {
   // to the de-vig 1X2 + Pinnacle O/U (validated vs Pinnacle's own AH ~1pp). Pick
   // a 竞彩 让球线, type the 竞彩 让球 SP → live EV, same as the 1X2 rows above.
   const hc = (pr.handicap_lines && pr.handicap_lines.length) ? `
-      <details class="mt-2 pt-2" style="border-top:1px dashed var(--border-subtle)">
+      <details class="mt-2 pt-2" ${_cupFoldAttrs('hc', _fk)} style="border-top:1px dashed var(--border-subtle)">
         <summary class="text-xs text-secondary cursor-pointer select-none">${t('cupmkt_hc_toggle')}</summary>
         <div class="mt-2">
           <div class="flex items-center gap-2 mb-1.5">
@@ -5041,7 +5061,7 @@ function _cupCardHtml(pr, idx) {
       </div>
       ${_oddsFreshnessHtml(pr)}
       ${_pinRawHtml(pr)}
-      ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home)}${manual}
+      ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _cupFoldAttrs('mb', _fk))}${manual}
     </div>`;
 }
 
