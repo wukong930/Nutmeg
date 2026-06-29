@@ -27,8 +27,10 @@ class TestMarginBandsFrontend:
         assert "<details" in html and "t('mb_toggle')" in html
 
     def test_wired_into_cup_cards(self, html):
-        # 近期赛事(标准模式)+ 市场模式 both render through _cupCardHtml
-        assert "_marginBandsHtml(pr.margin_bands, pr.handicap_home)" in html
+        # 近期赛事(标准模式)+ 市场模式 both render through _cupCardHtml.
+        # (净胜球 fold-persist work added a 3rd arg _cupFoldAttrs — match the
+        # prefix so the assertion survives the signature change.)
+        assert "_marginBandsHtml(pr.margin_bands, pr.handicap_home" in html
 
     def test_wired_into_reverse_calc(self, html):
         assert "_marginBandsHtml(data.margin_bands, hcap)" in html

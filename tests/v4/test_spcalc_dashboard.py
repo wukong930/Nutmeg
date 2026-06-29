@@ -754,9 +754,11 @@ class TestMarketBoardOnToday:
         assert html.count('id="cupmkt-section"') == 1
         assert html.index('id="cupmkt-section"') > i_upcoming
 
-    def test_full_board_load_button_restored_in_upcoming(self, html):
-        assert 'id="cupmkt-load"' in html
-        assert html.index('id="cupmkt-load"') > html.index('id="tab-upcoming"')
+    def test_full_board_autoloads_in_upcoming_no_button(self, html):
+        # 「💹 加载市场模式盘口」按钮已删除 — 市场模式改为进 近期赛事 tab 时自动
+        # 加载(走缓存,零额外 API),与标准模式一致。
+        assert 'id="cupmkt-load"' not in html
+        assert "name === 'upcoming' && typeof loadCupMarket === 'function'" in html
 
     def test_mkt_card_is_rich_interactive(self, html):
         # V14 — the 市场模式 card is now the SAME rich INTERACTIVE card as 国际盘:

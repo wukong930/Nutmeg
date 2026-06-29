@@ -111,28 +111,30 @@ class TestPageLoadsAndRenders:
         text = h1.text_content().strip()
         assert text   # i18n applied → either Chinese or English title
 
-    def test_all_7_tabs_render(self, page, server):
-        # User-facing tabs: today / upcoming / single / parlay / pool /
-        # history / admin (个人中心). The 个人中心 tab added the 7th.
+    def test_all_5_tabs_render(self, page, server):
+        # Top-level tabs: today / upcoming / custom (单关·串关·复式 合并) /
+        # history / admin. 单关/串关/复式 are now sub-tabs inside 自定义玩法.
         page.goto(f"{server}/api/v4/dashboard")
         page.wait_for_load_state("networkidle")
         tabs = page.locator("button.tab-btn")
-        assert tabs.count() == 7  # + 个人中心 admin tab (6→7)
+        assert tabs.count() == 5
 
 
 class TestTabSwitching:
-    def test_clicking_pool_tab_shows_pool_panel(self, page, server):
+    def test_clicking_pool_subtab_shows_pool_panel(self, page, server):
         page.goto(f"{server}/api/v4/dashboard")
         page.wait_for_load_state("networkidle")
-        # V10 W1: default landing is 今日推荐 (not single)
+        # V10 W1: default landing is 今日推荐
         assert page.locator("#tab-today").is_visible()
-        # V11 P1-FE#1: pool tab now directly visible (no 高级 ▾ to expand)
-        page.locator("button[data-tab='pool']").click()
-        # Pool panel visible, today panel hidden
+        # 复式 is now a sub-tab inside 自定义玩法 — open the tab, then the sub-tab.
+        page.locator("button[data-tab='custom']").click()
+        page.locator("button[data-sub='pool']").click()
+        # Pool sub-panel visible, today panel hidden
         assert page.locator("#tab-pool").is_visible()
         assert not page.locator("#tab-today").is_visible()
-        # aria-selected updated
-        assert page.locator("button[data-tab='pool']").get_attribute("aria-selected") == "true"
+        # custom tab + pool sub-tab aria-selected updated
+        assert page.locator("button[data-tab='custom']").get_attribute("aria-selected") == "true"
+        assert page.locator("button[data-sub='pool']").get_attribute("aria-selected") == "true"
         assert page.locator("button[data-tab='today']").get_attribute("aria-selected") == "false"
 
 

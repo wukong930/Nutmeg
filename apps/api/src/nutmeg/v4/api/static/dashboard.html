@@ -181,6 +181,36 @@
     border-bottom-color: var(--accent-gold);
   }
 
+  /* ── Sub-tabs (自定义玩法: 单关/串关/复式) ───────────────────────────── */
+  .sub-btn {
+    padding: 0.4rem 0.95rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 200ms ease, border-color 200ms ease;
+  }
+  .sub-btn:hover { color: var(--text-primary); }
+  .sub-btn[aria-selected="true"],
+  .sub-btn.active {
+    color: var(--accent-gold);
+    border-bottom-color: var(--accent-gold);
+  }
+
+  /* ── 说明 ⓘ 图标 ─────────────────────────────────────────────────────── */
+  .info-i {
+    color: var(--text-muted);
+    cursor: pointer;
+    font-weight: 500;
+    user-select: none;
+  }
+  .info-i:hover { color: var(--accent-gold); }
+
   /* ── Badges ────────────────────────────────────────────────────────── */
   .badge-ok {
     padding: 2px 8px;
@@ -703,11 +733,8 @@
       <!-- V10 W1: 今日推荐 is the default landing tab. Auto-loads on open. -->
       <button data-tab="today"     role="tab" aria-controls="tab-today"     aria-selected="true"  data-i18n="tab_today"  class="tab-btn active whitespace-nowrap px-4 py-3 text-sm font-medium">🎯 今日推荐</button>
       <button data-tab="upcoming"  role="tab" aria-controls="tab-upcoming"  aria-selected="false" data-i18n="tab_upcoming" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">📅 近期赛事</button>
-      <!-- V10 W1 Day 5: WC 2026 special tab (visible during tournament window). -->
-      <!-- 3 retained 玩法 tabs (engineer tabs removed in P1-FE#1). -->
-      <button data-tab="single"    role="tab" aria-controls="tab-single"    aria-selected="false" data-i18n="tab_single" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">① 单关</button>
-      <button data-tab="recommend" role="tab" aria-controls="tab-recommend" aria-selected="false" data-i18n="tab_parlay" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">② 串关</button>
-      <button data-tab="pool"      role="tab" aria-controls="tab-pool"      aria-selected="false" data-i18n="tab_pool"   class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">③ 复式</button>
+      <!-- 自定义玩法: 单关/串关/复式 合并为一个 tab,内部用子标签切换。 -->
+      <button data-tab="custom"    role="tab" aria-controls="tab-custom"    aria-selected="false" data-i18n="tab_custom"  class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">🎲 自定义玩法</button>
       <!-- V11 P1-FE#3 — 推荐追溯: timeline of past recs + outcomes. -->
       <button data-tab="history"   role="tab" aria-controls="tab-history"   aria-selected="false" data-i18n="tab_history" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">📜 推荐追溯</button>
       <!-- 个人中心 — read-only status + hard-gated restart controls (localhost only). -->
@@ -916,7 +943,7 @@
       <p class="text-gray-600" data-i18n="today_empty_main"><strong>今日无可下注组合</strong></p>
       <p class="text-sm text-gray-500 mt-2" data-i18n="today_empty_sub">
         所有场次的 EV / 命中率均未达推荐门槛 (建议 no-bet)。明天再来 ·
-        或前往 <a href="#" data-tab-link="single" class="text-indigo-600 hover:underline">高级模式 →</a> 手动输入场次。
+        或前往 <a href="#" data-tab-link="custom" class="text-indigo-600 hover:underline">高级模式 →</a> 手动输入场次。
       </p>
     </div>
   </div>
@@ -924,11 +951,9 @@
   <!-- V12 W3 — Tab: 近期赛事 (3-day fixtures + 竞彩 SP calculator) -->
   <div id="tab-upcoming" role="tabpanel" aria-labelledby="tab-upcoming" class="tab-panel hidden">
     <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #2563eb">
-      <h3 class="font-bold mb-2"><span data-i18n="h_spcalc">📊 标准模式</span></h3>
+      <h3 class="font-bold mb-2"><span data-i18n="h_spcalc">📊 标准模式</span>
+        <span class="info-i" style="font-size:0.8em;font-weight:400" onclick="showInfo(t('info_std_title'), t('spcalc_board_hint'))" title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span></h3>
       <div class="flex items-center gap-3 flex-wrap">
-        <label class="text-sm"><span data-i18n="lbl_bankroll">预算 ¥</span>
-          <input id="spcalc-bankroll" type="number" inputmode="numeric" value="1000" min="2" step="2"
-                 class="w-24 px-2 py-1 border rounded num-display"></label>
         <button id="today-spcalc-refresh" onclick="_spcalcRefreshOdds()"
                 class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
                 title="拉临场 Pinnacle 盘口 (消耗少量 API)"
@@ -938,9 +963,6 @@
                 title="抓取最新竞彩 SP 写入库 + 重新预填(不消耗 Pinnacle API)"
                 data-i18n="jc_refresh_btn">🎯 刷新竞彩</button>
         <span id="spcalc-status" class="text-xs text-muted ml-auto"></span>
-      </div>
-      <div class="text-xs text-muted mt-2" data-i18n="spcalc_board_hint">
-        13 个训练联赛 · 模型预测 P × 竞彩 SP 算 EV(可信度最高)。未来 3 天可投注,填竞彩终端 SP → 即时 EV / Kelly。绿色 = 过 +EV 门槛。
       </div>
       <div id="spcalc-empty" class="hidden mt-3 pt-3 text-center text-sm text-muted"
            style="border-top:1px dashed var(--border-subtle)"
@@ -957,11 +979,9 @@
          WC/EURO) + J1, priced off Pinnacle de-vig. This is the workbench — type 竞彩
          SP / 让球 / 手填反推 here; the 今日推荐 💠 block is a read-only mirror. -->
     <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #b8860b">
+      <h3 class="font-bold mb-2"><span data-i18n="h_cupmkt">💹 市场模式</span>
+        <span class="info-i" style="font-size:0.8em;font-weight:400" onclick="showInfo(t('info_mkt_title'), t('cupmkt_hint'))" title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span></h3>
       <div class="flex items-center gap-3 flex-wrap">
-        <button id="cupmkt-load" onclick="loadCupMarket({manual:true})"
-                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
-                title="加载市场模式盘口 (走缓存, 不额外消耗 API)"
-                data-i18n="cupmkt_load_btn">💹 加载市场模式盘口</button>
         <button id="cupmkt-refresh" onclick="loadCupMarket({refreshOdds:true, manual:true})"
                 class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
                 title="强制拉取最新 Pinnacle 赔率 (消耗 API 调用)"
@@ -971,9 +991,6 @@
                 title="抓取最新竞彩 SP 写入库 + 重新预填(不消耗 Pinnacle API)"
                 data-i18n="jc_refresh_btn">🎯 刷新竞彩</button>
         <span id="cupmkt-status" class="text-xs text-muted ml-auto"></span>
-      </div>
-      <div class="text-xs text-muted mt-2" data-i18n="cupmkt_hint">
-        杯赛(欧冠/欧联/欧协联 + 五大国内杯 + 世界杯/欧洲杯)+ 日职联(模型未训练·分布外)。一律以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 杯赛淘汰赛: 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。
       </div>
     </div>
     <div id="cupmkt-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
@@ -1097,8 +1114,15 @@
     </div>
   </div>
 
-  <!-- Tab: WC 2026 (V10 W1 Day 5) -->
-  <div id="tab-single" role="tabpanel" aria-labelledby="tab-single" class="tab-panel hidden">
+  <!-- 自定义玩法 (单关 / 串关 / 复式 合并 — 内部子标签切换) -->
+  <div id="tab-custom" role="tabpanel" aria-labelledby="tab-custom" class="tab-panel hidden">
+    <div class="custom-subnav flex gap-1 mb-4" role="tablist" aria-label="自定义玩法子标签"
+         style="border-bottom:1px solid var(--border-subtle)">
+      <button class="sub-btn active" data-sub="single"    role="tab" aria-controls="tab-single"    aria-selected="true"  data-i18n="tab_single" onclick="switchSub('single')">① 单关</button>
+      <button class="sub-btn"        data-sub="recommend" role="tab" aria-controls="tab-recommend" aria-selected="false" data-i18n="tab_parlay" onclick="switchSub('recommend')">② 串关</button>
+      <button class="sub-btn"        data-sub="pool"      role="tab" aria-controls="tab-pool"      aria-selected="false" data-i18n="tab_pool"   onclick="switchSub('pool')">③ 复式</button>
+    </div>
+  <div id="tab-single" role="tabpanel" aria-labelledby="tab-single" class="custom-sub" data-sub="single">
     <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h2 class="font-bold mb-2" data-i18n="h_single_rec">🎯 单关推荐</h2>
       <p class="text-sm text-secondary mb-4" data-i18n="quick_single_sub">
@@ -1223,7 +1247,7 @@
        (2-8 串 1) → top-3 N-leg parlay recommendations sorted by hit_probability
        descending. Legacy JSON form hidden under <details> 高级 ▾ → 工程模式. -->
   <!-- Tab: Recommend (串关) -->
-  <div id="tab-recommend" role="tabpanel" class="tab-panel hidden">
+  <div id="tab-recommend" role="tabpanel" aria-labelledby="tab-recommend" class="custom-sub hidden" data-sub="recommend">
     <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h2 class="font-bold mb-2" data-i18n="h_parlay_rec">🚀 串关推荐</h2>
       <p class="text-sm text-secondary mb-4" data-i18n="quick_parlay_sub">
@@ -1401,7 +1425,7 @@
        Phase 1: pool_n derived from server-side optimum (default 3 串 1 per
        ticket); Phase 2 will add proper M-cap + N-selector. -->
   <!-- Tab: Pool (复式) -->
-  <div id="tab-pool" role="tabpanel" class="tab-panel hidden">
+  <div id="tab-pool" role="tabpanel" aria-labelledby="tab-pool" class="custom-sub hidden" data-sub="pool">
     <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h2 class="font-bold mb-2" data-i18n="h_pool_rec">💎 复式过关推荐</h2>
       <p class="text-sm text-secondary mb-4" data-i18n="quick_pool_sub">
@@ -1547,6 +1571,7 @@
       </div>
     </div>
   </div>
+  </div>
 
   <!-- Tab: 推荐追溯 (V11 P1-FE#3) — timeline of past recommendations
        with outcome labels (✓ 命中 / ✗ 未命中 / ⌛ 待结算). -->
@@ -1669,6 +1694,19 @@
       <button onclick="hideEvHelp()" aria-label="关闭" style="font-size:20px;line-height:1;color:var(--text-muted);cursor:pointer;background:none;border:none">✕</button>
     </div>
     <div id="ev-help-body" class="text-sm" style="line-height:1.65"></div>
+  </div>
+</div>
+
+<!-- 通用说明弹窗 — 任意 ⓘ 点击弹出 (showInfo)。复用 ev-help 的样式骨架。 -->
+<div id="info-modal" onclick="if(event.target===this)hideInfo()"
+     style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;padding:16px">
+  <div role="dialog" aria-modal="true" aria-labelledby="info-title"
+       style="background:var(--bg-surface-hi,#fff);color:var(--text-primary,#1c1917);max-width:560px;max-height:85vh;overflow:auto;border-radius:12px;padding:20px 22px;box-shadow:0 10px 40px rgba(0,0,0,0.35)">
+    <div class="flex items-center justify-between mb-2">
+      <h3 id="info-title" class="font-bold"></h3>
+      <button onclick="hideInfo()" aria-label="关闭" style="font-size:20px;line-height:1;color:var(--text-muted);cursor:pointer;background:none;border:none">✕</button>
+    </div>
+    <div id="info-body" class="text-sm" style="line-height:1.65"></div>
   </div>
 </div>
 
@@ -1809,7 +1847,16 @@ function hideEvHelp() {
   const m = $('#ev-help-modal');
   if (m) m.style.display = 'none';
 }
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideEvHelp(); });
+// 通用说明弹窗 — 任意 ⓘ 调 showInfo(标题, HTML 正文)。复用 ev-help 样式骨架。
+function showInfo(title, bodyHtml) {
+  const tEl = $('#info-title'); if (tEl) tEl.textContent = title || '';
+  const bEl = $('#info-body'); if (bEl) bEl.innerHTML = bodyHtml || '';
+  const m = $('#info-modal'); if (m) m.style.display = 'flex';
+}
+function hideInfo() {
+  const m = $('#info-modal'); if (m) m.style.display = 'none';
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideEvHelp(); hideInfo(); } });
 
 // V11 P1-FE#1 Day 2: outcome label (主胜/平/客胜) for 1X2 or handicap_1x2.
 function outcomeLabel(outcome) {
@@ -1845,6 +1892,10 @@ const I18N = {
     tab_single:       '① 单关',
     tab_parlay:       '② 串关',
     tab_pool:         '③ 复式',
+    tab_custom:       '🎲 自定义玩法',
+    info_link:        '说明',
+    info_std_title:   '📊 标准模式 — 说明',
+    info_mkt_title:   '💹 市场模式 — 说明',
     tab_outcomes:     '④ 录入结果',
     tab_roi:          '⑤ ROI 报告',
     tab_sessions:     '⑥ 会话历史',
@@ -2287,6 +2338,10 @@ const I18N = {
     tab_single:       '① Single',
     tab_parlay:       '② Parlay',
     tab_pool:         '③ Pool',
+    tab_custom:       '🎲 Custom',
+    info_link:        'about',
+    info_std_title:   '📊 Standard mode — about',
+    info_mkt_title:   '💹 Market mode — about',
     tab_outcomes:     '④ Outcomes',
     tab_roi:          '⑤ ROI report',
     tab_sessions:     '⑥ Sessions',
@@ -2982,6 +3037,18 @@ function setStatus(sel, kind, msg) {
 }
 
 // --- Tab switching ---
+// 自定义玩法子标签切换(单关/串关/复式 同属一个 tab,记住上次选择)。
+let _customSub = 'single';
+function switchSub(name) {
+  _customSub = name;
+  document.querySelectorAll('#tab-custom .custom-sub').forEach(p =>
+    p.classList.toggle('hidden', p.dataset.sub !== name));
+  document.querySelectorAll('#tab-custom .sub-btn').forEach(b => {
+    const on = b.dataset.sub === name;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
 function switchTab(name) {
   // V11 P1-FE#1: styling driven by CSS .tab-btn.active selector +
   // aria-selected attribute. No Tailwind color classes added/removed.
@@ -2993,8 +3060,12 @@ function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
   const panel = $('#tab-' + name);
   if (panel) panel.classList.remove('hidden');
+  // 自定义玩法: 进入时恢复上次选中的子标签(默认单关)。
+  if (name === 'custom' && typeof switchSub === 'function') switchSub(_customSub);
   // V12 W3 — auto-load the 近期赛事 (3-day SP calculator) tab on open.
   if (name === 'upcoming' && typeof loadSpCalc === 'function') loadSpCalc();
+  // 市场模式同标准模式一样自动加载(走缓存,零额外 API)— 已删掉手动「加载」按钮。
+  if (name === 'upcoming' && typeof loadCupMarket === 'function') loadCupMarket();
   // V11 P1-FE#3 — auto-load history on tab open (no manual refresh needed).
   if (name === 'history' && typeof loadHistory === 'function') loadHistory();
   // 个人中心 — read-only status (NO outbound API calls; quota probe is a button).
@@ -4206,10 +4277,13 @@ function _toggleLeague(headEl) {
   try { localStorage.setItem('nutmeg_collapsed_lgs', JSON.stringify([..._collapsedLgs])); }
   catch (e) { /* private mode — collapse still works in-session */ }
 }
-function _lgGroupHtml(lg, col, count, cardsHtml) {
-  const collapsed = _collapsedLgs.has(lg);
+function _lgGroupHtml(lg, col, count, cardsHtml, pfx) {
+  // pfx namespaces the collapse key so the SAME league folds independently in
+  // different sections (e.g. scored board vs 待开盘). Default '' = scored boards.
+  const key = (pfx || '') + lg;
+  const collapsed = _collapsedLgs.has(key);
   return `
-    <div class="spcalc-lg-group mb-4" data-lg="${lg}">
+    <div class="spcalc-lg-group mb-4" data-lg="${key}">
       <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded cursor-pointer select-none"
            style="border-left:4px solid ${col};background:${col}1a" onclick="_toggleLeague(this)"
            role="button" aria-expanded="${!collapsed}" title="${t('lg_toggle')}">
@@ -5474,18 +5548,14 @@ function _renderUpcomingPending() {
   all.forEach(pf => { (byLg[pf.league] = byLg[pf.league] || []).push(pf); });
   const order = Object.keys(byLg).sort((a, b) =>
     Math.min(...byLg[a].map(_kickoffMs)) - Math.min(...byLg[b].map(_kickoffMs)));
-  listEl.innerHTML = order.map(lg => {
-    const items = byLg[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y));
-    const col = leagueColor(lg);
-    return `<div class="spcalc-lg-group mb-3">
-        <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded"
-             style="border-left:4px solid ${col};background:${col}1a">
-          <span class="font-display font-semibold text-sm" style="color:${col}">${zhLeague(lg)}</span>
-          <span class="text-xs text-muted">· ${items.length}</span>
-        </div>
-        ${items.map(_pendingCardHtml).join('')}
-      </div>`;
-  }).join('');
+  // 待开盘 联赛组也用可折叠的 _lgGroupHtml(chevron + _collapsedLgs 持久化);
+  // 'pend:' 前缀 → 在这里折叠不影响上方计分板里同名联赛。
+  listEl.innerHTML = order.map(lg =>
+    _lgGroupHtml(lg, leagueColor(lg), byLg[lg].length,
+      byLg[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y))
+        .map(_pendingCardHtml).join(''),
+      'pend:')
+  ).join('');
 }
 function renderCupMarket(preds, pending) {
   preds = preds || []; pending = pending || [];
