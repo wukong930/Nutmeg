@@ -717,9 +717,9 @@
   <!-- Header — P1#13: stack vertically on mobile so the health pill
        doesn't compete with the title for narrow-screen real estate. -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
-    <div>
+    <div class="flex items-center gap-2.5">
+      <svg viewBox="0 0 64 64" width="34" height="34" fill="none" stroke="var(--accent-gold)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="32" cy="32" r="22"/><circle cx="32" cy="32" r="12.5"/><circle cx="32" cy="32" r="5" fill="#ef4444" stroke="none"/><path d="M32 5 V11 M32 53 V59 M5 32 H11 M53 32 H59"/></svg>
       <h1 class="text-xl sm:text-2xl font-bold" data-i18n="app_title">Nutmeg · 竞彩足球助手</h1>
-      <p class="text-xs sm:text-sm text-gray-500" data-i18n="app_subtitle">中国体彩 · 胜平负 + 让球胜平负 · 单关 / 串关 / 复式 全玩法推荐</p>
     </div>
     <div class="flex items-center gap-2 self-start sm:self-auto">
       <!-- V11 P1-FE#1: theme toggle (sun / moon). Cycles dark ↔ light;

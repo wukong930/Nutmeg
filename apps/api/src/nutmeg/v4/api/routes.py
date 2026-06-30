@@ -339,8 +339,8 @@ def manifest() -> Response:
         "scope": "/api/v4/",
         "display": "standalone",
         "orientation": "portrait-primary",
-        "background_color": "#f9fafb",
-        "theme_color": "#4f46e5",
+        "background_color": "#0d1119",
+        "theme_color": "#131826",
         "icons": [
             {"src": "/api/v4/icon.svg",
              "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
@@ -357,16 +357,18 @@ def manifest() -> Response:
 @router.get("/icon.svg", include_in_schema=False)
 def app_icon() -> Response:
     """SVG app icon (works at any size, low byte count, no PNG generation)."""
+    # E (靶心足球): gold target + ball center on dark navy — matches the
+    # dashboard's gold-on-dark theme. Full-bleed bg → safe as a maskable icon.
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">'
-        '<rect width="192" height="192" rx="38" fill="#4f46e5"/>'
-        # Soccer ball stylization: white circle + dark pentagon hint
-        '<circle cx="96" cy="96" r="56" fill="#ffffff"/>'
-        '<polygon points="96,58 122,75 112,108 80,108 70,75" fill="#1f2937"/>'
-        # "N" wordmark for Nutmeg, lower-right
-        '<text x="96" y="172" text-anchor="middle" '
-        'font-family="-apple-system,BlinkMacSystemFont,sans-serif" '
-        'font-size="20" font-weight="700" fill="#ffffff">Nutmeg</text>'
+        '<rect width="192" height="192" fill="#131826"/>'
+        '<g fill="none" stroke="#d4a574" stroke-width="9" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<circle cx="96" cy="96" r="52"/>'
+        '<circle cx="96" cy="96" r="29"/>'
+        '<path d="M96 30 V46 M96 146 V162 M30 96 H46 M146 96 H162"/>'
+        '</g>'
+        '<circle cx="96" cy="96" r="13" fill="#ef4444"/>'
         '</svg>'
     )
     return Response(content=svg, media_type="image/svg+xml")
@@ -376,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v68-fe-board-icons-info"
+_FE_VERSION = "nutmeg-v70-fe-logo-red-center"
 
 
 @router.get("/sw.js", include_in_schema=False)

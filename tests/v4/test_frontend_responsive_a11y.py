@@ -70,7 +70,7 @@ class TestMobileRendering:
         """flex-col then sm:flex-row keeps title from competing with health pill."""
         # Find the header area
         idx = html.index('<h1')
-        head_block = html[idx-200:idx+200]
+        head_block = html[idx-600:idx+200]  # widened: a logo <svg> now sits before the <h1>
         assert 'flex-col' in head_block
         assert 'sm:flex-row' in head_block
 
