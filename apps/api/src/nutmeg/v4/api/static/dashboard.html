@@ -5018,7 +5018,7 @@ function _pinRawHtml(pr) {
        + `${t('pin_raw_over')}${f(pr.psc_over25)}/${t('pin_raw_under')}${f(pr.psc_under25)}`;
   }
   return `<div class="text-xs text-muted mb-1" style="font-size:11px">`
-    + `${IC('target')} ${t('pin_raw_lbl')} 1X2${f(pr.psc_home)}/${f(pr.psc_draw)}/${f(pr.psc_away)}${ou}</div>`;
+    + `${IC('target')} ${t('pin_raw_lbl')} 1X2: ${f(pr.psc_home)}/${f(pr.psc_draw)}/${f(pr.psc_away)}${ou}</div>`;
 }
 // V14 fix — remember which folds (让球 / 净胜球) the user opened so a re-render
 // doesn't snap them shut. Both 手填 apply and 🔄 刷新 rebuild the card via
