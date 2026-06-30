@@ -34,6 +34,7 @@ from pathlib import Path
 CAPTURE_TABLES: list[tuple[str, str, int, bool, str]] = [
     ("odds_snapshots", "captured_at", 2, True, "Pinnacle 线史 (CLV 地基)"),
     ("jingcai_sp", "captured_at", 2, True, "竞彩 SP 捕获 (软水)"),
+    ("jingcai_vote", "captured_at", 2, True, "竞彩 散户支持比例 (软水)"),
     ("league_predictions", "recorded_at", 4, False, "模型盘预测日志 (夏歇宽松)"),
     ("wc_predictions", "recorded_at", 3, False, "WC 模型预测 (仅赛会期)"),
 ]

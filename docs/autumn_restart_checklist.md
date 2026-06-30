@@ -10,7 +10,7 @@
 
 ## 🔔 触发信号(已自动化,无需盯)
 - **CLV 账本「选中计数器」**(`clv_ledger`,每日 02:00 settle cron 跑):受训联赛 +EV 腿首次出现时自动点名。
-- **数据漏哨兵**(`data_freshness`):`jingcai_sp` / `odds_snapshots` 停长即桌面报警 —— 保证攒数据不静默中断。
+- **数据漏哨兵**(`data_freshness`):`jingcai_sp` / `jingcai_vote` / `odds_snapshots` 停长即桌面报警 —— 保证攒数据不静默中断。
 - ⚠️ **但闸门阈值要先升级**(见 §0-2),否则点名了也不可信。
 
 ---
@@ -31,6 +31,8 @@
 
 - [ ] **① 按联赛切软水 CLV**:13 个受训欧洲联赛**单独**量(别混 WC/杯/北欧),`jc_* × Pinnacle 收盘 × 捕获 EV`。检验竞彩 SP 在公众钱重的盘上是否真软。`parlay_soft_water_research §8`
 - [ ] **② 按「散户重仓 vs 冷门」切**(🆕 来自竞彩市场研究):竞彩按国内 handle 调线 → 偏差应在**大球队/大球/热门**。**这条可能比只按联赛切更能找到偏差。** `docs/jingcai_market_microstructure.md`
+  - **🟢 数据源已就位(2026-06-30)**:`com.nutmeg.sporttery_vote` 每日 3 窗(11:10/17:00/23:20,合盖醒来补跑)抓官方 `getVoteV1` → 表 `jingcai_vote`(逐场三路**散户支持率** + 票数 + 体彩自算 implied/error + 竞彩 SP + EN 规范名)。**前进式无历史 = 从今天起攒**,秋天直接有量。**分析配方**:`支持率`(或 win/draw/lose 占比)join **Pinnacle 去vig P**(❌ 不是体彩自算 `*probability` —— 循环)+ 结果 → 量「散户重压 **且** 竞彩 SP 偏离 sharp」的腿。**质量/时点**:23:20 = 终盘封盘后主窗(逐场封盘=开赛前 5 分,各不同;upsert-latest 自动保留最接近各自封盘的一版 → 23:20 主抓晚场、17:00 兜早场;凌晨开球场是已知小局限,封盘真值在窗后)。监控:已接 `data_freshness` 哨兵 + 个人中心「数据新鲜度」。`记忆 jingcai-vote-support-endpoint`
+  - **⏳ 待秋天补(数据门,现在 N 太小别建)**:① `settle_jingcai_vote` —— 把比分回填进 `ft_outcome`(表已有 `home_goals/away_goals/ft_outcome/settled_at` 列,照抄 `observation/jingcai_sp.py` 的 `settle_jingcai_sp`:按日 group、normalize_name 配队、`_ft_outcome` 判结果)。这是做 §1② 分析的前置(要结果才能量"偏差 vs 真实")。② 只读展示块 —— 一个 dashboard 卡片:散户支持 vs Pinnacle 去vig P,按「大球队/大球/热门」分桶看偏差方向+幅度。两者都**攒够已结算量、真动 §1② 时再上**,现在建=空转。
 - [ ] **③ 冻结缺口测试**:`CLV vs 冻结→开球时长`;H1=**深夜欧洲场缝最大**(阵容在竞彩冻结后才出)。实证后盾:Kaunitz 开球前 1–5h +9.9% vs 收盘 +3.5%。`docs/freeze_gap_test_card.md`
 - [ ] **④ 初盘 vs 终盘 EV**:`jc_open_*` vs `jc_*`,哪个对 Pinnacle 更划算。(最便宜的两个之一)
 - [ ] **⑤ 比分/总进球 EV**:`jingcai_exotic_sp × DC 网格 P`。**权重排序锁死:聚合/「其他」桶 ≫ 总进球 ≫ 具体比分单格**;预期比分=最厚 vig 墙。`docs/score_grid_cell_calibration.md`

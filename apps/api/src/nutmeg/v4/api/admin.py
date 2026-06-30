@@ -35,7 +35,7 @@ settings = get_settings()  # singleton; env (incl. NUTMEG_ADMIN_ENABLED) read at
 
 admin_router = APIRouter(prefix="/v4/admin", tags=["admin"])
 
-_EXPECTED_JOBS = 18
+_EXPECTED_JOBS = 19  # +com.nutmeg.sporttery_vote (2026-06-30 散户支持比例 3-window capture)
 _LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
 _PROBE_TTL_SECONDS = 600  # cache live API probes 10 min → repeated tab loads don't burn quota
 
@@ -118,6 +118,7 @@ def _data_freshness() -> list[dict]:
             for table, col, label in [
                 ("odds_snapshots", "captured_at", "Pinnacle 线史 (CLV 地基)"),
                 ("jingcai_sp", "captured_at", "竞彩 SP 捕获 (软水)"),
+                ("jingcai_vote", "captured_at", "竞彩 散户支持比例 (软水)"),
                 ("league_predictions", "recorded_at", "模型盘预测日志"),
                 ("wc_predictions", "recorded_at", "WC 模型预测"),
             ]:
