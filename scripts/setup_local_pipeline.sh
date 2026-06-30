@@ -16,6 +16,7 @@
 #  12. com.nutmeg.weekly_elo_refresh          Saturday 04:30 — V14 national-team Elo snapshot refresh (eloratings.net → WC model prior)
 #  13. com.nutmeg.daily_backup                03:30 daily — 体检 A2: sqlite online backup (keep 7) + WAL checkpoint
 #  14. com.nutmeg.sporttery_vote              11:10/17:00/23:20 daily — 竞彩 散户支持比例 (getVoteV1 → jingcai_vote); 3 windows survive a sleeping laptop
+#  15. com.nutmeg.polymarket_gaps             10:00/16:00/23:30 daily — Polymarket 错价缺口时间序列 (只读测量, record+settle); FORCES proxy (外网)
 # (also installed, predating this header's numbering: com.nutmeg.sporttery_ingest/sporttery_open + score_ev_forward_*)
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
@@ -402,6 +403,20 @@ install_job "com.nutmeg.sporttery_vote" \
   23 20 "" \
   "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_jingcai_vote --db $DB_PATH; else echo sporttery-disabled; fi || true" \
   "11:10 17:0"
+
+# 体检(2026-07-01)— Polymarket 错价缺口时间序列 (THREE windows: 10:00 / 16:00 / 23:30).
+# Read-only MEASUREMENT capture — NOT betting (Polymarket is geo-blocked for CN + legal
+# wall). It only banks the model/Pinnacle-vs-Polymarket gap series to cross-validate our
+# own line + later study by-tier realized hit-rate. The CLI does record + settle in one
+# pass; upsert-latest keyed (date,fixture,outcome), never clobbers a settled result.
+# ⚠️ FOREIGN source → unreachable from CN WITHOUT the proxy (gamma/clob = 000 direct, 200
+# via 127.0.0.1:1082); launchd's env is clean so the command FORCES HTTP(S)_PROXY. If the
+# 科学上网 proxy is down when it fires, the CLI fail-softs to 0 rows that day. Experimental:
+# off-switch = `launchctl bootout gui/<uid>/com.nutmeg.polymarket_gaps` (no .env gate).
+install_job "com.nutmeg.polymarket_gaps" \
+  23 30 "" \
+  "$ENV_PREFIX && HTTP_PROXY=http://127.0.0.1:1082 HTTPS_PROXY=http://127.0.0.1:1082 NO_PROXY=localhost,127.0.0.1,::1 $VENV_PY -m nutmeg.v4.cli.polymarket_gaps --db $DB_PATH --days 3 || true" \
+  "10:0 16:0"
 
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
 # post-v9 P1#24: automate the P1#19 cross-source-aware gate.

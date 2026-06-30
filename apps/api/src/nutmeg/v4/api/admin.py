@@ -35,7 +35,7 @@ settings = get_settings()  # singleton; env (incl. NUTMEG_ADMIN_ENABLED) read at
 
 admin_router = APIRouter(prefix="/v4/admin", tags=["admin"])
 
-_EXPECTED_JOBS = 19  # +com.nutmeg.sporttery_vote (2026-06-30 散户支持比例 3-window capture)
+_EXPECTED_JOBS = 20  # 18 base + sporttery_vote (06-30) + polymarket_gaps (07-01)
 _LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
 _PROBE_TTL_SECONDS = 600  # cache live API probes 10 min → repeated tab loads don't burn quota
 
@@ -121,6 +121,7 @@ def _data_freshness() -> list[dict]:
                 ("jingcai_vote", "captured_at", "竞彩 散户支持比例 (软水)"),
                 ("league_predictions", "recorded_at", "模型盘预测日志"),
                 ("wc_predictions", "recorded_at", "WC 模型预测"),
+                ("polymarket_gaps", "recorded_at", "Polymarket 错价缺口 (只读测量)"),
             ]:
                 try:
                     n, last = c.execute(f"SELECT COUNT(*), MAX({col}) FROM {table}").fetchone()
