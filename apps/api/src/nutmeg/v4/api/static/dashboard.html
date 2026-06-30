@@ -686,9 +686,25 @@
   [data-theme="dark"] textarea::placeholder {
     color: var(--text-muted);
   }
+
+  /* 线性图标(Tabler 内联 sprite,跟随 currentColor) */
+  .ic{width:1.05em;height:1.05em;display:inline-block;vertical-align:-0.15em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .tab-btn .ic{margin-right:7px;vertical-align:-0.2em;width:1.15em;height:1.15em}
+  button .ic,.sub-btn .ic{margin-right:5px}
+  .ic-chip{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;margin-right:10px;vertical-align:middle}
+  .ic-chip .ic{width:18px;height:18px;vertical-align:0;margin:0}
+  .ic-chip-std{background:rgba(59,111,212,.16);color:#6b9bf0}
+  .ic-chip-mkt,.ic-chip-trophy,.ic-chip-today{background:rgba(212,165,116,.16);color:#d4a574}
+  .ic-chip-yuan,.ic-chip-ticket{background:rgba(45,178,135,.16);color:#34c79b}
+  .ic-chip-board,.ic-chip-custom{background:rgba(139,123,246,.16);color:#a99cf0}
+  .ic-chip-hourglass,.ic-chip-history,.ic-chip-settings,.ic-chip-upcoming{background:rgba(120,130,150,.18);color:#9aa6bd}
+
+  /* 信息卡片重绘:更圆角 + 细描边 + 柔和投影 */
+  .shadow-sm.rounded-lg{border-radius:12px!important;border:1px solid var(--border-subtle);box-shadow:0 1px 2px rgba(0,0,0,.16),0 6px 18px rgba(0,0,0,.05)}
 </style>
 </head>
 <body><!-- bg + text now via :root[data-theme] -->
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><symbol id="ic-today" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 7a5 5 0 1 0 5 5" /> <path d="M13 3.055a9 9 0 1 0 7.941 7.945" /> <path d="M15 6v3h3l3 -3h-3v-3z" /> <path d="M15 9l-3 3" /></symbol><symbol id="ic-upcoming" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" /> <path d="M16 3l0 4" /> <path d="M8 3l0 4" /> <path d="M4 11l16 0" /> <path d="M8 15h2v2h-2z" /></symbol><symbol id="ic-custom" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M4 10a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /> <path d="M6 4v4" /> <path d="M6 12v8" /> <path d="M10 16a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /> <path d="M12 4v10" /> <path d="M12 18v2" /> <path d="M16 7a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /> <path d="M18 4v1" /> <path d="M18 9v11" /></symbol><symbol id="ic-history" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M12 8l0 4l2 2" /> <path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5" /></symbol><symbol id="ic-settings" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /> <path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></symbol><symbol id="ic-std" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" /> <path d="M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" /> <path d="M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" /> <path d="M4 20h14" /></symbol><symbol id="ic-mkt" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M4 6m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z" /> <path d="M6 4l0 2" /> <path d="M6 11l0 9" /> <path d="M10 14m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z" /> <path d="M12 4l0 10" /> <path d="M12 19l0 1" /> <path d="M16 5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z" /> <path d="M18 4l0 1" /> <path d="M18 11l0 9" /></symbol><symbol id="ic-yuan" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /> <path d="M9 13h6" /> <path d="M9 8l3 4.5" /> <path d="M15 8l-3 4.5v4.5" /></symbol><symbol id="ic-board" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M6 5h12l3 5l-8.5 9.5a.7 .7 0 0 1 -1 0l-8.5 -9.5l3 -5" /> <path d="M10 12l-2 -2.2l.6 -1" /></symbol><symbol id="ic-trophy" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M8 21l8 0" /> <path d="M12 17l0 4" /> <path d="M7 4l10 0" /> <path d="M17 4v8a5 5 0 0 1 -10 0v-8" /> <path d="M5 9m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /> <path d="M19 9m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /></symbol><symbol id="ic-ticket" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M15 5l0 2" /> <path d="M15 11l0 2" /> <path d="M15 17l0 2" /> <path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-3a2 2 0 0 0 0 -4v-3a2 2 0 0 1 2 -2" /></symbol><symbol id="ic-refresh" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" /> <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" /></symbol><symbol id="ic-target" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /> <path d="M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0" /> <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /></symbol><symbol id="ic-info" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /> <path d="M12 9h.01" /> <path d="M11 12h1v4h1" /></symbol><symbol id="ic-pin" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4" /> <path d="M9 15l-4.5 4.5" /> <path d="M14.5 4l5.5 5.5" /></symbol><symbol id="ic-hourglass" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M6 20v-2a6 6 0 1 1 12 0v2a1 1 0 0 1 -1 1h-10a1 1 0 0 1 -1 -1z" /> <path d="M6 4v2a6 6 0 1 0 12 0v-2a1 1 0 0 0 -1 -1h-10a1 1 0 0 0 -1 1z" /></symbol><symbol id="ic-moon" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" /></symbol><symbol id="ic-sun" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /> <path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7" /></symbol><symbol id="ic-calc" viewBox="0 0 24 24"><path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M4 3m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" /> <path d="M8 7m0 1a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1v1a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1z" /> <path d="M8 14l0 .01" /> <path d="M12 14l0 .01" /> <path d="M16 14l0 .01" /> <path d="M8 17l0 .01" /> <path d="M12 17l0 .01" /> <path d="M16 17l0 .01" /></symbol></svg>
 <!-- 新版本横幅:服务器代码版本变了就提示刷新,杜绝"开着的旧标签页跑旧 JS" -->
 <div id="ver-banner" role="status" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#6366f1;color:#fff;padding:8px 16px;align-items:center;justify-content:center;gap:12px;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.25)">
   <span data-i18n="ver_new">🔄 新版本已就绪</span>
@@ -711,8 +727,8 @@
       <button id="theme-toggle" type="button"
               aria-label="Toggle dark/light theme"
               title="切换主题">
-        <span id="theme-icon-dark" aria-hidden="true">🌙</span>
-        <span id="theme-icon-light" aria-hidden="true" class="hidden">☀️</span>
+        <span id="theme-icon-dark" aria-hidden="true"><svg class="ic"><use href="#ic-moon"/></svg></span>
+        <span id="theme-icon-light" aria-hidden="true" class="hidden"><svg class="ic"><use href="#ic-sun"/></svg></span>
       </button>
       <!-- P1#14: language toggle. Label shows the TARGET locale you'll switch to. -->
       <button id="lang-toggle" type="button"
@@ -861,7 +877,7 @@
     <!-- V12 W5 — 🌍 国际盘口推荐: Pinnacle-priced, all identifiable matches, auto -->
     <h2 class="font-display font-bold text-base text-primary mt-2 mb-3 flex items-center gap-2 flex-wrap">
       <span data-i18n="board_intl">🌍 国际盘口推荐</span>
-      <span class="text-xs font-normal text-muted" data-i18n="board_intl_hint">对 Pinnacle 算 · 所有可识别比赛</span>
+      <span class="info-i" style="font-size:0.85em;font-weight:400" onclick="showInfo(t('board_intl'), t('board_intl_hint'))" title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span>
     </h2>
     <!-- 单关 section -->
     <div id="today-single-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
@@ -889,7 +905,7 @@
     <div class="mt-8 mb-3">
       <h2 class="font-display font-bold text-base text-primary flex items-center gap-2 flex-wrap">
         <span data-i18n="board_mkt">💠 市场模式盘口推荐</span>
-        <span class="text-xs font-normal text-muted" data-i18n="board_mkt_hint">Pinnacle 去vig 最优预测 · 杯赛+日职联 · 想下注去近期赛事填竞彩SP</span>
+        <span class="info-i" style="font-size:0.85em;font-weight:400" onclick="showInfo(t('board_mkt'), t('board_mkt_hint'))" title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span>
       </h2>
     </div>
     <div id="mktpred-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
@@ -903,14 +919,12 @@
     <div class="mt-8 mb-3">
       <h2 class="font-display font-bold text-base text-primary flex items-center gap-2 flex-wrap">
         <span data-i18n="board_jc">💴 竞彩盘口推荐</span>
+        <span class="info-i" style="font-size:0.85em;font-weight:400" onclick="showInfo(t('board_jc'), t('board_jc_hint'))" title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span>
         <button id="jc-generate" onclick="loadJingcaiBoard()"
                 class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
                 data-i18n="jc_generate">用竞彩 SP 生成</button>
         <span id="jc-status" class="text-xs text-muted" role="status" aria-live="polite"></span>
       </h2>
-      <div class="text-xs text-muted mt-1" data-i18n="board_jc_hint">
-        在「📅 近期赛事」填入竞彩 SP / 让球后,点上方按钮 → 按竞彩价算最优单关/串关/复式。
-      </div>
     </div>
     <div id="jc-single-section" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
       <h3 class="font-bold mb-3"><span data-i18n="h_today_single">① 单关推荐</span> <span id="jc-single-count" class="text-sm font-normal text-gray-500"></span></h3>
@@ -1849,7 +1863,7 @@ function hideEvHelp() {
 }
 // 通用说明弹窗 — 任意 ⓘ 调 showInfo(标题, HTML 正文)。复用 ev-help 样式骨架。
 function showInfo(title, bodyHtml) {
-  const tEl = $('#info-title'); if (tEl) tEl.textContent = title || '';
+  const tEl = $('#info-title'); if (tEl) tEl.textContent = (title || '').replace(/\{(?:ic|chip):[a-z-]+\}\s*/g, '');
   const bEl = $('#info-body'); if (bEl) bEl.innerHTML = bodyHtml || '';
   const m = $('#info-modal'); if (m) m.style.display = 'flex';
 }
@@ -1888,14 +1902,14 @@ const I18N = {
     lang_toggle_to:   'EN',  // label shown on the toggle button when currently zh
 
     // Tabs
-    tab_today:        '🎯 今日推荐',
+    tab_today:        '{ic:today} 今日推荐',
     tab_single:       '① 单关',
     tab_parlay:       '② 串关',
     tab_pool:         '③ 复式',
-    tab_custom:       '🎲 自定义玩法',
+    tab_custom:       '{ic:custom} 自定义玩法',
     info_link:        '说明',
-    info_std_title:   '📊 标准模式 — 说明',
-    info_mkt_title:   '💹 市场模式 — 说明',
+    info_std_title:   '标准模式 — 说明',
+    info_mkt_title:   '市场模式 — 说明',
     tab_outcomes:     '④ 录入结果',
     tab_roi:          '⑤ ROI 报告',
     tab_sessions:     '⑥ 会话历史',
@@ -1970,9 +1984,9 @@ const I18N = {
     lbl_date:         '日期',
     lbl_use_pinnacle: '用实时盘口',
     // V11 post-ship — 今日推荐里的 🏆 WC 板块
-    h_today_wc:       '🏆 WC 板块',
+    h_today_wc:       '{chip:trophy} WC 板块',
     today_wc_hint:    '世界杯让球已统一至 💹 市场模式(去vig 1X2 + 大小球反推、实测最优);本页是 1X2 赛前预测.',
-    h_today_spcalc:   '💴 竞彩 SP 实时计算',
+    h_today_spcalc:   '{chip:yuan} 竞彩 SP 实时计算',
     today_spcalc_hint:'输入你在竞彩终端看到的当前 SP → 立即按竞彩价算 EV / Kelly。SP 一变就改, 结果即时刷新。绿色 = 过 +EV 门槛。',
     spcalc_n_matches: '场',
     spcalc_enter_sp:  '输入竞彩 SP 看 EV',
@@ -1985,7 +1999,7 @@ const I18N = {
     bet_neg_ev:       '此注为负 EV，确认仍要记录',
     bet_recorded:     '已记录',
     bet_gate_off:     '已算(未写库)',
-    parlay_title:     '🎰 串关篮子',
+    parlay_title:     '{chip:ticket} 串关篮子',
     parlay_clear:     '清空',
     parlay_record_btn:'记录串关',
     parlay_need_2:    '勾选 ≥2 场比赛、并填好各腿 SP',
@@ -1995,9 +2009,9 @@ const I18N = {
     parlay_recorded:  '已记录串关',
     parlay_add:       '加入串关',
     parlay_cb:        '串',
-    board_intl:       '🌍 国际盘口推荐',
+    board_intl:       '{chip:std} 标准模式推荐',
     board_intl_hint:  '模型预测 · 13 个训练联赛 · 填竞彩SP才出EV',
-    board_mkt:        '💠 市场模式盘口推荐',
+    board_mkt:        '{chip:board} 市场模式盘口推荐',
     board_mkt_hint:   '高置信预测 · sharp 有明显倾向 · 非 +EV(Pinnacle 下注无优势,+EV 去竞彩盘)',
     mkt_strong_n:     '场强势',
     mkt_sharp_chip:   '市场盘·公允',
@@ -2010,9 +2024,9 @@ const I18N = {
     ah_fit:           '拟合',
     ah_src_mkt:       '真实 Pinnacle 亚盘去 vig',
     ah_src_dc:        'Dixon-Coles 网格拟合(该让球线未开盘)',
-    h_mktpred:        '💠 市场模式预测',
+    h_mktpred:        '{chip:board} 市场模式预测',
     mktpred_empty:    '今日暂无开盘的杯赛 / 日职联。',
-    board_jc:         '💴 竞彩盘口推荐',
+    board_jc:         '{chip:yuan} 竞彩盘口推荐',
     board_jc_hint:    '在近期赛事填竞彩 SP / 让球后,点按钮按竞彩价算',
     jc_generate:      '用竞彩 SP 生成',
     jc_need_sp:       '先去「📅 近期赛事」填入竞彩 SP',
@@ -2032,15 +2046,15 @@ const I18N = {
     spcalc_recorded_btn:'已记录',
     spcalc_record_err:'记录失败, 请重试',
     spcalc_need_all_sp:'请先填好 胜/平/负 三个 SP',
-    spcalc_refresh_btn:'🔄 刷新盘口',
-    spcalc_pending_title:'⏳ 待开盘 (Pinnacle 未开盘)',
+    spcalc_refresh_btn:'{ic:refresh} 刷新盘口',
+    spcalc_pending_title:'{ic:hourglass} 待开盘 (Pinnacle 未开盘)',
     spcalc_pending_hint:'Pinnacle 尚未开出盘口 → 模型缺少关键先验, 暂不计算 EV (避免误导)。开盘后这些比赛会自动出现在上方可计算列表。',
-    spcalc_pending_badge:'⏳ 待开盘',
+    spcalc_pending_badge:'{ic:hourglass} 待开盘',
     cupmkt_load_btn:'💹 加载市场模式盘口',
     cupmkt_hint:'杯赛(欧冠/欧联/欧协联 + 五大国内杯 + 世界杯/欧洲杯)+ 日职联(模型未训练·分布外)。一律以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 杯赛淘汰赛: 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。',
-    h_spcalc:'📊 标准模式',
+    h_spcalc:'{chip:std} 标准模式',
     spcalc_board_hint:'13 个训练联赛 · 模型预测 P × 竞彩 SP 算 EV(可信度最高)。未来 3 天可投注,填竞彩终端 SP → 即时 EV / Kelly。绿色 = 过 +EV 门槛。',
-    h_cupmkt:'💹 市场模式',
+    h_cupmkt:'{chip:mkt} 市场模式',
     cupmkt_empty:'近 7 天暂无开盘的杯赛 / 日职联 (或盘口未开)。',
     cupmkt_badge:'市场模式',
     odds_age_prefix:  '盘口',
@@ -2061,7 +2075,7 @@ const I18N = {
     cupman_vig:       '贴水',
     cupman_badge:     '手填实时盘口 · 刚刚',
     // V12 W8c — 手动反推计算器
-    mrev_title:       '🧮 手动反推计算器',
+    mrev_title:       '{ic:calc} 手动反推计算器',
     mrev_hint:        '盘口未开 / 任意场次:从 Pinnacle 读数手填 → 即时反推让球 + EV(不用等 API)。',
     mrev_teams:       '球队(可选):主 / 客',
     mrev_pin1x2:      'Pinnacle 1X2:主 / 平 / 客',
@@ -2072,7 +2086,7 @@ const I18N = {
     mrevk_keep:       '📋 保留对比',
     mrevk_title:      '📋 已保留对比(按最优 EV)',
     mrevk_clear:      '清空',
-    mrev_calc:        '🧮 反推计算',
+    mrev_calc:        '{ic:calc} 反推计算',
     mrev_fair:        '公平',
     mrev_let_labels:  '让胜/让平/让负',
     mrev_1x2_labels:  '主胜/平/客胜',
@@ -2085,16 +2099,16 @@ const I18N = {
     mrev_league_lbl:  '联赛(决定自动结算去哪拉赛果 — 选错会一直显示未结算)',
     mrev_settle_warn: '队名或联赛对不上自动结算(需 API 英文队名 + 正确联赛)。仍要记录吗?记录后可能永远显示「未结算」。',
     mrev_record_aborted: '已取消记录(修正队名/联赛后再 📌)',
-    mrev_record:      '📌 记一笔(写入追踪库)',
+    mrev_record:      '{ic:pin} 记一笔(写入追踪库)',
     mrev_record_ok:   '✅ 已记录',
     mrev_record_off:  '⚠️ 未写入:服务端记录开关未开',
     cupmkt_hc_toggle:'▸ 让球 (市场反推 · Pinnacle 1X2+大小球)',
     jc_hhad_only:'竞彩本场只售让球(无胜平负盘)— 见下方「让球」',
-    jc_refresh_btn:'🎯 刷新竞彩',
-    ver_new:'🔄 新版本已就绪',
+    jc_refresh_btn:'{ic:target} 刷新竞彩',
+    ver_new:'{ic:refresh} 新版本已就绪',
     ver_reload:'点此刷新',
     jc_refreshing:'抓取竞彩中…',
-    cupmkt_hc_record:'📌 记录此注',
+    cupmkt_hc_record:'{ic:pin} 记录此注',
     cupmkt_hc_recorded:'已记入观测库 (市场让球)',
     cupmkt_hc_need_sp:'先填竞彩让球 SP',
     cupmkt_hc_gate_off:'已计算 · 服务端未开记录 (未写库)',
@@ -2106,7 +2120,7 @@ const I18N = {
     spcalc_hc_d:      '让平',
     spcalc_hc_a:      '让负',
     spcalc_hc_pickline:'先选让球线',
-    tab_upcoming:     '📅 近期赛事',
+    tab_upcoming:     '{ic:upcoming} 近期赛事',
     upcoming_hint:    '未来 3 天的可投注比赛。填入你在竞彩终端看到的 SP → 即时按竞彩价算 EV / Kelly。绿色 = 过 +EV 门槛。',
     upcoming_empty:   '未来 3 天暂无可识别的比赛 (或盘口未开)。',
     today_wc_cta:     '💹 世界杯让球见市场模式 →',
@@ -2169,15 +2183,15 @@ const I18N = {
     btn_recommend_parlay_json: '生成 (JSON 模式)',
     btn_recommend_pool_json:   '生成 (JSON 模式)',
     // V11 P1-FE#3 — 推荐追溯
-    tab_history:         '📜 推荐追溯',
-    tab_admin:           '⚙️ 个人中心',
-    admin_title:         '⚙️ 个人中心',
+    tab_history:         '{ic:history} 推荐追溯',
+    tab_admin:           '{ic:settings} 个人中心',
+    admin_title:         '{chip:settings} 个人中心',
     admin_sub:           '数据源额度 · 运行状态 · 重启控制 · 仅本机可见',
-    admin_refresh:       '🔄 刷新状态',
+    admin_refresh:       '{ic:refresh} 刷新状态',
     admin_loading:       '加载中…',
     admin_loaded:        '已更新',
     admin_sec_api:       '① 数据源 API',
-    admin_probe:         '🔄 检测额度',
+    admin_probe:         '{ic:refresh} 检测额度',
     admin_key_hint:      '🔒 密钥只显示末 4 位 · 修改请编辑项目根目录的 .env 文件后重启 API 服务',
     admin_af_note:       'API-Football · 阵容/赛果/比分',
     admin_oa_note:       'The Odds API · Pinnacle 收盘线',
@@ -2212,7 +2226,7 @@ const I18N = {
     admin_rows_unit:     '条',
     h_history_title:     '推荐追溯',
     sub_history:         '查看过去的推荐 + 是否命中 · 时间倒序',
-    h_scoreboard:        '📊 模型自我体检 · 非竞彩',
+    h_scoreboard:        '{chip:std} 模型自我体检 · 非竞彩',
     sub_scoreboard:      '模型预测准不准 + Layer A 自动校准状态 · 与竞彩下注无关',
     sb_no_db:            '观测库未启用',
     sb_accumulating:     '攒数据中:已记录 {n} 场未结算,赛后自动评分',
@@ -2334,14 +2348,14 @@ const I18N = {
     health_checking:  'checking ...',
     lang_toggle_to:   '中',
 
-    tab_today:        '🎯 Today',
+    tab_today:        '{ic:today} Today',
     tab_single:       '① Single',
     tab_parlay:       '② Parlay',
     tab_pool:         '③ Pool',
-    tab_custom:       '🎲 Custom',
+    tab_custom:       '{ic:custom} Custom',
     info_link:        'about',
-    info_std_title:   '📊 Standard mode — about',
-    info_mkt_title:   '💹 Market mode — about',
+    info_std_title:   'Standard mode — about',
+    info_mkt_title:   'Market mode — about',
     tab_outcomes:     '④ Outcomes',
     tab_roi:          '⑤ ROI report',
     tab_sessions:     '⑥ Sessions',
@@ -2415,9 +2429,9 @@ const I18N = {
     lbl_date:         'Date',
     lbl_use_pinnacle: 'Use live odds',
     // V11 post-ship — 🏆 WC block in today's recommendations
-    h_today_wc:       '🏆 WC',
+    h_today_wc:       '{chip:trophy} WC',
     today_wc_hint:    'World Cup handicap is unified into 💹 Market mode (de-vig 1X2 + O/U reverse, measured best). This tab forecasts 1X2.',
-    h_today_spcalc:   '💴 竞彩 SP live calc',
+    h_today_spcalc:   '{chip:yuan} 竞彩 SP live calc',
     today_spcalc_hint:'Enter the current 竞彩 SP from your terminal → instant EV / Kelly at the 竞彩 price. Edit as SP drifts; result updates live. Green = clears the +EV gate.',
     spcalc_n_matches: 'matches',
     spcalc_enter_sp:  'Enter 竞彩 SP for EV',
@@ -2430,7 +2444,7 @@ const I18N = {
     bet_neg_ev:       'Negative-EV bet — confirm to record anyway',
     bet_recorded:     'Recorded',
     bet_gate_off:     'Computed (DB off)',
-    parlay_title:     '🎰 Parlay basket',
+    parlay_title:     '{chip:ticket} Parlay basket',
     parlay_clear:     'Clear',
     parlay_record_btn:'Record parlay',
     parlay_need_2:    'Tick ≥2 matches & fill each leg SP',
@@ -2440,9 +2454,9 @@ const I18N = {
     parlay_recorded:  'Parlay recorded',
     parlay_add:       'Add to parlay',
     parlay_cb:        '+',
-    board_intl:       '🌍 International odds',
+    board_intl:       '{chip:std} Standard-mode picks',
     board_intl_hint:  'Model prediction · 13 trained leagues · EV after a 竞彩 SP',
-    board_mkt:        '💠 Market-mode odds board',
+    board_mkt:        '{chip:board} Market-mode odds board',
     board_mkt_hint:   'High-confidence picks · sharp clearly leans · NOT +EV (no edge betting Pinnacle; +EV is on 竞彩盘)',
     mkt_strong_n:     'strong',
     mkt_sharp_chip:   'sharp · fair',
@@ -2455,9 +2469,9 @@ const I18N = {
     ah_fit:           'model',
     ah_src_mkt:       'real Pinnacle Asian Handicap, de-vigged',
     ah_src_dc:        'Dixon-Coles grid fit (this line not quoted)',
-    h_mktpred:        '💠 Market-mode prediction',
+    h_mktpred:        '{chip:board} Market-mode prediction',
     mktpred_empty:    'No cup / J-League fixtures open today.',
-    board_jc:         '💴 竞彩 odds board',
+    board_jc:         '{chip:yuan} 竞彩 odds board',
     board_jc_hint:    'Fill 竞彩 SP / 让球 in 近期赛事, then click to price vs 竞彩',
     jc_generate:      'Generate from 竞彩 SP',
     jc_need_sp:       'Fill 竞彩 SP in 📅 近期赛事 first',
@@ -2477,15 +2491,15 @@ const I18N = {
     spcalc_recorded_btn:'Recorded',
     spcalc_record_err:'Record failed, retry',
     spcalc_need_all_sp:'Fill all three SP (W/D/L) first',
-    spcalc_refresh_btn:'🔄 Refresh odds',
-    spcalc_pending_title:'⏳ Awaiting Pinnacle line',
+    spcalc_refresh_btn:'{ic:refresh} Refresh odds',
+    spcalc_pending_title:'{ic:hourglass} Awaiting Pinnacle line',
     spcalc_pending_hint:'Pinnacle has not opened a line yet → the model lacks a key prior, so EV is not computed (avoids misleading picks). These fixtures move to the calculable list above once the line opens.',
-    spcalc_pending_badge:'⏳ no line yet',
+    spcalc_pending_badge:'{ic:hourglass} no line yet',
     cupmkt_load_btn:'💹 Load market-mode odds',
     cupmkt_hint:'Cups (UCL/UEL/UECL + big domestic cups + World Cup/Euro) + J1 League (model untrained / out-of-distribution). All priced off Pinnacle fair value (NOT the model); enter 竞彩 SP for EV. ⚠️ Cup knockouts: 竞彩 1X2 settles on the 90-min result (ET/penalties excluded).',
-    h_spcalc:'📊 Standard mode',
+    h_spcalc:'{chip:std} Standard mode',
     spcalc_board_hint:'13 trained leagues · model P × 竞彩 SP → EV (most reliable). Bettable over the next 3 days; type the SP from your 竞彩 terminal → instant EV / Kelly. Green = passes the +EV gate.',
-    h_cupmkt:'💹 Market mode',
+    h_cupmkt:'{chip:mkt} Market mode',
     cupmkt_empty:'No cup / J1 fixtures with an open line in the next 7 days.',
     cupmkt_badge:'market',
     odds_age_prefix:  'Odds',
@@ -2506,7 +2520,7 @@ const I18N = {
     cupman_vig:       'vig',
     cupman_badge:     'live odds (manual) · just now',
     // V12 W8c — manual reverse calculator
-    mrev_title:       '🧮 Manual reverse calculator',
+    mrev_title:       '{ic:calc} Manual reverse calculator',
     mrev_hint:        'No line / any match: type the numbers off Pinnacle → instant reverse 让球 + EV (no API wait).',
     mrev_teams:       'Teams (optional): Home / Away',
     mrev_pin1x2:      'Pinnacle 1X2: Home / Draw / Away',
@@ -2517,7 +2531,7 @@ const I18N = {
     mrevk_keep:       '📋 Keep',
     mrevk_title:      '📋 Kept (by best EV)',
     mrevk_clear:      'Clear',
-    mrev_calc:        '🧮 Reverse-calculate',
+    mrev_calc:        '{ic:calc} Reverse-calculate',
     mrev_fair:        'Fair',
     mrev_let_labels:  'Cover/Push/Against',
     mrev_1x2_labels:  'Home/Draw/Away',
@@ -2530,16 +2544,16 @@ const I18N = {
     mrev_league_lbl:  'League (decides where auto-settle fetches the result — wrong pick = stuck pending)',
     mrev_settle_warn: 'Team name or league will NOT match auto-settle (needs API English names + the right league). Record anyway? It may stay "pending" forever.',
     mrev_record_aborted: 'Record cancelled (fix team names / league, then 📌)',
-    mrev_record:      '📌 Record this bet (to tracker)',
+    mrev_record:      '{ic:pin} Record this bet (to tracker)',
     mrev_record_ok:   '✅ Recorded',
     mrev_record_off:  '⚠️ Not written: server recording gate is off',
     cupmkt_hc_toggle:'▸ Handicap (market-implied · Pinnacle 1X2+O/U)',
     jc_hhad_only:'竞彩 sells only the handicap for this match (no 1X2) — see 让球 below',
-    jc_refresh_btn:'🎯 Refresh 竞彩 SP',
-    ver_new:'🔄 New version ready',
+    jc_refresh_btn:'{ic:target} Refresh 竞彩 SP',
+    ver_new:'{ic:refresh} New version ready',
     ver_reload:'Reload',
     jc_refreshing:'fetching 竞彩…',
-    cupmkt_hc_record:'📌 Record this bet',
+    cupmkt_hc_record:'{ic:pin} Record this bet',
     cupmkt_hc_recorded:'logged to observation DB (market handicap)',
     cupmkt_hc_need_sp:'enter 竞彩 handicap SP first',
     cupmkt_hc_gate_off:'computed · server recording off (not written)',
@@ -2551,7 +2565,7 @@ const I18N = {
     spcalc_hc_d:      'HC push',
     spcalc_hc_a:      'HC loss',
     spcalc_hc_pickline:'Pick a line first',
-    tab_upcoming:     '📅 Upcoming',
+    tab_upcoming:     '{ic:upcoming} Upcoming',
     upcoming_hint:    'Bettable fixtures over the next 3 days. Enter the 竞彩 SP you see → instant EV / Kelly at the 竞彩 price. Green = clears the +EV gate.',
     upcoming_empty:   'No recognized fixtures in the next 3 days (or odds not open yet).',
     today_wc_cta:     '💹 WC handicap → Market mode →',
@@ -2612,15 +2626,15 @@ const I18N = {
     btn_recommend_parlay_json: 'Generate (JSON mode)',
     btn_recommend_pool_json:   'Generate (JSON mode)',
     // V11 P1-FE#3 — Recommendations history
-    tab_history:         '📜 History',
-    tab_admin:           '⚙️ Admin',
-    admin_title:         '⚙️ Personal Center',
+    tab_history:         '{ic:history} History',
+    tab_admin:           '{ic:settings} Admin',
+    admin_title:         '{chip:settings} Personal Center',
     admin_sub:           'Data-source quota · Run status · Restart controls · Localhost only',
-    admin_refresh:       '🔄 Refresh',
+    admin_refresh:       '{ic:refresh} Refresh',
     admin_loading:       'Loading…',
     admin_loaded:        'Updated',
     admin_sec_api:       '① Data-source APIs',
-    admin_probe:         '🔄 Check quota',
+    admin_probe:         '{ic:refresh} Check quota',
     admin_key_hint:      '🔒 Only the last 4 chars are shown · Edit the project-root .env then restart the API to change keys',
     admin_af_note:       'API-Football · lineups/results/scores',
     admin_oa_note:       'The Odds API · Pinnacle closing lines',
@@ -2655,7 +2669,7 @@ const I18N = {
     admin_rows_unit:     'rows',
     h_history_title:     'Recommendation history',
     sub_history:         'Past recommendations + outcomes · most recent first',
-    h_scoreboard:        '📊 Model self-check · non-竞彩',
+    h_scoreboard:        '{chip:std} Model self-check · non-竞彩',
     sub_scoreboard:      "Is the model's prediction any good? + Layer A calibration status · unrelated to 竞彩 betting",
     sb_no_db:            'Observation DB not enabled',
     sb_accumulating:     'Accumulating: {n} logged, unsettled — scored once results land',
@@ -2764,13 +2778,21 @@ const I18N = {
 };
 
 let _LOCALE = 'zh';
+// 图标 token 展开:i18n 串里的 {ic:name}/{chip:name} → 内联 SVG(引用顶部 sprite)。
+function _expandIcons(s) {
+  return s.replace(/\{chip:([a-z-]+)\}/g, '<span class="ic-chip ic-chip-$1"><svg class="ic" aria-hidden="true"><use href="#ic-$1"/></svg></span>')
+          .replace(/\{ic:([a-z-]+)\}/g, '<svg class="ic" aria-hidden="true"><use href="#ic-$1"/></svg>');
+}
+function IC(name) { return '<svg class="ic" aria-hidden="true"><use href="#ic-' + name + '"/></svg>'; }
 function t(key) {
   return (I18N[_LOCALE] && I18N[_LOCALE][key]) || I18N.zh[key] || key;
 }
 function applyI18n() {
-  // textContent
+  // textContent — but expand {ic:}/{chip:} icon tokens via innerHTML when present.
   document.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
+    const v = t(el.dataset.i18n);
+    if (v.indexOf('{ic:') >= 0 || v.indexOf('{chip:') >= 0) el.innerHTML = _expandIcons(v);
+    else el.textContent = v;
   });
   // attrs (data-i18n-attr="placeholder:key1|title:key2")
   document.querySelectorAll('[data-i18n-attr]').forEach(el => {
@@ -3025,7 +3047,7 @@ function setStatus(sel, kind, msg) {
     html = '<span aria-hidden="true">❌</span> ' + msg;
   } else if (kind === 'loading') {
     el.classList.add('text-gray-500','inline-flex','items-center','gap-1');
-    html = '<span class="inline-block animate-pulse" aria-hidden="true">⏳</span> ' + msg;
+    html = '<span class="inline-block animate-pulse" aria-hidden="true">' + IC('hourglass') + '</span> ' + msg;
   } else if (kind === 'success') {
     el.classList.add('text-gray-700');
     html = '<span aria-hidden="true">✓</span> ' + msg;
@@ -4448,7 +4470,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
         <span id="spcalc-ev-${idx}-${o}" class="flex-1 text-xs text-muted"></span>
         <button type="button" class="bet-pin shrink-0" title="${t('bet_record')}"
                 style="cursor:pointer;background:none;border:none;font-size:0.95rem;line-height:1;padding:0 2px"
-                onclick="_recordBet('spcalc',${idx},'${o}','1x2',this)">📌</button>
+                onclick="_recordBet('spcalc',${idx},'${o}','1x2',this)">${IC('pin')}</button>
         <label class="shrink-0 text-xs text-secondary flex items-center gap-1 cursor-pointer select-none" title="${t('parlay_add')}">
           <input type="checkbox" class="spcalc-parlay-cb" data-idx="${idx}" data-outcome="${o}"
                  onchange="_parlayToggle(${idx}, '${o}', this.checked)"
@@ -4492,7 +4514,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
                 <span id="spcalc-hcev-${idx}-${o}" class="flex-1 text-xs text-muted"></span>
                 <button type="button" class="bet-pin shrink-0" title="${t('bet_record')}"
                         style="cursor:pointer;background:none;border:none;font-size:0.95rem;line-height:1;padding:0 2px"
-                        onclick="_recordBet('spcalc',${idx},'${o}','handicap',this)">📌</button>
+                        onclick="_recordBet('spcalc',${idx},'${o}','handicap',this)">${IC('pin')}</button>
               </div>`).join('')}
             <div class="flex items-center justify-between gap-2 mt-1 pt-1">
               <span id="spcalc-hcverdict-${idx}" class="text-xs text-muted">${t('spcalc_hc_pickline')}</span>
@@ -4856,12 +4878,12 @@ async function _spcalcRefreshOdds() {
   const btn = $('#today-spcalc-refresh');
   if (!btn || btn.disabled) return;
   btn.disabled = true;
-  btn.textContent = '🔄 ' + t('spcalc_refreshing');
+  btn.innerHTML = IC('refresh') + ' ' + t('spcalc_refreshing');
   try {
     await loadSpCalc({ refreshOdds: true });
   } finally {
     btn.disabled = false;
-    btn.textContent = t('spcalc_refresh_btn');
+    btn.innerHTML = _expandIcons(t('spcalc_refresh_btn'));
   }
 }
 
@@ -4873,7 +4895,7 @@ async function refreshJingcai() {
   const btns = [$('#cupmkt-jcrefresh'), $('#spcalc-jcrefresh')].filter(Boolean);
   const sts = [$('#cupmkt-status'), $('#spcalc-status')].filter(Boolean);
   if (btns.some(b => b.disabled)) return;
-  btns.forEach(b => { b.disabled = true; b.textContent = '🎯 ' + t('jc_refreshing'); });
+  btns.forEach(b => { b.disabled = true; b.innerHTML = IC('target') + ' ' + t('jc_refreshing'); });
   try {
     const r = await fetch(API + '/observation/sporttery-refresh', { method: 'POST' });
     const j = await r.json();
@@ -4882,7 +4904,7 @@ async function refreshJingcai() {
   } catch (e) {
     sts.forEach(s => { s.textContent = '⚠️ 竞彩刷新失败(网络)'; });
   } finally {
-    btns.forEach(b => { b.disabled = false; b.textContent = t('jc_refresh_btn'); });
+    btns.forEach(b => { b.disabled = false; b.innerHTML = _expandIcons(t('jc_refresh_btn')); });
     loadCupMarket({manual:true});   // 市场模式: re-read jingcai_sp + 新数据为主(竞彩刷新=手动)
     loadSpCalc();                   // 标准模式: 同步重渲(竞彩 SP 重新预填)
   }
@@ -4996,7 +5018,7 @@ function _pinRawHtml(pr) {
        + `${t('pin_raw_over')}${f(pr.psc_over25)}/${t('pin_raw_under')}${f(pr.psc_under25)}`;
   }
   return `<div class="text-xs text-muted mb-1" style="font-size:11px">`
-    + `🎯 ${t('pin_raw_lbl')} 1X2 ${f(pr.psc_home)}/${f(pr.psc_draw)}/${f(pr.psc_away)}${ou}</div>`;
+    + `${IC('target')} ${t('pin_raw_lbl')} 1X2${f(pr.psc_home)}/${f(pr.psc_draw)}/${f(pr.psc_away)}${ou}</div>`;
 }
 // V14 fix — remember which folds (让球 / 净胜球) the user opened so a re-render
 // doesn't snap them shut. Both 手填 apply and 🔄 刷新 rebuild the card via
@@ -5034,7 +5056,7 @@ function _cupCardHtml(pr, idx) {
         <span class="cupev text-xs text-muted shrink-0" data-idx="${idx}" data-outcome="${o}">—</span>
         <button type="button" class="bet-pin shrink-0" title="${t('bet_record')}"
                 style="cursor:pointer;background:none;border:none;font-size:0.95rem;line-height:1;padding:0 2px"
-                onclick="_recordBet('cup',${idx},'${o}','1x2',this)">📌</button>
+                onclick="_recordBet('cup',${idx},'${o}','1x2',this)">${IC('pin')}</button>
       </div>`;
   }).join('');
   // V12 W8 — market-implied 让球: handicap_lines come from a DC grid reverse-fit
@@ -5062,12 +5084,12 @@ function _cupCardHtml(pr, idx) {
             <span class="cuphcev text-xs text-muted shrink-0" data-idx="${idx}" data-outcome="${o}">—</span>
             <button type="button" class="bet-pin shrink-0" title="${t('bet_record')}"
                     style="cursor:pointer;background:none;border:none;font-size:0.95rem;line-height:1;padding:0 2px"
-                    onclick="_recordBet('cup',${idx},'${o}','handicap',this)">📌</button>
+                    onclick="_recordBet('cup',${idx},'${o}','handicap',this)">${IC('pin')}</button>
           </div>`).join('')}
           <div class="flex items-center gap-2 mt-2 flex-wrap">
             <button id="cuphcrec-${idx}" onclick="_cupHcRecord(${idx})"
                     class="text-xs px-3 py-1 rounded" style="background:#059669;color:#fff;cursor:pointer">
-              ${t('cupmkt_hc_record')}
+              ${_expandIcons(t('cupmkt_hc_record'))}
             </button>
             <span id="cuphcverdict-${idx}" class="text-xs text-muted" aria-live="polite"></span>
           </div>
@@ -5528,7 +5550,7 @@ function _pendingCardHtml(pf) {
       </span>
       <span class="shrink-0 flex items-center gap-2">
         <span class="text-xs text-muted">${_fmtKickoff(pf)}</span>
-        <span class="chip-outcome chip-outcome-pending text-xs whitespace-nowrap">${t('spcalc_pending_badge')}</span>
+        <span class="chip-outcome chip-outcome-pending text-xs whitespace-nowrap">${_expandIcons(t('spcalc_pending_badge'))}</span>
       </span>
     </div>`;
 }
