@@ -47,6 +47,7 @@
 - [ ] **serving 半**:当前 `bayesian_blend` = 粗糙的 **fixed-0.6 线性平均**,与那套 sound 的**几何 pooling** eval **脱节** → 把 serving 接上几何 pooling。
 - [ ] **eval 半(`independent_signal.py`)**:补 ① **held-out/CV 的 β**(别用样本内)② **bootstrap 显著性**(防小 N 假阳)③ **per-regime / per-outcome β** ④ **下注相关指标**(ECE + 甜区,非纯 logloss)⑤ **model↔market 相关性**。
 - **数据门**:需 held-out 数据(秋天攒的受训联赛预测)。**现在建 = 空转**(无 held-out)。
+- **模型自我体检 = 同门金丝雀(已运行,别读 N=2 噪声)**:`模型自我体检·非竞彩`(predict-log → settle → Layer A 周校准 → scoreboard)**已在跑**(2026-06-30 核实:cron 绿、`league_predictions` 116 条/113 结算、周校准出报告),但屏上数字是 **N=2 噪声** —— 116 条里 114 条是市场盘(被 `n_market_blended_excluded` 排除),纯模型只 2 条(13 训练联赛休赛)。它是**回归金丝雀 + Layer A 校准的数据源**,**不是下注 edge**(模型=前沿,见 §4)。**留着跑、零维护;等纯模型已结算 N≥~100 再回头读 log-loss vs Pinnacle**(正是 eval 半要的 held-out)。`记忆 model-self-check-data-gated`
 
 ---
 
