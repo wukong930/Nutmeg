@@ -35,7 +35,7 @@ settings = get_settings()  # singleton; env (incl. NUTMEG_ADMIN_ENABLED) read at
 
 admin_router = APIRouter(prefix="/v4/admin", tags=["admin"])
 
-_EXPECTED_JOBS = 20  # 18 base + sporttery_vote (06-30) + polymarket_gaps (07-01)
+_EXPECTED_JOBS = 21  # 18 base + sporttery_vote + polymarket_gaps + closing_odds (07-01)
 _LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
 _PROBE_TTL_SECONDS = 600  # cache live API probes 10 min → repeated tab loads don't burn quota
 

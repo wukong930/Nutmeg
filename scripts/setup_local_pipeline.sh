@@ -17,6 +17,7 @@
 #  13. com.nutmeg.daily_backup                03:30 daily — 体检 A2: sqlite online backup (keep 7) + WAL checkpoint
 #  14. com.nutmeg.sporttery_vote              11:10/17:00/23:20 daily — 竞彩 散户支持比例 (getVoteV1 → jingcai_vote); 3 windows survive a sleeping laptop
 #  15. com.nutmeg.polymarket_gaps             10:00/16:00/23:30 daily — Polymarket 错价缺口时间序列 (只读测量, record+settle); FORCES proxy (外网)
+#  16. com.nutmeg.closing_odds                每 30 分 (StartInterval) — Pinnacle 收盘锚 (fetch_pinnacle_lookup → odds_snapshots source=closing); 修 ③ 锚陈旧
 # (also installed, predating this header's numbering: com.nutmeg.sporttery_ingest/sporttery_open + score_ev_forward_*)
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
@@ -417,6 +418,46 @@ install_job "com.nutmeg.polymarket_gaps" \
   23 30 "" \
   "$ENV_PREFIX && HTTP_PROXY=http://127.0.0.1:1082 HTTPS_PROXY=http://127.0.0.1:1082 NO_PROXY=localhost,127.0.0.1,::1 $VENV_PY -m nutmeg.v4.cli.polymarket_gaps --db $DB_PATH --days 3 || true" \
   "10:0 16:0"
+
+# 体检(2026-07-01)— Pinnacle 收盘锚捕获 (StartInterval 每 30 分 — 非日历,故不用 install_job).
+# ③ measured the gather-side anchor was median ~5h stale (竞彩 KO in 北京深夜/凌晨);
+# user now keeps the laptop 24/7-awake, so a frequent run snapshots each match's
+# Pinnacle near its OWN kickoff = the true close. Bypasses the cup-market gather
+# (drops most matches) by writing fetch_pinnacle_lookup straight into
+# odds_snapshots(source='closing'). Cheap (~2 Odds-API req/run); Odds API is
+# CN-reachable direct (no proxy, unlike polymarket). The 23:20 vote backfill then
+# co-locates the freshest line onto each jingcai_vote row → de-noises 软水 ②/CLV.
+CLOSING_PLIST="$PLIST_DIR/com.nutmeg.closing_odds.plist"
+cat > "$CLOSING_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.nutmeg.closing_odds</string>
+    <key>WorkingDirectory</key><string>$REPO_ROOT</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string><string>-c</string>
+        <string>$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.closing_odds --db $DB_PATH --sports WC || true</string>
+    </array>
+    <key>StartInterval</key><integer>1800</integer>
+    <key>StandardOutPath</key><string>$LOG_DIR/com.nutmeg.closing_odds.out.log</string>
+    <key>StandardErrorPath</key><string>$LOG_DIR/com.nutmeg.closing_odds.err.log</string>
+    <key>RunAtLoad</key><false/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key><string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>PYTHONPATH</key><string>$REPO_ROOT/apps/api/src</string>
+    </dict>
+</dict>
+</plist>
+EOF
+launchctl bootout "gui/$UID/com.nutmeg.closing_odds" 2>/dev/null || true
+if launchctl bootstrap "gui/$UID" "$CLOSING_PLIST" 2>/dev/null; then
+  echo "  ✓ installed com.nutmeg.closing_odds (StartInterval 每 30 分)"
+else
+  echo "  ✗ failed to bootstrap com.nutmeg.closing_odds" >&2
+fi
 
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
 # post-v9 P1#24: automate the P1#19 cross-source-aware gate.
