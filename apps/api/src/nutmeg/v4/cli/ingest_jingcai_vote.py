@@ -74,6 +74,12 @@ def main(argv: list[str] | None = None) -> int:
     r = harvest_votes_to_db(args.db, pool_codes=args.pool_codes, rows_by_pool=rows_by_pool)
     print("\n写入 jingcai_vote: "
           + " · ".join(f"{p} {n}" for p, n in r["written"].items()))
+
+    # Co-capture the Pinnacle line from odds_snapshots → locks the 软水 三料 join in
+    # one table (散户支持 + 竞彩 SP + Pinnacle). Freeze-time run pins the freshest line.
+    from nutmeg.v4.observation.jingcai_vote import backfill_vote_pinnacle
+    pin = backfill_vote_pinnacle(args.db)
+    print(f"协同 Pinnacle 回填(odds_snapshots → psc_*): {pin} 行")
     return 0
 
 

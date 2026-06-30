@@ -83,6 +83,36 @@ def test_record_failsoft_on_missing_keys(tmp_path):
         pool_code="HAD") is False
 
 
+def test_backfill_pinnacle_team_date_tolerant_latest_wins(tmp_path):
+    from nutmeg.v4.observation.jingcai_vote import backfill_vote_pinnacle
+    db = tmp_path / "obs.db"
+    # vote row dated 竞彩 Beijing 2026-07-01, mapped to EN
+    record_jingcai_vote(
+        db, match_date="2026-07-01", home_zh="法国", away_zh="瑞典",
+        home_team="France", away_team="Sweden", pool_code="HAD",
+        h_support=77.0, d_support=15.0, a_support=8.0,
+        jc_home=1.16, jc_draw=5.8, jc_away=10.5)
+    # odds_snapshots Pinnacle dated UTC 2026-06-30 (off by 1 day) + two snapshots
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE odds_snapshots (captured_at TEXT, match_date TEXT, "
+                     "home_team TEXT, away_team TEXT, psc_home REAL, psc_draw REAL, "
+                     "psc_away REAL, ou_line REAL)")
+        conn.executemany(
+            "INSERT INTO odds_snapshots VALUES (?,?,?,?,?,?,?,?)",
+            [("2026-06-30T10:00:00", "2026-06-30", "France", "Sweden", 1.30, 5.0, 9.0, 2.5),
+             ("2026-06-30T18:00:00", "2026-06-30", "France", "Sweden", 1.18, 5.9, 11.0, 2.5)])
+
+    assert backfill_vote_pinnacle(db) == 1  # team-matched across the ±1-day TZ gap
+    r = [x for x in fetch_jingcai_vote(db) if x["home_team"] == "France"][0]
+    assert r["psc_home"] == 1.18 and r["ou_line"] == 2.5  # LATEST snapshot wins
+    # an unmatched team gets nothing, no crash
+    record_jingcai_vote(db, match_date="2026-07-01", home_zh="火星", away_zh="月球",
+                        home_team="Mars", away_team="Moon", pool_code="HAD", h_support=50.0)
+    backfill_vote_pinnacle(db)
+    mars = [x for x in fetch_jingcai_vote(db) if x["home_team"] == "Mars"][0]
+    assert mars["psc_home"] is None
+
+
 def test_had_and_hhad_are_separate_rows(tmp_path):
     db = tmp_path / "obs.db"
     record_jingcai_vote(db, **parse_vote_row(_raw(), "had"))
