@@ -15,6 +15,8 @@
 #  11. com.nutmeg.daily_predict               15:30 daily — V12 W8j model-board prediction log + settle + accuracy report
 #  12. com.nutmeg.weekly_elo_refresh          Saturday 04:30 — V14 national-team Elo snapshot refresh (eloratings.net → WC model prior)
 #  13. com.nutmeg.daily_backup                03:30 daily — 体检 A2: sqlite online backup (keep 7) + WAL checkpoint
+#  14. com.nutmeg.sporttery_vote              11:10/17:00/23:20 daily — 竞彩 散户支持比例 (getVoteV1 → jingcai_vote); 3 windows survive a sleeping laptop
+# (also installed, predating this header's numbering: com.nutmeg.sporttery_ingest/sporttery_open + score_ev_forward_*)
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
 # (no plaintext key in plists). Logs go to logs/launchd/.
@@ -385,6 +387,21 @@ install_job "com.nutmeg.sporttery_ingest" \
 install_job "com.nutmeg.sporttery_open" \
   11 5 "" \
   "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH --phase open; else echo sporttery-disabled; fi || true"
+
+# 体检(2026-06-30)— 竞彩 散户支持比例 harvest (THREE windows: 11:10 开售后 / 17:00 / 23:20 终盘后).
+# Same PUBLIC uniform endpoint + same NUTMEG_SPORTTERY_ENABLED kill switch as
+# sporttery_ingest, but getVoteV1 → jingcai_vote: forward-only retail 支持比例
+# (h/d/a support% + 票数 + 体彩 implied/error + 竞彩 SP). FORWARD-ONLY (no history,
+# current-day only) ⇒ THREE run-windows so a laptop that sleeps still lands the day —
+# launchd runs a missed calendar job once on wake (same trick as daily_predict).
+# Upsert-latest keyed (date,home,away,pool): each run overwrites with the freshest
+# crowd snapshot, never duplicates, never clobbers a settled result. Fail-soft +
+# low-freq (3×/day ≈ 6 GETs, well within polite). Feeds the autumn 散户-bias / 软水
+# measurement (join supportRate → Pinnacle de-vig P + result).
+install_job "com.nutmeg.sporttery_vote" \
+  23 20 "" \
+  "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_jingcai_vote --db $DB_PATH; else echo sporttery-disabled; fi || true" \
+  "11:10 17:0"
 
 # Job 4: weekly P1#19 gate (Sunday 04:00, 2h after settle)
 # post-v9 P1#24: automate the P1#19 cross-source-aware gate.

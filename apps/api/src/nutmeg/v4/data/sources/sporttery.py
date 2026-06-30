@@ -177,6 +177,46 @@ def _request(
     return None
 
 
+def fetch_vote_support(
+    pool_code: str = "HAD",
+    *,
+    page_size: int = 50,
+    page_no: int = 1,
+    timeout: float = 15.0,
+    retries: int = 3,
+) -> list[dict]:
+    """体彩 官方逐场三路散户支持率 (getVoteV1) for one pool — ``HAD`` (胜平负) /
+    ``HHAD``,``HDC`` (让球). No-auth, same /gateway/uniform/ route as the SP feed.
+    Returns the raw match rows (``value.matches.list``): each carries h/d/a
+    ``*supportRate`` (票数派生支持%) + ``win/draw/lose`` counts + 竞彩 SP odds
+    (h/d/a) + 体彩 ``*probability``/``*error``. This is GENUINE Chinese retail crowd
+    direction — NOT 唯彩/Okooo's 必发(Betfair)-derived 买量 (= sharp money).
+    FORWARD-ONLY: the endpoint serves the CURRENT day's matches (matchId/date params
+    are ignored), so capture daily. Returns [] on any failure (logged, never raised).
+    """
+    url = f"{_BASE}/gateway/uniform/football/getVoteV1.qry"
+    params = {"poolCode": pool_code, "pageSize": page_size, "pageNo": page_no}
+    for attempt in range(retries):
+        try:
+            resp = httpx.get(url, params=params, headers=_HEADERS, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            if not data.get("success"):
+                log.warning("sporttery getVote not success (%s): %s",
+                            pool_code, data.get("errorMessage"))
+                return []
+            matches = (data.get("value") or {}).get("matches") or {}
+            rows = matches.get("list") if isinstance(matches, dict) else matches
+            return rows or []
+        except Exception as exc:  # noqa: BLE001 — fail-soft; never raise to the caller
+            if attempt < retries - 1:
+                time.sleep(1.0 + attempt)
+                continue
+            log.warning("sporttery getVote fetch failed (%s): %s", url, exc)
+            return []
+    return []
+
+
 def _odds3(pool: dict | None):
     """(h, d, a) floats from a had/hhad pool, or None if incomplete."""
     if not pool:
