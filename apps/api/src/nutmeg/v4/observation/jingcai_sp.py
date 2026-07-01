@@ -260,13 +260,24 @@ def settle_jingcai_sp(
             except Exception:  # noqa: BLE001 — one bad day must not abort the rest
                 log.warning("settle_jingcai_sp: fetch failed for %s", date_str, exc_info=True)
                 continue
-            index: dict[tuple[str, str], dict] = {}
+            index: dict[tuple[str, str], dict | None] = {}
             for fx in fixtures:
                 teams = (fx.get("teams") or {})
                 h = national_match_key((teams.get("home") or {}).get("name", ""))
                 a = national_match_key((teams.get("away") or {}).get("name", ""))
-                if h and a:
-                    index[(h, a)] = fx
+                if not (h and a):
+                    continue
+                key = (h, a)
+                if key in index:
+                    # 体检 D2 — ≥2 distinct fixtures share a normalized name on this
+                    # date → ambiguous; poison the key to None so a wrong 90' score
+                    # is never attributed (last-write-wins would have guessed).
+                    prev = index[key]
+                    fid = (fx.get("fixture") or {}).get("id")
+                    if prev is None or (prev.get("fixture") or {}).get("id") != fid:
+                        index[key] = None
+                else:
+                    index[key] = fx
             for r in drows:
                 fx = index.get(
                     (national_match_key(r["home_team"]), national_match_key(r["away_team"])))

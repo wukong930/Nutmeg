@@ -151,8 +151,18 @@ def settle_exotic_sp(
                 teams = fx.get("teams") or {}
                 h = national_match_key((teams.get("home") or {}).get("name", ""))
                 a = national_match_key((teams.get("away") or {}).get("name", ""))
-                if h and a:
-                    idx[(date_str, h, a)] = fx
+                if not (h and a):
+                    continue
+                key = (date_str, h, a)
+                if key in idx:
+                    # 体检 D2 — ≥2 distinct fixtures share a normalized name on this
+                    # date → ambiguous; poison so a wrong 90' score is never attributed.
+                    prev = idx[key]
+                    fid = (fx.get("fixture") or {}).get("id")
+                    if prev is None or (prev.get("fixture") or {}).get("id") != fid:
+                        idx[key] = None
+                else:
+                    idx[key] = fx
 
         now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         settled = 0

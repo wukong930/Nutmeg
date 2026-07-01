@@ -157,3 +157,33 @@ def test_protect_manual_inserts_when_no_manual(tmp_path):
                            source="sporttery", protect_manual=True)
     assert ok is True
     assert fetch_jingcai_sp(db)[0]["source"] == "sporttery"
+
+
+def test_settle_skips_ambiguous_duplicate_pairing(tmp_path):
+    """体检 D2 — two DISTINCT fixtures with the same normalized team-pair on one
+    date → ambiguous; neither is settled (bare last-write-wins would attach the
+    wrong 90' score). Realized only for obscure same-name lower-league clubs."""
+    db = _db(tmp_path)
+    record_jingcai_sp(db, match_date="2026-06-20", home_team="A", away_team="B",
+                      jc_home=1.7, jc_draw=3.4, jc_away=4.5)
+
+    def fetch(d: dt.date):
+        return [
+            {**_fx("A", "B", 2, 1), "fixture": {"id": 111, "status": {"short": "FT"}}},
+            {**_fx("A", "B", 0, 0), "fixture": {"id": 222, "status": {"short": "FT"}}},
+        ]
+
+    n = settle_jingcai_sp(db, fetch_fixtures=fetch, today=dt.date(2026, 6, 21))
+    assert n == 0   # ambiguous → not settled
+
+
+def test_settle_unique_pairing_still_settles(tmp_path):
+    # control: a single fixture (the normal case) still settles
+    db = _db(tmp_path)
+    record_jingcai_sp(db, match_date="2026-06-20", home_team="A", away_team="B",
+                      jc_home=1.7, jc_draw=3.4, jc_away=4.5)
+    n = settle_jingcai_sp(
+        db, fetch_fixtures=lambda d: [{**_fx("A", "B", 2, 1),
+                                       "fixture": {"id": 111, "status": {"short": "FT"}}}],
+        today=dt.date(2026, 6, 21))
+    assert n == 1
