@@ -663,6 +663,12 @@ class MarketHandicapResponse(BaseModel):
     handicap_home: int
     # market-implied P(让胜/让平/让负) for this line, order [H, D, A]
     market_implied_p: list[float]
+    # 体检 C1 (2026-07-01) — the WPO-de-vig 1X2 fair-P [H, D, A] (NOT 让球). The
+    # reverse-calculator client used to recompute the 1X2 fair-P with BASIC
+    # normalization, inflating longshot P and flipping −EV legs into false 🟢 +EV
+    # (up to ~11pp). Exposing the server's WPO P lets the client use the same
+    # de-vig the whole betting path uses.
+    p_1x2: list[float] | None = None
     fair_odds: list[float]
     # EV/unit vs the supplied 竞彩 SP; None for outcomes with no SP given
     ev_per_unit: list[float | None]

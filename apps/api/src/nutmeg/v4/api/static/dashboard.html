@@ -6154,10 +6154,17 @@ async function manualReverseCalc() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 120)}`);
     const data = await resp.json();
 
-    // 不让球 1X2: client-side 3-way de-vig.
-    const inv = [1 / p1, 1 / px, 1 / p2];
-    const s = inv[0] + inv[1] + inv[2];
-    const fair1x2 = inv.map((x) => x / s);
+    // 不让球 1X2: use the SERVER's WPO de-vig (data.p_1x2), NOT a client-side
+    // basic normalization — basic inflates longshot P and flipped −EV legs into
+    // false 🟢 +EV (up to ~11pp; 体检 C1). Fall back to basic only if an older
+    // server omits p_1x2, so the card never breaks.
+    const fair1x2 = (Array.isArray(data.p_1x2) && data.p_1x2.length === 3)
+      ? data.p_1x2
+      : (() => {
+          const inv = [1 / p1, 1 / px, 1 / p2];
+          const s = inv[0] + inv[1] + inv[2];
+          return inv.map((x) => x / s);
+        })();
     const fmtEV = (p, o) => {
       if (!(o && o > 1.0)) return '<span class="text-muted">—</span>';
       const ev = p * o - 1;

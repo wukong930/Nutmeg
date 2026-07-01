@@ -378,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v71-fe-pin-raw-1x2-colon"
+_FE_VERSION = "nutmeg-v72-fe-mrev-wpo-1x2"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2290,6 +2290,9 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
         home_team=req.home_team, away_team=req.away_team,
         handicap_home=req.handicap_home,
         market_implied_p=[p_h, p_d, p_a],
+        # 体检 C1 — expose the WPO 1X2 fair-P so the reverse-calc client stops
+        # recomputing it with basic normalization (which faked longshot +EV).
+        p_1x2=[float(fair[0]), float(fair[1]), float(fair[2])],
         fair_odds=[_fair(p_h), _fair(p_d), _fair(p_a)],
         ev_per_unit=[ev["H"], ev["D"], ev["A"]],
         best_outcome=best,
