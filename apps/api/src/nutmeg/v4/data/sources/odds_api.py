@@ -68,7 +68,7 @@ import logging
 import threading
 import time
 import unicodedata
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +85,11 @@ log = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 DEFAULT_CACHE_DIR = Path("data/external/odds_api")
+
+# 体检 F3 — a historical-snapshot request for a FUTURE timestamp returns the
+# "latest available" line (not a fixed point), so its cache must expire; a past
+# snapshot is immutable and caches forever. 6h keeps the WC-upcoming blend fresh.
+_HISTORICAL_FUTURE_TTL_SECONDS = 6 * 3600
 
 # Sport key mapping: V4 canonical cup code → Odds API sport key.
 # Extend here when adding more competitions.
@@ -451,7 +456,32 @@ def fetch_historical_snapshot(
         "regions": regions, "markets": markets,
         "oddsFormat": odds_format, "date": snapshot_iso,
     }
-    body = _request(endpoint, params, cache_dir=cache_dir, refresh=refresh)
+    # 体检 F3 — a FUTURE snapshot timestamp (WC-upcoming requests {d}T23:00Z for a
+    # day not yet reached) resolves to the "latest available" line, which keeps
+    # changing as KO approaches; caching it permanently under the future key
+    # serves a ~1d-stale line. Refresh a future-key cache older than the TTL;
+    # PAST snapshots are immutable → cache forever. Force-refresh failure falls
+    # back to the stale cache (never worse than the permanent cache).
+    effective_refresh = refresh
+    if not refresh:
+        try:
+            snap_dt = datetime.fromisoformat(snapshot_iso.replace("Z", "+00:00"))
+            if snap_dt.tzinfo is None:
+                snap_dt = snap_dt.replace(tzinfo=UTC)
+            if snap_dt > datetime.now(UTC):
+                cf = _cache_path(endpoint, params, Path(cache_dir))
+                if cf.exists() and (
+                        time.time() - cf.stat().st_mtime > _HISTORICAL_FUTURE_TTL_SECONDS):
+                    effective_refresh = True
+        except (ValueError, TypeError):
+            pass
+    try:
+        body = _request(endpoint, params, cache_dir=cache_dir, refresh=effective_refresh)
+    except OddsApiError:
+        if effective_refresh and not refresh:
+            body = _request(endpoint, params, cache_dir=cache_dir, refresh=False)
+        else:
+            raise
     if not isinstance(body, dict) or "data" not in body:
         raise OddsApiError(
             f"unexpected historical response shape; got keys: "
