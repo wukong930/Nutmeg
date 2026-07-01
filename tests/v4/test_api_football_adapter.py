@@ -463,3 +463,54 @@ class TestLeagueSeasonTTL:
         calls = self._calls(monkeypatch, [{"fixture": {"id": 7}}])
         api_football.fetch_fixtures_for_league_season("WC", 2020, cache_dir=tmp_path)
         assert calls == [False]   # permanent cache for a finished season
+
+
+class TestOddsCacheTTL:
+    """体检 F1 (2026-07-01) — fetch_odds max_age is OPT-IN. The gather passes it so
+    upcoming odds self-refresh (8 of 14 leagues get their psc from this AF-mirror
+    cache, no fresh-Pinnacle overlay). The cup-odds backfill / score_ev pass None
+    → keep the permanent cache and never re-hit the quota for settled fixtures."""
+
+    def _seed(self, tmp_path, fid, age_hours):
+        import os
+        import time
+        cf = api_football._cache_path("/odds", {"fixture": fid}, tmp_path)
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        cf.write_text(json.dumps([{"stale": 1}]))
+        t = time.time() - age_hours * 3600
+        os.utime(cf, (t, t))
+
+    @staticmethod
+    def _calls(monkeypatch, on_refresh):
+        calls: list[bool] = []
+
+        def fake_request(endpoint, params, *, cache_dir=None, refresh=False, **kw):
+            calls.append(refresh)
+            return on_refresh if refresh else [{"cached": 1}]
+
+        monkeypatch.setattr(api_football, "_request", fake_request)
+        return calls
+
+    def test_stale_cache_refetches_with_max_age(self, tmp_path, monkeypatch):
+        self._seed(tmp_path, 111, age_hours=5)   # older than the 2h TTL
+        calls = self._calls(monkeypatch, [{"fresh": 1}])
+        out = api_football.fetch_odds(
+            111, cache_dir=tmp_path,
+            max_age_seconds=api_football._ODDS_CACHE_TTL_SECONDS)
+        assert out == [{"fresh": 1}]
+        assert True in calls
+
+    def test_permanent_when_no_max_age(self, tmp_path, monkeypatch):
+        # the backfill path (max_age=None) never refetches even a very stale cache
+        self._seed(tmp_path, 222, age_hours=500)
+        calls = self._calls(monkeypatch, [{"fresh": 1}])
+        api_football.fetch_odds(222, cache_dir=tmp_path)   # no max_age
+        assert calls == [False]
+
+    def test_fresh_cache_respected(self, tmp_path, monkeypatch):
+        self._seed(tmp_path, 333, age_hours=1)   # under the 2h TTL
+        calls = self._calls(monkeypatch, [{"fresh": 1}])
+        api_football.fetch_odds(
+            333, cache_dir=tmp_path,
+            max_age_seconds=api_football._ODDS_CACHE_TTL_SECONDS)
+        assert calls == [False]

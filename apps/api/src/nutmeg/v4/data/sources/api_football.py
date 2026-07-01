@@ -61,6 +61,14 @@ DEFAULT_CACHE_DIR = Path("data/external/api_football")
 # 4/day ≪ the 7.5k/day quota).
 _UPCOMING_FIXTURE_TTL_SECONDS = 6 * 3600
 
+# Opt-in freshness bound for fetch_odds (default None = permanent-until-refresh,
+# so the cup-odds backfill + score_ev keep their permanent cache). The GATHER
+# passes it so an upcoming fixture's odds don't serve days-stale for the leagues
+# with no fresh-Pinnacle overlay — 8 of 14 daily leagues get their psc straight
+# from this AF-mirror cache (体检 F1, fires when they restart in August). Odds
+# are the direct EV input, so 2h is tighter than the fixture-schedule TTL.
+_ODDS_CACHE_TTL_SECONDS = 2 * 3600
+
 
 class ApiFootballError(RuntimeError):
     """Raised when the API returns a non-2xx, an error payload, or no key is set."""
@@ -392,10 +400,25 @@ def fetch_odds(
     *,
     cache_dir: Path = DEFAULT_CACHE_DIR,
     refresh: bool = False,
+    max_age_seconds: float | None = None,
 ) -> list[dict[str, Any]]:
-    """Pre-match odds across all books carried by API-Football for one fixture."""
-    return _request("/odds", {"fixture": fixture_id},
-                    cache_dir=cache_dir, refresh=refresh)
+    """Pre-match odds across all books carried by API-Football for one fixture.
+
+    ``max_age_seconds`` is opt-in (default None = permanent-until-refresh, so the
+    cup-odds backfill + score_ev keep their permanent cache and never re-hit the
+    quota for thousands of settled fixtures). When set, a cache older than it is
+    refetched — the gather passes it so a fixture's odds don't serve days-stale
+    for leagues without a fresh-Pinnacle overlay (体检 F1). Network-fail → stale
+    fallback, so we're never worse than the permanent cache."""
+    params = {"fixture": fixture_id}
+    if not refresh and max_age_seconds is not None:
+        cf = _cache_path("/odds", params, Path(cache_dir))
+        if cf.exists() and time.time() - cf.stat().st_mtime > max_age_seconds:
+            try:
+                return _request("/odds", params, cache_dir=cache_dir, refresh=True)
+            except ApiFootballError:
+                pass
+    return _request("/odds", params, cache_dir=cache_dir, refresh=refresh)
 
 
 def fetch_status() -> dict[str, Any]:

@@ -161,9 +161,16 @@ _ODDS_FETCH_CONCURRENCY = 6
 
 def _fetch_odds_safe(fid: int, cache_dir, refresh: bool):
     """fetch_odds wrapper for the concurrent pool: returns ('ok', payload) or
-    ('err', exc) so one fixture's failure never aborts the whole batch."""
+    ('err', exc) so one fixture's failure never aborts the whole batch.
+
+    Passes the odds-cache TTL (体检 F1) so the gather's upcoming-fixture odds
+    self-refresh instead of serving the permanent AF-mirror cache days-stale for
+    leagues without a fresh-Pinnacle overlay. Only the gather opts in — the
+    cup-odds backfill / score_ev keep the permanent cache (no quota blowout)."""
     try:
-        return ("ok", api_football.fetch_odds(fid, cache_dir=cache_dir, refresh=refresh))
+        return ("ok", api_football.fetch_odds(
+            fid, cache_dir=cache_dir, refresh=refresh,
+            max_age_seconds=api_football._ODDS_CACHE_TTL_SECONDS))
     except api_football.ApiFootballError as exc:
         return ("err", exc)
 
