@@ -255,6 +255,11 @@ def backfill_vote_pinnacle(db_path: str | Path) -> int:
                     "SELECT psc_home, psc_draw, psc_away, ou_line FROM odds_snapshots "
                     "WHERE home_team = ? AND away_team = ? AND psc_home > 1 AND psc_draw > 1 "
                     "AND psc_away > 1 AND substr(match_date, 1, 10) BETWEEN ? AND ? "
+                    # 体检 B1 — never pin an IN-PLAY snapshot as the close: a leading
+                    # team's live line (1.06/…/53.96) already poisoned this table once
+                    # (Mexico-Ecuador). Skip snapshots captured at/after kickoff; NULL
+                    # kickoff (pre-2026-07-01 rows) can't be judged so are kept.
+                    "AND (kickoff_utc IS NULL OR captured_at < kickoff_utc) "
                     "ORDER BY captured_at DESC LIMIT 1",
                     (r["home_team"], r["away_team"], lo, hi)).fetchone()
                 if pin:

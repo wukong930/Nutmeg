@@ -39,16 +39,20 @@ def _pinn_close(conn: sqlite3.Connection, row: dict) -> tuple | None:
     the grid for 'hhad'. By fixture_id, then by (date, teams), then a national-team
     alias fallback (Czech Republic↔Czechia &c)."""
     cols = "psc_home, psc_draw, psc_away, psc_over, psc_under, ou_line"
+    # 体检 B2 — the CLOSE must be a PRE-kickoff line; skip in-play snapshots
+    # (a leading team's live line 1.06/…/53.96 would fake CLV). NULL kickoff
+    # (pre-2026-07-01 rows) can't be judged → kept, as before.
+    _pre_ko = "AND (kickoff_utc IS NULL OR captured_at < kickoff_utc) "
     if row.get("fixture_id"):
         r = conn.execute(
             f"SELECT {cols} FROM odds_snapshots "
-            "WHERE fixture_id=? ORDER BY captured_at DESC, id DESC LIMIT 1",
+            f"WHERE fixture_id=? {_pre_ko}ORDER BY captured_at DESC, id DESC LIMIT 1",
             (row["fixture_id"],)).fetchone()
         if r:
             return r
     r = conn.execute(
         f"SELECT {cols} FROM odds_snapshots "
-        "WHERE match_date=? AND home_team=? AND away_team=? "
+        f"WHERE match_date=? AND home_team=? AND away_team=? {_pre_ko}"
         "ORDER BY captured_at DESC, id DESC LIMIT 1",
         (row["match_date"], row["home_team"], row["away_team"])).fetchone()
     if r:
@@ -72,7 +76,8 @@ def _alias_close(conn: sqlite3.Connection, row: dict, cols: str) -> tuple | None
         return None
     rows = conn.execute(
         f"SELECT {cols}, home_team, away_team FROM odds_snapshots "
-        "WHERE match_date=? ORDER BY captured_at DESC, id DESC",
+        "WHERE match_date=? AND (kickoff_utc IS NULL OR captured_at < kickoff_utc) "
+        "ORDER BY captured_at DESC, id DESC",  # 体检 B2 — pre-kickoff only
         (row["match_date"],)).fetchall()
     hits = [r for r in rows
             if lookup_elo_code(r[6]) == hc and lookup_elo_code(r[7]) == ac]
@@ -133,12 +138,12 @@ def analyze(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         ensure_jingcai_sp_table(conn)
-        # tolerate a fresh DB with no odds_snapshots yet
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS odds_snapshots (id INTEGER PRIMARY KEY, "
-            "captured_at TEXT, fixture_id INTEGER, match_date TEXT, home_team TEXT, "
-            "away_team TEXT, psc_home REAL, psc_draw REAL, psc_away REAL, "
-            "psc_over REAL, psc_under REAL, ou_line REAL)")
+        # tolerate a fresh DB with no odds_snapshots yet — use the canonical DDL
+        # so it never drifts from the real schema (it lacked kickoff_utc, which
+        # the 体检 B2 pre-kickoff guard needs — a hand-copied DDL is exactly how
+        # that drift happened).
+        from nutmeg.v4.observation.odds_snapshots import ensure_odds_snapshots
+        ensure_odds_snapshots(conn)
         rows = fetch_jingcai_sp(db_path, settled=True)
         candidates: list[dict] = []
         no_close = 0

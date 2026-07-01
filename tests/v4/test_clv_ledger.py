@@ -9,16 +9,14 @@ from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
 
 
 def _seed_close(db, date, h, a, psc):
+    from nutmeg.v4.observation.odds_snapshots import ensure_odds_snapshots
     with sqlite3.connect(db) as c:
-        c.execute("CREATE TABLE IF NOT EXISTS odds_snapshots (id INTEGER PRIMARY KEY, "
-                  "captured_at TEXT, fixture_id INTEGER, match_date TEXT, home_team TEXT, "
-                  "away_team TEXT, psc_home REAL, psc_draw REAL, psc_away REAL, "
-                  "psc_over REAL, psc_under REAL, ou_line REAL)")
-        c.execute("INSERT INTO odds_snapshots (captured_at, match_date, home_team, "
-                  "away_team, psc_home, psc_draw, psc_away, psc_over, psc_under, ou_line) "
-                  "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                  ("2026-01-01T00:00:00+00:00", date, h, a, psc[0], psc[1], psc[2],
-                   1.9, 1.9, 2.5))
+        ensure_odds_snapshots(c)   # canonical schema (avoids partial-DDL drift)
+        c.execute("INSERT INTO odds_snapshots (source, league, captured_at, match_date, "
+                  "home_team, away_team, psc_home, psc_draw, psc_away, psc_over, "
+                  "psc_under, ou_line) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                  ("closing", "WC", "2026-01-01T00:00:00+00:00", date, h, a,
+                   psc[0], psc[1], psc[2], 1.9, 1.9, 2.5))
 
 
 def test_tier_boundaries():

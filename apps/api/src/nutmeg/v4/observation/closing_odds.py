@@ -39,6 +39,11 @@ def _parse_iso(s: str | None) -> datetime | None:
 # otherwise. Extend as new ones appear in the closing run's "unmatched" log.
 _ODDS_API_ALIAS: dict[str, str] = {
     "DR Congo": "Congo DR",
+    # 体检 B3 (2026-07-01, measured): every other source (竞彩, cup_market,
+    # predict_log, jingcai_sp) + the elo table spell it "Cape Verde Islands"; only
+    # the Odds-API closing capture wrote the outlier "Cape Verde", so the freshest
+    # anchor silently un-joined jingcai_vote (Argentina v Cape Verde Islands).
+    "Cape Verde": "Cape Verde Islands",
 }
 
 

@@ -96,9 +96,10 @@ def test_backfill_pinnacle_team_date_tolerant_latest_wins(tmp_path):
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE odds_snapshots (captured_at TEXT, match_date TEXT, "
                      "home_team TEXT, away_team TEXT, psc_home REAL, psc_draw REAL, "
-                     "psc_away REAL, ou_line REAL)")
+                     "psc_away REAL, ou_line REAL, kickoff_utc TEXT)")
         conn.executemany(
-            "INSERT INTO odds_snapshots VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO odds_snapshots (captured_at, match_date, home_team, away_team, "
+            "psc_home, psc_draw, psc_away, ou_line) VALUES (?,?,?,?,?,?,?,?)",
             [("2026-06-30T10:00:00", "2026-06-30", "France", "Sweden", 1.30, 5.0, 9.0, 2.5),
              ("2026-06-30T18:00:00", "2026-06-30", "France", "Sweden", 1.18, 5.9, 11.0, 2.5)])
 

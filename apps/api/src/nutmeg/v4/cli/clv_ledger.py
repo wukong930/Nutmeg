@@ -119,11 +119,11 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         ensure_jingcai_sp_table(conn)
-        conn.execute(  # tolerate a fresh DB with no odds_snapshots yet
-            "CREATE TABLE IF NOT EXISTS odds_snapshots (id INTEGER PRIMARY KEY, "
-            "captured_at TEXT, fixture_id INTEGER, match_date TEXT, home_team TEXT, "
-            "away_team TEXT, psc_home REAL, psc_draw REAL, psc_away REAL, "
-            "psc_over REAL, psc_under REAL, ou_line REAL)")
+        # tolerate a fresh DB with no odds_snapshots yet — canonical DDL so it
+        # never drifts (the hand-copied one lacked kickoff_utc, breaking the
+        # 体检 B2 pre-kickoff guard).
+        from nutmeg.v4.observation.odds_snapshots import ensure_odds_snapshots
+        ensure_odds_snapshots(conn)
         raw = conn.execute(
             "SELECT match_date, home_team, away_team, fixture_id, league, market, "
             "captured_at, jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, "

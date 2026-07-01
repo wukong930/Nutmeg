@@ -38,8 +38,8 @@ def _make_db(tmp_path, jc_rows, snap_rows):
     )
     con.execute(
         "CREATE TABLE odds_snapshots (match_date TEXT, home_team TEXT, "
-        "away_team TEXT, captured_at TEXT, psc_home REAL, psc_draw REAL, "
-        "psc_away REAL, psc_over REAL, psc_under REAL, ou_line REAL)"
+        "away_team TEXT, captured_at TEXT, kickoff_utc TEXT, psc_home REAL, "
+        "psc_draw REAL, psc_away REAL, psc_over REAL, psc_under REAL, ou_line REAL)"
     )
     con.executemany(
         f"INSERT INTO jingcai_sp ({_JC_COLS}) VALUES "
