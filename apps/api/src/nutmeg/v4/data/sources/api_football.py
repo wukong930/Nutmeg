@@ -27,7 +27,7 @@ import json
 import logging
 import threading
 import time
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +49,17 @@ _RETRY_AFTER_CAP_SECONDS = 10.0
 log = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = Path("data/external/api_football")
+
+# Upcoming fixtures are still being scheduled/confirmed by API-Football, so a
+# cached fixtures-by-date result for today-or-later can go stale: a not-yet-listed
+# match appears days later, but our "permanent-until-refresh" cache keeps serving
+# the old (often EMPTY) result forever. That silently dropped the whole World Cup
+# from 近期赛事 (2026-07-01: an empty WC list cached before the fixtures were
+# confirmed masked them). So for today-or-later dates we refetch a cache older
+# than this TTL; past dates are settled and cache forever. 6h keeps the active
+# betting window fresh while bounding refetch cost (~100 league×date combos ×
+# 4/day ≪ the 7.5k/day quota).
+_UPCOMING_FIXTURE_TTL_SECONDS = 6 * 3600
 
 
 class ApiFootballError(RuntimeError):
@@ -301,6 +312,17 @@ def fetch_fixtures_for_date(
         # calendar-year leagues (J1 etc.) use the date's year. See
         # season_for_date — getting this wrong returns 0 fixtures.
         params["season"] = season_for_date(on_date, league_canonical)
+    # Today-or-later fixtures are still being confirmed → a stale (often empty)
+    # cache can mask a not-yet-listed match indefinitely. Force-refresh a cache
+    # older than the TTL; if that refetch fails (network down), fall through to
+    # the normal cached read so we're never worse than the permanent cache.
+    if not refresh and on_date >= datetime.now(UTC).date():
+        cf = _cache_path("/fixtures", params, Path(cache_dir))
+        if cf.exists() and time.time() - cf.stat().st_mtime > _UPCOMING_FIXTURE_TTL_SECONDS:
+            try:
+                return _request("/fixtures", params, cache_dir=cache_dir, refresh=True)
+            except ApiFootballError:
+                pass  # keep the stale cache rather than break the board
     return _request("/fixtures", params, cache_dir=cache_dir, refresh=refresh)
 
 

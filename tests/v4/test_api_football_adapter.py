@@ -340,3 +340,82 @@ class TestSeasonForDate:
         monkeypatch.setattr(api_football, "_request", fake_request)
         api_football.fetch_fixtures_for_date(dt.date(2026, 5, 30), "JPN_J1", cache_dir=tmp_path)
         assert captured["season"] == 2026   # not 2025
+
+
+class TestUpcomingFixtureTTL:
+    """近期赛事 stale-cache bug (2026-07-01): an EMPTY WC fixtures result, cached
+    days earlier before API-Football confirmed the matches, masked the whole World
+    Cup from the market-mode board — the cache is permanent-until-refresh and the
+    gather calls with refresh_fixtures=False, so it served the empty list forever.
+
+    Fix: a today-or-later fixtures-by-date cache older than the TTL is refetched;
+    past dates are settled → cache forever; a failed refetch falls back to the
+    stale cache (never worse than the old permanent-cache behavior).
+    """
+
+    def _seed(self, tmp_path, on_date, age_hours):
+        """Create the /fixtures cache file for (on_date, WC) with a given mtime age.
+        Content is irrelevant — the fix only inspects existence + mtime."""
+        import os
+        import time
+        params = {"date": on_date.isoformat(),
+                  "league": api_football.league_id("WC"),
+                  "season": api_football.season_for_date(on_date, "WC")}
+        cf = api_football._cache_path("/fixtures", params, tmp_path)
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        cf.write_text(json.dumps([]))       # empty = the exact bug shape
+        t = time.time() - age_hours * 3600
+        os.utime(cf, (t, t))
+        return cf
+
+    @staticmethod
+    def _record_request(monkeypatch, *, on_refresh, stale=None, raise_on_refresh=False):
+        calls: list[bool] = []
+
+        def fake_request(endpoint, params, *, cache_dir=None, refresh=False, **kw):
+            calls.append(refresh)
+            if refresh:
+                if raise_on_refresh:
+                    raise api_football.ApiFootballError("network down")
+                return on_refresh
+            return stale if stale is not None else []
+
+        monkeypatch.setattr(api_football, "_request", fake_request)
+        return calls
+
+    def test_stale_empty_upcoming_refetches(self, tmp_path, monkeypatch):
+        import datetime as dt
+        upcoming = dt.datetime.now(dt.UTC).date() + dt.timedelta(days=2)
+        self._seed(tmp_path, upcoming, age_hours=7)          # older than the 6h TTL
+        fresh = [{"fixture": {"id": 42}}]
+        calls = self._record_request(monkeypatch, on_refresh=fresh)
+        out = api_football.fetch_fixtures_for_date(upcoming, "WC", cache_dir=tmp_path)
+        assert out == fresh          # the not-yet-listed match now surfaces
+        assert True in calls         # a refresh=True refetch was forced
+
+    def test_fresh_upcoming_cache_not_refetched(self, tmp_path, monkeypatch):
+        import datetime as dt
+        upcoming = dt.datetime.now(dt.UTC).date() + dt.timedelta(days=2)
+        self._seed(tmp_path, upcoming, age_hours=1)          # within the TTL
+        calls = self._record_request(monkeypatch, on_refresh=[{"fixture": {"id": 99}}])
+        api_football.fetch_fixtures_for_date(upcoming, "WC", cache_dir=tmp_path)
+        assert calls == [False]      # no forced refresh → saves the API call
+
+    def test_past_date_stale_cache_not_refetched(self, tmp_path, monkeypatch):
+        import datetime as dt
+        past = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=30)
+        self._seed(tmp_path, past, age_hours=7)              # stale, but settled
+        calls = self._record_request(monkeypatch, on_refresh=[{"fixture": {"id": 7}}])
+        api_football.fetch_fixtures_for_date(past, "WC", cache_dir=tmp_path)
+        assert calls == [False]      # past fixtures never change → permanent cache
+
+    def test_failed_refetch_falls_back_to_stale_cache(self, tmp_path, monkeypatch):
+        import datetime as dt
+        upcoming = dt.datetime.now(dt.UTC).date() + dt.timedelta(days=2)
+        self._seed(tmp_path, upcoming, age_hours=7)
+        stale = [{"fixture": {"id": 1}}]
+        calls = self._record_request(
+            monkeypatch, on_refresh=None, stale=stale, raise_on_refresh=True)
+        out = api_football.fetch_fixtures_for_date(upcoming, "WC", cache_dir=tmp_path)
+        assert out == stale          # network down → stale beats crashing the board
+        assert calls == [True, False]  # tried refresh, fell back to the cached read
