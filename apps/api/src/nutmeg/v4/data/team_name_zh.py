@@ -683,6 +683,28 @@ TEAM_NAME_ZH.update(_NATIONAL_TEAMS)
 # frontend looks up the raw name first. Do NOT alias to "Red Star" (the dict's
 # "Red Star" is Paris Red Star, NOT Crvena Zvezda).
 _V12_W7_CUP_AND_VARIANTS = {
+    # ── UCL/UECL 资格赛小国冠军 (2026-07, 待开盘常客) ──
+    "Lincoln Red Imps FC": "林肯红魔",
+    "Inter Club d'Escaldes": "埃斯卡尔德斯国际",
+    "Ararat-Armenia": "阿拉拉特-亚美尼亚",
+    "Riga": "里加",
+    "Kauno Žalgiris": "考纳斯萨尔吉里斯",
+    "Drita": "德里塔",
+    "Sabah FA": "萨巴赫",
+    "Vardar Skopje": "瓦尔达尔",
+    "Floriana": "弗洛里亚纳",
+    "Tre Fiori": "特雷菲奥里",
+    "Larne": "拉恩",
+    "Borac Banja Luka": "巴尼亚卢卡博拉茨",
+    "Levski Sofia": "索菲亚列夫斯基",
+    "KI Klaksvik": "克拉克斯维克",
+    "Atert Bissen": "阿特尔特比森",
+    "Vikingur Reykjavik": "维京雷克雅未克",
+    "Gyori ETO FC": "杰尔ETO",
+    "UNA Strassen": "斯特拉森",
+    "La Fiorita": "拉菲奥里塔",
+    "AF Elbasani": "埃尔巴萨尼",
+    "Bate Borisov": "BATE鲍里索夫",
     # ── J1 (short names) ──
     "Kashima": "鹿岛鹿角",
     "Fagiano Okayama": "冈山绿雉",
