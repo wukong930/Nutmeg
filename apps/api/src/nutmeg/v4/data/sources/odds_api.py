@@ -413,6 +413,10 @@ def fetch_pinnacle_lookup(
             "psc_home": ph, "psc_draw": h2h["draw"], "psc_away": pa,
             "ou_line": None, "psc_over": None, "psc_under": None,
             "last_update": pin.get("last_update"),
+            # Scheduled kickoff — lets the closing-line capture skip already-started
+            # matches, whose Pinnacle odds have flipped to LIVE (a leading team →
+            # degenerate 1.06/53.96 line) and must not be recorded as a "close".
+            "commence_time": e.get("commence_time"),
         }
         tot = _extract_totals(pin)
         if tot:
