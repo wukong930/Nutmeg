@@ -153,3 +153,27 @@ def test_incomplete_odds_dropped(monkeypatch):
     monkeypatch.setattr(sporttery, "_request", lambda *a, **k: bad)
     m = sporttery.fetch_lottery_matches()[0]
     assert m["had"] is None and m["hhad"] is None
+
+
+class TestOdds3SanityGuard:
+    """体检 A3 (2026-07-01) — 竞彩 SP is the ×SP term in EV; a freeze/placeholder
+    artifact ('0'/'999') must not be stored as a real odds line (real SP: 1.13–13.5)."""
+
+    def test_valid_pool_parses(self):
+        assert sporttery._odds3({"h": "1.85", "d": "3.4", "a": "4.2"}) == (1.85, 3.4, 4.2)
+
+    def test_rejects_sub_unity(self):
+        assert sporttery._odds3({"h": "0", "d": "3.4", "a": "4.2"}) is None
+        assert sporttery._odds3({"h": "1.0", "d": "3.4", "a": "4.2"}) is None
+        assert sporttery._odds3({"h": "0.3", "d": "3.4", "a": "4.2"}) is None
+
+    def test_rejects_absurd(self):
+        assert sporttery._odds3({"h": "1.85", "d": "3.4", "a": "9999"}) is None
+
+    def test_rejects_negative_and_nonnumeric(self):
+        assert sporttery._odds3({"h": "-2", "d": "3.4", "a": "4.2"}) is None
+        assert sporttery._odds3({"h": "x", "d": "3.4", "a": "4.2"}) is None
+
+    def test_incomplete_pool_is_none(self):
+        assert sporttery._odds3(None) is None
+        assert sporttery._odds3({"h": "1.85"}) is None

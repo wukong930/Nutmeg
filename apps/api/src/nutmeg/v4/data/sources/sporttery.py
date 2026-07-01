@@ -23,6 +23,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import re
 import time
 from datetime import UTC, datetime, timedelta
@@ -218,12 +219,19 @@ def fetch_vote_support(
 
 
 def _odds3(pool: dict | None):
-    """(h, d, a) floats from a had/hhad pool, or None if incomplete."""
+    """(h, d, a) floats from a had/hhad pool, or None if incomplete/implausible."""
     if not pool:
         return None
     try:
         h, d, a = float(pool["h"]), float(pool["d"]), float(pool["a"])
     except (KeyError, TypeError, ValueError):
+        return None
+    # 体检 A3 — 竞彩 SP is the ×SP multiplier in EV = P×SP−1, so a freeze/placeholder
+    # artifact (a '0' or '999' from the undocumented endpoint) would fabricate EV.
+    # A fixed-odds decimal must exceed the stake; real 竞彩 SP measured 1.13–13.5.
+    # Reject the physically-impossible (≤1.0 / non-finite / absurd) as an incomplete
+    # pool rather than store a garbage line.
+    if not all(math.isfinite(x) and 1.0 < x <= 1000.0 for x in (h, d, a)):
         return None
     return (h, d, a)
 

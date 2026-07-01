@@ -130,6 +130,19 @@ def _data_freshness() -> list[dict]:
                     rows.append({"table": table, "label": label, "rows": None, "last": None})
     except Exception as e:  # noqa: BLE001
         return [{"error": str(e)}]
+    # 体检 E1 — score_ev_forward.db is a SEPARATE forward-only DB (3 crons write
+    # score_ev_flags). It was absent from this panel, so a silent stall of those
+    # crons would show all-green while forward-only data bled. Read-only URI so a
+    # missing file never creates a spurious DB.
+    sef = Path(str(db)).with_name("score_ev_forward.db")
+    label = "外盘 EV 前向记录 (score_ev_forward.db)"
+    try:
+        with sqlite3.connect(f"file:{sef}?mode=ro", uri=True) as c2:
+            n, last = c2.execute(
+                "SELECT COUNT(*), MAX(captured_at) FROM score_ev_flags").fetchone()
+            rows.append({"table": "score_ev_flags", "label": label, "rows": n, "last": last})
+    except Exception:  # noqa: BLE001 — missing DB/table on a fresh setup
+        rows.append({"table": "score_ev_flags", "label": label, "rows": None, "last": None})
     return rows
 
 
