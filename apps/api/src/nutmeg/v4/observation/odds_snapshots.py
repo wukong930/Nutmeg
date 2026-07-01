@@ -23,10 +23,37 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import math
 import sqlite3
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+# A decimal odd must exceed the stake (>1.0); the ceiling is generous — even a
+# minnow's 1X2 away leg vs a giant stays well under it. This is the last-line
+# backstop that keeps physically-impossible / corrupt odds out of the shared
+# CLV + soft-water sink regardless of which producer emits them (2026-07-01
+# audit A1: the sink accepted 1.06/…/53.96, psc=0.5, psc=−3.0). NOTE this does
+# NOT reject a numerically-plausible in-play line by value alone (1.06/15/53.96
+# is a valid-looking triple) — that is a distinct concern handled by the
+# kickoff/commence_time guards in the closing capture, the overlay, and the
+# jingcai_vote / clv readers.
+_MIN_ODDS = 1.0
+_MAX_ODDS = 1000.0
+
+
+def _sane_odds(*vals: object) -> bool:
+    """True iff every non-None value parses to a finite decimal odd in (1.0, 1000]."""
+    for v in vals:
+        if v is None:
+            continue
+        try:
+            f = float(v)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(f) or f <= _MIN_ODDS or f > _MAX_ODDS:
+            return False
+    return True
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS odds_snapshots (
@@ -97,6 +124,15 @@ def record_row_snapshot(
         psc_away = row.get("psc_away")
         if psc_home is None or psc_draw is None or psc_away is None:
             return False  # 待开盘 — nothing quotable to snapshot
+        if not _sane_odds(psc_home, psc_draw, psc_away,
+                          row.get("psc_over25"), row.get("psc_under25")):
+            log.warning(
+                "rejecting impossible odds %s/%s/%s (o/u %s/%s) for %s vs %s "
+                "[source=%s] — physically-invalid line kept out of the CLV sink",
+                psc_home, psc_draw, psc_away, row.get("psc_over25"),
+                row.get("psc_under25"), row.get("home_team"),
+                row.get("away_team"), source)
+            return False
 
         ah_json: str | None = None
         if envelope is not None:

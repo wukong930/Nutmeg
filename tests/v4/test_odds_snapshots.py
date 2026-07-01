@@ -87,6 +87,53 @@ class TestRecordRowSnapshot:
             "/nonexistent_dir_xyz/obs.db", _row(), fixture_id=1) is False
 
 
+class TestOddsSanityGuard:
+    """体检 A1 (2026-07-01) — the shared CLV/soft-water sink must reject
+    physically-impossible odds regardless of which producer emits them. Before
+    the guard it stored 1.06/…/53.96, psc=0.5, psc=−3.0 (all returned True)."""
+
+    def test_rejects_sub_unity_leg(self, tmp_path):
+        # insert one valid row first so the table exists, then prove the bad one
+        # is rejected AND does not append
+        db = tmp_path / "obs.db"
+        assert record_row_snapshot(db, _row(), fixture_id=101)
+        assert record_row_snapshot(db, _row(psc_home=0.5), fixture_id=102) is False
+        assert len(_all(db)) == 1
+
+    def test_rejects_negative_leg(self, tmp_path):
+        db = tmp_path / "obs.db"
+        assert record_row_snapshot(db, _row(psc_draw=-3.0), fixture_id=101) is False
+
+    def test_rejects_exactly_one(self, tmp_path):
+        # a decimal odd of 1.0 means zero payout over stake — impossible
+        db = tmp_path / "obs.db"
+        assert record_row_snapshot(db, _row(psc_away=1.0), fixture_id=101) is False
+
+    def test_rejects_nan_and_inf(self, tmp_path):
+        db = tmp_path / "obs.db"
+        assert record_row_snapshot(db, _row(psc_home=float("nan")), fixture_id=1) is False
+        assert record_row_snapshot(db, _row(psc_home=float("inf")), fixture_id=2) is False
+
+    def test_rejects_absurd_ceiling(self, tmp_path):
+        db = tmp_path / "obs.db"
+        assert record_row_snapshot(db, _row(psc_away=5000.0), fixture_id=101) is False
+
+    def test_rejects_impossible_ou_leg(self, tmp_path):
+        db = tmp_path / "obs.db"
+        assert record_row_snapshot(db, _row(psc_over25=0.4), fixture_id=101) is False
+
+    def test_accepts_legit_deep_mismatch(self, tmp_path):
+        # A genuine minnow-vs-giant pre-match line (short fav + long dog) is
+        # numerically indistinguishable from an in-play degenerate line by value,
+        # so the sink guard MUST pass it — in-play detection is the kickoff/
+        # commence_time guards' job (closing capture + overlay + readers), NOT
+        # this odds-sanity backstop. Guarding this here would drop real lines.
+        db = tmp_path / "obs.db"
+        assert record_row_snapshot(
+            db, _row(psc_home=1.03, psc_draw=17.0, psc_away=60.0), fixture_id=101)
+        assert len(_all(db)) == 1
+
+
 class TestGatherRowsHook:
     """The _gather_rows choke point feeds snapshots (one hook → every flow)."""
 
