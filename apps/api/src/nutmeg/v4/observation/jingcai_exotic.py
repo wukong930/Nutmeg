@@ -110,7 +110,7 @@ def settle_exotic_sp(
     Mirrors ``settle_jingcai_sp``: pull the day's fixtures, match by normalized team
     name, then per market mark the winning outcome ``hit=1`` and the rest ``hit=0``.
     Returns the number of rows newly settled."""
-    from nutmeg.utils.team_canonical import normalize_name
+    from nutmeg.v4.data.national_alias import national_match_key
     from nutmeg.v4.observation.prediction_log import _ft_outcome
 
     if fetch_fixtures is None:
@@ -149,15 +149,15 @@ def settle_exotic_sp(
                 continue
             for fx in fixtures:
                 teams = fx.get("teams") or {}
-                h = normalize_name((teams.get("home") or {}).get("name", ""))
-                a = normalize_name((teams.get("away") or {}).get("name", ""))
+                h = national_match_key((teams.get("home") or {}).get("name", ""))
+                a = national_match_key((teams.get("away") or {}).get("name", ""))
                 if h and a:
                     idx[(date_str, h, a)] = fx
 
         now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         settled = 0
         for (md, home, away), grp in by_match.items():
-            fx = idx.get((md, normalize_name(home), normalize_name(away)))
+            fx = idx.get((md, national_match_key(home), national_match_key(away)))
             if not fx:
                 continue
             res = _ft_outcome(fx)

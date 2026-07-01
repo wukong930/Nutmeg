@@ -177,6 +177,8 @@ def settle_league_predictions(
         def fetch_fixtures(d: dt.date, league: str) -> list[dict]:  # type: ignore[misc]
             return fetch_fixtures_for_date(d, league, refresh=True)
 
+    from nutmeg.v4.data.national_alias import national_match_key
+
     today = today or dt.datetime.now(dt.UTC).date()
     settled = 0
     with open_db(db_path) as conn:
@@ -210,9 +212,11 @@ def settle_league_predictions(
                 hn = (teams.get("home") or {}).get("name")
                 an = (teams.get("away") or {}).get("name")
                 if hn and an:
-                    by_pair[(hn, an)] = fx
+                    # national_match_key on BOTH sides — a bare-string join here
+                    # never settled 'Czech Republic' (竞彩) vs 'Czechia' (API).
+                    by_pair[(national_match_key(hn), national_match_key(an))] = fx
             for h, a in pairs:
-                fx = by_pair.get((h, a))
+                fx = by_pair.get((national_match_key(h), national_match_key(a)))
                 if fx is None:
                     continue
                 res = _ft_outcome(fx)

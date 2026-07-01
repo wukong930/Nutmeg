@@ -224,7 +224,7 @@ def settle_jingcai_sp(
     90' FT score + outcome (0 home / 1 draw / 2 away). ``fetch_fixtures(date)``
     takes a ``date`` object and is injectable for tests; the default pulls all of
     that day's API-Football fixtures. Returns the number of rows newly settled."""
-    from nutmeg.utils.team_canonical import normalize_name
+    from nutmeg.v4.data.national_alias import national_match_key
     from nutmeg.v4.observation.prediction_log import _ft_outcome
 
     if fetch_fixtures is None:
@@ -263,12 +263,13 @@ def settle_jingcai_sp(
             index: dict[tuple[str, str], dict] = {}
             for fx in fixtures:
                 teams = (fx.get("teams") or {})
-                h = normalize_name((teams.get("home") or {}).get("name", ""))
-                a = normalize_name((teams.get("away") or {}).get("name", ""))
+                h = national_match_key((teams.get("home") or {}).get("name", ""))
+                a = national_match_key((teams.get("away") or {}).get("name", ""))
                 if h and a:
                     index[(h, a)] = fx
             for r in drows:
-                fx = index.get((normalize_name(r["home_team"]), normalize_name(r["away_team"])))
+                fx = index.get(
+                    (national_match_key(r["home_team"]), national_match_key(r["away_team"])))
                 if not fx:
                     continue
                 res = _ft_outcome(fx)
