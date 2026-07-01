@@ -694,3 +694,30 @@ class TestCsvWrite:
         for col in ("handicap_home", "odds_1x2_H", "odds_1x2_D", "odds_1x2_A",
                     "odds_handicap_H", "odds_handicap_D", "odds_handicap_A"):
             assert col in CSV_COLUMNS
+
+
+def test_overlay_skips_started_match_live_odds():
+    """体检 A2 (2026-07-01) — the odds_api overlay must NOT patch a match that has
+    already kicked off: post-KO the Odds API serves in-play odds (a leading team →
+    a degenerate 1.06/53.96 line). Pre-KO it patches; post-KO it skips."""
+    import datetime as dt
+
+    from nutmeg.v4.cli.ingest_odds import _apply_odds_api_overlay
+    from nutmeg.v4.data.sources.odds_api import _norm_team
+
+    row = {"home_team": "Mexico", "away_team": "Ecuador", "date": "2026-08-01",
+           "psc_home": 2.0, "psc_draw": 3.2, "psc_away": 3.8}
+    rec = {"psc_home": 1.06, "psc_draw": 15.0, "psc_away": 53.96,  # in-play line
+           "ou_line": None, "last_update": "x",
+           "commence_time": "2026-08-01T18:00:00Z"}
+    oa = {(_norm_team("Mexico"), _norm_team("Ecuador"), "2026-08-01"): rec}
+
+    pre = dict(row)
+    assert _apply_odds_api_overlay(
+        pre, oa, now=dt.datetime(2026, 8, 1, 12, 0, tzinfo=dt.UTC)) is True
+    assert pre["psc_home"] == 1.06   # pre-KO → overlaid
+
+    post = dict(row)
+    assert _apply_odds_api_overlay(
+        post, oa, now=dt.datetime(2026, 8, 1, 20, 0, tzinfo=dt.UTC)) is False
+    assert post["psc_home"] == 2.0   # post-KO → skipped, row untouched

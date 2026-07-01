@@ -344,6 +344,20 @@ def fetch_fixtures_for_league_season(
         "league": league_id(league_canonical),
         "season": season,
     }
+    # Same staleness class as fetch_fixtures_for_date (fixed 2026-07-01): a
+    # still-active season keeps gaining confirmed fixtures, but the permanent
+    # cache froze them — the WC-vanish bug reachable via this un-hardened path
+    # (previously only saved by daily_wc_settle's --refresh coupling). Refresh a
+    # cache older than the TTL for the current/recent season (start year ≥ last
+    # year also covers in-progress European Aug–May seasons); older seasons are
+    # settled → cache forever. Network-fail → fall back to the stale cache.
+    if not refresh and season >= datetime.now(UTC).year - 1:
+        cf = _cache_path("/fixtures", params, Path(cache_dir))
+        if cf.exists() and time.time() - cf.stat().st_mtime > _UPCOMING_FIXTURE_TTL_SECONDS:
+            try:
+                return _request("/fixtures", params, cache_dir=cache_dir, refresh=True)
+            except ApiFootballError:
+                pass
     return _request("/fixtures", params, cache_dir=cache_dir, refresh=refresh)
 
 

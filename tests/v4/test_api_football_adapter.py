@@ -419,3 +419,47 @@ class TestUpcomingFixtureTTL:
         out = api_football.fetch_fixtures_for_date(upcoming, "WC", cache_dir=tmp_path)
         assert out == stale          # network down → stale beats crashing the board
         assert calls == [True, False]  # tried refresh, fell back to the cached read
+
+
+class TestLeagueSeasonTTL:
+    """体检 F2 (2026-07-01) — fetch_fixtures_for_league_season is the un-hardened
+    sibling of the WC-vanish fix: a still-active season keeps gaining fixtures but
+    the permanent cache froze them. Current/recent season → refetch a stale cache;
+    old (settled) season → cache forever."""
+
+    def _seed(self, tmp_path, season, age_hours):
+        import os
+        import time
+        params = {"league": api_football.league_id("WC"), "season": season}
+        cf = api_football._cache_path("/fixtures", params, tmp_path)
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        cf.write_text(json.dumps([]))
+        t = time.time() - age_hours * 3600
+        os.utime(cf, (t, t))
+
+    @staticmethod
+    def _calls(monkeypatch, on_refresh):
+        calls: list[bool] = []
+
+        def fake_request(endpoint, params, *, cache_dir=None, refresh=False, **kw):
+            calls.append(refresh)
+            return on_refresh if refresh else []
+
+        monkeypatch.setattr(api_football, "_request", fake_request)
+        return calls
+
+    def test_stale_current_season_refetches(self, tmp_path, monkeypatch):
+        import datetime as dt
+        yr = dt.datetime.now(dt.UTC).year
+        self._seed(tmp_path, yr, age_hours=7)
+        fresh = [{"fixture": {"id": 42}}]
+        calls = self._calls(monkeypatch, fresh)
+        out = api_football.fetch_fixtures_for_league_season("WC", yr, cache_dir=tmp_path)
+        assert out == fresh
+        assert True in calls
+
+    def test_old_season_never_refetches(self, tmp_path, monkeypatch):
+        self._seed(tmp_path, 2020, age_hours=7)   # settled long ago
+        calls = self._calls(monkeypatch, [{"fixture": {"id": 7}}])
+        api_football.fetch_fixtures_for_league_season("WC", 2020, cache_dir=tmp_path)
+        assert calls == [False]   # permanent cache for a finished season

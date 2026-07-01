@@ -108,7 +108,8 @@ def _iso_newer(a: str | None, b: str | None) -> bool:
         return False
 
 
-def _apply_odds_api_overlay(row: dict, oa_lookup: dict) -> bool:
+def _apply_odds_api_overlay(row: dict, oa_lookup: dict,
+                            *, now: dt.datetime | None = None) -> bool:
     """Patch a row's Pinnacle 1X2 (+ O/U) from the fresher Odds API line when it
     covers this fixture. API-Football keeps identity/results; we swap only the
     PRICE — and only when Odds API is fresher, or AF had no line (待开盘 fill).
@@ -118,6 +119,21 @@ def _apply_odds_api_overlay(row: dict, oa_lookup: dict) -> bool:
                          _norm_team(row.get("away_team")), row.get("date")))
     if not rec or rec.get("psc_home") is None:
         return False
+    # 体检 A2 — never overlay a LIVE line. Once a match kicks off the Odds API
+    # serves in-play odds (a leading team → a degenerate 1.06/53.96); skip so we
+    # don't overwrite the last pre-match line with live odds. Belt-and-suspenders
+    # behind _gather_rows's kickoff buffer (0 on the manual/default path, and
+    # bypassable by a malformed AF fixture.date).
+    commence = rec.get("commence_time")
+    if commence:
+        try:
+            ko = dt.datetime.fromisoformat(commence.replace("Z", "+00:00"))
+            if ko.tzinfo is None:
+                ko = ko.replace(tzinfo=dt.UTC)
+            if ko <= (now or dt.datetime.now(dt.UTC)):
+                return False
+        except (ValueError, TypeError):
+            pass
     # V14 — PREFER the Odds API Pinnacle line whenever it covers this fixture.
     # A measured head-to-head (荷兰–摩洛哥 WC, 2026-06-29) showed it matched
     # Pinnacle.com exactly while API-Football's mirror drifted (off 1X2 + a
@@ -327,7 +343,7 @@ def _gather_rows(
             if envelope is not None:
                 row["sharp_flip"] = _sharp_consensus(_sharp_per_book(envelope)).pinnacle_flip
             # 体检 — overlay the fresher Pinnacle line where Odds API has it.
-            if oa_lookup and _apply_odds_api_overlay(row, oa_lookup):
+            if oa_lookup and _apply_odds_api_overlay(row, oa_lookup, now=now_utc):
                 n_overlay += 1
             # require_odds re-applied POST-overlay (overlay may have filled psc).
             if require_odds and row.get("psc_home") is None:
