@@ -22,12 +22,15 @@
 - [x] ~~**仪表盘 JS 去 vig → WPO**~~ —— ❌ 划掉(前提陈旧):EV 路径早已用服务端 WPO P(`_spcalcRecalc` 只算 `P×SP−1`),JS 里唯一的 basic 归一 `_devigArgmax1x2` 只挑 argmax 标签、换 WPO 不改结果。无 sub-1pp 缺口。`记忆 devig-js-server-mismatch`
 - [x] **队名 join 卫生(信 CLV 数字前的前提)** —— ✅ 现在能做的已做。CLV 那条 join(`jingcai_sp↔odds_snapshots`)双重覆盖:① **哨兵**(`nutmeg-clv-ledger` 把 `no_close` 拆「名字疑似不配/真没报价/去vig失败」+ 自动报警,commit `ec094de`)② **国家队层别名感知**(`_pinn_close` 走 elo-code 唯一配 + 补 `Czechia/Korea Republic`,commit `792683d`;真库 151→**153/153**)。哨兵实跑当场抓到 `Czech Republic↔Czechia`。**俱乐部别名仍数据门**(秋天对真拼写补,哨兵兜底不静默漏)。`记忆 cross-source-team-name-mismatch`
 - [x] **(可选)⑤ Kelly 补对抗核查** —— ✅ 已做(2026-06-25,两轮多 agent 对抗核查,5 条结论 5/5 已核、39 confirmed)。抓出 3 处改:§1 回撤数字降级为玩具算术、§3「外积」加条件(0-3 否决无条件版)、§4 删错引用 Laureti(改 Baker-McHale + Nekrasov)。结论方向不变:半 Kelly 默认 + 联合 stake 向量 + 强分数/RCK。`docs/kelly_staking_uncertainty_correlation.md`
+- [x] **秋季分析预注册(⭐ 防 forking-paths,§0 收尾件)** —— ✅ 已做(2026-07-02)。闸门管住了联赛间多重检验,但**分析菜单本身**(联赛×切片×玩法×时点=上百种组合)的自由度没人管 → 数据到达前把「确认性(P1 合并 + P2 逐联赛闸门,唯一动钱入口)vs 次级预指定(S1 冻结缺口/S2 散户逆向/S3 玩法差/S4 初终盘/S5 B2 方差门槛,自成 FDR family)vs 探索性(禁动钱)」+ 解锁流程 + kill 规则 + 读数前置全部写死。**顺带修了真雷**:`jingcai_sp` 双 writer 联赛标签分裂(芬超 vs FIN_VEIKKAUSLIIGA 同联赛两组 → 稀释 N + FDR family 多算成员)→ `league_labels.canonical_league` 归一进 `clv_ledger`(fail-open,读数前标签审计兜底)。`docs/autumn_prereg_analysis_plan.md`
 
 ---
 
 ## §1 · 秋天核心测量(数据门:受训联赛复赛 + 攒够已结算腿)
 
 机器已就位(`nutmeg-handicap-triples` + `jingcai_sp` 初/终 + `clv_ledger` + `jingcai_exotic_sp`),到点喂数据即出。
+
+> ⚖️ **确认性/探索性边界以 `docs/autumn_prereg_analysis_plan.md`(预注册 v1.0)为准**:下列 ①–⑥ 里只有「逐联赛 CLV 闸门(P2)」能解锁资金;②③④ 对应预注册 S2/S1/S4(次级,不动钱);数据到达后改口径必须在预注册 Changelog 留痕且只对未读数据生效。
 
 - [ ] **① 按联赛切软水 CLV**:13 个受训欧洲联赛**单独**量(别混 WC/杯/北欧),`jc_* × Pinnacle 收盘 × 捕获 EV`。检验竞彩 SP 在公众钱重的盘上是否真软。`parlay_soft_water_research §8`
 - [ ] **② 按「散户重仓 vs 冷门」切**(🆕 来自竞彩市场研究):竞彩按国内 handle 调线 → 偏差应在**大球队/大球/热门**。**这条可能比只按联赛切更能找到偏差。** `docs/jingcai_market_microstructure.md`

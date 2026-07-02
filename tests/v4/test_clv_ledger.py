@@ -89,6 +89,40 @@ def test_name_join_tripwire_splits_miss_reason(tmp_path):
     assert [m["home"] for m in rep["miss_name"]] == ["Manchester City"]  # name-suspect
 
 
+def test_league_labels_canonicalized_into_one_gate_group(tmp_path):
+    """体检 2026-07-02: sporttery writes CN abbrevs (芬超) while the 记一笔 path
+    writes EN codes (FIN_VEIKKAUSLIIGA) — the SAME league. Selected legs must
+    land in ONE canonical group, or the per-league gate dilutes N and the
+    BHY-FDR family gains a spurious member."""
+    db = str(tmp_path / "obs.db")
+    # same +EV setup as the selected-leg test; two matches, two label vocabularies
+    record_jingcai_sp(db, match_date="2026-08-15", home_team="A", away_team="B",
+                      jc_home=2.0, jc_draw=3.5, jc_away=4.5,
+                      psc_home=1.8, psc_draw=3.6, psc_away=4.8,
+                      market="had", league="芬超")
+    _seed_close(db, "2026-08-15", "A", "B", (1.85, 3.5, 4.6))
+    record_jingcai_sp(db, match_date="2026-08-16", home_team="C", away_team="D",
+                      jc_home=2.0, jc_draw=3.5, jc_away=4.5,
+                      psc_home=1.8, psc_draw=3.6, psc_away=4.8,
+                      market="had", league="FIN_VEIKKAUSLIIGA")
+    _seed_close(db, "2026-08-16", "C", "D", (1.85, 3.5, 4.6))
+    rep = compute_ledger(db, min_ev=0.05)
+    assert len(rep["selected"]) == 2
+    assert {s["league"] for s in rep["selected"]} == {"芬超"}   # ONE group, not two
+
+
+def test_canonical_league_failopen_and_trained_set():
+    from nutmeg.v4.data.league_labels import TRAINED_LEAGUES_CN, canonical_league
+
+    assert canonical_league("EPL") == "英超"
+    assert canonical_league("WC") == "世界杯"
+    assert canonical_league("瑞典超级联赛") == "瑞超"    # vote-table full-name synonym
+    assert canonical_league("芬超") == "芬超"            # already canonical → identity
+    assert canonical_league("KOR_K1_SOMETHING") == "KOR_K1_SOMETHING"  # fail-open
+    assert canonical_league(None) == "(未标联赛)" and canonical_league(" ") == "(未标联赛)"
+    assert len(TRAINED_LEAGUES_CN) == 13 and "日职" in TRAINED_LEAGUES_CN
+
+
 def test_hhad_selected_reverse_fits_capture_ou(tmp_path):
     """让球选中腿: capture-time cover-P is reverse-fit from the stored 1X2 + O/U
     (psc_over/under), so an hhad +EV pick enters the validation counter."""

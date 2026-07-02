@@ -1,0 +1,89 @@
+# 秋季软水测量 · 预注册分析计划(Pre-Registration)
+
+**状态:🔒 v1.0 · 2026-07-02 锁定** — 在受训联赛复赛(~2026-08)、任何窗口内数据到达**之前**写死。
+**归属**:`docs/autumn_restart_checklist.md` §0 的收尾件;§1 全部测量的确认性/探索性边界以本文件为准。
+
+---
+
+## 0 · 为什么要预注册
+
+CLV 闸门(`nutmeg.v4.model.clv_gate`)已经管住了**联赛间**的多重检验(BHY-FDR)。本文件管住更大的自由度:**分析菜单本身**。秋季数据可以按 联赛 × 散户切片 × 冻结缺口 × 玩法 × 时点 × 口径 切出上百种组合——事后翻数据、翻到显著为止,FDR 也救不了(family 根本没定义)。这就是 forking paths / garden of forking paths。
+
+解法与临床试验相同:**在数据到达之前声明**哪些检验是「确认性」(有资格触发资金)、哪些是「探索性」(只准生成下季假设),并锁定口径。预注册的效力恰恰来自它先于数据存在。
+
+**修订纪律**:数据开始到达(首条窗口内选中腿)之后,对 §2–§5(确认性部分)的任何修改必须:① 记入 §9 Changelog(日期+理由);② 只对「修改之后才达到读数条件」的检验生效——**禁止改完口径去读已攒的数据**。§6(探索性)随便改。
+
+---
+
+## 1 · 冻结的仪器(normative = 代码;本节只登记,不复述公式)
+
+| 件 | 位置 | 锁定值 |
+|---|---|---|
+| 选中腿定义 | `nutmeg.v4.cli.clv_ledger.compute_ledger` | 每 `(match, market∈{had,hhad})` 取**最新捕获**;3 路按**捕获时** Pinnacle 公允(WPO 去vig;hhad 由捕获 1X2+O/U DC 反推 cover-P)算 EV;argmax 腿 EV ≥ `_MIN_EV=0.05` 入选。无前视。 |
+| CLV | 同上 | `P_close(WPO) × 竞彩SP − 1`;close 来自 `odds_snapshots`(closing cron)经 `_pinn_close`。 |
+| 检验统计 | `nutmeg.v4.model.clv_gate` | 按**比赛日聚类**的稳健单边 t(mean CLV > 0);`WARN_MIN_N=15`;confirm = `t≥2.8 (CONFIRM_T)` 且 `N≥200 (CONFIRM_MIN_N)` 且过 `BHY-FDR q=0.05 (FDR_Q)`。 |
+| 合并读数 | `clv_gate.pooled_test` | 联赛命名空间化聚类;**仅参考,永不作闸门**。 |
+| 联赛标签 | `nutmeg.v4.data.league_labels.canonical_league` | 跨 writer 归一(sporttery 中文缩写 + 记一笔 EN 码 → 一个组);fail-open。 |
+
+以上常数若未来修改 = §9 记录 + 只对未读数据生效。
+
+## 2 · 总体(population)
+
+- **窗口**:`2026-08-01 ≤ match_date ≤ 2027-06-30`(日职为历年制,窗口内场次照常纳入)。
+- **市场**:had(胜平负)+ hhad(让球胜平负),竞彩官方 SP。
+- **确认性联赛全集(13,= 生产 artifact 训练面,`TRAINED_LEAGUES_CN`)**:英超 英冠 西甲 西乙 德甲 德乙 意甲 意乙 法甲 法乙 荷甲 葡超 日职。
+- **确认性排除**:
+  1. 非上述联赛(世界杯/友谊赛/杯赛/北欧等)→ 只进探索性;
+  2. hhad 行捕获缺 O/U(`psc_over/psc_under` NULL → 公允退化用默认总进球)→ 从确认性剔除,**剔除数公开**;
+  3. `no_close` 腿天然无 CLV;但**读数有效性前置**:该联赛窗口内 `miss_name`(疑似队名别名断裂)未解决数必须为 0——修别名、重算、再读。
+
+## 3 · 确认性检验(动钱的唯一入口)
+
+- **P1 · 合并证据(1 个检验)**:13 联赛选中腿合并(`pooled_test`),H1: mean CLV > 0。
+  达标条件:`t≥2.8` 且 `N≥200`。**语义 = 证据声明**(「竞彩受训面存在软水」),**不解锁任何联赛**——合并显著可能由单一联赛驱动。
+- **P2 · 逐联赛闸门(family ≤13)**:即 `clv_gate.evaluate()` 现行输出。
+  **confirm**(`t≥2.8` ∧ `N≥200` ∧ 过 BHY-FDR q=0.05)⇒ 该联赛进入 §5 解锁流程。
+  **warn**(`N≥15` ∧ mean>0)⇒ 值得盯,不动钱。
+- **正式读数节点**:以 `weekly_gate` cron 周报输出为准。闸门的每日输出=监控;`CONFIRM_T=2.8`(单边 p≈0.005)的量级即为吸收持续监控的反复窥视而设(Harvey-Liu-Zhu 对重复筛选环境的门槛)。
+
+## 4 · 次级预指定检验(不解锁资金;过检 ⇒ 升级为下季确认性 / 按注明调整规则)
+
+自成一个 BHY family(q=0.05,m=5)。方法注明为规格,实现代码秋季随数据补——**先于数据声明的是假设与判读规则**:
+
+| # | 检验 | 操作定义 | H1 |
+|---|---|---|---|
+| S1 | 冻结缺口 | 选中腿按 `T_gap = kickoff_utc − 最后捕获时刻` 四分位;Q4−Q1 mean CLV 差,cluster-mean Welch t(聚类=比赛日)。规格源:`docs/freeze_gap_test_card.md` | 缝随陈旧度增大(深夜欧洲场最大) |
+| S2 | 散户逆向 | join `jingcai_vote`(队名+日期);选中腿二分「被选方向 vs supportRate 最高方:逆/顺」;逆−顺 mean CLV 差,同上 | 逆散户组 CLV 更高 |
+| S3 | 玩法差 | hhad − had 选中腿 mean CLV 差,同上 | 让球更软(散户更看不懂) |
+| S4 | 初盘 vs 终盘 | 同场同市场且 `jc_open_*` 存在:选择重放于初盘 SP;配对差(终−初),比赛日聚类 t | 方向未定(哪端更划算是开放问题) |
+| S5 | 方差门槛(B2) | 同窗口选择重放于 `门槛=5%+z·σ_P·SP`(参数按 `docs/ev_threshold_variance_2026-06-26.md`)vs flat-5%:两组 mean CLV + 选中量对比 | 方差门槛组假 +EV 更少 |
+
+**S5 特别条款**(呼应 checklist §2-B2):S5 过 FDR 且方向为优 ⇒ B2 门槛才允许替换 flat-5% 进下注规则;否则 flat-5% 沿用。
+
+## 5 · 解锁与止损(P2 confirm 之后)
+
+1. **一次性人工审计**(读数生效前 checklist):该联赛 `miss_name=0`;N/聚类数复核;tier 分布无冷门堆积(防 σ_EV 陷阱);S 系列无反向警报;`data_freshness` 全绿。
+2. **解锁范围**:仅该联赛、仅 had/hhad 单关;**半 Kelly**;单注上限沿用现行规则;门槛按 S5 结论(默认 flat-5%)。
+3. **预注册止损(kill 规则)**:解锁日起新增选中腿累计 `N≥100` 且 mean CLV < 0 ⇒ **重新锁定**该联赛,回 warn 状态,写复盘后才可再议。
+4. **全季无 confirm**(至 2027-06-30)⇒ 判「本季受训面无可证软水」:§2 机器保持锁定,空仓是正确产出;下一步(转向/缩规模/续攒)另行决策,不在本文件预设。
+
+## 6 · 探索性(无资格动钱)
+
+其余一切切片(tier/rank/主客/时段/非受训联赛/竞彩异型盘/…)均为探索性:报告中必须标注 `exploratory`,只准生成下季假设;若想升级为确认性,须在**下一季窗口开始前**修订本文件(§9 留痕)。
+
+## 7 · 功率诚实注记
+
+- Kaunitz 基准:一个**真 +EV** 策略在 672 注时仅 p≈0.089 ⇒ **单联赛一季很可能到不了 confirm**,这不是失败,是样本量的物理。
+- P1(合并)是本季功率最高的读数;P2 的 confirm 更可能出现在选中腿产量高的联赛。
+- 「全季只有 warn」是完全可能且诚实的结局 = 继续攒或转向的依据,**不得**因此回头放松 §1 的常数(那正是本文件要防的事)。
+
+## 8 · 数据质量前置(任何读数生效的条件)
+
+- `data_freshness` 哨兵绿(`jingcai_sp` / `jingcai_vote` / `odds_snapshots`);
+- `com.nutmeg.sporttery_open`(11:05 初盘)与三窗 vote cron 正常(S4/S2 的供给);
+- **标签审计**:读数前跑 `SELECT DISTINCT league FROM jingcai_sp` 核对——出现 `league_labels` 未收录的同义标签 ⇒ 先补映射再读(fail-open 设计会让新同义词自成一组,可见不可漏);
+- hhad 退化行(缺 O/U)剔除数随报告公开。
+
+## 9 · Changelog
+
+- **v1.0 · 2026-07-02**:初版锁定。常数:`WARN_MIN_N=15 / CONFIRM_T=2.8 / CONFIRM_MIN_N=200 / FDR_Q=0.05 / _MIN_EV=0.05`;联赛全集 = 13(artifact 训练面);同 commit 修复联赛标签跨 writer 分裂(`league_labels.canonical_league` 进 `clv_ledger`,芬超/FIN_VEIKKAUSLIIGA 实测合一)。

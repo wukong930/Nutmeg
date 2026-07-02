@@ -38,6 +38,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from nutmeg.v4.cli.jingcai_staleness import _devig3, _pinn_close
+from nutmeg.v4.data.league_labels import canonical_league
 from nutmeg.v4.model.clv_gate import (
     CONFIRM_MIN_N,
     CONFIRM_T,
@@ -189,9 +190,11 @@ def compute_ledger(db_path: str, *, min_ev: float = _MIN_EV) -> dict:
                 j = max(range(3), key=lambda i: evs[i])
                 if evs[j] >= min_ev:
                     selected.append({
+                        # canonical label: sporttery CN-abbrev + market_mode EN-code
+                        # writers must land in ONE gate group (体检 2026-07-02)
                         "clv": p_close[j] * float(jc[j]) - 1.0, "cap_ev": evs[j],
                         "pos": labels[j], "market": market,
-                        "league": d["league"] or "(未标联赛)",
+                        "league": canonical_league(d["league"]),
                         "date": d["match_date"],
                         "match": f'{d["home_team"]} vs {d["away_team"]}',
                     })
