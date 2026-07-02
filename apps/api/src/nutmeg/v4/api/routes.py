@@ -1688,6 +1688,23 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
         return []
 
 
+def _utc_today():
+    """UTC "today" for fixture-date windows — NEVER the process-local date.
+
+    API-Football match dates are UTC. A window anchored on the local date
+    (Asia/Shanghai) rolls forward at Beijing midnight (16:00 UTC) and silently
+    drops every fixture kicking off 16:00–23:59 UTC that night (= Beijing
+    00:00–07:59, the late-night EU slate — the exact freeze-gap targets) HOURS
+    before kickoff. Caught live 2026-07-03 00:13 Beijing: Spain (KO −2h47m) and
+    Portugal (KO −6h47m) had vanished from 近期赛事. A UTC anchor can never
+    exclude a pre-kickoff fixture (kickoff ≥ now ⇒ UTC-date(kickoff) ≥
+    UTC-date(now)); already-kicked-off same-day rows are handled by the
+    _gather_rows kickoff-buffer guard where wired."""
+    import datetime as _dt
+
+    return _dt.datetime.now(_dt.UTC).date()
+
+
 @router.get(
     "/predictions/sp-calc",
     response_model=SpCalcResponse,
@@ -1714,7 +1731,7 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"V4 model artifact not loaded; expected at {_artifact_path()}",
         )
-    today = _dt.date.today()
+    today = _utc_today()   # UTC anchor (local date drops the late-night EU slate)
     all_preds: list[SinglePrediction] = []
     pending: list[PendingFixture] = []
     for d in range(days):
@@ -2106,7 +2123,7 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="days must be in [1, 7]",
         )
-    today = _dt.date.today()
+    today = _utc_today()   # UTC anchor (local date drops the late-night EU slate)
     preds: list[SinglePrediction] = []
     pending: list[PendingFixture] = []
     for d in range(days):
@@ -2395,7 +2412,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
 
     # Resolve date
     if req.date is None:
-        on_date = _dt.date.today()
+        on_date = _utc_today()   # UTC anchor (see _utc_today)
     else:
         try:
             on_date = _dt.date.fromisoformat(req.date)
@@ -2785,7 +2802,7 @@ def recommend_jingcai(req: JingcaiRecommendRequest) -> TodayRecommendationsRespo
     weighted_ev = (stake_weighted_ev_sum / total_stake) if total_stake > 0 else None
     return TodayRecommendationsResponse(
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
-        date=_dt.date.today().isoformat(),
+        date=_utc_today().isoformat(),
         leagues=sorted({f.league for f in fixtures}),
         bankroll=req.bankroll,
         fixtures_fetched=n,
@@ -2920,7 +2937,7 @@ def predictions_wc(
     _log = logging.getLogger(__name__)
 
     if date is None:
-        on_date = _dt.date.today()
+        on_date = _utc_today()   # UTC anchor (see _utc_today)
     else:
         try:
             on_date = _dt.date.fromisoformat(date)
@@ -3079,7 +3096,7 @@ def predictions_wc_upcoming(
             detail="top_n must be in [1, 20]",
         )
 
-    today = _dt.date.today()
+    today = _utc_today()   # UTC anchor (local date drops the late-night EU slate)
     date_end = today + _dt.timedelta(days=days - 1)
 
     # Local imports (avoid top-level cost)

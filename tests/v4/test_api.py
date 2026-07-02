@@ -302,3 +302,30 @@ class TestRecommendSnapshotPhase:
         }
         r = client.post("/api/v4/recommend", json=req)
         assert r.status_code == 422  # pydantic Literal validation
+
+
+class TestUtcDateAnchors:
+    """体检 2026-07-03: fixture-date windows anchored on the PROCESS-LOCAL date
+    (Asia/Shanghai) roll at Beijing midnight (16:00 UTC) and drop the late-night
+    EU slate (UTC 16:00-23:59 kickoffs = Beijing 00:00-07:59) hours BEFORE
+    kickoff — Spain/Portugal vanished from 近期赛事 pre-KO. All fixture-facing
+    date anchors in the API layer must go through _utc_today()."""
+
+    def test_no_local_date_today_in_api_layer(self):
+        import inspect
+
+        from nutmeg.v4.api import observation_routes, routes
+
+        for mod in (routes, observation_routes):
+            src = inspect.getsource(mod)
+            assert ".date.today()" not in src, (
+                f"{mod.__name__} uses process-local date.today() — fixture "
+                "dates are UTC; use routes._utc_today() (Beijing-midnight "
+                "premature-drop bug, 2026-07-03)")
+
+    def test_utc_today_is_utc(self):
+        import datetime as dt
+
+        from nutmeg.v4.api.routes import _utc_today
+
+        assert _utc_today() == dt.datetime.now(dt.UTC).date()
