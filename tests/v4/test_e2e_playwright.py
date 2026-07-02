@@ -111,13 +111,14 @@ class TestPageLoadsAndRenders:
         text = h1.text_content().strip()
         assert text   # i18n applied → either Chinese or English title
 
-    def test_all_5_tabs_render(self, page, server):
-        # Top-level tabs: today / upcoming / custom (单关·串关·复式 合并) /
-        # history / admin. 单关/串关/复式 are now sub-tabs inside 自定义玩法.
+    def test_all_6_tabs_render(self, page, server):
+        # Top-level tabs: today / upcoming / polymarket (研究/交叉校验板) /
+        # custom (单关·串关·复式 合并) / history / admin.
+        # 单关/串关/复式 are now sub-tabs inside 自定义玩法.
         page.goto(f"{server}/api/v4/dashboard")
         page.wait_for_load_state("networkidle")
         tabs = page.locator("button.tab-btn")
-        assert tabs.count() == 5
+        assert tabs.count() == 6
 
 
 class TestTabSwitching:

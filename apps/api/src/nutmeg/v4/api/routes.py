@@ -322,19 +322,6 @@ def dashboard() -> HTMLResponse:
     )
 
 
-@router.get("/polymarket", response_class=HTMLResponse, include_in_schema=False)
-def polymarket_page() -> HTMLResponse:
-    """Serve the standalone Polymarket 错价研究 board (read-only, separate page from
-    the main dashboard). Same no-cache posture so a shipped update reaches clients."""
-    html_path = _STATIC_DIR / "polymarket_board.html"
-    if not html_path.exists():
-        raise HTTPException(status_code=500, detail="polymarket_board.html not bundled with package")
-    return HTMLResponse(
-        content=html_path.read_text(encoding="utf-8"),
-        headers={"Cache-Control": "no-cache, must-revalidate"},
-    )
-
-
 # ---------- /v4/manifest.json + /v4/sw.js + /v4/icon.svg (P1#14 PWA) ----
 
 @router.get("/manifest.json", include_in_schema=False)
@@ -391,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v73-fe-polymarket-board"
+_FE_VERSION = "nutmeg-v74-fe-polymarket-tab"
 
 
 @router.get("/sw.js", include_in_schema=False)

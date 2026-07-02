@@ -743,12 +743,14 @@
   <!-- Tab nav — V11 P1-FE#1: 4 engineer tabs removed (outcomes / roi /
        sessions / rules). adv-toggle removed (no advanced tabs left).
        Remaining 5 user-facing tabs all directly visible. -->
-  <div class="border-b mb-6 flex items-center gap-2" style="border-color: var(--border-subtle);">
+  <div class="border-b mb-6" style="border-color: var(--border-subtle);">
     <nav id="tab-nav" role="tablist" data-i18n-attr="aria-label:tablist_label" aria-label="主功能选项卡"
-         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px flex-1 min-w-0">
+         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px">
       <!-- V10 W1: 今日推荐 is the default landing tab. Auto-loads on open. -->
       <button data-tab="today"     role="tab" aria-controls="tab-today"     aria-selected="true"  data-i18n="tab_today"  class="tab-btn active whitespace-nowrap px-4 py-3 text-sm font-medium">🎯 今日推荐</button>
       <button data-tab="upcoming"  role="tab" aria-controls="tab-upcoming"  aria-selected="false" data-i18n="tab_upcoming" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">📅 近期赛事</button>
+      <!-- Polymarket 错价研究板 — 只读研究 / 交叉校验(非下注 venue)。tab 内渲染,不弹新页。 -->
+      <button data-tab="polymarket" role="tab" aria-controls="tab-polymarket" aria-selected="false" data-i18n="tab_polymarket" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">🔬 Polymarket</button>
       <!-- 自定义玩法: 单关/串关/复式 合并为一个 tab,内部用子标签切换。 -->
       <button data-tab="custom"    role="tab" aria-controls="tab-custom"    aria-selected="false" data-i18n="tab_custom"  class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">🎲 自定义玩法</button>
       <!-- V11 P1-FE#3 — 推荐追溯: timeline of past recs + outcomes. -->
@@ -756,11 +758,6 @@
       <!-- 个人中心 — read-only status + hard-gated restart controls (localhost only). -->
       <button data-tab="admin"     role="tab" aria-controls="tab-admin"     aria-selected="false" data-i18n="tab_admin"   class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">⚙️ 个人中心</button>
     </nav>
-    <!-- Polymarket 错价研究板 — a SEPARATE read-only page. Kept OUTSIDE the tablist
-         (a role=tablist must contain only role=tab children — axe/WCAG). -->
-    <a href="/api/v4/polymarket" target="_blank" rel="noopener"
-       title="Polymarket 错价研究板(只读 · 非下注)"
-       class="flex-none whitespace-nowrap px-3 py-3 text-sm font-medium text-indigo-600 hover:underline">🔬 Polymarket ↗</a>
   </div>
 
   <!-- Tab: Today (V10 W1) — default landing. Auto-fetches today's
@@ -1134,6 +1131,21 @@
   </div>
 
   <!-- 自定义玩法 (单关 / 串关 / 复式 合并 — 内部子标签切换) -->
+  <!-- Polymarket 错价研究板 (PM-6 rework) — a TAB, not a separate page. READ-ONLY
+       research / cross-check; NOT a betting venue (Polymarket blocks China). The
+       full disclaimer lives behind the ⓘ (pmDisclaimer). -->
+  <div id="tab-polymarket" role="tabpanel" aria-labelledby="tab-polymarket" class="tab-panel hidden">
+    <div class="flex items-center gap-2 mb-1">
+      <h2 class="text-lg font-medium" data-i18n="pm_title">Polymarket 错价研究板</h2>
+      <button type="button" onclick="pmDisclaimer()" aria-label="免责说明 / disclaimer" title="免责说明"
+              class="text-indigo-600 hover:text-indigo-700"><svg class="ic"><use href="#ic-info"/></svg></button>
+      <button type="button" id="pm-reload" onclick="loadPolymarket()" aria-label="刷新 / refresh" title="重读看板(cron 3×/日更新)"
+              class="ml-auto" style="color:var(--text-muted)"><svg class="ic"><use href="#ic-refresh"/></svg></button>
+    </div>
+    <p class="text-sm mb-3" style="color:var(--text-muted)" data-i18n="pm_subtitle">胜平负 · 让球 · 大小球 — 公允(Pinnacle 去vig)vs Polymarket 盘口</p>
+    <div id="pm-board"><p class="text-sm" style="color:var(--text-muted)" data-i18n="pm_loading">加载中…</p></div>
+  </div>
+
   <div id="tab-custom" role="tabpanel" aria-labelledby="tab-custom" class="tab-panel hidden">
     <div class="custom-subnav flex gap-1 mb-4" role="tablist" aria-label="自定义玩法子标签"
          style="border-bottom:1px solid var(--border-subtle)">
@@ -2126,6 +2138,10 @@ const I18N = {
     spcalc_hc_a:      '让负',
     spcalc_hc_pickline:'先选让球线',
     tab_upcoming:     '{ic:upcoming} 近期赛事',
+    tab_polymarket:   '{ic:board} Polymarket',
+    pm_title:         'Polymarket 错价研究板',
+    pm_subtitle:      '胜平负 · 让球 · 大小球 — 公允(Pinnacle 去vig)vs Polymarket 盘口',
+    pm_loading:       '加载中…',
     upcoming_hint:    '未来 3 天的可投注比赛。填入你在竞彩终端看到的 SP → 即时按竞彩价算 EV / Kelly。绿色 = 过 +EV 门槛。',
     upcoming_empty:   '未来 3 天暂无可识别的比赛 (或盘口未开)。',
     today_wc_cta:     '💹 世界杯让球见市场模式 →',
@@ -2571,6 +2587,10 @@ const I18N = {
     spcalc_hc_a:      'HC loss',
     spcalc_hc_pickline:'Pick a line first',
     tab_upcoming:     '{ic:upcoming} Upcoming',
+    tab_polymarket:   '{ic:board} Polymarket',
+    pm_title:         'Polymarket mispricing board',
+    pm_subtitle:      '1X2 · handicap · totals — fair (Pinnacle de-vig) vs Polymarket price',
+    pm_loading:       'Loading…',
     upcoming_hint:    'Bettable fixtures over the next 3 days. Enter the 竞彩 SP you see → instant EV / Kelly at the 竞彩 price. Green = clears the +EV gate.',
     upcoming_empty:   'No recognized fixtures in the next 3 days (or odds not open yet).',
     today_wc_cta:     '💹 WC handicap → Market mode →',
@@ -3093,6 +3113,8 @@ function switchTab(name) {
   if (name === 'upcoming' && typeof loadSpCalc === 'function') loadSpCalc();
   // 市场模式同标准模式一样自动加载(走缓存,零额外 API)— 已删掉手动「加载」按钮。
   if (name === 'upcoming' && typeof loadCupMarket === 'function') loadCupMarket();
+  // Polymarket 错价研究板 — 读 DB(cron 灌),进入即渲染。
+  if (name === 'polymarket' && typeof loadPolymarket === 'function') loadPolymarket();
   // V11 P1-FE#3 — auto-load history on tab open (no manual refresh needed).
   if (name === 'history' && typeof loadHistory === 'function') loadHistory();
   // 个人中心 — read-only status (NO outbound API calls; quota probe is a button).
@@ -5682,6 +5704,80 @@ function renderCupMarket(preds, pending) {
       }
     }
   });
+}
+
+// ── Polymarket 错价研究板 (PM-6 rework: a TAB, reuses zhTeam/teamLogo/showInfo) ──
+const PM_L = {
+  zh:{win:'胜平负',hcp:'让球',tot:'大小球',fair:'公允',home:'主',away:'客',over:'大',under:'小',draw:'平',
+    diverge:'共识背离',model:'模型对照',
+    empty:'看板由 cron 累积(3×/日)。暂无数据 —— 下个窗口或手动 nutmeg-polymarket-gaps 后显示。',
+    discT:'免责 · 定位',
+    discB:'⚠ <b>只读研究 / 交叉校验,非下注 venue</b>(Polymarket 封中国大陆)。+EV 含风险,<b>非无风险套利</b>。公允 P = Pinnacle 去vig(与竞彩板同源)。',
+    modT:'模型 = 低权重第三方参考',
+    modB:'「模型」是我们自己的 CatBoost/Elo 模型对该场的预测,作为<b>独立第三票</b>参考。<br><br>它<b>不进 EV</b>(模型打不过收盘线,V12 结论),只用于三方三角:<br>• 三方一致 → 有效市场<br>• 模型+Pinnacle 一致但 <b>Polymarket 背离</b> → Polymarket 错价候选<br>• 翻盘时模型站哪边 → 判断是 Pinnacle 陈旧还是 Polymarket 错<br><br>仅有模型的比赛(世界杯 / 13 训练联赛)显示。'},
+  en:{win:'1X2',hcp:'AH',tot:'O/U',fair:'fair',home:'H',away:'A',over:'O',under:'U',draw:'D',
+    diverge:'consensus split',model:'model',
+    empty:'Board accumulates via cron (3×/day). No data yet — appears after the next window or a manual nutmeg-polymarket-gaps run.',
+    discT:'Disclaimer',
+    discB:'⚠ <b>Read-only research / cross-check, NOT a betting venue</b> (Polymarket blocks mainland China). +EV carries risk, <b>not arbitrage</b>. Fair P = Pinnacle de-vig (same source as the 竞彩 board).',
+    modT:'Model = low-weight third opinion',
+    modB:'Our own CatBoost/Elo prediction, shown as an <b>independent third vote</b> — <b>not an EV input</b> (the model does not beat the close). Triangulation: all agree → efficient; model+Pinnacle agree but <b>Polymarket diverges</b> → Polymarket mispricing candidate; on a flip, whom the model backs. Modelled matches only (WC / 13 trained leagues).'},
+};
+function pmL(k){ return (PM_L[_LOCALE] || PM_L.zh)[k]; }
+function pmDisclaimer(){ showInfo(pmL('discT'), pmL('discB')); }
+function pmModelInfo(){ showInfo(pmL('modT'), pmL('modB')); }
+const _pmPct = x => (x*100).toFixed(1)+'%';
+const _pmCent = x => (x*100).toFixed(1)+'¢';
+const _pmEv = (ev,tier) => (ev>0.05 && tier!=='low' && tier!=='excluded') ? 'text-green-600'
+                          : (ev>0 ? 'text-amber-600' : 'text-muted');
+function _pmOc(g){
+  const s=g.outcome_spec, L=g.line;
+  if(s==='HOME_WIN')return pmL('home'); if(s==='AWAY_WIN')return pmL('away'); if(s==='DRAW')return pmL('draw');
+  if(s==='HANDICAP_HOME')return pmL('home')+' '+(L>0?'+':'')+L;
+  if(s==='HANDICAP_AWAY')return pmL('away')+' '+(L>0?'+':'')+L;
+  if(s==='OVER')return pmL('over')+' '+L; if(s==='UNDER')return pmL('under')+' '+L;
+  return s;
+}
+function _pmDot(tier){
+  const c={high:'#3b6d11',medium:'#854f0b',low:'#8a8981',excluded:'#a32d2d'}[tier]||'#8a8981';
+  return '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+';margin-left:4px;vertical-align:1px"></span>';
+}
+function _pmLeg(g){
+  return '<div style="background:rgba(128,128,128,.10);border-radius:8px;padding:7px 10px;min-width:104px;flex:1 1 auto">'
+    +'<div class="text-sm">'+_pmOc(g)+_pmDot(g.confidence_tier)+'</div>'
+    +'<div style="font-size:17px;font-weight:600;margin:1px 0">'+_pmCent(g.poly_ask)+'</div>'
+    +'<div class="text-xs text-muted">'+pmL('fair')+' '+_pmPct(g.q_fair)+' · <span class="'+_pmEv(g.ev,g.confidence_tier)+'">EV '+(g.ev>=0?'+':'')+_pmPct(g.ev)+'</span></div></div>';
+}
+function _pmSec(label, legs, extra){
+  if(!legs.length)return'';
+  return '<div style="margin-top:9px"><div class="text-xs text-muted" style="margin-bottom:5px">'+label+(extra||'')+'</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:7px">'+legs.map(_pmLeg).join('')+'</div></div>';
+}
+function _pmTri(m){
+  const tr=m.triangulation; if(!tr||!tr.model_argmax)return'';
+  const A={H:pmL('home'),D:pmL('draw'),A:pmL('away')};
+  const flag=m.has_diverge?' <span class="text-xs" style="background:var(--bg-accent,#eeedfe);color:#534ab7;padding:2px 8px;border-radius:20px">'+pmL('diverge')+'</span>':'';
+  return ' · '+pmL('model')+' '+(A[tr.model_argmax]||'?')+'/Pinn '+A[tr.pinnacle_argmax]+'/Poly '+(A[tr.polymarket_argmax]||'?')
+    +' <button type="button" onclick="pmModelInfo()" aria-label="模型说明" class="text-indigo-600" style="border:none;background:none;cursor:pointer;padding:0 2px">'+IC('info')+'</button>'+flag;
+}
+function _pmCard(m){
+  const ko=m.kickoff_utc?new Date(m.kickoff_utc).toLocaleString(_LOCALE==='zh'?'zh-CN':'en-US',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+  const tierB=(m.top_tier&&m.top_tier!=='low')?' <span class="text-xs" style="padding:2px 8px;border-radius:20px;background:rgba(59,109,17,.14);color:#3b6d11">'+m.top_tier+'</span>':'';
+  return '<div class="bg-white shadow-sm rounded-lg p-3 mb-3">'
+    +'<div class="flex items-center gap-2 flex-wrap mb-2">'
+    +teamLogo(m.home_team)+'<span class="font-medium">'+zhTeam(m.home_team)+'</span><span class="text-muted text-sm">vs</span>'
+    +teamLogo(m.away_team)+'<span class="font-medium">'+zhTeam(m.away_team)+'</span>'+tierB
+    +'<span class="text-xs text-muted" style="margin-left:auto;text-align:right">'+(m.league||'')+'<br>'+ko+'</span></div>'
+    +_pmSec(pmL('win'),m.moneyline,_pmTri(m))+_pmSec(pmL('hcp'),m.handicap)+_pmSec(pmL('tot'),m.totals)
+    +'</div>';
+}
+async function loadPolymarket(){
+  const el=$('#pm-board'); if(!el)return;
+  let data;
+  try{ const r=await fetch(API+'/observation/polymarket-board'); data=await r.json(); }
+  catch(_){ el.innerHTML='<p class="text-sm text-muted">'+pmL('empty')+'</p>'; return; }
+  const ms=(data&&data.matches)||[];
+  el.innerHTML = ms.length ? ms.map(_pmCard).join('') : '<p class="text-sm text-muted">'+pmL('empty')+'</p>';
 }
 
 async function loadCupMarket(opts = {}) {
