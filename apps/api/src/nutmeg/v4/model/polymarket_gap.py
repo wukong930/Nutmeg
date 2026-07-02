@@ -25,14 +25,31 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from nutmeg.v4.data.odds_parser import extract_1x2_odds
-from nutmeg.v4.data.polymarket_match import AWAY_WIN, DRAW, HOME_WIN, MatchedGame
+from nutmeg.v4.data.odds_parser import extract_1x2_odds, extract_over_under_25
+from nutmeg.v4.data.polymarket_match import (
+    AWAY_WIN,
+    DRAW,
+    HANDICAP_AWAY,
+    HANDICAP_HOME,
+    HOME_WIN,
+    OVER,
+    UNDER,
+    MatchedGame,
+)
 from nutmeg.v4.data.sources.polymarket import ask_depth_usd, best_ask, mid_price
+from nutmeg.v4.model.dixon_coles import score_grid
+from nutmeg.v4.model.market_handicap import (
+    DEFAULT_MAX_GOALS,
+    DEFAULT_RHO,
+    asian_total_over_prob,
+    dc_home_cover_prob,
+    devig_over,
+    fit_lambdas,
+)
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +68,12 @@ LONGSHOT_FLOOR = 0.15        # min(q, ask) below this → the "+EV" is a favouri
 POLY_TICK = 0.01             # Polymarket's price granularity. An EV smaller than one
                              # tick's relative value (TICK/ask) is inside the rounding
                              # noise — it can flip sign on the next tick → cap low.
+Q_BAND = (0.12, 0.88)        # only PRICE (fetch a CLOB orderbook for) a 让球/大小球 line
+                             # whose fair q sits in this informative band. Polymarket
+                             # lists a deep ladder (±5.5 spreads, O/U 8.5) that is all
+                             # longshot noise the LONGSHOT_FLOOR would cap anyway — and
+                             # each priced leg costs one orderbook call. Moneyline is
+                             # always priced (needed for the favorite-flip guard).
 
 _TIER_RANK = {"excluded": 0, "low": 1, "medium": 2, "high": 3}
 _RANK_TIER = {v: k for k, v in _TIER_RANK.items()}
@@ -64,7 +87,8 @@ class Gap:
     away_team: str
     match_date: str
     kickoff_utc: str | None
-    outcome_spec: str           # HOME_WIN | AWAY_WIN | DRAW
+    outcome_spec: str           # HOME_WIN|AWAY_WIN|DRAW|HANDICAP_HOME|HANDICAP_AWAY|OVER|UNDER
+    line: float | None          # 让球 / 大小球 line (None for moneyline)
     q_fair: float               # our Pinnacle de-vig fair probability
     poly_ask: float             # actionable cost to buy the YES share
     poly_mid: float | None
@@ -82,17 +106,43 @@ class Gap:
 
 
 def _devig_1x2(h: Any, d: Any, a: Any) -> tuple[float, float, float] | None:
-    """Multiplicative de-vig of 1X2 odds → fair (P_H, P_D, P_A). None on junk
-    or any non-favourable (≤1.0) leg — same guard as routes._pinnacle_devig_1x2."""
-    try:
-        h, d, a = float(h), float(d), float(a)
-    except (TypeError, ValueError):
+    """WPO de-vig of Pinnacle 1X2 → fair (P_H, P_D, P_A) — the SAME method the 竞彩
+    board uses (routes._pinnacle_devig_1x2 → nutmeg.v4.model.devig), so BOTH boards
+    share one fair P. None on junk / any ≤1.0 leg (devig_1x2 guards internally)."""
+    from nutmeg.v4.model.devig import devig_1x2
+    p = devig_1x2(h, d, a)
+    return (p[0], p[1], p[2]) if p else None
+
+
+def _build_grid(p_h: float, p_d: float, p_a: float, p_over: float | None):
+    """DC score grid fit to the de-vig 1X2 (+ O/U) — the market-reverse anchor the
+    竞彩 让球 board uses, so 让球/大小球 price off the SAME Pinnacle line as 1X2."""
+    lh, la = fit_lambdas(p_h, p_d, p_a, p_over, ou_line=2.5)
+    return score_grid(lh, la, rho=DEFAULT_RHO, max_goals=DEFAULT_MAX_GOALS)
+
+
+def _q_for(spec: str, line: float | None, p_h: float, p_d: float, p_a: float,
+           grid) -> float | None:
+    """Fair q for any outcome_spec. Moneyline off the WPO 1X2; 让球/大小球 off the DC
+    grid (home covers `line` / total over `line`); away/under = complement (half-
+    line ⇒ no push). None for an unknown spec or a prop without a line/grid."""
+    if spec == HOME_WIN:
+        return p_h
+    if spec == DRAW:
+        return p_d
+    if spec == AWAY_WIN:
+        return p_a
+    if line is None or grid is None:
         return None
-    if any(math.isnan(x) for x in (h, d, a)) or min(h, d, a) <= 1.0:
-        return None
-    inv = [1.0 / h, 1.0 / d, 1.0 / a]
-    s = sum(inv)
-    return (inv[0] / s, inv[1] / s, inv[2] / s) if s > 0 else None
+    if spec == HANDICAP_HOME:
+        return dc_home_cover_prob(grid, line)
+    if spec == HANDICAP_AWAY:
+        return 1.0 - dc_home_cover_prob(grid, -line)
+    if spec == OVER:
+        return asian_total_over_prob(grid, line)
+    if spec == UNDER:
+        return 1.0 - asian_total_over_prob(grid, line)
+    return None
 
 
 def _cap(tier: str, ceiling: str) -> str:
@@ -132,12 +182,17 @@ def compute_gaps(
     books_by_token: dict[str, dict | None],
     odds_update: str | None,
     *,
+    p_over: float | None = None,
+    grid=None,
     now: dt.datetime | None = None,
 ) -> list[Gap]:
-    """PURE core: gaps for one game from its de-vig 1X2 + Polymarket orderbooks."""
+    """PURE core: gaps for one game from its de-vig 1X2 (+ O/U-anchored DC grid for
+    让球/大小球) + Polymarket orderbooks. Only markets present in ``books_by_token``
+    with a live ask form a gap (caller prices the informative subset)."""
     now = now or dt.datetime.now(dt.UTC)
     p_h, p_d, p_a = devig
-    q_by_spec = {HOME_WIN: p_h, DRAW: p_d, AWAY_WIN: p_a}
+    if grid is None:
+        grid = _build_grid(p_h, p_d, p_a, p_over)
 
     # game-level favorite-flip (needs both team asks)
     ask_of: dict[str, float | None] = {}
@@ -149,7 +204,7 @@ def compute_gaps(
 
     gaps: list[Gap] = []
     for mk in game.markets:
-        q = q_by_spec.get(mk.outcome_spec)
+        q = _q_for(mk.outcome_spec, mk.line, p_h, p_d, p_a, grid)
         book = books_by_token.get(mk.yes_token)
         ba = best_ask(book)
         if q is None or ba is None:
@@ -190,7 +245,7 @@ def compute_gaps(
             fixture_id=game.fixture_id, league=game.league,
             home_team=game.home_team, away_team=game.away_team,
             match_date=game.match_date, kickoff_utc=game.kickoff_utc,
-            outcome_spec=mk.outcome_spec, q_fair=q, poly_ask=p, poly_mid=mid,
+            outcome_spec=mk.outcome_spec, line=mk.line, q_fair=q, poly_ask=p, poly_mid=mid,
             ev=ev, edge_direction="buy_yes" if q > p else "no_edge",
             confidence_tier=tier, reasons=reasons, depth_usd=depth,
             freshness_hours=fresh_h, yes_token=mk.yes_token,
@@ -224,8 +279,23 @@ def gaps_for_game(
     devig = _devig_1x2(o1.get("H"), o1.get("D"), o1.get("A"))
     if devig is None:
         return []
-    books = {mk.yes_token: fetch_book(mk.yes_token) for mk in game.markets}
-    return compute_gaps(game, devig, books, env.get("update"), now=now)
+    ou = extract_over_under_25(env)
+    p_over = devig_over(ou[0], ou[1]) if ou else None
+    grid = _build_grid(devig[0], devig[1], devig[2], p_over)
+
+    # Price only the INFORMATIVE subset (one CLOB orderbook call per priced leg):
+    # moneyline always (feeds the favorite-flip guard) + 让球/大小球 with fair q in
+    # Q_BAND. Skips the deep-longshot ladder Polymarket lists (±5.5 spreads, O/U 8.5).
+    def _informative(mk) -> bool:
+        if mk.outcome_spec in (HOME_WIN, DRAW, AWAY_WIN):
+            return True
+        q = _q_for(mk.outcome_spec, mk.line, devig[0], devig[1], devig[2], grid)
+        return q is not None and Q_BAND[0] <= q <= Q_BAND[1]
+
+    books = {mk.yes_token: fetch_book(mk.yes_token)
+             for mk in game.markets if _informative(mk)}
+    return compute_gaps(game, devig, books, env.get("update"),
+                        p_over=p_over, grid=grid, now=now)
 
 
 def sort_gaps(gaps: list[Gap]) -> list[Gap]:

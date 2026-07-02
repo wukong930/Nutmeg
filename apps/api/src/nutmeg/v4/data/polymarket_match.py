@@ -1,15 +1,22 @@
 """Match Polymarket soccer GAME events to our API-Football fixtures.
 
 Polymarket-first (maximizes scope): we enumerate every Polymarket soccer game
-event, parse it into a (teams, date, moneyline outcomes) shape, then match the
-team pair to an API-Football fixture on that date — so the detector covers
-whatever Polymarket lists, not just our 13/22 modelled leagues.
+event, parse it into a (teams, date, outcomes) shape, then match the team pair
+to an API-Football fixture on that date — so the detector covers whatever
+Polymarket lists, not just our 13/22 modelled leagues.
+
+Outcomes parsed per match (each match's markets are split across SEPARATE
+Polymarket events — a base "A vs. B" moneyline event + a "A vs. B - More Markets"
+event carrying the spread ladder + full-match O/U; we parse both and MERGE by
+fixture):
+- moneyline  HOME_WIN / AWAY_WIN / DRAW           ("Will X win on …?" / "…draw?")
+- 让球       HANDICAP_HOME / HANDICAP_AWAY + line  ("Spread: X (-1.5)", 2-way half-line)
+- 大小球     OVER / UNDER + line                   ("A vs. B: O/U 2.5", full-match total)
+Team totals / corners / half markets are deliberately IGNORED.
 
 The matching is DELIBERATELY conservative (the whole detector is worthless if it
 mis-joins a women's/youth game onto a men's fixture):
-- women / youth events are dropped up-front via the event ``seriesSlug``/title
-  (the market QUESTION carries no gender marker — "Will Sweden win?" — only the
-  series does, e.g. "uefa-womens-world-cup-qualification").
+- women / youth events are dropped up-front via the event ``seriesSlug``/title.
 - both teams must resolve to the SAME fixture's two sides (fuzzy ≥ 0.86), else
   the event is skipped (no guess).
 
@@ -21,8 +28,9 @@ from __future__ import annotations
 import datetime as dt
 import difflib
 import logging
+import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from nutmeg.utils.team_canonical import normalize_name
 
@@ -39,11 +47,20 @@ _CLUB_TOKENS = frozenset({
 })
 _MATCH_FUZZY = 0.86
 
-# outcome_spec values the matcher emits (moneyline). OVER/UNDER may be added
-# later from the over/under prop markets.
+# outcome_spec values the matcher emits.
 HOME_WIN = "HOME_WIN"
 AWAY_WIN = "AWAY_WIN"
 DRAW = "DRAW"
+HANDICAP_HOME = "HANDICAP_HOME"   # home covers `line` (e.g. line=-1.5 ⇒ home wins by ≥2)
+HANDICAP_AWAY = "HANDICAP_AWAY"   # away covers `line`
+OVER = "OVER"                     # total goals over `line`
+UNDER = "UNDER"                   # total goals under `line`
+
+# "Spread: Portugal (-1.5)" → team="Portugal", line=-1.5 (2-way half-line market).
+_SPREAD_RE = re.compile(r"^Spread:\s*(?P<team>.+?)\s*\(\s*(?P<line>[-+]?\d+(?:\.\d+)?)\s*\)\s*$")
+# Full-match total: the part after "<A> vs. <B>: " is EXACTLY "O/U <line>"
+# (excludes team totals "… : Portugal O/U 2.5" and corners "… O/U 2.5 Corners").
+_OU_FULL_RE = re.compile(r"^O/U\s+(?P<line>\d+(?:\.\d+)?)$")
 
 # Substrings (lower-cased) in an event's seriesSlug / title / slug that mark a
 # women's or youth competition → exclude (men's-team name collision risk).
@@ -56,9 +73,10 @@ _EXCLUDE_MARKERS = (
 
 @dataclass(frozen=True)
 class MatchedMarket:
-    outcome_spec: str          # HOME_WIN | AWAY_WIN | DRAW
+    outcome_spec: str          # HOME_WIN|AWAY_WIN|DRAW|HANDICAP_HOME|HANDICAP_AWAY|OVER|UNDER
     yes_token: str             # CLOB token whose YES resolves true on this outcome
     poly_question: str
+    line: float | None = None  # handicap / O-U line (None for moneyline)
 
 
 @dataclass(frozen=True)
@@ -88,18 +106,16 @@ def is_excluded_event(event: dict) -> str | None:
 
 
 def _split_title(title: str) -> tuple[str, str] | None:
-    """'Sierra Leone vs. Liberia' → ('Sierra Leone','Liberia').
-
-    Returns None for prop events whose title carries a ' - <prop>' suffix
-    (e.g. 'A vs. B - Exact Score') — those aren't the moneyline event.
-    """
+    """'Portugal vs. Croatia' → ('Portugal','Croatia'); also strips a prop suffix
+    so 'Portugal vs. Croatia - More Markets' → ('Portugal','Croatia') (the spread
+    + O/U markets live under that suffixed event). Team A is before the separator
+    so never carries the suffix; team B has any ' - <suffix>' trimmed."""
     t = (title or "").strip()
-    if " - " in t:  # prop event (Exact Score / Halftime Result / ...)
-        return None
     for sep in (" vs. ", " vs ", " v. ", " @ "):
         if sep in t:
             a, b = t.split(sep, 1)
-            a, b = a.strip(), b.strip()
+            a = a.strip()
+            b = b.split(" - ", 1)[0].strip()  # trim prop suffix ("- More Markets" …)
             if a and b:
                 return a, b
     return None
@@ -114,6 +130,17 @@ def _kickoff_date(event: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _full_match_ou_line(question: str) -> float | None:
+    """Return the O/U line iff ``question`` is a FULL-MATCH total (not a team
+    total / corners / half). e.g. 'A vs. B: O/U 2.5' → 2.5; 'A vs. B: B O/U 2.5'
+    → None; 'A vs. B: B O/U 2.5 Corners' → None."""
+    parts = question.split(": ", 1)
+    if len(parts) != 2:
+        return None
+    m = _OU_FULL_RE.match(parts[1].strip())
+    return float(m.group("line")) if m else None
+
+
 @dataclass(frozen=True)
 class ParsedEvent:
     team_a: str
@@ -122,24 +149,31 @@ class ParsedEvent:
     kickoff_utc: str | None
     series_slug: str
     event_slug: str
-    # outcome label (team name or "DRAW") → (yes_token, question)
+    # outcome label → (yes_token, question). Labels are the team name / "DRAW"
+    # for moneyline, or ENCODED for props: "HCAP::<team>::<line>" (team covers
+    # line), "OU::OVER::<line>" / "OU::UNDER::<line>". Decoded in match_to_fixture.
     outcomes: dict[str, tuple[str, str]]
 
 
 def parse_event(event: dict) -> ParsedEvent | None:
-    """Parse a Polymarket soccer game event into teams + moneyline outcomes.
+    """Parse a Polymarket soccer game event → teams + outcomes (moneyline from the
+    base event; 让球 + full-match O/U from the '- More Markets' event).
 
-    Returns None if it's not a clean moneyline event (prop-only, no teams, no
-    date, or no Win/Draw markets). Does NOT apply the women/youth gate — call
-    ``is_excluded_event`` first.
+    Returns None if no teams / no date / no recognised markets. Does NOT apply the
+    women/youth gate — call ``is_excluded_event`` first.
     """
-    teams = _split_title(event.get("title") or "")
+    title = event.get("title") or ""
+    teams = _split_title(title)
     if teams is None:
         return None
     team_a, team_b = teams
     iso_date, kickoff = _kickoff_date(event)
     if not iso_date:
         return None
+    # Moneyline win/draw markets only exist on the BASE event (no " - " suffix);
+    # gating on that stops a prop market like "X to win the second half?" from
+    # being mistaken for the match-winner.
+    is_base = " - " not in title
 
     outcomes: dict[str, tuple[str, str]] = {}
     for m in event.get("markets") or []:
@@ -148,15 +182,27 @@ def parse_event(event: dict) -> ParsedEvent | None:
         toks = m.get("clobTokenIds") or []
         if not toks:
             continue
-        yes_token = str(toks[0])  # outcomes == ["Yes","No"] → token[0] is YES
+        q_raw = m.get("question") or ""
+        q = q_raw.lower()
         git = (m.get("groupItemTitle") or "").strip()
-        q = (m.get("question") or "").lower()
-        if "end in a draw" in q or git.lower().startswith("draw"):
-            outcomes["DRAW"] = (yes_token, m.get("question") or "")
-        elif ("win on" in q or " win" in q) and git:
-            # groupItemTitle is the team name for a "Will <team> win?" market
-            outcomes[git] = (yes_token, m.get("question") or "")
-        # else: prop (exact score / halftime / over-under) → ignore for now
+        t0 = str(toks[0])  # outcomes[0]'s YES token
+        if is_base and ("end in a draw" in q or git.lower().startswith("draw")):
+            outcomes["DRAW"] = (t0, q_raw)
+        elif is_base and (("win on" in q or " win" in q) and git):
+            outcomes[git] = (t0, q_raw)  # groupItemTitle is the team name
+        elif (sm := _SPREAD_RE.match(q_raw)) is not None and len(toks) >= 2:
+            # 2-way half-line: outcomes[0]=named team covers `line`; outcomes[1]=
+            # other team covers the opposite (+|line|). Capture BOTH tradeable sides.
+            team = sm.group("team").strip()
+            line = float(sm.group("line"))
+            others = m.get("outcomes") or []
+            outcomes[f"HCAP::{team}::{line}"] = (t0, q_raw)
+            if len(others) >= 2:
+                outcomes[f"HCAP::{str(others[1]).strip()}::{-line}"] = (str(toks[1]), q_raw)
+        elif (ou := _full_match_ou_line(q_raw)) is not None and len(toks) >= 2:
+            outcomes[f"OU::OVER::{ou}"] = (t0, q_raw)          # outcomes[0]=Over
+            outcomes[f"OU::UNDER::{ou}"] = (str(toks[1]), q_raw)  # outcomes[1]=Under
+        # else: exact score / halftime / team-total / corners → ignore
     if not outcomes:
         return None
     return ParsedEvent(
@@ -225,17 +271,36 @@ def match_to_fixture(parsed: ParsedEvent, fixtures: list[dict]) -> MatchedGame |
             continue  # a team unmatched, or both mapped to the same side → reject
 
         side_a, side_b = ra[0], rb[0]
+
+        def _team_side(name: str) -> str | None:
+            if _core(name) == _core(parsed.team_a):
+                return side_a
+            if _core(name) == _core(parsed.team_b):
+                return side_b
+            r = _resolve(name, cores)
+            return r[0] if r else None
+
         markets: list[MatchedMarket] = []
         for label, (yes_token, question) in parsed.outcomes.items():
             if label == "DRAW":
-                spec = DRAW
-            elif _core(label) == _core(parsed.team_a):
-                spec = HOME_WIN if side_a == "home" else AWAY_WIN
-            elif _core(label) == _core(parsed.team_b):
-                spec = HOME_WIN if side_b == "home" else AWAY_WIN
-            else:
-                continue
-            markets.append(MatchedMarket(spec, yes_token, question))
+                markets.append(MatchedMarket(DRAW, yes_token, question))
+            elif label.startswith("HCAP::"):
+                _, team, line_s = label.split("::", 2)
+                side = _team_side(team)
+                if side is None:
+                    continue
+                spec = HANDICAP_HOME if side == "home" else HANDICAP_AWAY
+                markets.append(MatchedMarket(spec, yes_token, question, line=float(line_s)))
+            elif label.startswith("OU::"):
+                _, ou, line_s = label.split("::", 2)
+                markets.append(MatchedMarket(
+                    OVER if ou == "OVER" else UNDER, yes_token, question, line=float(line_s)))
+            else:  # team name → moneyline
+                side = _team_side(label)
+                if side is None:
+                    continue
+                markets.append(MatchedMarket(
+                    HOME_WIN if side == "home" else AWAY_WIN, yes_token, question))
         if not markets:
             return None
         conf = min(ra[2], rb[2])
@@ -250,20 +315,41 @@ def match_to_fixture(parsed: ParsedEvent, fixtures: list[dict]) -> MatchedGame |
     return None
 
 
+def _merge_by_fixture(games: list[MatchedGame]) -> list[MatchedGame]:
+    """A match's moneyline + '- More Markets' events resolve to the SAME fixture
+    as two MatchedGames; union their markets into one. Dedup markets by
+    (outcome_spec, line, yes_token) keeping the first."""
+    merged: dict[int, MatchedGame] = {}
+    for g in games:
+        if g.fixture_id not in merged:
+            merged[g.fixture_id] = g
+            continue
+        ex = merged[g.fixture_id]
+        seen = {(m.outcome_spec, m.line, m.yes_token) for m in ex.markets}
+        extra = [m for m in g.markets
+                 if (m.outcome_spec, m.line, m.yes_token) not in seen]
+        merged[g.fixture_id] = replace(
+            ex, markets=ex.markets + extra,
+            series_slug=ex.series_slug or g.series_slug,
+            kickoff_utc=ex.kickoff_utc or g.kickoff_utc,
+        )
+    return list(merged.values())
+
+
 def collect_matched_games(
     events: list[dict],
     fetch_fixtures_for_date: Callable[[dt.date], list[dict]],
     *,
     report_unmatched: bool = False,
 ) -> tuple[list[MatchedGame], list[dict]]:
-    """Top-level: parse + exclude + match every event. Groups by date so the
-    day's fixtures are fetched once. Returns (matched_games, unmatched_audit).
+    """Top-level: parse + exclude + match every event, then merge same-fixture
+    events (moneyline + more-markets). Groups by date so the day's fixtures are
+    fetched once. Returns (matched_games, unmatched_audit).
 
     ``fetch_fixtures_for_date(date) -> list[fixture]`` is injected (defaults to
     API-Football in the CLI). Unmatched/excluded events are collected for the
     ``--report-unmatched`` audit so we can grow coverage, never silently.
     """
-    # Group events by kickoff date (skip excluded / unparseable up-front).
     by_date: dict[str, list[ParsedEvent]] = {}
     unmatched: list[dict] = []
     for ev in events:
@@ -305,11 +391,12 @@ def collect_matched_games(
                     })
                 continue
             matched.append(mg)
-    return matched, unmatched
+    return _merge_by_fixture(matched), unmatched
 
 
 __all__ = [
     "HOME_WIN", "AWAY_WIN", "DRAW",
+    "HANDICAP_HOME", "HANDICAP_AWAY", "OVER", "UNDER",
     "MatchedMarket", "MatchedGame", "ParsedEvent",
     "is_excluded_event", "parse_event", "match_to_fixture", "collect_matched_games",
 ]
