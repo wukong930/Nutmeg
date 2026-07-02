@@ -705,6 +705,19 @@ _V12_W7_CUP_AND_VARIANTS = {
     "La Fiorita": "拉菲奥里塔",
     "AF Elbasani": "埃尔巴萨尼",
     "Bate Borisov": "BATE鲍里索夫",
+    # 2026-07-02 补:实测 待开盘(cup-market days=7)剩余未翻译的 12 支资格赛小国队
+    "Flora Tallinn": "弗洛拉塔林",          # 爱沙尼亚
+    "Saburtalo": "萨布尔塔洛",              # 格鲁吉亚
+    "Petrocub": "佩特罗库布",              # 摩尔多瓦 (Petrocub Hîncești)
+    "Egnatia Rrogozhinë": "埃格纳蒂亚",     # 阿尔巴尼亚
+    "ML Vitebsk": "维捷布斯克",            # 白俄罗斯 (Maxline Vitebsk)
+    "Universitatea Craiova": "克拉约瓦大学",  # 罗马尼亚
+    "Sutjeska": "苏捷斯卡",                # 黑山 (Sutjeska Nikšić)
+    "Zira": "齐拉",                       # 阿塞拜疆
+    "Torpedo Kutaisi": "库塔伊西鱼雷",      # 格鲁吉亚
+    "GAP Connah S Quay FC": "康纳码头",     # 威尔士 (Connah's Quay Nomads)
+    "Ballkani": "巴尔卡尼",                # 科索沃
+    "FC Differdange 03": "迪弗当日03",      # 卢森堡
     # ── J1 (short names) ──
     "Kashima": "鹿岛鹿角",
     "Fagiano Okayama": "冈山绿雉",
