@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polymarket 错价研究板</title>
+<style>
+:root{
+  --bg:#f7f7f5; --card:#fff; --sub:#f1efe8; --line:#e5e3da;
+  --tx:#1a1a18; --tx2:#5f5e5a; --tx3:#8a8981;
+  --green:#3b6d11; --green-bg:#eaf3de; --amber:#854f0b; --amber-bg:#faeeda;
+  --red:#a32d2d; --red-bg:#fcebeb; --accent:#534ab7; --accent-bg:#eeedfe;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#191919; --card:#232320; --sub:#2c2c2a; --line:#3a3a37;
+  --tx:#ededea; --tx2:#a9a8a2; --tx3:#7a7973;
+  --green:#97c459; --green-bg:#27500a; --amber:#efa027; --amber-bg:#633806;
+  --red:#f09595; --red-bg:#791f1f; --accent:#afa9ec; --accent-bg:#3c3489;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+h1{font-size:19px;font-weight:600;margin:0}
+.sub{color:var(--tx2);font-size:13px}
+button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer}
+button:hover{background:var(--sub)}
+.disc{background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:9px 13px;font-size:12.5px;line-height:1.6;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:12px}
+.chead{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:10px}
+.team{display:flex;align-items:center;gap:6px;font-weight:500}
+.logo{width:22px;height:22px;border-radius:50%;background:var(--sub);object-fit:contain;flex:none}
+.vs{color:var(--tx3);font-size:13px;margin:0 2px}
+.meta{color:var(--tx3);font-size:12px;margin-left:auto;text-align:right}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500}
+.b-high{background:var(--green-bg);color:var(--green)} .b-medium{background:var(--amber-bg);color:var(--amber)}
+.b-low{background:var(--sub);color:var(--tx2)} .b-diverge{background:var(--accent-bg);color:var(--accent)}
+.sec{margin-top:9px} .sec-h{font-size:11.5px;color:var(--tx3);margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.legs{display:flex;flex-wrap:wrap;gap:7px}
+.leg{background:var(--sub);border-radius:8px;padding:7px 10px;min-width:104px;flex:1 1 auto}
+.leg .oc{font-size:12.5px}
+.leg .pr{font-size:17px;font-weight:600;margin:1px 0}
+.leg .mt{font-size:11.5px;color:var(--tx2)}
+.ev-pos{color:var(--green)} .ev-warn{color:var(--amber)} .ev-neg{color:var(--tx3)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;vertical-align:1px;margin-left:3px}
+.d-high{background:var(--green)} .d-medium{background:var(--amber)} .d-low{background:var(--tx3)} .d-excluded{background:var(--red)}
+.ico{cursor:pointer;color:var(--accent);font-size:12px;border:1px solid var(--line);border-radius:6px;padding:1px 6px;background:var(--card)}
+.tri{font-size:11.5px;color:var(--tx2)}
+.empty{text-align:center;color:var(--tx2);padding:40px 12px;font-size:14px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+.modal.on{display:flex}
+.mbox{background:var(--card);border-radius:14px;padding:18px 20px;max-width:440px;font-size:13.5px;line-height:1.7}
+.mbox h3{margin:0 0 8px;font-size:15px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 id="t-title">Polymarket 错价研究板</h1>
+      <div class="sub" id="t-subtitle">胜平负 · 让球 · 大小球 — 公允(Pinnacle 去vig)vs Polymarket 盘口</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button id="lang">EN</button>
+      <button id="reload">↻</button>
+    </div>
+  </header>
+  <div class="disc" id="t-disc"></div>
+  <main id="board"><div class="empty" id="t-loading">加载中…</div></main>
+</div>
+
+<div class="modal" id="modal" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="mbox"><h3 id="m-title"></h3><div id="m-body"></div>
+  <div style="text-align:right;margin-top:12px"><button onclick="document.getElementById('modal').classList.remove('on')" id="m-close">关闭</button></div></div>
+</div>
+
+<script>
+const API='/api/v4';
+let LANG=localStorage.getItem('pm_lang')||'zh';
+let ZH={};
+const I18N={
+  zh:{title:'Polymarket 错价研究板',subtitle:'胜平负 · 让球 · 大小球 — 公允(Pinnacle 去vig)vs Polymarket 盘口',
+    disc:'⚠ 只读研究 / 交叉校验,<b>非下注 venue</b>(Polymarket 封中国大陆)。+EV 含风险,<b>非无风险套利</b>。公允 P = Pinnacle 去vig(与竞彩板同源)。',
+    win:'胜平负',hcp:'让球',tot:'大小球',fair:'公允',model:'模型对照',close:'关闭',lang:'EN',
+    empty:'看板数据由 cron 累积。运行 <code>nutmeg-polymarket-gaps</code> 后此处显示当前错价缺口。',
+    diverge:'共识背离',home:'主',away:'客',over:'大',under:'小',loading:'加载中…',
+    mtitle:'模型 = 低权重第三方参考',
+    mbody:'「模型」是我们自己的 CatBoost/Elo 模型对该场的预测,作为<b>独立第三票</b>参考。<br><br>它<b>不进 EV</b>——模型打不过收盘线(V12 结论),只用来三方三角:<br>• 三方一致 → 有效市场(无聊)<br>• 模型+Pinnacle 一致但 <b>Polymarket 背离</b> → Polymarket 错价候选(研究价值最高)<br>• 翻盘时模型站哪边 → 判断是 Pinnacle 陈旧还是 Polymarket 错<br><br>仅在有模型的比赛(世界杯 / 13 训练联赛)显示。'},
+  en:{title:'Polymarket mispricing research board',subtitle:'1X2 · handicap · totals — fair (Pinnacle de-vig) vs Polymarket price',
+    disc:'⚠ Read-only research / cross-check, <b>NOT a betting venue</b> (Polymarket blocks mainland China). +EV carries risk, <b>not risk-free arbitrage</b>. Fair P = Pinnacle de-vig (same source as the 竞彩 board).',
+    win:'1X2',hcp:'Handicap',tot:'Totals',fair:'fair',model:'model',close:'Close',lang:'中',
+    empty:'Board data accumulates via cron. Run <code>nutmeg-polymarket-gaps</code> to populate current gaps here.',
+    diverge:'consensus split',home:'H',away:'A',over:'O',under:'U',loading:'Loading…',
+    mtitle:'Model = low-weight third opinion',
+    mbody:'"Model" is our own CatBoost/Elo prediction for the match, shown as an <b>independent third vote</b>.<br><br>It is <b>NOT an EV input</b> — the model does not beat the closing line (V12 finding); it only triangulates:<br>• all three agree → efficient market (boring)<br>• model+Pinnacle agree but <b>Polymarket diverges</b> → Polymarket mispricing candidate (highest research value)<br>• on a flip, whom the model backs → is Pinnacle stale or Polymarket wrong<br><br>Shown only for modelled matches (World Cup / 13 trained leagues).'}
+};
+const t=k=>I18N[LANG][k];
+const slug=n=>String(n||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+const zhName=n=>LANG==='zh'&&ZH[n]?ZH[n]:n;
+const pct=x=>(x*100).toFixed(1)+'%';
+const cent=x=>(x*100).toFixed(1)+'¢';
+
+function teamHtml(n){
+  const s=slug(n),init=(n||'?').slice(0,2).toUpperCase();
+  return `<span class="team"><span class="logo" style="display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--tx3)">${init}<img class="logo" style="position:absolute" src="${API}/team-logo/${s}" onerror="this.remove()" onload="this.previousSibling&&(this.parentNode.textContent='');this.style.position='static'"></span>${zhName(n)}</span>`;
+}
+function evClass(ev,tier){ if(ev>0.05&&tier!=='low'&&tier!=='excluded')return'ev-pos'; if(ev>0)return'ev-warn'; return'ev-neg'; }
+function ocLabel(leg){
+  const s=leg.outcome_spec;
+  if(s==='HOME_WIN')return t('home'); if(s==='AWAY_WIN')return t('away'); if(s==='DRAW')return LANG==='zh'?'平':'D';
+  if(s==='HANDICAP_HOME')return `${t('home')} ${leg.line>0?'+':''}${leg.line}`;
+  if(s==='HANDICAP_AWAY')return `${t('away')} ${leg.line>0?'+':''}${leg.line}`;
+  if(s==='OVER')return `${t('over')} ${leg.line}`; if(s==='UNDER')return `${t('under')} ${leg.line}`;
+  return s;
+}
+function legHtml(leg){
+  return `<div class="leg"><div class="oc">${ocLabel(leg)}<span class="dot d-${leg.confidence_tier}"></span></div>
+    <div class="pr">${cent(leg.poly_ask)}</div>
+    <div class="mt">${t('fair')} ${pct(leg.q_fair)} · <span class="${evClass(leg.ev,leg.confidence_tier)}">EV ${leg.ev>=0?'+':''}${pct(leg.ev)}</span></div></div>`;
+}
+function secHtml(label,legs,extra=''){
+  if(!legs.length)return''; return `<div class="sec"><div class="sec-h">${label}${extra}</div><div class="legs">${legs.map(legHtml).join('')}</div></div>`;
+}
+function triExtra(m){
+  const tr=m.triangulation; if(!tr||!tr.model_argmax)return'';
+  const A={H:t('home'),D:LANG==='zh'?'平':'D',A:t('away')};
+  const flag=m.has_diverge?`<span class="badge b-diverge">${t('diverge')}</span>`:'';
+  return `<span class="tri">· ${t('model')} ${A[tr.model_argmax]||'?'} / Pinn ${A[tr.pinnacle_argmax]}/ Poly ${A[tr.polymarket_argmax]||'?'}</span>
+    <span class="ico" onclick="showModel()">ⓘ</span> ${flag}`;
+}
+function cardHtml(m){
+  const tierBadge=m.top_tier&&m.top_tier!=='low'?`<span class="badge b-${m.top_tier}">${m.top_tier}</span>`:'';
+  const ko=m.kickoff_utc?new Date(m.kickoff_utc).toLocaleString(LANG==='zh'?'zh-CN':'en-US',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+  return `<div class="card">
+    <div class="chead">${teamHtml(m.home_team)}<span class="vs">vs</span>${teamHtml(m.away_team)}
+      ${m.has_diverge?`<span class="badge b-diverge">${t('diverge')}</span>`:''} ${tierBadge}
+      <span class="meta">${m.league||''}<br>${ko}</span></div>
+    ${secHtml(t('win'),m.moneyline,triExtra(m))}
+    ${secHtml(t('hcp'),m.handicap)}
+    ${secHtml(t('tot'),m.totals)}
+  </div>`;
+}
+function showModel(){
+  document.getElementById('m-title').textContent=t('mtitle');
+  document.getElementById('m-body').innerHTML=t('mbody');
+  document.getElementById('m-close').textContent=t('close');
+  document.getElementById('modal').classList.add('on');
+}
+function applyStatic(){
+  document.documentElement.lang=LANG;
+  document.getElementById('t-title').textContent=t('title');
+  document.getElementById('t-subtitle').textContent=t('subtitle');
+  document.getElementById('t-disc').innerHTML=t('disc');
+  document.getElementById('lang').textContent=t('lang');
+}
+async function load(){
+  applyStatic();
+  const board=document.getElementById('board');
+  board.innerHTML=`<div class="empty">${t('loading')}</div>`;
+  try{ if(!Object.keys(ZH).length){const r=await fetch(API+'/team-name-zh');if(r.ok)ZH=await r.json();} }catch(_){}
+  let data;
+  try{ const r=await fetch(API+'/observation/polymarket-board'); data=await r.json(); }
+  catch(_){ board.innerHTML=`<div class="empty">${t('empty')}</div>`; return; }
+  const ms=(data&&data.matches)||[];
+  board.innerHTML = ms.length ? ms.map(cardHtml).join('') : `<div class="empty">${t('empty')}</div>`;
+}
+document.getElementById('lang').onclick=()=>{LANG=LANG==='zh'?'en':'zh';localStorage.setItem('pm_lang',LANG);load();};
+document.getElementById('reload').onclick=load;
+load();
+</script>
+</body>
+</html>

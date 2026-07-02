@@ -743,9 +743,9 @@
   <!-- Tab nav — V11 P1-FE#1: 4 engineer tabs removed (outcomes / roi /
        sessions / rules). adv-toggle removed (no advanced tabs left).
        Remaining 5 user-facing tabs all directly visible. -->
-  <div class="border-b mb-6" style="border-color: var(--border-subtle);">
+  <div class="border-b mb-6 flex items-center gap-2" style="border-color: var(--border-subtle);">
     <nav id="tab-nav" role="tablist" data-i18n-attr="aria-label:tablist_label" aria-label="主功能选项卡"
-         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px">
+         class="flex space-x-1 flex-nowrap overflow-x-auto -mb-px flex-1 min-w-0">
       <!-- V10 W1: 今日推荐 is the default landing tab. Auto-loads on open. -->
       <button data-tab="today"     role="tab" aria-controls="tab-today"     aria-selected="true"  data-i18n="tab_today"  class="tab-btn active whitespace-nowrap px-4 py-3 text-sm font-medium">🎯 今日推荐</button>
       <button data-tab="upcoming"  role="tab" aria-controls="tab-upcoming"  aria-selected="false" data-i18n="tab_upcoming" class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">📅 近期赛事</button>
@@ -756,6 +756,11 @@
       <!-- 个人中心 — read-only status + hard-gated restart controls (localhost only). -->
       <button data-tab="admin"     role="tab" aria-controls="tab-admin"     aria-selected="false" data-i18n="tab_admin"   class="tab-btn whitespace-nowrap px-4 py-3 text-sm font-medium">⚙️ 个人中心</button>
     </nav>
+    <!-- Polymarket 错价研究板 — a SEPARATE read-only page. Kept OUTSIDE the tablist
+         (a role=tablist must contain only role=tab children — axe/WCAG). -->
+    <a href="/api/v4/polymarket" target="_blank" rel="noopener"
+       title="Polymarket 错价研究板(只读 · 非下注)"
+       class="flex-none whitespace-nowrap px-3 py-3 text-sm font-medium text-indigo-600 hover:underline">🔬 Polymarket ↗</a>
   </div>
 
   <!-- Tab: Today (V10 W1) — default landing. Auto-fetches today's

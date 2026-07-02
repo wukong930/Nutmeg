@@ -33,7 +33,8 @@ _BANNER = (
     "Polymarket 错价探测(只读) — +EV ≠ 无风险套利;q 来自可能过期的 Pinnacle 去 vig。"
     "不接钱包、不下单。"
 )
-_SPEC_ZH = {"HOME_WIN": "主胜", "AWAY_WIN": "客胜", "DRAW": "平局"}
+_SPEC_ZH = {"HOME_WIN": "主胜", "AWAY_WIN": "客胜", "DRAW": "平局",
+            "HANDICAP_HOME": "让主", "HANDICAP_AWAY": "让客", "OVER": "大", "UNDER": "小"}
 _TIER_RANK = {"excluded": 0, "low": 1, "medium": 2, "high": 3}
 
 
@@ -113,8 +114,11 @@ def main(argv: list[str] | None = None) -> int:
             fresh = f"{g.freshness_hours:.0f}h" if g.freshness_hours is not None else "?"
             match = f"{g.home_team[:9]:9}v{g.away_team[:9]:9}"
             spec = _SPEC_ZH.get(g.outcome_spec, g.outcome_spec)
+            if g.line is not None:
+                _f = "+g" if g.outcome_spec.startswith("HANDICAP") else "g"
+                spec = f"{spec}{g.line:{_f}}"
             why = ",".join(g.reasons) or "-"
-            print(f"  {match} {spec:4}| {g.q_fair*100:4.1f}%  {g.poly_ask:.2f}  "
+            print(f"  {match} {spec:8}| {g.q_fair*100:4.1f}%  {g.poly_ask:.2f}  "
                   f"{g.ev:+6.1%}  {g.confidence_tier:8} {g.depth_usd:6.0f} {fresh:4} {why}")
         print(f"\n  显示 {len(shown)}/{len(all_gaps)} 条。+EV 含风险,非套利。")
 
