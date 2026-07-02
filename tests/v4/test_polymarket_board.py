@@ -113,3 +113,21 @@ def test_triangulation_no_model():
     t = triangulate((0.55, 0.25, 0.20), {"H": 0.57, "D": 0.26, "A": 0.18}, None)
     assert t.model_argmax is None and not t.all_three_agree and not t.consensus_vs_poly_diverge
     assert t.pinnacle_argmax == "H" and t.polymarket_argmax == "H"
+
+
+def test_kickoff_filter_hides_past_keeps_future_failopen():
+    from datetime import UTC, datetime
+
+    from nutmeg.v4.api.observation_routes import _pm_kickoff_past
+
+    now = datetime(2026, 7, 2, 13, 0, 0, tzinfo=UTC)
+    # already kicked off (past) → hidden; SQLite "+00" truncated-offset format
+    assert _pm_kickoff_past("2026-06-30 21:00:00+00", now) is True
+    assert _pm_kickoff_past("2026-07-02 12:59:59+00", now) is True
+    # future / exactly-now-or-later → shown
+    assert _pm_kickoff_past("2026-07-02 19:00:00+00", now) is False
+    assert _pm_kickoff_past("2026-07-02T19:00:00+00", now) is False  # ISO 'T' variant
+    # fail-open: unknown / unparseable kickoff keeps the card
+    assert _pm_kickoff_past(None, now) is False
+    assert _pm_kickoff_past("", now) is False
+    assert _pm_kickoff_past("not-a-date", now) is False

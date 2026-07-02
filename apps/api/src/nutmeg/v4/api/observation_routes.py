@@ -754,6 +754,21 @@ def _pm_leg(r: dict) -> dict:
     }
 
 
+def _pm_kickoff_past(kickoff_utc: str | None, now: datetime) -> bool:
+    """True if the match has already kicked off → hide it from the LIVE board (a
+    kicked-off / finished match is no longer an actionable pre-match mispricing).
+    Its rows stay in the DB for the by-tier hit-rate 复盘. Fail-open: an unknown or
+    unparseable kickoff keeps the card (never silently drop on bad data)."""
+    if not kickoff_utc:
+        return False
+    try:
+        naive = kickoff_utc.strip()[:19].replace("T", " ")  # "YYYY-MM-DD HH:MM:SS"
+        ko = datetime.strptime(naive, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+    except (ValueError, TypeError):
+        return False
+    return ko <= now
+
+
 def _assemble_polymarket_board(db: str) -> list[dict]:
     from nutmeg.v4.observation.polymarket_gaps import fetch_polymarket_gaps
     from nutmeg.v4.observation.polymarket_model_overlay import (
@@ -765,9 +780,12 @@ def _assemble_polymarket_board(db: str) -> list[dict]:
     for r in fetch_polymarket_gaps(db):
         by_fx.setdefault(r["fixture_id"], []).append(r)
 
+    now = datetime.now(UTC)
     matches: list[dict] = []
     for fid, legs in by_fx.items():
         first = legs[0]
+        if _pm_kickoff_past(first.get("kickoff_utc"), now):
+            continue  # 已开赛/已结束 → 不进实时错价板(行仍留库供结算复盘)
         ml = {r["outcome_spec"]: r for r in legs if r["outcome_spec"] in _PM_ML}
         moneyline = [_pm_leg(ml[s]) for s in _PM_ML if s in ml]
         handicap = sorted(
