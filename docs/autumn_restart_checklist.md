@@ -60,7 +60,7 @@
 
 - [ ] **串关决策引擎**:EV 门 + 单关/串关建议 + 分数 Kelly + 破产模拟。**设计已想清**(`parlay_soft_water_research §2`),有腿几天能上。
 - [ ] **注额层**(加固):**默认半 Kelly**(对冲 P 是估的)+ **同时多注解联合 stake 向量**(别相加单注 Kelly)+ **相关/串关最小注**。`docs/kelly_staking_uncertainty_correlation.md`
-- [ ] **B2 方差校正门槛接真闸门(替换平 +5%)**:纯函数 `model/ev_threshold.py`(`门槛=5%+z·σ_P·SP`)已建,前端 v59 只**并排显示**未接线。**数据门**:攒够「竞彩 SP × 已结算结果」后,直接回测"按方差门槛过滤 vs 平 5%,实盘命中/收益是否真更好",据此定 z、σ_P 终值 + 是否替换平 5%。**动的是下注决策规则本身,务必实证后再上**(方向已 71k 场实测:σ_EV∝SP、冷门腿不确定 3–7× 甜区;量级竞彩封盘档 σ_P≈1–1.5pp)。`docs/ev_threshold_variance_2026-06-26.md`、`记忆 ev-threshold-variance-sigmap`
+- [ ] **B2 方差校正门槛接真闸门(替换平 +5%)**:纯函数 `model/ev_threshold.py`(`门槛=5%+z·σ_P·SP`)已建,前端 v59 只**并排显示**未接线。**数据门**:攒够「竞彩 SP × 已结算结果」后,直接回测"按方差门槛过滤 vs 平 5%,实盘命中/收益是否真更好",据此定 z、σ_P 终值 + 是否替换平 5%。**动的是下注决策规则本身,务必实证后再上**(方向已 71k 场实测:σ_EV∝SP、冷门腿不确定 3–7× 甜区;量级竞彩封盘档 σ_P≈1–1.5pp)。**🆕 σ_P 有了 τ 维度(2026-07-02 快照轨迹实测)**:σ_P(τ) 从贴收盘 1.16pp 单调爬到 4 天前 3.3pp,freeze-gap 时窗(3–24h)≈收盘档 1.4–1.8×——B2 公式的 σ_P 应取 σ_P(τ) 曲线而非常数;恒等映射无过杆系统性成分(fav 漂移 +0.8pp 全桶同号但 t<2.8=暗示性,登记探索性),漂移修正模型不建。`docs/close_drift_measurement_2026-07-02.md`(`scripts/measure_close_drift.py` 秋季重跑出联赛别曲线)、`docs/ev_threshold_variance_2026-06-26.md`、`记忆 ev-threshold-variance-sigmap`
 
 ---
 
