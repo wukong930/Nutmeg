@@ -5709,14 +5709,14 @@ function renderCupMarket(preds, pending) {
 // ── Polymarket 错价研究板 (PM-6 rework: a TAB, reuses zhTeam/teamLogo/showInfo) ──
 const PM_L = {
   zh:{win:'胜平负',hcp:'让球',tot:'大小球',fair:'公允',home:'主',away:'客',over:'大',under:'小',draw:'平',
-    diverge:'共识背离',model:'模型对照',
+    diverge:'共识背离',model:'模型对照',finished:'已结束',review:'命中复盘',pending:'待结算',
     empty:'看板由 cron 累积(3×/日)。暂无数据 —— 下个窗口或手动 nutmeg-polymarket-gaps 后显示。',
     discT:'免责 · 定位',
     discB:'⚠ <b>只读研究 / 交叉校验,非下注 venue</b>(Polymarket 封中国大陆)。+EV 含风险,<b>非无风险套利</b>。公允 P = Pinnacle 去vig(与竞彩板同源)。',
     modT:'模型 = 低权重第三方参考',
     modB:'「模型」是我们自己的 CatBoost/Elo 模型对该场的预测,作为<b>独立第三票</b>参考。<br><br>它<b>不进 EV</b>(模型打不过收盘线,V12 结论),只用于三方三角:<br>• 三方一致 → 有效市场<br>• 模型+Pinnacle 一致但 <b>Polymarket 背离</b> → Polymarket 错价候选<br>• 翻盘时模型站哪边 → 判断是 Pinnacle 陈旧还是 Polymarket 错<br><br>仅有模型的比赛(世界杯 / 13 训练联赛)显示。'},
   en:{win:'1X2',hcp:'AH',tot:'O/U',fair:'fair',home:'H',away:'A',over:'O',under:'U',draw:'D',
-    diverge:'consensus split',model:'model',
+    diverge:'consensus split',model:'model',finished:'Finished',review:'hit review',pending:'pending',
     empty:'Board accumulates via cron (3×/day). No data yet — appears after the next window or a manual nutmeg-polymarket-gaps run.',
     discT:'Disclaimer',
     discB:'⚠ <b>Read-only research / cross-check, NOT a betting venue</b> (Polymarket blocks mainland China). +EV carries risk, <b>not arbitrage</b>. Fair P = Pinnacle de-vig (same source as the 竞彩 board).',
@@ -5742,16 +5742,21 @@ function _pmDot(tier){
   const c={high:'#3b6d11',medium:'#854f0b',low:'#8a8981',excluded:'#a32d2d'}[tier]||'#8a8981';
   return '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+';margin-left:4px;vertical-align:1px"></span>';
 }
-function _pmLeg(g){
+function _pmHit(g){   // 复盘标记:命中✓ / 落空✗ / 待结算无标记
+  if(g.outcome_hit===1)return ' <span style="color:#3b6d11;font-weight:700">✓</span>';
+  if(g.outcome_hit===0)return ' <span class="text-muted">✗</span>';
+  return '';
+}
+function _pmLeg(g,fin){
   return '<div style="background:rgba(128,128,128,.10);border-radius:8px;padding:7px 10px;min-width:104px;flex:1 1 auto">'
-    +'<div class="text-sm">'+_pmOc(g)+_pmDot(g.confidence_tier)+'</div>'
+    +'<div class="text-sm">'+_pmOc(g)+_pmDot(g.confidence_tier)+(fin?_pmHit(g):'')+'</div>'
     +'<div style="font-size:17px;font-weight:600;margin:1px 0">'+_pmCent(g.poly_ask)+'</div>'
     +'<div class="text-xs text-muted">'+pmL('fair')+' '+_pmPct(g.q_fair)+' · <span class="'+_pmEv(g.ev,g.confidence_tier)+'">EV '+(g.ev>=0?'+':'')+_pmPct(g.ev)+'</span></div></div>';
 }
-function _pmSec(label, legs, extra){
+function _pmSec(label, legs, extra, fin){
   if(!legs.length)return'';
   return '<div style="margin-top:9px"><div class="text-xs text-muted" style="margin-bottom:5px">'+label+(extra||'')+'</div>'
-    +'<div style="display:flex;flex-wrap:wrap;gap:7px">'+legs.map(_pmLeg).join('')+'</div></div>';
+    +'<div style="display:flex;flex-wrap:wrap;gap:7px">'+legs.map(g=>_pmLeg(g,fin)).join('')+'</div></div>';
 }
 function _pmTri(m){
   const tr=m.triangulation; if(!tr||!tr.model_argmax)return'';
@@ -5760,15 +5765,20 @@ function _pmTri(m){
   return ' · '+pmL('model')+' '+(A[tr.model_argmax]||'?')+'/Pinn '+A[tr.pinnacle_argmax]+'/Poly '+(A[tr.polymarket_argmax]||'?')
     +' <button type="button" onclick="pmModelInfo()" aria-label="模型说明" class="text-indigo-600" style="border:none;background:none;cursor:pointer;padding:0 2px">'+IC('info')+'</button>'+flag;
 }
-function _pmCard(m){
+function _pmCard(m,fin){
   const ko=m.kickoff_utc?new Date(m.kickoff_utc).toLocaleString(_LOCALE==='zh'?'zh-CN':'en-US',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
   const tierB=(m.top_tier&&m.top_tier!=='low')?' <span class="text-xs" style="padding:2px 8px;border-radius:20px;background:rgba(59,109,17,.14);color:#3b6d11">'+m.top_tier+'</span>':'';
-  return '<div class="bg-white shadow-sm rounded-lg p-3 mb-3">'
+  const hasScore=(m.home_goals!=null&&m.away_goals!=null);
+  const mid = fin
+    ? (hasScore ? '<span class="text-sm" style="padding:1px 9px;border-radius:20px;background:rgba(128,128,128,.16);font-weight:700">'+m.home_goals+' : '+m.away_goals+'</span>'
+                : '<span class="text-xs text-muted">'+pmL('pending')+'</span>')
+    : '<span class="text-muted text-sm">vs</span>';
+  return '<div class="bg-white shadow-sm rounded-lg p-3 mb-3"'+(fin?' style="opacity:.85"':'')+'>'
     +'<div class="flex items-center gap-2 flex-wrap mb-2">'
-    +teamLogo(m.home_team)+'<span class="font-medium">'+zhTeam(m.home_team)+'</span><span class="text-muted text-sm">vs</span>'
-    +teamLogo(m.away_team)+'<span class="font-medium">'+zhTeam(m.away_team)+'</span>'+tierB
+    +teamLogo(m.home_team)+'<span class="font-medium">'+zhTeam(m.home_team)+'</span>'+mid
+    +teamLogo(m.away_team)+'<span class="font-medium">'+zhTeam(m.away_team)+'</span>'+(fin?'':tierB)
     +'<span class="text-xs text-muted" style="margin-left:auto;text-align:right">'+(m.league||'')+'<br>'+ko+'</span></div>'
-    +_pmSec(pmL('win'),m.moneyline,_pmTri(m))+_pmSec(pmL('hcp'),m.handicap)+_pmSec(pmL('tot'),m.totals)
+    +_pmSec(pmL('win'),m.moneyline,fin?'':_pmTri(m),fin)+_pmSec(pmL('hcp'),m.handicap,'',fin)+_pmSec(pmL('tot'),m.totals,'',fin)
     +'</div>';
 }
 async function loadPolymarket(){
@@ -5776,8 +5786,15 @@ async function loadPolymarket(){
   let data;
   try{ const r=await fetch(API+'/observation/polymarket-board'); data=await r.json(); }
   catch(_){ el.innerHTML='<p class="text-sm text-muted">'+pmL('empty')+'</p>'; return; }
-  const ms=(data&&data.matches)||[];
-  el.innerHTML = ms.length ? ms.map(_pmCard).join('') : '<p class="text-sm text-muted">'+pmL('empty')+'</p>';
+  const ms=(data&&data.matches)||[], fin=(data&&data.finished)||[];
+  let html = ms.length ? ms.map(m=>_pmCard(m)).join('') : '<p class="text-sm text-muted">'+pmL('empty')+'</p>';
+  if(fin.length){
+    html += '<details style="margin-top:4px;border-top:1px solid var(--border,rgba(128,128,128,.22));padding-top:10px">'
+      +'<summary style="cursor:pointer;color:var(--text-muted);font-size:13px;user-select:none">'
+      +pmL('finished')+' · '+pmL('review')+' ('+fin.length+')</summary>'
+      +'<div style="margin-top:10px">'+fin.map(m=>_pmCard(m,true)).join('')+'</div></details>';
+  }
+  el.innerHTML = html;
 }
 
 async function loadCupMarket(opts = {}) {

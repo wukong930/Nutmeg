@@ -769,7 +769,10 @@ def _pm_kickoff_past(kickoff_utc: str | None, now: datetime) -> bool:
     return ko <= now
 
 
-def _assemble_polymarket_board(db: str) -> list[dict]:
+def _assemble_polymarket_board(db: str) -> tuple[list[dict], list[dict]]:
+    """→ (upcoming, finished). ``upcoming`` = 未开赛 (actionable mispricings,
+    research-first order); ``finished`` = 已开赛 with realized score + per-leg
+    hit/miss (命中复盘, most-recent first). Same card shape for both."""
     from nutmeg.v4.observation.polymarket_gaps import fetch_polymarket_gaps
     from nutmeg.v4.observation.polymarket_model_overlay import (
         fetch_model_1x2,
@@ -781,11 +784,10 @@ def _assemble_polymarket_board(db: str) -> list[dict]:
         by_fx.setdefault(r["fixture_id"], []).append(r)
 
     now = datetime.now(UTC)
-    matches: list[dict] = []
+    upcoming: list[dict] = []
+    finished: list[dict] = []
     for fid, legs in by_fx.items():
         first = legs[0]
-        if _pm_kickoff_past(first.get("kickoff_utc"), now):
-            continue  # 已开赛/已结束 → 不进实时错价板(行仍留库供结算复盘)
         ml = {r["outcome_spec"]: r for r in legs if r["outcome_spec"] in _PM_ML}
         moneyline = [_pm_leg(ml[s]) for s in _PM_ML if s in ml]
         handicap = sorted(
@@ -817,7 +819,7 @@ def _assemble_polymarket_board(db: str) -> list[dict]:
                        key=lambda tt: _PM_TIER_RANK.get(tt, 0), default=None)
         best_ev = max((g["ev"] for g in all_legs if g["confidence_tier"] != "excluded"),
                       default=None)
-        matches.append({
+        card = {
             "fixture_id": fid, "league": first.get("league"),
             "home_team": first.get("home_team"), "away_team": first.get("away_team"),
             "match_date": first.get("match_date"), "kickoff_utc": first.get("kickoff_utc"),
@@ -825,24 +827,35 @@ def _assemble_polymarket_board(db: str) -> list[dict]:
             "moneyline": moneyline, "handicap": handicap, "totals": totals,
             "triangulation": tri, "top_tier": top_tier, "best_ev": best_ev,
             "has_diverge": bool(tri and tri["consensus_vs_poly_diverge"]),
-        })
+            "home_goals": first.get("home_goals"), "away_goals": first.get("away_goals"),
+            "settled": first.get("outcome") is not None,
+        }
+        if _pm_kickoff_past(first.get("kickoff_utc"), now):
+            finished.append(card)   # 已开赛/已结束 → 命中复盘桶(仍留库、带真实结果)
+        else:
+            upcoming.append(card)
 
-    # research-first ordering: divergence cards, then best tier, then kickoff.
-    matches.sort(key=lambda m: (
+    # upcoming: research-first (divergence, then best tier, then soonest kickoff).
+    upcoming.sort(key=lambda m: (
         not m["has_diverge"], -_PM_TIER_RANK.get(m["top_tier"], 0), m.get("kickoff_utc") or ""))
-    return matches
+    # finished: most-recent kickoff first (freshest 复盘 on top).
+    finished.sort(key=lambda m: m.get("kickoff_utc") or "", reverse=True)
+    return upcoming, finished
 
 
 @router.get("/polymarket-board")
 def polymarket_board() -> dict:
     """READ-ONLY Polymarket 错价研究看板. Accumulated gaps grouped per match into
-    胜平负 / 让球 / 大小球 + model↔Pinnacle↔Polymarket triangulation. Empty DB →
-    empty board (not 404). NEVER a betting instrument."""
+    胜平负 / 让球 / 大小球 + model↔Pinnacle↔Polymarket triangulation. ``matches`` =
+    未开赛 (actionable); ``finished`` = 已结束 命中复盘 (with realized results). Empty
+    DB → empty board (not 404). NEVER a betting instrument."""
     if not _db_exists():
-        return {"db_exists": False, "matches": [], "count": 0, "disclaimer": _PM_DISCLAIMER}
+        return {"db_exists": False, "matches": [], "finished": [], "count": 0,
+                "finished_count": 0, "disclaimer": _PM_DISCLAIMER}
     try:
-        board = _assemble_polymarket_board(_db_path())
+        upcoming, finished = _assemble_polymarket_board(_db_path())
     except Exception:  # noqa: BLE001 — a bad read must return an empty board, not a 500
-        board = []
-    return {"db_exists": True, "matches": board, "count": len(board),
+        upcoming, finished = [], []
+    return {"db_exists": True, "matches": upcoming, "finished": finished,
+            "count": len(upcoming), "finished_count": len(finished),
             "disclaimer": _PM_DISCLAIMER}

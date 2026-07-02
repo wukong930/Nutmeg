@@ -115,6 +115,45 @@ def test_triangulation_no_model():
     assert t.pinnacle_argmax == "H" and t.polymarket_argmax == "H"
 
 
+def _pm_row(fid, spec, ko, **kw):
+    r = {"fixture_id": fid, "outcome_spec": spec, "line": None, "q_fair": 0.5,
+         "poly_ask": 0.5, "poly_mid": 0.5, "ev": 0.0, "edge_direction": "no_edge",
+         "confidence_tier": "low", "reasons": None, "depth_usd": 100.0,
+         "freshness_hours": 1.0, "league": "WC", "home_team": "Alpha",
+         "away_team": "Beta", "match_date": "2999-01-01", "kickoff_utc": ko,
+         "recorded_at": "x", "home_goals": None, "away_goals": None,
+         "outcome": None, "outcome_hit": None}
+    r.update(kw)
+    return r
+
+
+def test_board_splits_upcoming_vs_finished(monkeypatch):
+    from nutmeg.v4.api.observation_routes import _assemble_polymarket_board
+
+    past, future = "2000-01-01 00:00:00+00", "2999-01-01 00:00:00+00"
+    rows = [
+        _pm_row(1, "HOME_WIN", future), _pm_row(1, "DRAW", future),
+        _pm_row(1, "AWAY_WIN", future),
+        _pm_row(2, "HOME_WIN", past, home_goals=2, away_goals=1, outcome=0, outcome_hit=1),
+        _pm_row(2, "DRAW", past, home_goals=2, away_goals=1, outcome=0, outcome_hit=0),
+        _pm_row(2, "AWAY_WIN", past, home_goals=2, away_goals=1, outcome=0, outcome_hit=0),
+    ]
+    monkeypatch.setattr(
+        "nutmeg.v4.observation.polymarket_gaps.fetch_polymarket_gaps", lambda db: rows)
+    monkeypatch.setattr(
+        "nutmeg.v4.observation.polymarket_model_overlay.fetch_model_1x2",
+        lambda *a, **k: None)
+
+    upcoming, finished = _assemble_polymarket_board(":memory:")
+    assert [m["fixture_id"] for m in upcoming] == [1]      # future → upcoming
+    assert [m["fixture_id"] for m in finished] == [2]      # past → finished
+    fc = finished[0]
+    assert (fc["home_goals"], fc["away_goals"]) == (2, 1) and fc["settled"] is True
+    assert fc["moneyline"][0]["outcome_hit"] == 1          # HOME_WIN hit surfaced
+    # upcoming carries no realized result
+    assert upcoming[0]["settled"] is False and upcoming[0]["home_goals"] is None
+
+
 def test_kickoff_filter_hides_past_keeps_future_failopen():
     from datetime import UTC, datetime
 
