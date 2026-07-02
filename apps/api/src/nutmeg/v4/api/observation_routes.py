@@ -5,6 +5,7 @@ observation DB is optional (a deployment may run without it).
 """
 from __future__ import annotations
 
+import json
 import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -720,3 +721,110 @@ def prediction_scoreboard() -> PredictionScoreboardResponse:
     except Exception:  # noqa: BLE001
         pass
     return PredictionScoreboardResponse(db_exists=True, prediction=pred, calibration=cal)
+
+
+# ---------- /polymarket-board (Polymarket 错价研究看板 · READ-ONLY) ----------
+# Serves the accumulated polymarket_gaps rows (cron-populated) as per-match cards:
+# 胜平负 / 让球 / 大小球 legs (fair q vs Polymarket ask + EV + tier) plus, for a
+# modelled match, the model↔Pinnacle↔Polymarket triangulation. NOT a betting
+# venue (Polymarket blocks China; +EV carries risk, not arbitrage).
+_PM_TIER_RANK = {"excluded": 0, "low": 1, "medium": 2, "high": 3}
+_PM_ML = ("HOME_WIN", "DRAW", "AWAY_WIN")
+_PM_DISCLAIMER = (
+    "只读研究 / 交叉校验,非下注 venue(Polymarket 封中国);+EV 含风险,非无风险套利;"
+    "公允 P = Pinnacle 去vig(与竞彩板同源)。"
+)
+
+
+def _pm_leg(r: dict) -> dict:
+    """One polymarket_gaps row → a compact board leg."""
+    return {
+        "outcome_spec": r["outcome_spec"],
+        "line": r.get("line"),
+        "q_fair": round(r["q_fair"], 4),
+        "poly_ask": round(r["poly_ask"], 4),
+        "poly_mid": round(r["poly_mid"], 4) if r.get("poly_mid") is not None else None,
+        "ev": round(r["ev"], 4),
+        "edge_direction": r.get("edge_direction"),
+        "confidence_tier": r["confidence_tier"],
+        "reasons": json.loads(r["reasons"]) if r.get("reasons") else [],
+        "depth_usd": r.get("depth_usd"),
+        "freshness_hours": r.get("freshness_hours"),
+        "outcome_hit": r.get("outcome_hit"),   # settled result (None until kickoff)
+    }
+
+
+def _assemble_polymarket_board(db: str) -> list[dict]:
+    from nutmeg.v4.observation.polymarket_gaps import fetch_polymarket_gaps
+    from nutmeg.v4.observation.polymarket_model_overlay import (
+        fetch_model_1x2,
+        triangulate,
+    )
+
+    by_fx: dict[int, list[dict]] = {}
+    for r in fetch_polymarket_gaps(db):
+        by_fx.setdefault(r["fixture_id"], []).append(r)
+
+    matches: list[dict] = []
+    for fid, legs in by_fx.items():
+        first = legs[0]
+        ml = {r["outcome_spec"]: r for r in legs if r["outcome_spec"] in _PM_ML}
+        moneyline = [_pm_leg(ml[s]) for s in _PM_ML if s in ml]
+        handicap = sorted(
+            (_pm_leg(r) for r in legs if r["outcome_spec"].startswith("HANDICAP")),
+            key=lambda x: (x["outcome_spec"], x["line"] if x["line"] is not None else 0.0))
+        totals = sorted(
+            (_pm_leg(r) for r in legs if r["outcome_spec"] in ("OVER", "UNDER")),
+            key=lambda x: (x["line"] if x["line"] is not None else 0.0, x["outcome_spec"]))
+
+        tri = None
+        if all(s in ml for s in _PM_ML):
+            pinn = (ml["HOME_WIN"]["q_fair"], ml["DRAW"]["q_fair"], ml["AWAY_WIN"]["q_fair"])
+            poly = {"H": ml["HOME_WIN"]["poly_ask"], "D": ml["DRAW"]["poly_ask"],
+                    "A": ml["AWAY_WIN"]["poly_ask"]}
+            model = fetch_model_1x2(
+                db, fixture_id=fid, match_date=first.get("match_date"),
+                home_team=first.get("home_team"), away_team=first.get("away_team"))
+            t = triangulate(pinn, poly, model)
+            tri = {
+                "model_1x2": [round(x, 4) for x in t.model_1x2] if t.model_1x2 else None,
+                "model_argmax": t.model_argmax, "pinnacle_argmax": t.pinnacle_argmax,
+                "polymarket_argmax": t.polymarket_argmax,
+                "consensus_vs_poly_diverge": t.consensus_vs_poly_diverge,
+                "flip_backer": t.flip_backer, "all_three_agree": t.all_three_agree,
+            }
+
+        all_legs = moneyline + handicap + totals
+        top_tier = max((g["confidence_tier"] for g in all_legs),
+                       key=lambda tt: _PM_TIER_RANK.get(tt, 0), default=None)
+        best_ev = max((g["ev"] for g in all_legs if g["confidence_tier"] != "excluded"),
+                      default=None)
+        matches.append({
+            "fixture_id": fid, "league": first.get("league"),
+            "home_team": first.get("home_team"), "away_team": first.get("away_team"),
+            "match_date": first.get("match_date"), "kickoff_utc": first.get("kickoff_utc"),
+            "recorded_at": first.get("recorded_at"),
+            "moneyline": moneyline, "handicap": handicap, "totals": totals,
+            "triangulation": tri, "top_tier": top_tier, "best_ev": best_ev,
+            "has_diverge": bool(tri and tri["consensus_vs_poly_diverge"]),
+        })
+
+    # research-first ordering: divergence cards, then best tier, then kickoff.
+    matches.sort(key=lambda m: (
+        not m["has_diverge"], -_PM_TIER_RANK.get(m["top_tier"], 0), m.get("kickoff_utc") or ""))
+    return matches
+
+
+@router.get("/polymarket-board")
+def polymarket_board() -> dict:
+    """READ-ONLY Polymarket 错价研究看板. Accumulated gaps grouped per match into
+    胜平负 / 让球 / 大小球 + model↔Pinnacle↔Polymarket triangulation. Empty DB →
+    empty board (not 404). NEVER a betting instrument."""
+    if not _db_exists():
+        return {"db_exists": False, "matches": [], "count": 0, "disclaimer": _PM_DISCLAIMER}
+    try:
+        board = _assemble_polymarket_board(_db_path())
+    except Exception:  # noqa: BLE001 — a bad read must return an empty board, not a 500
+        board = []
+    return {"db_exists": True, "matches": board, "count": len(board),
+            "disclaimer": _PM_DISCLAIMER}
