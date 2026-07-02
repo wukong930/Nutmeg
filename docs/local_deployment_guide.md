@@ -346,3 +346,42 @@ logs/launchd/                    # per-job stdout + stderr (auto-created)
   com.nutmeg.daily_wc_predict.plist
   com.nutmeg.daily_wc_settle.plist
 ```
+
+> NOTE: the table above ("7 jobs") is the original set. Later crons also install:
+> `sporttery_vote`, `polymarket_gaps`, `closing_odds`, `daily_backup`,
+> `weekly_elo_refresh` (see the header of `scripts/setup_local_pipeline.sh` for the
+> authoritative list). `launchctl list | grep com.nutmeg` shows what's actually loaded.
+
+## Operating the Polymarket research board (PM-1..7, 2026-07-02)
+
+A READ-ONLY mispricing/cross-check board — **NOT a betting venue** (Polymarket
+geo-blocks mainland China). Page: `/api/v4/polymarket` (also linked from the
+dashboard's 🔬 chip). Data endpoint: `/api/v4/observation/polymarket-board`.
+Per match it shows 胜平负 / 让球 / 大小球 with our Pinnacle-de-vig fair `q` vs the
+Polymarket ask + EV + confidence tier, plus (for World Cup / the 13 trained
+leagues) a model↔Pinnacle↔Polymarket triangulation.
+
+Cron `com.nutmeg.polymarket_gaps` (10:00 / 16:00 / 23:30 daily) runs
+`nutmeg-polymarket-gaps --db data/v4_observation.db --days 3` → record + settle.
+
+Two ops caveats specific to this board:
+
+1. **It needs the foreign proxy ONLINE.** Polymarket is unreachable direct from
+   China, so the plist forces `HTTP(S)_PROXY=http://127.0.0.1:1082`. If the proxy
+   (Clash/etc.) is down when the cron fires, the Polymarket fetch fails-soft →
+   that window records nothing (no crash, just an empty run in `.err.log`). Other
+   nutmeg crons run China-DIRECT and must NOT use this proxy — don't copy the env.
+   Clearing the proxy for a manual run (`NO_PROXY='*'`) will give an `SSL EOF`.
+
+2. **Settlement rides API-Football**, exactly like the other settle jobs: after
+   kickoff, `settle_polymarket_gaps` pulls the day's fixtures, reads the 90' score,
+   and marks each (spec, line) YES hit/miss (让球 = 净胜 vs line, 大小 = 总进球 vs
+   line, half-lines ⇒ no push). No API-Football key / no fixture data ⇒ rows stay
+   unsettled (retried next run) — never a wrong attribution.
+
+Manual trigger (don't wait for the window): `launchctl kickstart
+gui/$(id -u)/com.nutmeg.polymarket_gaps` (needs the proxy up). A full window is
+~67 games × orderbooks so it takes a few minutes and writes rows in one batch at
+the end. The board is the honest long-game: let it accumulate + settle for a few
+weeks, then read realized hit-rate BY TIER to test whether 外盘 +EV is real and
+whether the favorite-flip / consensus-divergence guards actually cut the losers.
