@@ -93,6 +93,20 @@ def test_finnish_zh_override():
     assert sporttery.zh_to_canonical("AC奥卢") == "AC Oulu"
 
 
+def test_kleague_zh_override():
+    """韩职 — 竞彩挂出 7-4/7-5 SP 但 6 个队名不在字典 → 每场恰好半边失配 → 6/6 场
+    被 ingest 静默丢弃 (体检 2026-07-03)。对照 KOR_K_LEAGUE_1 gather 真实拼写补齐;
+    济州SK 是俱乐部改名,API-Football 仍叫 Jeju United FC。"""
+    assert sporttery.zh_to_canonical("安养FC") == "FC Anyang"
+    assert sporttery.zh_to_canonical("富川FC") == "Bucheon FC 1995"
+    assert sporttery.zh_to_canonical("江原FC") == "Gangwon FC"
+    assert sporttery.zh_to_canonical("首尔FC") == "FC Seoul"
+    assert sporttery.zh_to_canonical("光州FC") == "Gwangju FC"
+    assert sporttery.zh_to_canonical("济州SK") == "Jeju United FC"
+    # 之前就映射成功的一侧不受影响
+    assert sporttery.zh_to_canonical("浦项制铁") == "Pohang Steelers"
+
+
 def test_harvest_protect_manual_toggle(tmp_path):
     """The cron (protect_manual=True) preserves a hand-priced row; the 🎯 刷新竞彩
     endpoint (protect_manual=False) overwrites the stale market_mode capture with the

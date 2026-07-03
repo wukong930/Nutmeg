@@ -70,6 +70,17 @@ _ZH_OVERRIDES: dict[str, str] = {
     "AC奥卢": "AC Oulu",
     "赫尔辛基": "HJK Helsinki",
     "赫尔辛基火花": "Gnistan",
+    # 韩职 K League 1 — 竞彩 word order / renames TEAM_NAME_ZH lacks. Aligned to
+    # the live gather (KOR_K_LEAGUE_1 fixtures 2026-07-04/05, 体检 2026-07-03):
+    # these 6 unmapped sides silently dropped ALL 6 on-sale 韩职 matches (the
+    # already-mapped 浦项/全北/蔚山… made every pair half-broken). NB 济州SK is
+    # the club's rename; API-Football still lists it as Jeju United FC.
+    "安养FC": "FC Anyang",
+    "富川FC": "Bucheon FC 1995",
+    "江原FC": "Gangwon FC",
+    "首尔FC": "FC Seoul",
+    "光州FC": "Gwangju FC",
+    "济州SK": "Jeju United FC",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

@@ -39,6 +39,7 @@ _EN_TO_CN: dict[str, str] = {
     "WC": "世界杯",
     "FIN_VEIKKAUSLIIGA": "芬超",
     "SWE_ALLSVENSKAN": "瑞超",
+    "KOR_K_LEAGUE_1": "韩职",   # sporttery 缩写 = 韩职 (体检 2026-07-03)
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.

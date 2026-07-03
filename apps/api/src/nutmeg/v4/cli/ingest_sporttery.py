@@ -104,6 +104,16 @@ def main(argv: list[str] | None = None) -> int:
     if unmapped:
         print(" · 未映射: " + ", ".join(
             f"{m['home_cn']}/{m['away_cn']}" for m in unmapped[:8]))
+        # 体检 2026-07-03 — a whole league can vanish from ingest one team-name at
+        # a time (韩职: 6/6 matches dropped, each pair half-mapped). Shout when a
+        # league is FULLY unmapped so the cron log reads as an action item, not noise.
+        from collections import Counter
+        n_all = Counter(m["league_cn"] or "?" for m in matches)
+        n_bad = Counter(m["league_cn"] or "?" for m in unmapped)
+        gone = [lg for lg, n in n_bad.items() if n == n_all[lg]]
+        if gone:
+            print(f"  ⚠️ 整联赛丢失(0 场入库): {', '.join(gone)} — "
+                  f"补 sporttery.py _ZH_OVERRIDES(对照 gather 真实拼写)")
     else:
         print()
 
