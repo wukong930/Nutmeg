@@ -197,3 +197,60 @@ class TestGatherRowsOverlay:
         assert len(rows) == 1
         assert rows[0]["psc_home"] == 1.60          # API-Football line kept
         assert "odds_source" not in rows[0]
+
+
+# ---------- club-core fallback (体检 2026-07-03, SWE slate) -------------
+
+class TestClubCoreFallback:
+    """AF↔OA club LEGAL-FORM drift: 'Sirius'↔'IK Sirius' etc. left the card on
+    the 3.6h-stale AF mirror while the Odds API HAD a fresh Pinnacle line. The
+    lookup indexes a secondary club-core key; collisions are poisoned."""
+
+    def test_club_core_strips_legal_form_tokens(self):
+        assert odds_api._club_core("IK Sirius") == "sirius"
+        assert odds_api._club_core("Vasteras SK FK") == "vasteras"
+        assert odds_api._club_core("Västerås SK") == "vasteras"
+        assert odds_api._club_core("Hammarby FF") == "hammarby"
+        assert odds_api._club_core("Hammarby IF") == "hammarby"
+        assert odds_api._club_core("AIK") == "aik"        # pure abbrev untouched
+        assert odds_api._club_core("FF") is None          # nothing usable left
+        assert odds_api._club_core(None) is None
+
+    def _overlay_row(self, home, away, date="2026-07-03"):
+        return {"home_team": home, "away_team": away, "date": date,
+                "psc_home": 1.68, "psc_draw": 3.97, "psc_away": 4.84,
+                "odds_update": "2026-07-03T10:00:00+00:00"}
+
+    def test_overlay_patches_via_club_core(self, monkeypatch):
+        ev = _pin_event(home="IK Sirius", away="Mjällby AIF", date="2026-07-03",
+                        last_update="2026-07-03T13:30:00Z")
+        monkeypatch.setattr(odds_api, "fetch_current_odds", lambda *a, **k: [ev])
+        lookup = odds_api.fetch_pinnacle_lookup("soccer_sweden_allsvenskan")
+        row = self._overlay_row("Sirius", "Mjallby AIF")   # AF spellings
+        now = dt.datetime(2026, 7, 3, 12, 0, tzinfo=dt.UTC)  # pre-kickoff
+        assert _apply_odds_api_overlay(row, lookup, now=now) is True
+        assert row["odds_source"] == "odds_api" and row["psc_home"] == 1.43
+
+    def test_swedish_genitive_alias(self, monkeypatch):
+        # AF 'Halmstad' ↔ OA 'Halmstads BK': morphology → _NORM_ALIAS, not core
+        ev = _pin_event(home="Halmstads BK", away="Västerås SK", date="2026-07-04",
+                        last_update="2026-07-03T13:30:00Z")
+        monkeypatch.setattr(odds_api, "fetch_current_odds", lambda *a, **k: [ev])
+        lookup = odds_api.fetch_pinnacle_lookup("soccer_sweden_allsvenskan")
+        row = self._overlay_row("Halmstad", "Vasteras SK FK", date="2026-07-04")
+        now = dt.datetime(2026, 7, 3, 12, 0, tzinfo=dt.UTC)
+        assert _apply_odds_api_overlay(row, lookup, now=now) is True
+
+    def test_ambiguous_core_never_patches(self, monkeypatch):
+        # two same-day events whose cores collide → poisoned → NO patch (wrong-team
+        # odds are worse than stale odds); their exact keys still work.
+        e1 = _pin_event(home="IK Sirius", away="Mjällby AIF", date="2026-07-03")
+        e2 = _pin_event(home="Sirius FF", away="Mjallby SK", date="2026-07-03")
+        monkeypatch.setattr(odds_api, "fetch_current_odds", lambda *a, **k: [e1, e2])
+        lookup = odds_api.fetch_pinnacle_lookup("soccer_sweden_allsvenskan")
+        assert lookup[("sirius", "mjallby", "2026-07-03")] is None   # poisoned
+        row = self._overlay_row("Sirius", "Mjallby")
+        now = dt.datetime(2026, 7, 3, 12, 0, tzinfo=dt.UTC)
+        assert _apply_odds_api_overlay(row, lookup, now=now) is False
+        # exact keys unaffected
+        assert lookup[("iksirius", "mjallbyaif", "2026-07-03")]["psc_home"] == 1.43

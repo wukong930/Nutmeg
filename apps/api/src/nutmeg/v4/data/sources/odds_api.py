@@ -337,6 +337,10 @@ _NORM_ALIAS: dict[str, str] = {
     "sjk": "sjkseinajoki",              # SJK ↔ SJK Seinäjoki
     "mariehamn": "ifkmariehamn",        # Mariehamn ↔ IFK Mariehamn
     "gnistan": "ifgnistan",             # Gnistan ↔ IF Gnistan
+    # Allsvenskan (SWE) — Swedish GENITIVE: AF Halmstad ↔ OA Halmstads BK.
+    # Morphology, so the club-core token-strip can't bridge it
+    # ('halmstads' ≠ 'halmstad'); measured overlay miss 2026-07-03.
+    "halmstad": "halmstadsbk",
 }
 
 
@@ -348,6 +352,27 @@ def _norm_team(name: str | None) -> str:
     s = "".join(c for c in s if not unicodedata.combining(c))
     key = "".join(ch for ch in s.lower() if ch.isalnum())
     return _NORM_ALIAS.get(key, key)
+
+
+# Club LEGAL-FORM tokens drift between AF and the Odds API for Nordic clubs —
+# measured SWE 2026-07-03: AF 'Sirius'↔OA 'IK Sirius', 'Hammarby FF'↔'Hammarby
+# IF', 'Vasteras SK FK'↔'Västerås SK' — three overlay misses in ONE slate, each
+# leaving its card on the hours-stale AF mirror. Per-team _NORM_ALIAS entries
+# can't keep up with the class, so the lookup ALSO indexes a secondary
+# "club-core" key with these standalone tokens dropped. Safety: a core
+# collision is poisoned to None (see fetch_pinnacle_lookup) so a wrong-team
+# patch is structurally impossible; pure-abbreviation names (AIK, GAIS) keep
+# their exact key untouched.
+_CLUB_TOKENS = frozenset({"if", "ik", "bk", "ff", "sk", "fk", "aif", "fc", "afc"})
+
+
+def _club_core(name: str | None) -> str | None:
+    """Secondary team key: accent-folded words minus club legal-form tokens
+    ('IK Sirius' → 'sirius'). None when nothing usable remains ('FF')."""
+    s = unicodedata.normalize("NFKD", (name or "").replace("&", " and "))
+    s = "".join(c if c.isalnum() else " "
+                for c in s.lower() if not unicodedata.combining(c))
+    return "".join(w for w in s.split() if w not in _CLUB_TOKENS) or None
 
 
 def _extract_totals(bookmaker: dict[str, Any]) -> tuple[float, float, float] | None:
@@ -395,6 +420,7 @@ def fetch_pinnacle_lookup(
          "last_update"}                      # Pinnacle's own line timestamp
     """
     out: dict[tuple[str, str, str], dict[str, Any]] = {}
+    secondary: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     events = fetch_current_odds(
         sport_key, regions=regions, markets="h2h,totals",
         refresh=refresh, ttl_seconds=ttl_seconds, cache_dir=cache_dir,
@@ -426,7 +452,27 @@ def fetch_pinnacle_lookup(
         tot = _extract_totals(pin)
         if tot:
             rec["ou_line"], rec["psc_over"], rec["psc_under"] = tot
-        out[(_norm_team(home), _norm_team(away), date)] = rec
+        exact = (_norm_team(home), _norm_team(away), date)
+        out[exact] = rec
+        # Secondary keys: cartesian of each side's {exact, club-core} so a
+        # MIXED pair still matches — AF 'Halmstad' exact-aliases the home
+        # (→halmstadsbk) while its away 'Vasteras SK FK' needs the core key.
+        hks, ch = [exact[0]], _club_core(home)
+        if ch and ch != exact[0]:
+            hks.append(ch)
+        aks, ca = [exact[1]], _club_core(away)
+        if ca and ca != exact[1]:
+            aks.append(ca)
+        for hk in hks:
+            for ak in aks:
+                if (hk, ak, date) != exact:
+                    secondary.setdefault((hk, ak, date), []).append(rec)
+    # Merge club-core keys: an exact key always wins (never shadowed); a core
+    # COLLISION is poisoned to None so the overlay can never patch the wrong
+    # team's odds — it just falls back to the AF line (honest staleness badge).
+    for skey, recs in secondary.items():
+        if skey not in out:
+            out[skey] = recs[0] if len(recs) == 1 else None  # type: ignore[assignment]
     return out
 
 

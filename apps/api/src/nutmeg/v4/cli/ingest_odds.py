@@ -114,9 +114,28 @@ def _apply_odds_api_overlay(row: dict, oa_lookup: dict,
     covers this fixture. API-Football keeps identity/results; we swap only the
     PRICE — and only when Odds API is fresher, or AF had no line (待开盘 fill).
     Sets ``row['odds_source']='odds_api'`` on a patch. Returns True if patched."""
-    from nutmeg.v4.data.sources.odds_api import _norm_team
-    rec = oa_lookup.get((_norm_team(row.get("home_team")),
-                         _norm_team(row.get("away_team")), row.get("date")))
+    from nutmeg.v4.data.sources.odds_api import _club_core, _norm_team
+    # Probe exact key first, then per-side club-core candidates (体检 2026-07-03:
+    # AF 'Sirius' ↔ OA 'IK Sirius' legal-form drift left the card on the stale AF
+    # mirror). Ambiguous core keys are poisoned to None in the lookup, so this
+    # can never patch the wrong team's odds.
+    key_date = row.get("date")
+    hks = [_norm_team(row.get("home_team"))]
+    ch = _club_core(row.get("home_team"))
+    if ch and ch not in hks:
+        hks.append(ch)
+    aks = [_norm_team(row.get("away_team"))]
+    ca = _club_core(row.get("away_team"))
+    if ca and ca not in aks:
+        aks.append(ca)
+    rec = None
+    for hk in hks:
+        for ak in aks:
+            rec = oa_lookup.get((hk, ak, key_date))
+            if rec:
+                break
+        if rec:
+            break
     if not rec or rec.get("psc_home") is None:
         return False
     # 体检 A2 — never overlay a LIVE line. Once a match kicks off the Odds API
