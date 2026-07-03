@@ -58,6 +58,19 @@ class TestNormTeam:
         assert odds_api._norm_team("VPS") == odds_api._norm_team("VPS Vaasa")
         assert odds_api._norm_team("Turku PS") == odds_api._norm_team("TPS Turku")
         assert odds_api._norm_team("FF Jaro") == odds_api._norm_team("Jaro")
+        # K League 1 (KOR) — brand middle-token + a 2021 relocation the Odds API
+        # never renamed (measured live overlay misses, 体检 2026-07-03)
+        nt = odds_api._norm_team
+        assert nt("Jeonbuk Motors") == nt("Jeonbuk Hyundai Motors")
+        assert nt("Gimcheon Sangmu FC") == nt("Sangju Sangmu FC")
+
+    def test_kleague_and_j1_sport_keys_registered(self):
+        """体检 2026-07-03 — 韩职 cards stayed on the stale AF mirror because the
+        league had NO Odds API sport key (no lookup → the overlay never ran; the
+        club-core fix only helps leagues that HAVE a lookup). kleague1 probed
+        active=True; j_league key exists (inactive between rounds = fail-soft)."""
+        assert odds_api.SPORT_KEYS["KOR_K_LEAGUE_1"] == "soccer_korea_kleague1"
+        assert odds_api.SPORT_KEYS["JPN_J1"] == "soccer_japan_j_league"
 
 
 class TestExtractTotals:

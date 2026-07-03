@@ -111,6 +111,13 @@ SPORT_KEYS: dict[str, str] = {
     "NOR_ELITESERIEN":   "soccer_norway_eliteserien",
     "SWE_ALLSVENSKAN":   "soccer_sweden_allsvenskan",
     "FIN_VEIKKAUSLIIGA": "soccer_finland_veikkausliiga",
+    # 体检(2026-07-03)— 韩职 cards stayed on the stale AF mirror because the
+    # league had NO sport key at all (the club-core fix only helps leagues that
+    # HAVE a lookup). Probed /sports live: kleague1 active=True; j_league key
+    # exists but active=False between rounds — fail-soft (fetch error → empty
+    # lookup → AF fallback) until it self-activates. J1 is a trained league.
+    "KOR_K_LEAGUE_1": "soccer_korea_kleague1",
+    "JPN_J1":         "soccer_japan_j_league",
     # Add more as needed: FA Cup, Copa del Rey etc.
 }
 
@@ -341,6 +348,11 @@ _NORM_ALIAS: dict[str, str] = {
     # Morphology, so the club-core token-strip can't bridge it
     # ('halmstads' ≠ 'halmstad'); measured overlay miss 2026-07-03.
     "halmstad": "halmstadsbk",
+    # K League 1 (KOR) — measured overlay misses 2026-07-03 (live kleague1 pull):
+    # brand middle-token + a 2021 relocation the Odds API never renamed. Neither
+    # is a legal-form token, so the club-core strip can't bridge them.
+    "jeonbukmotors": "jeonbukhyundaimotors",   # AF Jeonbuk Motors ↔ OA Jeonbuk Hyundai Motors
+    "gimcheonsangmufc": "sangjusangmufc",      # AF Gimcheon Sangmu FC ↔ OA Sangju Sangmu FC (旧名)
 }
 
 
