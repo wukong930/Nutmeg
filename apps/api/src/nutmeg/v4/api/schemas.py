@@ -155,6 +155,11 @@ class SinglePrediction(BaseModel):
     # before recording — no trusting a client-sent probability.
     psc_over25: float | None = None
     psc_under25: float | None = None
+    # 体检 2026-07-03 — the ACTUAL total line those prices are quoted at (the
+    # Odds-API overlay moves it, e.g. Sirius 2.5→2.75). Without it the card
+    # labels every O/U "2.5" while showing another line's prices. The server's
+    # own 让球反推 already used the row value; this is the display echo.
+    ou_line: float | None = None
     # 体检 — the 竞彩 SP (1X2) on file for this match from jingcai_sp (your manual
     # market_mode entry, else the sporttery auto-harvest). Lets the card PRE-FILL
     # its SP boxes + compute EV without re-typing. None when no 竞彩 line on file.

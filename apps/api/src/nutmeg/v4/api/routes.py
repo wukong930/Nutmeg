@@ -2085,6 +2085,10 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         p_home_1x2=float(fair[0]), p_draw_1x2=float(fair[1]), p_away_1x2=float(fair[2]),
         psc_home=r.get("psc_home"), psc_draw=r.get("psc_draw"), psc_away=r.get("psc_away"),
         psc_over25=r.get("psc_over25"), psc_under25=r.get("psc_under25"),
+        # V14 — the ACTUAL total line those prices are quoted at (2.75 for the
+        # Sirius overlay line); without it the card labels every O/U "2.5"
+        # (体检 2026-07-03). Server-side 让球反推 already used it (line above).
+        ou_line=r.get("ou_line"),
         handicap_lines=_market_handicap_lines(fair, r),
         asian_handicap_lines=_market_asian_handicap_lines(fair, r),
         odds_update=r.get("odds_update"),
