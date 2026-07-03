@@ -21,6 +21,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from nutmeg.v4.model.devig import devig_1x2 as _wpo_devig_1x2
 from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
 from nutmeg.v4.observation.settlement import _outcome_handicap_1x2
 
@@ -30,18 +31,20 @@ _OUTCOME_ZH = {"H": "让胜", "D": "让平", "A": "让负"}
 
 
 def _devig_1x2(h, d, a) -> list[float] | None:
-    """Multiplicative de-vig of 1X2 decimal odds → fair probs. Mirrors
-    ``routes._pinnacle_devig_1x2``; kept local so this observation/CLI module
-    never imports the FastAPI layer. Rejects any leg ≤ 1.0 (garbage)."""
+    """De-vig 1X2 decimal odds → fair probs, SAME method as serving (WPO via
+    ``nutmeg.v4.model.devig``). 体检 Wave2 — this was a local multiplicative
+    (basic) copy whose "mirrors routes" claim went stale when serving moved to
+    WPO: basic overprices longshots, so the 让球 soft-water ledger showed a
+    +3.9pp phantom 让负 EV that serving would never see. Measurement must share
+    the serving de-vig or it measures a different (wrong) quantity."""
     try:
         h, d, a = float(h), float(d), float(a)
     except (TypeError, ValueError):
         return None
     if h <= 1.0 or d <= 1.0 or a <= 1.0:
         return None
-    inv = [1.0 / h, 1.0 / d, 1.0 / a]
-    s = sum(inv)
-    return [x / s for x in inv] if s > 0 else None
+    p = _wpo_devig_1x2(h, d, a)
+    return list(p) if p else None
 
 
 @dataclass
@@ -94,11 +97,18 @@ def assemble_handicap_triples(db_path: str) -> list[HandicapTriple]:
         jc_raw = (r["jc_home"], r["jc_draw"], r["jc_away"])
         if any(x is None for x in jc_raw):
             continue
-        # Pinnacle "close" = freshest snapshot with a full 1X2 for this match.
+        # Pinnacle "close" = freshest PRE-KICKOFF snapshot with a full 1X2.
+        # 体检 Wave2 — this was the ONLY close-reader without the kickoff
+        # guard: post-KO the Odds API serves LIVE odds (a leading team → a
+        # degenerate 1.06/53.96 line), which read as a fake close poisons the
+        # 让球 EV truth (the +87% phantom-EV class). Same predicate as
+        # backfill_vote_pinnacle/_pinn_close.
         snap = cur.execute(
             "SELECT * FROM odds_snapshots WHERE match_date=? AND home_team=? "
             "AND away_team=? AND psc_home IS NOT NULL AND psc_draw IS NOT NULL "
-            "AND psc_away IS NOT NULL ORDER BY captured_at DESC LIMIT 1",
+            "AND psc_away IS NOT NULL "
+            "AND (kickoff_utc IS NULL OR captured_at < kickoff_utc) "
+            "ORDER BY captured_at DESC LIMIT 1",
             (r["match_date"], r["home_team"], r["away_team"]),
         ).fetchone()
         if snap is None:

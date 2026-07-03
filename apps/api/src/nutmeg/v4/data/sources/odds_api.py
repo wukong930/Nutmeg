@@ -118,6 +118,19 @@ SPORT_KEYS: dict[str, str] = {
     # lookup → AF fallback) until it self-activates. J1 is a trained league.
     "KOR_K_LEAGUE_1": "soccer_korea_kleague1",
     "JPN_J1":         "soccer_japan_j_league",
+    # 体检 Wave2 (2026-07-04) — the daily-cron trained-league set was missing 8
+    # of its 13 keys, so the fresher-line overlay NEVER ran for them (the 韩职
+    # bug's batch siblings). All 8 probed live on /sports 2026-07-04; most show
+    # active=False between seasons (same as j_league) — fetch fail-soft until
+    # they self-activate in August.
+    "ENG_CHAMPIONSHIP":     "soccer_efl_champ",
+    "ESP_SEGUNDA_DIVISION": "soccer_spain_segunda_division",
+    "ITA_SERIE_B":          "soccer_italy_serie_b",
+    "GER_2_BUNDESLIGA":     "soccer_germany_bundesliga2",
+    "FRA_LIGUE_2":          "soccer_france_ligue_two",
+    "NED_EREDIVISIE":       "soccer_netherlands_eredivisie",
+    "PRT_PRIMEIRA_LIGA":    "soccer_portugal_primeira_liga",
+    "BEL_PRO_LEAGUE":       "soccer_belgium_first_div",
     # Add more as needed: FA Cup, Copa del Rey etc.
 }
 

@@ -124,3 +124,53 @@ def test_poisoned_none_lookup_entry_is_skipped(tmp_path, monkeypatch):
 
     monkeypatch.setattr(odds_api, "fetch_pinnacle_lookup", _mixed)
     assert closing_odds.capture_closing_pinnacle(tmp_path / "x.db", ["WC"]) == {"WC": 1}
+
+
+class TestResolveAutoSports:
+    """体检 Wave2 — `--sports auto`: KO-window-driven sport resolution.
+    Hardcoded `--sports WC` would kill the closing chain at WC end (~7/19)."""
+
+    def _fx(self, minutes_from_now, league_id, now):
+        from datetime import timedelta
+        return {"fixture": {"date": (now + timedelta(minutes=minutes_from_now)).isoformat()},
+                "league": {"id": league_id}}
+
+    def test_in_window_league_with_sport_key_resolves(self):
+        from datetime import UTC, datetime
+
+        from nutmeg.v4.observation.closing_odds import resolve_auto_sports
+        now = datetime.now(UTC)
+
+        def fake(d):
+            return [self._fx(30, 292, now)]  # K-League KO in 30min
+        assert resolve_auto_sports(now=now, fetch_fixtures=fake) == ["KOR_K_LEAGUE_1"]
+
+    def test_outside_window_and_kicked_off_excluded(self):
+        from datetime import UTC, datetime
+
+        from nutmeg.v4.observation.closing_odds import resolve_auto_sports
+        now = datetime.now(UTC)
+
+        def fake(d):
+            return [self._fx(120, 292, now),   # beyond 75min lookahead
+                    self._fx(-10, 292, now)]   # already kicked off
+        assert resolve_auto_sports(now=now, fetch_fixtures=fake) == []
+
+    def test_league_without_sport_key_filtered(self):
+        from datetime import UTC, datetime
+
+        from nutmeg.v4.observation.closing_odds import resolve_auto_sports
+        now = datetime.now(UTC)
+
+        def fake(d):
+            return [self._fx(30, 119, now)]  # DNK_SUPERLIGA: AF id, no sport key
+        assert resolve_auto_sports(now=now, fetch_fixtures=fake) == []
+
+    def test_af_outage_returns_empty_not_blind_fetch(self):
+        from datetime import UTC, datetime
+
+        from nutmeg.v4.observation.closing_odds import resolve_auto_sports
+
+        def boom(d):
+            raise RuntimeError("AF down")
+        assert resolve_auto_sports(now=datetime.now(UTC), fetch_fixtures=boom) == []

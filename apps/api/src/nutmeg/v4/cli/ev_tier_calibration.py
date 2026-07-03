@@ -23,8 +23,9 @@ import logging
 from pathlib import Path
 
 from nutmeg.v4.cli.sharp_consensus_eval import _iter_odds, _load_results
-from nutmeg.v4.model.ev_tier_calibration import BandStat, by_bins, by_tier
-from nutmeg.v4.model.sharp_consensus import per_book_fair
+from nutmeg.v4.data.odds_parser import extract_1x2_odds
+from nutmeg.v4.model.devig import devig_1x2 as _wpo_devig_1x2
+from nutmeg.v4.model.ev_tier_calibration import TIERS, BandStat, by_bins, by_tier
 
 log = logging.getLogger("ev-tier-calibration")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -49,9 +50,17 @@ def _collect(cache: Path) -> list[tuple[float, int]]:
     for fid, env in _iter_odds(cache / "_odds"):
         if fid not in results:
             continue
-        pin = per_book_fair(env).get("pinnacle")
-        if not pin:
+        # 体检 Wave2 — de-vig with the SERVING method (WPO). The old
+        # per_book_fair path used sharp_consensus's local multiplicative
+        # de-vig, so this tool measured the calibration of a P nobody serves
+        # (basic overprices longshots → tier gaps that WPO doesn't have).
+        odds = extract_1x2_odds(env)
+        if not odds:
             continue
+        fair = _wpo_devig_1x2(odds["H"], odds["D"], odds["A"])
+        if not fair:
+            continue
+        pin = {"H": fair[0], "D": fair[1], "A": fair[2]}
         outcome = results[fid]
         n_fix += 1
         for o, key in enumerate(_OUTCOMES):
@@ -83,10 +92,13 @@ def build_report(samples: list[tuple[float, int]]) -> str:
     )
     md.append(f"- 样本数: **{len(samples)}** · 整体真实发生率(基线 1/3 健全性): {overall*100:.1f}%\n\n")  # noqa: E501
 
-    md.append("## 1. 按分档(检验 0.15/0.20/0.25/0.67/0.77 这几条线)\n\n")
+    # 体检 Wave2 — iterate the MODEL's tier registry, never a hardcoded list:
+    # the old 5-name loop still indexed the retired "overpriced" tier
+    # (KeyError = the whole measurement line dead since the v57 retirement).
+    md.append("## 1. 按分档(与 dashboard _evRelTier 同边界 0.15/0.25/0.67/0.77)\n\n")
     md.append("| 档 | n | 隐含均值 P | 真实发生率 | 偏差(真实−隐含) | |偏差| | Brier↓ |\n")
     md.append("|---|---|---|---|---|---|---|\n")
-    for name in ("sweet", "edge", "overpriced", "cold", "chalk"):
+    for name in TIERS:
         md.append(_row(tiers[name]))
 
     sweet, edge = tiers["sweet"], tiers["edge"]
@@ -97,7 +109,7 @@ def build_report(samples: list[tuple[float, int]]) -> str:
             f"- 甜区 |校准偏差| = **{sweet.abs_gap*100:.1f}pp**;边缘 = **{edge.abs_gap*100:.1f}pp** "  # noqa: E501
             f"→ 边缘的去 vig P 偏差是甜区的 **{ratio:.1f}×**。\n"
         )
-        for name, label in (("overpriced", "高估区"), ("cold", "冷门"), ("chalk", "超短")):
+        for name, label in (("cold", "冷门"), ("chalk", "超短")):
             st = tiers[name]
             if st.n and sweet.abs_gap > 1e-9:
                 md.append(
@@ -121,11 +133,14 @@ def build_report(samples: list[tuple[float, int]]) -> str:
 
     md.append(
         "\n## 3. 读法\n\n"
-        "- **偏差为负** = 真实发生率 < 隐含概率 = 该价位被高估(favorite-longshot bias)。\n"
-        "- **overpriced 档(0.15–0.20)** 是从旧 edge 切出来的高估陷阱:它 |偏差| 远大于其它档 ⇒ ⛔ 边界有数据支撑。\n"  # noqa: E501
-        "- 切出 overpriced 后 **edge ≈ sweet**(本数据 0.7 vs 0.9pp)⇒ 旧 4 档把陷阱和好区混在一起,carve 是对的。\n"  # noqa: E501
-        "- 热门端(高甜区/超短)+偏差(真实>隐含)⇒ 热门被低估,是顺风非陷阱;但常 n 小,谨慎。\n"  # noqa: E501
-        "- 口径:仅 EV 的 P 一侧(去 vig 先验),不含竞彩 SP 抽水;单次快照、混样,小 n 档仅供参考。\n"  # noqa: E501
+        "- **偏差为负** = 真实发生率 < 隐含概率 = 该价位被高估;WPO 口径下各档预期为 ns"
+        "(WPO 已消掉 favorite-longshot 偏置,见 docs/devig_method_comparison.md)。\n"
+        "- 分档的意义是 **EV 估计的方差**,不是偏置:σ_EV = SP·σ_P ⇒ 冷门/超短的 +EV "
+        "不确定度是甜区的数倍,⚠️ 由方差而非校准差挣得(旧 ⛔ overpriced 档 2026-06-26 "
+        "已按 28k 样本复测退役)。\n"
+        "- 若某档 |偏差| 显著非零 ⇒ 回归性异常(本工具与 serving 同款 WPO 口径),值得追查。\n"
+        "- 口径:仅 EV 的 P 一侧(WPO 去 vig 先验,与 serving 同方法),不含竞彩 SP 抽水;"
+        "单次快照、混样,小 n 档仅供参考。\n"
     )
     return "".join(md)
 

@@ -843,6 +843,38 @@ _V12_W8_NEW_LEAGUES = {
 }
 TEAM_NAME_ZH.update(_V12_W8_NEW_LEAGUES)
 
+# 体检 Wave2 (2026-07-04) — 2026-27 roster diff against the LIVE API-Football
+# /teams tables for all 13 cron leagues (+J1): 27 promoted/renamed clubs the
+# dict lacked entirely. Keys = exact AF spellings (same rule as V12 W7); zh =
+# 竞彩惯用名 best-effort — the whole-league-loss alarm + _ZH_OVERRIDES patch
+# any 竞彩-side variants when these leagues go on sale in August. The
+# alias-shadowing half of the same diff (dict HAS the club under a non-AF
+# spelling) is fixed in sporttery._EN_OVERRIDES, not here.
+# NB: ITA_SERIE_B 2026-27 was still unpublished on AF at diff time (empty
+# table) — re-run nutmeg-registry-coverage once it lists.
+_W2_2026_ROSTER_ADDITIONS = {
+    # ── 英冠 ENG_CHAMPIONSHIP (升班马/降级) ──
+    "Birmingham": "伯明翰", "Bolton": "博尔顿", "Charlton": "查尔顿",
+    "Lincoln": "林肯城", "Wrexham": "雷克斯汉姆",
+    # ── 西乙 ESP_SEGUNDA_DIVISION ──
+    "Castellón": "卡斯特利翁", "Celta de Vigo II": "塞尔塔B", "Sabadell": "萨瓦德尔",
+    # ── 德乙 GER_2_BUNDESLIGA ──
+    "Arminia Bielefeld": "比勒费尔德", "Dynamo Dresden": "德累斯顿迪纳摩",
+    "Energie Cottbus": "科特布斯", "VfL Osnabrück": "奥斯纳布吕克",
+    # ── 法甲/法乙 ──
+    "Le Mans": "勒芒",
+    "Boulogne": "布洛涅", "Dijon": "第戎", "Nancy": "南锡", "Sochaux": "索肖",
+    # ── 荷甲 NED_EREDIVISIE ──
+    "ADO Den Haag": "海牙", "Cambuur": "坎布尔", "Excelsior": "鹿特丹精英",
+    "Telstar": "特尔斯达",
+    # ── 葡超 PRT_PRIMEIRA_LIGA ──
+    "Alverca": "阿尔维卡",
+    # ── 比甲 BEL_PRO_LEAGUE ──
+    "Lommel United": "洛默尔", "RAAL La Louvière": "拉卢维耶尔",
+    "SK Beveren": "贝弗伦", "St. Truiden": "圣图尔登", "Zulte Waregem": "祖尔特瓦雷根",
+}
+TEAM_NAME_ZH.update(_W2_2026_ROSTER_ADDITIONS)
+
 
 def lookup_zh(team_name: str) -> str:
     """Return Chinese name for a canonical team, else input unchanged.
@@ -903,5 +935,7 @@ def coverage_by_league() -> Dict[str, int]:
         "CUP_AND_VARIANTS":        len(_V12_W7_CUP_AND_VARIANTS),
         # V12 W8 — market-mode expansion leagues (Nordic / APAC / Europe).
         "MARKET_MODE_NEW_LEAGUES": len(_V12_W8_NEW_LEAGUES),
+        # 体检 Wave2 — 2026-27 roster diff additions (promoted/renamed clubs).
+        "W2_2026_ROSTER":          len(_W2_2026_ROSTER_ADDITIONS),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }

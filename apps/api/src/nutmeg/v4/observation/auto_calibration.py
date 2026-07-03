@@ -227,6 +227,17 @@ def load_calibration_pairs(
              AND mo.home_team = sp.home_team
              AND mo.away_team = sp.away_team
             WHERE rs.created_at >= ?
+              -- 体检 Wave2 — Layer A calibrates the MODEL's probabilities, so
+              -- only model-ENGINE rows may feed it. ALLOWLIST (not blocklist):
+              -- market_handicap rows carry the Pinnacle de-vig P, manual/
+              -- user_directional rows carry hand-typed or all-zero P — 9 of
+              -- the 40 live pairs were such poison. A future non-model type
+              -- then fails SAFE (dropped) instead of contaminating T. NULL =
+              -- pre-P1#17 legacy sessions; 'lightgbm' = the schema default /
+              -- pre-CatBoost engine (still model output).
+              AND (rs.model_type IS NULL
+                   OR rs.model_type IN ('catboost', 'lightgbm'))
+              AND sp.p_home_1x2 > 0 AND sp.p_draw_1x2 > 0 AND sp.p_away_1x2 > 0
             ORDER BY sp.match_date ASC
             """,
             (cutoff_iso,),

@@ -438,12 +438,26 @@ def fetch_teams_for_league_season(
     Each record contains ``team`` (id/name/logo) + ``venue``. V11 P1-FE#2
     uses this to ingest team logos for the dashboard.
     """
-    return _request(
-        "/teams",
-        {"league": league_id(league_canonical), "season": season},
-        cache_dir=cache_dir,
-        refresh=refresh,
-    )
+    params = {"league": league_id(league_canonical), "season": season}
+    # 体检 Wave2 — an EMPTY team table for the current/upcoming season means
+    # "not listed yet", not truth (TUR/AUS 2026 were cached as [] forever).
+    # A permanent empty cache hands the autumn dictionary-coverage diff a fake
+    # green light. Same today-or-later TTL pattern as fetch_fixtures_for_date:
+    # retry a stale empty cache, fall back to it if the refetch fails.
+    if not refresh and season >= datetime.now(UTC).year - 1:
+        cf = _cache_path("/teams", params, Path(cache_dir))
+        if (
+            cf.exists()
+            and time.time() - cf.stat().st_mtime > _UPCOMING_FIXTURE_TTL_SECONDS
+        ):
+            try:
+                if json.loads(cf.read_text()) == []:
+                    return _request("/teams", params, cache_dir=cache_dir, refresh=True)
+            except ApiFootballError:
+                pass  # keep the stale cache rather than break the caller
+            except (json.JSONDecodeError, OSError):
+                pass
+    return _request("/teams", params, cache_dir=cache_dir, refresh=refresh)
 
 
 def fetch_team_squad_stats(

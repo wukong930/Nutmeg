@@ -1650,6 +1650,8 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
     """
     if art is None or not fixtures:
         return []
+    import logging
+
     from nutmeg.v4.data.playoff_context import detect_playoff
     try:
         rho = float(art.metadata.get("gbm_rho", -0.10))
@@ -1657,8 +1659,16 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
         lambdas = predict_lambdas(
             art, build_features_for_fixtures(art, _fixtures_to_dataframe(fixtures))
         )
-        preds: list[SinglePrediction] = []
-        for i, f in enumerate(fixtures):
+    except Exception:  # noqa: BLE001 — batch feature/λ stage: nothing salvageable
+        logging.getLogger(__name__).exception("_calc_predictions failed (batch stage)")
+        return []
+    preds: list[SinglePrediction] = []
+    for i, f in enumerate(fixtures):
+        # 体检 Wave2 — per-fixture degradation. One poisoned fixture (bad λ,
+        # unfittable grid, weird odds) used to abort the WHOLE board via the
+        # single batch try → the dashboard showed "今天没比赛" while 20 healthy
+        # matches existed. Skip the bad one loudly, keep the rest.
+        try:
             lh, la = lambdas[i]
             grid = score_grid(lh, la, rho=rho)
             ph, pd_, pa = tuple(apply_correction_to_probs(np.array(grid_to_1x2(grid)), corr))
@@ -1686,11 +1696,13 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 asian_handicap_lines=_model_board_asian_handicap(f, grid),
                 margin_bands=_mk_margin_bands(grid_to_margin_bands(grid)),
             ))
-        return preds
-    except Exception:  # noqa: BLE001
-        import logging
-        logging.getLogger(__name__).exception("_calc_predictions failed")
-        return []
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).exception(
+                "_calc_predictions: fixture poisoned, skipped (%s vs %s, %s %s)",
+                getattr(f, "home_team", "?"), getattr(f, "away_team", "?"),
+                getattr(f, "league", "?"), getattr(f, "date", "?"),
+            )
+    return preds
 
 
 def _utc_today():

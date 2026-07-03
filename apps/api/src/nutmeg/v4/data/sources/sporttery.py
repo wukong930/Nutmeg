@@ -127,6 +127,42 @@ _EN_OVERRIDES: dict[str, str] = {
     "Verona": "Hellas Verona",
     "Vitoria Guimaraes": "Guimaraes",
     "Wolfsburg": "VfL Wolfsburg",
+    # 体检 Wave2 (2026-07-04) — ALIAS-SHADOWING class, measured against the LIVE
+    # AF 2026-27 /teams tables (13 cron leagues + J1). TEAM_NAME_ZH keeps several
+    # EN alias keys per club (display robustness); the zh→EN reverse map takes
+    # the FIRST alias per zh name, which is often NOT the AF spelling — so the
+    # 竞彩 row was written but never joined the Pinnacle close (the invisible
+    # second failure mode; 27 clubs live). key = the alias the reverse map
+    # actually picks today, value = the exact AF name. Re-derive with
+    # nutmeg-registry-coverage after any dict edit.
+    "Hamburg": "Hamburger SV",
+    "Paderborn": "SC Paderborn 07",
+    "Kaiserslautern": "1. FC Kaiserslautern",
+    "Magdeburg": "1. FC Magdeburg",
+    "Braunschweig": "Eintracht Braunschweig",
+    "Hertha Berlin": "Hertha BSC",
+    "Karlsruher": "Karlsruher SC",
+    "Greuther Furth": "SpVgg Greuther Fürth",
+    "Koln": "1. FC Köln",
+    "Nurnberg": "1. FC Nürnberg",
+    "Schalke 04": "FC Schalke 04",
+    "Darmstadt": "SV Darmstadt 98",
+    "Granada": "Granada CF",
+    "Ceuta": "AD Ceuta FC",
+    "Castellon": "Castellón",
+    "Clermont": "Clermont Foot",
+    "Troyes": "Estac Troyes",
+    "Pau": "PAU",
+    "Red Star": "RED Star FC 93",   # 巴黎红星 (Ligue 2), NOT Crvena Zvezda
+    "NEC": "NEC Nijmegen",
+    "PSV": "PSV Eindhoven",
+    "Go Ahead Eagles": "GO Ahead Eagles",
+    "Académico Viseu": "Academico Viseu",
+    "Club Brugge": "Club Brugge KV",
+    "Mechelen": "KV Mechelen",
+    "Westerlo": "KVC Westerlo",
+    "Kashima Antlers": "Kashima",
+    "Urawa Red Diamonds": "Urawa",
 }
 
 
@@ -189,23 +225,10 @@ def _request(
     return None
 
 
-def fetch_vote_support(
-    pool_code: str = "HAD",
-    *,
-    page_size: int = 50,
-    page_no: int = 1,
-    timeout: float = 15.0,
-    retries: int = 3,
-) -> list[dict]:
-    """体彩 官方逐场三路散户支持率 (getVoteV1) for one pool — ``HAD`` (胜平负) /
-    ``HHAD``,``HDC`` (让球). No-auth, same /gateway/uniform/ route as the SP feed.
-    Returns the raw match rows (``value.matches.list``): each carries h/d/a
-    ``*supportRate`` (票数派生支持%) + ``win/draw/lose`` counts + 竞彩 SP odds
-    (h/d/a) + 体彩 ``*probability``/``*error``. This is GENUINE Chinese retail crowd
-    direction — NOT 唯彩/Okooo's 必发(Betfair)-derived 买量 (= sharp money).
-    FORWARD-ONLY: the endpoint serves the CURRENT day's matches (matchId/date params
-    are ignored), so capture daily. Returns [] on any failure (logged, never raised).
-    """
+def _fetch_vote_page(
+    pool_code: str, page_size: int, page_no: int, timeout: float, retries: int
+) -> tuple[list[dict], int]:
+    """One getVoteV1 page → (rows, total_pages). ([], 0) on failure."""
     url = f"{_BASE}/gateway/uniform/football/getVoteV1.qry"
     params = {"poolCode": pool_code, "pageSize": page_size, "pageNo": page_no}
     for attempt in range(retries):
@@ -216,17 +239,77 @@ def fetch_vote_support(
             if not data.get("success"):
                 log.warning("sporttery getVote not success (%s): %s",
                             pool_code, data.get("errorMessage"))
-                return []
+                return [], 0
             matches = (data.get("value") or {}).get("matches") or {}
-            rows = matches.get("list") if isinstance(matches, dict) else matches
-            return rows or []
+            if not isinstance(matches, dict):
+                return (matches or []), 1
+            rows = matches.get("list") or []
+            try:
+                pages = int(matches.get("pages") or 1)
+            except (TypeError, ValueError):
+                pages = 1
+            return rows, pages
         except Exception as exc:  # noqa: BLE001 — fail-soft; never raise to the caller
             if attempt < retries - 1:
                 time.sleep(1.0 + attempt)
                 continue
             log.warning("sporttery getVote fetch failed (%s): %s", url, exc)
-            return []
-    return []
+            return [], 0
+    return [], 0
+
+
+def fetch_vote_support(
+    pool_code: str = "HAD",
+    *,
+    page_size: int = 50,
+    timeout: float = 15.0,
+    retries: int = 3,
+    max_pages: int = 10,
+) -> list[dict]:
+    """体彩 官方逐场三路散户支持率 (getVoteV1) for one pool — ``HAD`` (胜平负) /
+    ``HHAD``,``HDC`` (让球). No-auth, same /gateway/uniform/ route as the SP feed.
+    Returns the raw match rows (``value.matches.list``): each carries h/d/a
+    ``*supportRate`` (票数派生支持%) + ``win/draw/lose`` counts + 竞彩 SP odds
+    (h/d/a) + 体彩 ``*probability``/``*error``. This is GENUINE Chinese retail crowd
+    direction — NOT 唯彩/Okooo's 必发(Betfair)-derived 买量 (= sharp money).
+    FORWARD-ONLY: the endpoint serves the CURRENT day's matches (matchId/date params
+    are ignored), so capture daily. Returns [] on total failure (logged, never raised).
+
+    体检 Wave2 — PAGINATED: the old single-page-of-50 read silently dropped every
+    match past #50 on a big autumn Saturday (forward-only → lost forever). Probed
+    live 2026-07-04: ``value.matches.{pages,total}`` are real and pageNo works.
+    Later pages are best-effort: a mid-pagination failure returns what we have
+    (partial > nothing); rows are deduped by matchId across pages (the feed can
+    shift between page calls). ``max_pages`` (10 → 500 matches) is a runaway cap,
+    far above any real 竞彩 slate.
+    """
+    rows, pages = _fetch_vote_page(pool_code, page_size, 1, timeout, retries)
+    if not rows:
+        return []
+    out: list[dict] = []
+    seen: set = set()
+    for r in rows:
+        mid = r.get("matchId") if isinstance(r, dict) else None
+        if mid is not None and mid in seen:
+            continue
+        if mid is not None:
+            seen.add(mid)
+        out.append(r)
+    for page_no in range(2, min(pages, max_pages) + 1):
+        more, _ = _fetch_vote_page(pool_code, page_size, page_no, timeout, retries)
+        if not more:
+            log.warning("sporttery getVote page %d/%d empty/failed (%s) — "
+                        "returning %d rows captured so far",
+                        page_no, pages, pool_code, len(out))
+            break
+        for r in more:
+            mid = r.get("matchId") if isinstance(r, dict) else None
+            if mid is not None and mid in seen:
+                continue
+            if mid is not None:
+                seen.add(mid)
+            out.append(r)
+    return out
 
 
 def _odds3(pool: dict | None):

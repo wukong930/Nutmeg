@@ -257,6 +257,30 @@ else
 fi
 
 
+# ===== 10. 注册表覆盖率 diff (registry-coverage) =====
+# 体检 2026-07-03 元结论的结构性疫苗:「注册表/词典/字段清单即开关」— cron 联赛
+# 在 SPORT_KEYS / AF league-id / AF 队表 / zh↔EN 字典 里缺任何一格 = 该切片
+# 静默降级(韩职 sport key、德乙 14/19 队打不中 的整类)。逐格 diff LIVE AF 队表,
+# 硬缺口 ⇒ ✗ fail;空队表(当季未发布)⇒ ⚠ warn。
+# 手动:  nutmeg-registry-coverage [--refresh]
+section "10. 注册表覆盖率 diff (registry-coverage)"
+COV="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.registry_coverage --gate 2>/dev/null)"
+COV_EXIT=$?
+if [[ -z "$COV" ]]; then
+  warn "registry-coverage 无输出(包未装? AF key 缺?)"
+elif [[ $COV_EXIT -eq 0 ]]; then
+  if grep -q '⚠' <<< "$COV"; then
+    warn "注册表覆盖:无硬缺口,但有待发布队表 → $(grep -c '⚠' <<< "$COV") 条警告"
+    grep '⚠' <<< "$COV" | while read -r l; do note "$l"; done
+  else
+    ok "注册表全格覆盖 (cron 联赛 × SPORT_KEYS × AF 队表 × zh 字典) 无静默降级切片"
+  fi
+else
+  fail "注册表有硬缺口 — 某切片已静默降级:"
+  grep '✗' <<< "$COV" | while read -r l; do note "$l"; done
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then

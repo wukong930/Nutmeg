@@ -191,3 +191,58 @@ class TestOdds3SanityGuard:
     def test_incomplete_pool_is_none(self):
         assert sporttery._odds3(None) is None
         assert sporttery._odds3({"h": "1.85"}) is None
+
+
+class TestVotePagination:
+    """体检 Wave2 — getVoteV1 pagination: the single-page-of-50 read dropped
+    every match past #50 on a big autumn Saturday (forward-only loss)."""
+
+    def _resp(self, ids, pages):
+        return {"success": True,
+                "value": {"matches": {"list": [{"matchId": i} for i in ids],
+                                      "pages": pages, "total": None}}}
+
+    def test_fetches_all_pages_and_dedups(self, monkeypatch):
+        import httpx
+
+        from nutmeg.v4.data.sources import sporttery
+        calls = []
+
+        def fake_get(url, params=None, headers=None, timeout=None):
+            calls.append(params["pageNo"])
+            body = self._resp([1, 2], 3) if params["pageNo"] == 1 else (
+                self._resp([2, 3], 3) if params["pageNo"] == 2 else self._resp([4], 3))
+
+            class R:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return body
+            return R()
+
+        monkeypatch.setattr(httpx, "get", fake_get)
+        rows = sporttery.fetch_vote_support("HAD", page_size=2)
+        assert calls == [1, 2, 3]
+        assert [r["matchId"] for r in rows] == [1, 2, 3, 4]  # dup id=2 dropped
+
+    def test_mid_pagination_failure_returns_partial(self, monkeypatch):
+        import httpx
+
+        from nutmeg.v4.data.sources import sporttery
+
+        def fake_get(url, params=None, headers=None, timeout=None):
+            if params["pageNo"] > 1:
+                raise RuntimeError("page 2 down")
+
+            class R:
+                def raise_for_status(self):
+                    pass
+
+                def json(self2):
+                    return self._resp([1, 2], 5)
+            return R()
+
+        monkeypatch.setattr(httpx, "get", fake_get)
+        rows = sporttery.fetch_vote_support("HAD", page_size=2, retries=1)
+        assert [r["matchId"] for r in rows] == [1, 2]  # partial > nothing

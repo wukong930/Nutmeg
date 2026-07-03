@@ -421,3 +421,40 @@ class TestCalibrationJournal:
         latest = fetch_latest_journal_entry(db)
         assert latest["decision"] == 0
         assert latest["log_loss_delta"] is None
+
+
+class TestContaminationFilter:
+    """体检 Wave2 — Layer A must only eat MODEL-engine probabilities. 9 of the
+    40 live pairs were market-mode (Pinnacle de-vig P) / manual (zero-P) rows
+    riding into the temperature fit."""
+
+    def _seed_one(self, conn, *, model_type, p=(0.5, 0.3, 0.2), tag="X"):
+        session_id = insert_session(
+            conn, bankroll=1000.0, model_cutoff="2024-08-01",
+            model_trained_at="2024-08-01T00:00:00+00:00", n_fixtures=1,
+            n_recommendations=0, request={}, metadata={},
+            model_type=model_type,
+        )
+        d = dt.datetime.now(dt.UTC).date().isoformat()
+        conn.execute(
+            "INSERT INTO single_predictions (session_id, match_date, league,"
+            " home_team, away_team, lambda_home, lambda_away,"
+            " p_home_1x2, p_draw_1x2, p_away_1x2) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (session_id, d, "EPL", f"H{tag}", f"A{tag}", 1.5, 1.0, *p),
+        )
+        upsert_outcome(conn, match_date=d, league="EPL", home_team=f"H{tag}",
+                       away_team=f"A{tag}", home_goals=2, away_goals=1)
+
+    def test_market_and_zero_p_rows_excluded(self, tmp_path: Path):
+        db = tmp_path / "obs.db"
+        with open_db(db) as conn:
+            self._seed_one(conn, model_type="catboost", tag="model")
+            self._seed_one(conn, model_type="lightgbm", tag="legacy")
+            self._seed_one(conn, model_type="market_handicap", tag="mkt")
+            self._seed_one(conn, model_type="manual", p=(0.0, 0.0, 0.0), tag="man")
+            self._seed_one(conn, model_type="user_directional_combo", tag="usr")
+        pairs = load_calibration_pairs(db, weeks=4)
+        teams = {p.home_team for p in pairs}
+        assert teams == {"Hmodel", "Hlegacy"}, (
+            f"contamination filter leaked/over-dropped: {teams}"
+        )

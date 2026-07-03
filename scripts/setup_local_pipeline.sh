@@ -424,9 +424,14 @@ install_job "com.nutmeg.polymarket_gaps" \
 # user now keeps the laptop 24/7-awake, so a frequent run snapshots each match's
 # Pinnacle near its OWN kickoff = the true close. Bypasses the cup-market gather
 # (drops most matches) by writing fetch_pinnacle_lookup straight into
-# odds_snapshots(source='closing'). Cheap (~2 Odds-API req/run); Odds API is
-# CN-reachable direct (no proxy, unlike polymarket). The 23:20 vote backfill then
-# co-locates the freshest line onto each jingcai_vote row → de-noises 软水 ②/CLV.
+# odds_snapshots(source='closing'). Odds API is CN-reachable direct (no proxy,
+# unlike polymarket). The 23:20 vote backfill then co-locates the freshest line
+# onto each jingcai_vote row → de-noises 软水 ②/CLV.
+# 体检 Wave2 — `--sports auto`: derive the sports whose kickoff falls inside the
+# next 75 min from the (cached) AF schedule and fetch ONLY those — the hardcoded
+# `--sports WC` would have killed the whole closing chain when the WC ends
+# (~7/19), and flat-fetching all 20+ keys 48×/day would burn Odds-API credits.
+# Quiet hours = 0 credits; match windows ≈ a handful of sports per tick.
 CLOSING_PLIST="$PLIST_DIR/com.nutmeg.closing_odds.plist"
 cat > "$CLOSING_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -438,7 +443,7 @@ cat > "$CLOSING_PLIST" <<EOF
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string><string>-c</string>
-        <string>$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.closing_odds --db $DB_PATH --sports WC || true</string>
+        <string>$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.closing_odds --db $DB_PATH --sports auto || true</string>
     </array>
     <key>StartInterval</key><integer>1800</integer>
     <key>StandardOutPath</key><string>$LOG_DIR/com.nutmeg.closing_odds.out.log</string>

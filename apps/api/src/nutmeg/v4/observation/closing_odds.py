@@ -17,7 +17,7 @@ construction and a closing capture must stay light + reliable.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -51,6 +51,59 @@ def _canon(name: str | None) -> str | None:
     if not name:
         return None
     return _ODDS_API_ALIAS.get(name.strip(), name.strip())
+
+
+def resolve_auto_sports(
+    *,
+    lookahead_minutes: int = 75,
+    now: datetime | None = None,
+    fetch_fixtures=None,
+) -> list[str]:
+    """体检 Wave2 — kickoff-window sport resolution for ``--sports auto``.
+
+    The plist used to hardcode ``--sports WC`` → the whole closing chain dies
+    when the WC ends (~7/19) and every in-season league goes unanchored (the
+    「注册表即开关」class). Auto mode derives, from the cached API-Football
+    fixture schedule (1 cheap/cached AF read, NOT Odds-API credits), the set of
+    SPORT_KEYS leagues with a kickoff inside ``(now, now+lookahead]`` — i.e.
+    fetch a sport's Odds-API board ONLY when one of its matches is about to
+    start, which is exactly when the capture equals the true close. A 30-min
+    cron + 75-min lookahead ⇒ 1–2 pre-KO snapshots per match; quiet hours cost
+    ZERO Odds-API credits (vs 48×/day flat for one sport before).
+
+    Fail-soft: an AF outage returns [] (0 credits burned blind); a sustained
+    stall is caught by the data_freshness ``odds_snapshots[closing]`` sentinel
+    (Wave 1), not silence. ``fetch_fixtures`` is injectable for tests."""
+    from nutmeg.v4.data.sources import odds_api
+    from nutmeg.v4.data.sources.api_football import (
+        API_FOOTBALL_LEAGUE_IDS,
+        fetch_fixtures_for_date,
+    )
+
+    now = now or datetime.now(UTC)
+    fetch = fetch_fixtures or fetch_fixtures_for_date
+    horizon = now + timedelta(minutes=lookahead_minutes)
+    id_to_canonical = {v: k for k, v in API_FOOTBALL_LEAGUE_IDS.items()}
+    keys: set[str] = set()
+    # Today + tomorrow (UTC) covers a lookahead crossing midnight.
+    for d in {now.date(), horizon.date()}:
+        try:
+            fixtures = fetch(d) or []
+        except Exception:  # noqa: BLE001 — fail-soft; sentinel catches sustained stalls
+            log.warning("auto-sports: fixture fetch failed for %s", d, exc_info=True)
+            continue
+        for fx in fixtures:
+            try:
+                ko = _parse_iso((fx.get("fixture") or {}).get("date"))
+                lg_id = ((fx.get("league") or {}).get("id"))
+            except AttributeError:
+                continue
+            if ko is None or not (now < ko <= horizon):
+                continue
+            canonical = id_to_canonical.get(lg_id)
+            if canonical and canonical in odds_api.SPORT_KEYS:
+                keys.add(canonical)
+    return sorted(keys)
 
 
 def capture_closing_pinnacle(
