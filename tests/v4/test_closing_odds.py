@@ -96,3 +96,31 @@ def test_fetch_failure_is_failsoft(tmp_path, monkeypatch):
 
     monkeypatch.setattr(odds_api, "fetch_pinnacle_lookup", _boom)
     assert closing_odds.capture_closing_pinnacle(tmp_path / "x.db", ["WC"]) == {"WC": 0}
+
+
+def test_poisoned_none_lookup_entry_is_skipped(tmp_path, monkeypatch):
+    """体检 2026-07-03 — fetch_pinnacle_lookup poisons ambiguous club-core keys to
+    None (c5e805f). This consumer loop is OUTSIDE the per-sport try: an unguarded
+    None would AttributeError and kill the WHOLE capture round. The good entry
+    must still be captured."""
+    import datetime as dt
+
+    from nutmeg.v4.data.sources import odds_api
+    from nutmeg.v4.observation import closing_odds
+
+    future = (dt.datetime.now(dt.UTC) + dt.timedelta(hours=2)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+    date = future[:10]
+
+    def _mixed(sport_key, refresh=True):
+        return {
+            ("poisoned", "core", date): None,     # ambiguous club-core key
+            ("a", "b", date): {
+                "home_team": "A", "away_team": "B",
+                "psc_home": 2.0, "psc_draw": 3.3, "psc_away": 3.5,
+                "ou_line": 2.5, "psc_over": 2.0, "psc_under": 1.85,
+                "last_update": future, "commence_time": future},
+        }
+
+    monkeypatch.setattr(odds_api, "fetch_pinnacle_lookup", _mixed)
+    assert closing_odds.capture_closing_pinnacle(tmp_path / "x.db", ["WC"]) == {"WC": 1}

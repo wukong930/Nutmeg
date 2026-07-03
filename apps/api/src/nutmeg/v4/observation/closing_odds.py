@@ -88,6 +88,12 @@ def capture_closing_pinnacle(
         written = 0
         skipped_live = 0
         for key, e in (lookup or {}).items():
+            # 体检 2026-07-03 — fetch_pinnacle_lookup poisons ambiguous club-core
+            # secondary keys to None (c5e805f wrong-team guard). The overlay
+            # consumer skips them via `if not rec`; this loop is OUTSIDE the
+            # per-sport try, so an unguarded None crashes the WHOLE capture round.
+            if e is None:
+                continue
             kickoff = _parse_iso(e.get("commence_time"))
             if kickoff is None or kickoff <= now:
                 skipped_live += 1  # already kicked off (live odds) or unknown KO
