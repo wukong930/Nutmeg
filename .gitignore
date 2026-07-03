@@ -84,6 +84,9 @@ data/v4_model_cat_lineups/
 *.sqlite
 *.sqlite3
 
+# data_freshness sentinel heartbeat (体检 P0-2 — written every run, watched by vote cron)
+data/.data_freshness_heartbeat
+
 # ── Personal / Archive ────────────────────────────────────────
 Nutmeg_诊断报告与科学化路线图.docx
 *.docx

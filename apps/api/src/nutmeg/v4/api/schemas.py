@@ -593,6 +593,11 @@ class SingleTicketResponse(BaseModel):
     psc_away: float | None = None
     psc_over25: float | None = None
     psc_under25: float | None = None
+    # 体检 2026-07-03 Wave1 — the ACTUAL total line psc_over25/under25 are quoted
+    # at. Without it the 今日推荐 record path hardcoded 2.5 → the server's
+    # "authoritative" 让球 refit anchored on the wrong line → the RECORDED
+    # P/EV/stake themselves were wrong (15/22 WC matches had non-2.5 lines).
+    ou_line: float | None = None
     handicap_home: int | None = None
     # V14 — market-reverse 让球 board (−3..+3) carried onto the prediction ticket
     # so the 今日推荐 boards can show a 让球胜平负 prediction with a line selector

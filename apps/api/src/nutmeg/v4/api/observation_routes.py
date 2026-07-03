@@ -562,6 +562,16 @@ def recommendations_history(days: int = 30) -> HistoryResponse:
 
 @router.post("/outcomes", response_model=OutcomesBatchResponse)
 def post_outcomes(req: Annotated[OutcomesBatchRequest, Body(...)]) -> OutcomesBatchResponse:
+    # 体检 2026-07-03 Wave1 — this was the ONLY ungated write endpoint: a bad
+    # score POST overwrites the stored result AND settle_unsettled immediately
+    # settles every pending rec against it, IRREVERSIBLY (there is no resettle
+    # tool). No production caller exists (tests/docs only), so gate it behind an
+    # explicit env opt-in, mirroring the record endpoints' env-gate posture.
+    if os.environ.get("NUTMEG_ALLOW_OUTCOME_WRITES") != "1":
+        raise HTTPException(
+            status_code=403,
+            detail="outcome writes disabled — set NUTMEG_ALLOW_OUTCOME_WRITES=1 "
+                   "to enable manual score correction (settlement is irreversible)")
     db = _db_path()
     n = 0
     with open_db(db) as conn:

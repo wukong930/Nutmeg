@@ -121,3 +121,54 @@ def test_had_and_hhad_are_separate_rows(tmp_path):
     rows = fetch_jingcai_vote(db)
     assert len(rows) == 2  # same match, two pools → two rows
     assert {r["pool_code"] for r in rows} == {"HAD", "HHAD"}
+
+
+class TestAlarmHeartbeatWatchdog:
+    """体检 P0-2 — the vote cron watches the settle chain's data_freshness
+    heartbeat (mutual watching; the osascript alarm must not be a single
+    point of failure parasitic on the chain it monitors)."""
+
+    def _run(self, tmp_path, monkeypatch, *, hb_age_hours=None):
+        import os
+        import subprocess as sp
+
+        from nutmeg.v4.cli.data_freshness import HEARTBEAT_FILENAME
+        from nutmeg.v4.cli.ingest_jingcai_vote import watch_alarm_heartbeat
+
+        calls = []
+        monkeypatch.setattr(sp, "run", lambda *a, **k: calls.append(a) or None)
+        db = tmp_path / "obs.db"
+        db.write_bytes(b"")
+        if hb_age_hours is not None:
+            hb = tmp_path / HEARTBEAT_FILENAME
+            hb.write_text("2026-06-17T00:00:00+00:00\n")
+            import time
+            past = time.time() - hb_age_hours * 3600
+            os.utime(hb, (past, past))
+        alarmed = watch_alarm_heartbeat(db)
+        return alarmed, calls
+
+    def test_fresh_heartbeat_is_silent(self, tmp_path, monkeypatch):
+        alarmed, calls = self._run(tmp_path, monkeypatch, hb_age_hours=5)
+        assert not alarmed and not calls
+
+    def test_stale_heartbeat_alarms(self, tmp_path, monkeypatch):
+        alarmed, calls = self._run(tmp_path, monkeypatch, hb_age_hours=30)
+        assert alarmed and len(calls) == 1
+        assert "osascript" in calls[0][0][0]
+
+    def test_missing_heartbeat_alarms(self, tmp_path, monkeypatch):
+        alarmed, calls = self._run(tmp_path, monkeypatch, hb_age_hours=None)
+        assert alarmed and len(calls) == 1
+
+    def test_watchdog_failure_never_raises(self, tmp_path, monkeypatch):
+        import subprocess as sp
+
+        from nutmeg.v4.cli.ingest_jingcai_vote import watch_alarm_heartbeat
+
+        def boom(*a, **k):
+            raise OSError("osascript unavailable")
+
+        monkeypatch.setattr(sp, "run", boom)
+        # missing heartbeat → tries to alarm → alarm explodes → still no raise
+        assert watch_alarm_heartbeat(tmp_path / "obs.db") is False

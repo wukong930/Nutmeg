@@ -2063,6 +2063,7 @@ const I18N = {
     spcalc_recorded_btn:'已记录',
     spcalc_record_err:'记录失败, 请重试',
     spcalc_need_all_sp:'请先填好 胜/平/负 三个 SP',
+    spcalc_need_pinnacle:'这场没有 Pinnacle 盘口,无法记录 — EV 需要 Pinnacle 公允线,不能用竞彩 SP 顶替',
     spcalc_refresh_btn:'{ic:refresh} 刷新盘口',
     spcalc_pending_title:'{ic:hourglass} 待开盘 (Pinnacle 未开盘)',
     spcalc_pending_hint:'Pinnacle 尚未开出盘口 → 模型缺少关键先验, 暂不计算 EV (避免误导)。开盘后这些比赛会自动出现在上方可计算列表。',
@@ -2512,6 +2513,7 @@ const I18N = {
     spcalc_recorded_btn:'Recorded',
     spcalc_record_err:'Record failed, retry',
     spcalc_need_all_sp:'Fill all three SP (W/D/L) first',
+    spcalc_need_pinnacle:'No Pinnacle line for this match — cannot record: EV needs the Pinnacle fair line, 竞彩 SP is not a substitute',
     spcalc_refresh_btn:'{ic:refresh} Refresh odds',
     spcalc_pending_title:'{ic:hourglass} Awaiting Pinnacle line',
     spcalc_pending_hint:'Pinnacle has not opened a line yet → the model lacks a key prior, so EV is not computed (avoids misleading picks). These fixtures move to the calculable list above once the line opens.',
@@ -3815,7 +3817,8 @@ async function _todayRecRecord(i) {
         league: tk.league, date: tk.date, home_team: tk.home_team, away_team: tk.away_team,
         psc_home: tk.psc_home, psc_draw: tk.psc_draw, psc_away: tk.psc_away,
         psc_over25: tk.psc_over25 || null, psc_under25: tk.psc_under25 || null,
-        ou_line: 2.5, handicap_home: tk.handicap_home,
+        ou_line: tk.ou_line ?? 2.5,   // 体检 Wave1 — real total line (was hardcoded 2.5 → wrong recorded P/EV)
+        handicap_home: tk.handicap_home,
         bankroll, kelly_fraction: kelly, record_session: true,
       };
       body['odds_handicap_' + tk.outcome] = sp;
@@ -4750,10 +4753,18 @@ async function _spcalcRecord(idx) {
   };
   const oh = get('H'), od = get('D'), oa = get('A');
   if (!(oh && od && oa)) { alert(t('spcalc_need_all_sp')); return; }
+  // 体检 Wave1 — NEVER fabricate Pinnacle from the typed 竞彩 SP (`pr.psc_home
+  // || oh` made the recorded "fair" P ≈ 竞彩 implied → EV≈vig, a fake number
+  // in the ledger). No Pinnacle → honest block, not a substitute.
+  if (pr.psc_home == null || pr.psc_draw == null || pr.psc_away == null) {
+    alert(t('spcalc_need_pinnacle')); return;
+  }
   const fixture = {
     date: pr.date, league: pr.league,
     home_team: pr.home_team, away_team: pr.away_team,
-    psc_home: pr.psc_home || oh, psc_draw: pr.psc_draw || od, psc_away: pr.psc_away || oa,
+    psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
+    psc_over25: pr.psc_over25 ?? null, psc_under25: pr.psc_under25 ?? null,
+    ou_line: pr.ou_line ?? null,   // 体检 Wave1 — record at the REAL total line
     odds_1x2_H: oh, odds_1x2_D: od, odds_1x2_A: oa,
   };
   btn.disabled = true; btn.textContent = '…';
@@ -5260,6 +5271,7 @@ async function _cupHcRecord(idx) {
         home_team: pr.home_team, away_team: pr.away_team,
         psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
         psc_over25: pr.psc_over25, psc_under25: pr.psc_under25,
+        ou_line: pr.ou_line ?? 2.5,   // 体检 Wave1 — anchor the record refit to the real line
         handicap_home: line,
         odds_handicap_H: oh, odds_handicap_D: od, odds_handicap_A: oa,
         bankroll: 1000, kelly_fraction: 0.25, record_session: true,

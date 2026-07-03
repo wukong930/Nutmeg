@@ -114,7 +114,11 @@ def _data_freshness() -> list[dict]:
     db = os.environ.get("NUTMEG_V4_OBSERVATION_DB", settings.v4_observation_db)
     rows = []
     try:
-        with sqlite3.connect(db) as c:
+        # 体检 Wave1 — READ-ONLY open. A plain connect() on a mistyped/moved path
+        # silently CREATES an empty DB file, turning "DB missing" (loud) into
+        # "DB fine but 0 rows" (masked misconfig). mode=ro raises instead —
+        # same posture as the score_ev_forward probe below.
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as c:
             for table, col, label in [
                 ("odds_snapshots", "captured_at", "Pinnacle 线史 (CLV 地基)"),
                 ("jingcai_sp", "captured_at", "竞彩 SP 捕获 (软水)"),

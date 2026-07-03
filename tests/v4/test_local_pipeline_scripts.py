@@ -55,8 +55,11 @@ class TestScriptStructure:
         """All scripts use `set -e` or similar so failures don't silently pass."""
         body = (SCRIPTS_DIR / name).read_text()
         # Either -euo pipefail (preferred) or -uo (health_check uses without -e
-        # because it wants to print all checks even when one fails)
-        head = body.split("\n", 30)[:30]
+        # because it wants to print all checks even when one fails).
+        # Window 30→60 (体检 Wave1): setup_local_pipeline.sh's header job-index
+        # comment grew past 30 lines, pushing its `set -euo pipefail` (line ~34)
+        # out of the scan → false "missing strict mode".
+        head = body.split("\n", 60)[:60]
         assert any("set -" in line and ("euo" in line or "uo pipefail" in line)
                    for line in head), f"{name} missing strict mode (set -e/u/o)"
 

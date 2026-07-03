@@ -378,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v75-fe-polymarket-finished"
+_FE_VERSION = "nutmeg-v76-fe-wave1-ouline-record"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -569,6 +569,7 @@ def _fixtures_to_dataframe(fixtures: list[FixtureOddsInput]) -> pd.DataFrame:
             "psc_away": f.psc_away,
             "psc_over25": f.psc_over25,
             "psc_under25": f.psc_under25,
+            "ou_line": f.ou_line,   # 体检 Wave1 — real total line, was silently dropped
             "ahch": f.ahch,
             "handicap_home": f.handicap_home,
             "odds_1x2_H": f.odds_1x2_H,
@@ -1031,6 +1032,8 @@ def recommend_single(req: SingleRecommendRequest) -> SingleRecommendResponse:
             psc_away=(float(_fx.psc_away) if _fx else None),
             psc_over25=(float(_fx.psc_over25) if _fx and _fx.psc_over25 else None),
             psc_under25=(float(_fx.psc_under25) if _fx and _fx.psc_under25 else None),
+            # 体检 Wave1 — real total line; without it the record path refit at 2.5
+            ou_line=(float(_fx.ou_line) if _fx and _fx.ou_line is not None else None),
             handicap_home=(
                 int(_fx.handicap_home)
                 if _fx and _fx.handicap_home is not None
@@ -1549,6 +1552,7 @@ def _fixture_rows_to_inputs(rows: list[dict]) -> list[FixtureOddsInput]:
                 odds_handicap_A=_f("odds_handicap_A"),
                 psc_over25=_f("psc_over25"),
                 psc_under25=_f("psc_under25"),
+                ou_line=_f("ou_line"),   # 体检 Wave1 — was dropped → downstream anchored 2.5
                 asian_handicap=(r.get("asian_handicap") or None),
             ))
         except Exception:  # noqa: BLE001
@@ -1677,6 +1681,7 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 psc_home=f.psc_home, psc_draw=f.psc_draw, psc_away=f.psc_away,
                 psc_over25=getattr(f, "psc_over25", None),
                 psc_under25=getattr(f, "psc_under25", None),
+                ou_line=getattr(f, "ou_line", None),   # 体检 Wave1 — echo real line
                 handicap_lines=hc_lines,
                 asian_handicap_lines=_model_board_asian_handicap(f, grid),
                 margin_bands=_mk_margin_bands(grid_to_margin_bands(grid)),
@@ -1749,7 +1754,11 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
                 snapshot_db=_observation_db_path(),
                 snapshot_source="sp_calc",
                 use_odds_api=_odds_api_available(),
-                odds_api_refresh=refresh_odds,
+                # 体检 Wave1 — the OA feed is DATE-INDEPENDENT: force-refreshing it
+                # once per day-iteration re-pulled the same payload ×days
+                # (~2 credits × leagues × days per 🔄 click, 6/7 pure waste).
+                # Refresh on the first day only; later days hit the fresh cache.
+                odds_api_refresh=refresh_odds and d == 0,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2146,7 +2155,9 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
                 snapshot_db=_observation_db_path(),
                 snapshot_source="cup_market",
                 use_odds_api=_odds_api_available(),
-                odds_api_refresh=refresh_odds,
+                # 体检 Wave1 — same date-independent-feed rule as sp-calc above:
+                # force-refresh OA once (first day), later days reuse the cache.
+                odds_api_refresh=refresh_odds and d == 0,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2360,6 +2371,7 @@ def _argmax_prediction_tickets(
             stake=0.0, raw_kelly_stake=0.0, expected_return=0.0,
             psc_home=p.psc_home, psc_draw=p.psc_draw, psc_away=p.psc_away,
             psc_over25=p.psc_over25, psc_under25=p.psc_under25,
+            ou_line=p.ou_line,   # 体检 Wave1 — real total line for the record path
             handicap_lines=p.handicap_lines,   # V14 — market-reverse 让球 board
             asian_handicap_lines=p.asian_handicap_lines,  # V14 — international AH (half-line)
         )

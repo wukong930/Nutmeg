@@ -94,6 +94,25 @@ class TestSpCalcHappyPath:
         # SinglePrediction so the 近期赛事 cards can show + sort by time.
         assert p["kickoff_utc"] == rows[0]["kickoff_utc"]
 
+    def test_ou_line_threads_through_whole_chain(self, client):
+        """体检 2026-07-03 Wave1 (簇 A) regression — the REAL total line must
+        survive every hop: odds row → _fixtures_to_dataframe →
+        _fixture_rows_to_inputs → _calc_predictions → SinglePrediction. Before
+        the fix each hop silently dropped it (pydantic ignores unknown kwargs),
+        so downstream 让球 refits + the 📌 record path anchored at 2.5 even when
+        Pinnacle quoted 2.25 (15/22 WC matches ≠ 2.5)."""
+        from unittest.mock import patch
+        row = self._row("Arsenal", "Chelsea")
+        row.update({"ou_line": 2.25, "psc_over25": 1.85, "psc_under25": 1.95})
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows",
+                   return_value=([row], 1, 0)):
+            r = client.get("/api/v4/predictions/sp-calc?days=1")
+        if r.status_code == 503:
+            pytest.skip("production artifact not available")
+        assert r.status_code == 200, r.text
+        p = r.json()["predictions"][0]
+        assert p["ou_line"] == 2.25
+
 
 # ============ Pending fixtures (V12 W6 — 待开盘) =======================
 

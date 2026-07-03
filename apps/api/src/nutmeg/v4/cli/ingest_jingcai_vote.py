@@ -38,6 +38,42 @@ def harvest_votes_to_db(
     return {"seen": seen, "written": written}
 
 
+def watch_alarm_heartbeat(db_path, *, max_age_hours: float = 26.0) -> bool:
+    """体检 2026-07-03 P0-2 — mutual watching. The system's ONLY push alarm
+    (osascript) rides the tail of the daily_settle chain; if that chain dies,
+    the alarm dies WITH it and we're back to "noticed weeks later by accident"
+    (the wc_settle precedent). This CLI runs in an INDEPENDENT launchd job
+    (sporttery_vote, 3 windows/day), so here we check the age of the
+    data_freshness heartbeat file (written by the settle chain 13:00/20:00 →
+    normal max gap ~17h; 26h = one missed day + slack) and pop a desktop
+    notification if it's stale/missing. data_freshness in turn watches OUR
+    table (jingcai_vote) — each job alarms for the other. Fail-soft: the
+    watchdog must never break vote capture. Returns True if it alarmed."""
+    import subprocess
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    from nutmeg.v4.cli.data_freshness import HEARTBEAT_FILENAME
+    try:
+        hb = Path(db_path).resolve().parent / HEARTBEAT_FILENAME
+        if hb.exists():
+            age_h = (datetime.now(UTC).timestamp() - hb.stat().st_mtime) / 3600.0
+            if age_h <= max_age_hours:
+                return False
+            msg = f"data_freshness 心跳 {age_h:.0f}h 未更新 — daily_settle 报警链可能整条死了"
+        else:
+            msg = "data_freshness 心跳文件缺失 — daily_settle 报警链可能没在跑"
+        print(f"⚠️ 看门狗: {msg}")
+        subprocess.run(
+            ["osascript", "-e",
+             f'display notification "{msg}" with title "⚠️ Nutmeg 报警链心跳"'],
+            check=False, capture_output=True, timeout=10)
+        return True
+    except Exception:  # noqa: BLE001 — watchdog is best-effort by design
+        logging.getLogger(__name__).warning("heartbeat watchdog failed", exc_info=True)
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="capture 体彩 散户支持比例 → jingcai_vote")
     ap.add_argument("--db", default="data/v4_observation.db", help="observation DB")
@@ -45,6 +81,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="show what would be written")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    # Run the alarm-chain watchdog FIRST — it must fire even when the vote
+    # fetch itself fails (independence is the whole point).
+    watch_alarm_heartbeat(args.db)
 
     from nutmeg.v4.data.sources.sporttery import fetch_vote_support
     from nutmeg.v4.observation.jingcai_vote import parse_vote_row

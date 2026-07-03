@@ -152,9 +152,10 @@ class TestAriaSemantics:
         assert html.count('role="tab"') >= 7
 
     def test_tabpanels_have_role(self, html):
-        # 5 top-level tabpanels (今日推荐/近期赛事/自定义玩法/推荐追溯/个人中心)
-        # + 3 sub-panels (单关/串关/复式 inside 自定义玩法) = 8.
-        assert html.count('role="tabpanel"') == 8
+        # 6 top-level tabpanels (今日推荐/近期赛事/自定义玩法/推荐追溯/Polymarket/
+        # 个人中心) + 3 sub-panels (单关/串关/复式 inside 自定义玩法) = 9.
+        # (Polymarket 看板 tab added 2026-07-02; count updated 体检 Wave1.)
+        assert html.count('role="tabpanel"') == 9
 
     def test_status_spans_have_aria_live(self, html):
         # V11 P1-FE#1: outcomes-status removed (engineer tab gone).

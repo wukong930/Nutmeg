@@ -160,6 +160,25 @@ class TestSingleEndpointE2E:
                 f"{t['league']}_{t['home_team']}_vs_{t['away_team']}"
             )
 
+    def test_ticket_echoes_real_ou_line(self, client):
+        """体检 2026-07-03 Wave1 (簇 A) — SingleTicketResponse must carry the
+        REAL total line the psc_over25/under25 are quoted at. Without it the
+        今日推荐 📌 record path hardcoded 2.5, so the server's authoritative
+        让球 refit — and the RECORDED P/EV/stake — were computed on the wrong
+        line. Inflated +EV guarantees ≥1 ticket."""
+        fx = _good_fixture("Vissel Kobe", "Kashima", "JPN_J1")
+        fx["psc_away"] = 6.0
+        fx["odds_1x2_A"] = 6.0
+        fx.update({"ou_line": 2.25, "psc_over25": 1.85, "psc_under25": 1.95})
+        r = client.post("/api/v4/recommend/single", json={
+            "fixtures": [fx], "bankroll": 1000.0, "top_per_match": 3,
+        })
+        assert r.status_code == 200, r.text
+        tickets = r.json()["tickets"]
+        assert tickets, "inflated +EV outcome should yield ≥1 ticket"
+        for t in tickets:
+            assert t["ou_line"] == 2.25
+
     def test_tickets_carry_match_identity_v12_w7(self, client):
         """V12 W7 regression: the 今日推荐 single board renders home_team/league/
         date straight off each ticket — before the fix they were absent and the

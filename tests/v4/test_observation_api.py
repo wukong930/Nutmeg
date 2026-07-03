@@ -223,7 +223,10 @@ class TestSessionsLatestEndpoint:
 
 
 class TestPostOutcomes:
-    def test_post_and_auto_settle(self, fresh_db_client):
+    # 体检 Wave1 — /outcomes is env-gated (NUTMEG_ALLOW_OUTCOME_WRITES=1): a bad
+    # score POST would overwrite the stored result and settle recs irreversibly.
+    def test_post_and_auto_settle(self, fresh_db_client, monkeypatch):
+        monkeypatch.setenv("NUTMEG_ALLOW_OUTCOME_WRITES", "1")
         client, db = fresh_db_client
         # Need a recommendation first for settle to do anything; we just test that
         # outcomes can be posted and the settle_counts dict is returned.
@@ -243,7 +246,20 @@ class TestPostOutcomes:
         assert body["n_recorded"] == 2
         assert "settle_counts" in body
 
-    def test_invalid_goals_returns_422(self, fresh_db_client):
+    def test_gated_off_returns_403(self, fresh_db_client, monkeypatch):
+        monkeypatch.delenv("NUTMEG_ALLOW_OUTCOME_WRITES", raising=False)
+        client, _ = fresh_db_client
+        req = {"outcomes": [{
+            "match_date": "2025-08-17", "league": "EPL",
+            "home_team": "Arsenal", "away_team": "Liverpool",
+            "home_goals": 2, "away_goals": 1,
+        }]}
+        r = client.post("/api/v4/observation/outcomes", json=req)
+        assert r.status_code == 403
+        assert "NUTMEG_ALLOW_OUTCOME_WRITES" in r.json()["detail"]
+
+    def test_invalid_goals_returns_422(self, fresh_db_client, monkeypatch):
+        monkeypatch.setenv("NUTMEG_ALLOW_OUTCOME_WRITES", "1")
         client, _ = fresh_db_client
         bad = {"outcomes": [{
             "match_date": "2025-08-17", "league": "EPL",
@@ -253,7 +269,8 @@ class TestPostOutcomes:
         r = client.post("/api/v4/observation/outcomes", json=bad)
         assert r.status_code == 422
 
-    def test_empty_batch_returns_422(self, fresh_db_client):
+    def test_empty_batch_returns_422(self, fresh_db_client, monkeypatch):
+        monkeypatch.setenv("NUTMEG_ALLOW_OUTCOME_WRITES", "1")
         client, _ = fresh_db_client
         r = client.post("/api/v4/observation/outcomes", json={"outcomes": []})
         assert r.status_code == 422
