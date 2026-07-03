@@ -85,6 +85,20 @@ def _parse_date(s: str) -> dt.date:
     return dt.date.fromisoformat(s)
 
 
+def _utc_today() -> dt.date:
+    """UTC "today" for the --date default — NEVER the process-local date.
+
+    fetch_fixtures_for_date interprets the date as UTC (API-Football match
+    dates are UTC), and --date's help has always promised "today (UTC)". A
+    local-date (Asia/Shanghai) anchor rolls forward at Beijing midnight
+    (16:00 UTC) and asks for TOMORROW's fixtures — silently dropping every
+    fixture kicking off 16:00–23:59 UTC that night (= Beijing 00:00–07:59,
+    the late-night EU slate). The 09:00/14:00 crons never hit the window,
+    but a launchd wake-catch-up firing or a manual night run does. Same bug
+    class as routes._utc_today (caught live 2026-07-03)."""
+    return dt.datetime.now(dt.UTC).date()
+
+
 def _odds_api_available() -> bool:
     """True when an Odds API key is configured — the fresher-line overlay is
     opt-in on it; absent key → graceful fallback to API-Football."""
@@ -428,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--date",
         type=_parse_date,
-        default=dt.date.today(),
+        default=None,
         help="YYYY-MM-DD; defaults to today (UTC)",
     )
     p.add_argument(
@@ -494,6 +508,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    if args.date is None:
+        args.date = _utc_today()  # UTC anchor (local date drops the late-night EU slate)
 
     if args.quiet:
         log.setLevel(logging.WARNING)

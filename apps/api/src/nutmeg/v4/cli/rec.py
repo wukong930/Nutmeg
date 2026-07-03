@@ -67,6 +67,7 @@ from nutmeg.v4.cli.recommend import _read_fixtures, _row_to_match_input
 from nutmeg.v4.cli.recommend_pool import _read_pool_fixtures, _row_to_selection
 # V7 W1: auto-fetch live odds into a temp CSV when --auto-fetch is set
 from nutmeg.v4.cli.ingest_odds import _gather_rows as _ingest_gather_rows
+from nutmeg.v4.cli.ingest_odds import _utc_today
 from nutmeg.v4.cli.ingest_odds import _write_csv as _ingest_write_csv
 from nutmeg.v4.data.odds_parser import PINNACLE_BOOKMAKER_ID
 
@@ -427,7 +428,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--auto-fetch-leagues", default="EPL,ESP_LA_LIGA",
                    help="auto-fetch 拉哪些联赛 (默认 EPL,ESP_LA_LIGA)")
     p.add_argument("--auto-fetch-date", default=None,
-                   help="auto-fetch 比赛日期 YYYY-MM-DD (默认今天)")
+                   help="auto-fetch 比赛日期 YYYY-MM-DD (默认今天, UTC 日)")
     p.add_argument("--auto-fetch-bookmaker-id", type=int,
                    default=PINNACLE_BOOKMAKER_ID,
                    help=f"auto-fetch 取哪个 book (默认 {PINNACLE_BOOKMAKER_ID} = Pinnacle)")
@@ -451,10 +452,11 @@ def _auto_fetch_to_tempfile(args) -> str:
             "请手动准备 pool CSV"
         )
     leagues = [s.strip() for s in args.auto_fetch_leagues.split(",") if s.strip()]
-    if args.auto_fetch_date:
-        on_date = dt.date.fromisoformat(args.auto_fetch_date)
-    else:
-        on_date = dt.date.today()
+    # Default: UTC anchor (local date drops the late-night EU slate) — at
+    # Beijing 00:00-07:59, prime hours for tonight's UTC 16:00-23:59 kickoffs,
+    # the local date is already "tomorrow" and auto-fetch would miss them.
+    on_date = (dt.date.fromisoformat(args.auto_fetch_date)
+               if args.auto_fetch_date else _utc_today())
     rows, n_calls, n_skipped = _ingest_gather_rows(
         leagues,
         on_date,

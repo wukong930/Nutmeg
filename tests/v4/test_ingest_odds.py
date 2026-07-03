@@ -721,3 +721,40 @@ def test_overlay_skips_started_match_live_odds():
     assert _apply_odds_api_overlay(
         post, oa, now=dt.datetime(2026, 8, 1, 20, 0, tzinfo=dt.UTC)) is False
     assert post["psc_home"] == 2.0   # post-KO → skipped, row untouched
+
+
+class TestUtcDateAnchors:
+    """体检 2026-07-03 (CLI layer, follows tests/v4/test_api.py) — fixture-date
+    windows anchored on the process-local date (Asia/Shanghai) roll at Beijing
+    midnight (16:00 UTC) and ask for TOMORROW's fixtures, dropping the
+    late-night EU slate (UTC 16:00-23:59 kickoffs = Beijing 00:00-07:59).
+    ingest_odds --date and rec --auto-fetch both feed the UTC-interpreted
+    fetch_fixtures_for_date, so their defaults must anchor on UTC."""
+
+    def test_no_local_date_today_in_fixture_window_clis(self):
+        import inspect
+
+        from nutmeg.v4.cli import ingest_odds, rec
+
+        for mod in (ingest_odds, rec):
+            src = inspect.getsource(mod)
+            assert ".date.today()" not in src, (
+                f"{mod.__name__} uses process-local date.today() — fixture "
+                "dates are UTC; use ingest_odds._utc_today() (Beijing-midnight "
+                "premature-drop bug, 2026-07-03)")
+
+    def test_utc_today_is_utc(self):
+        assert ingest_odds_mod._utc_today() == dt.datetime.now(dt.UTC).date()
+
+    def test_date_default_resolves_to_utc_today(self):
+        """main() with no --date must gather for the UTC date, not the local one."""
+        seen: dict = {}
+
+        def fake_gather(leagues, on_date, **kw):
+            seen["date"] = on_date
+            return [], 0, 0
+
+        with patch.object(ingest_odds_mod, "_gather_rows", side_effect=fake_gather):
+            rc = ingest_odds_mod.main(["--leagues", "EPL", "--out", "-", "--quiet"])
+        assert rc == 0
+        assert seen["date"] == dt.datetime.now(dt.UTC).date()
