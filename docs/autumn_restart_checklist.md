@@ -30,7 +30,7 @@
 
 机器已就位(`nutmeg-handicap-triples` + `jingcai_sp` 初/终 + `clv_ledger` + `jingcai_exotic_sp`),到点喂数据即出。
 
-> ⚖️ **确认性/探索性边界以 `docs/autumn_prereg_analysis_plan.md`(预注册 v1.0)为准**:下列 ①–⑥ 里只有「逐联赛 CLV 闸门(P2)」能解锁资金;②③④ 对应预注册 S2/S1/S4(次级,不动钱);数据到达后改口径必须在预注册 Changelog 留痕且只对未读数据生效。
+> ⚖️ **确认性/探索性边界以 `docs/autumn_prereg_analysis_plan.md`(预注册 v1.1)为准**:下列 ①–⑥ 里只有「逐联赛 CLV 闸门(P2)」能解锁资金;②③④ 对应预注册 S2/S1/S4(次级,不动钱);v1.1(2026-07-04)增 **S6 让球切分偏差复现 + C1 修正式冻结**(网格在 |h|=1 让胜 +2.8pp/让平 −3.1pp 切偏,让负=锚分毫不差;C1=让胜→让平挪 δ=2.8pp,**S6 过 FDR 才准进服务端**;禁再试 rho/亚盘直读;源 `docs/ah_vs_grid_three_way_backtest_2026-07-04.md` 附录);数据到达后改口径必须在预注册 Changelog 留痕且只对未读数据生效。
 
 - [ ] **① 按联赛切软水 CLV**:13 个受训欧洲联赛**单独**量(别混 WC/杯/北欧),`jc_* × Pinnacle 收盘 × 捕获 EV`。检验竞彩 SP 在公众钱重的盘上是否真软。`parlay_soft_water_research §8`
 - [ ] **② 按「散户重仓 vs 冷门」切**(🆕 来自竞彩市场研究):竞彩按国内 handle 调线 → 偏差应在**大球队/大球/热门**。**这条可能比只按联赛切更能找到偏差。** `docs/jingcai_market_microstructure.md`
