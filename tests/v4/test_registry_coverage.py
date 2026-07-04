@@ -10,7 +10,12 @@ import re
 from pathlib import Path
 from unittest.mock import patch
 
-from nutmeg.v4.cli.registry_coverage import CRON_LEAGUES, check_league, run
+from nutmeg.v4.cli.registry_coverage import (
+    CRON_LEAGUES,
+    MARKET_MODE_LEAGUES,
+    check_league,
+    run,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -59,11 +64,16 @@ class TestCheckLeague:
         assert r["n_teams"] == 2
         assert r["unreachable"] == ["FC Nonexistium"]
 
-    def test_missing_sport_key_is_hard_gap(self):
+    def test_missing_sport_key_gap_only_for_cron_leagues(self):
+        # 2026-07-04 — market-mode leagues price off the AF mirror by design:
+        # DNK's missing sport key is a WARN (设计内), never a hard gap. A cron
+        # league without a key would still gate (guarded separately by
+        # test_every_cron_league_has_sport_key).
         with patch("nutmeg.v4.data.sources.api_football.fetch_teams_for_league_season",
                    return_value=_teams()):
             rows, gaps, warns = run(["DNK_SUPERLIGA"])  # AF id ✓, sport key ✗
-        assert any("sport key" in g for g in gaps)
+        assert not any("sport key" in g for g in gaps)
+        assert any("设计内" in w for w in warns)
 
     def test_empty_table_is_warning_not_gap(self):
         with patch("nutmeg.v4.data.sources.api_football.fetch_teams_for_league_season",
@@ -97,7 +107,9 @@ class TestLiveDictCoverage:
         reachable = {_EN_OVERRIDES.get(en, en) for en in _ZH_TO_EN.values()}
         today = datetime.now(UTC).date()
         problems = []
-        for lg in CRON_LEAGUES:
+        # 2026-07-04 瑞超事件 — market-mode leagues joined the regression line
+        # (their dict gaps drop 竞彩 SP just the same).
+        for lg in CRON_LEAGUES + MARKET_MODE_LEAGUES:
             season = season_for_date(today, lg)
             cf = _cache_path("/teams", {"league": league_id(lg), "season": season},
                              Path("data/external/api_football"))

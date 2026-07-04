@@ -82,6 +82,20 @@ _ZH_OVERRIDES: dict[str, str] = {
     "首尔FC": "FC Seoul",
     "光州FC": "Gwangju FC",
     "济州SK": "Jeju United FC",
+    # 瑞超 Allsvenskan — 竞彩 2026-07-04 上架 7 场,6 场因竞彩中文拼法≠字典键而
+    # 整对静默丢弃(哈尔姆斯塔德≠哈尔姆斯塔、AIK索尔纳≠索尔纳AIK 词序、IFK哥德堡
+    # ≠哥德堡、哥德堡盖斯≠哥德堡GAIS,余者缺竞彩写法)。半联赛丢失不触发整联赛
+    # 报警(Elfsborg 场活着)= 「半坏」盲区实锤。EN 值逐一对 AF SWE_ALLSVENSKAN
+    # 2026 队表验证(live diff 2026-07-04)。
+    "哈尔姆斯塔德": "Halmstad",
+    "代格福什": "Degerfors IF",
+    "厄尔格里特": "Orgryte IS",
+    "IFK哥德堡": "IFK Goteborg",
+    "AIK索尔纳": "AIK Stockholm",
+    "赫根": "BK Hacken",
+    "佐加顿斯": "Djurgardens IF",
+    "布鲁马波卡纳": "IF Brommapojkarna",
+    "哥德堡盖斯": "Gais",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
@@ -164,6 +178,8 @@ _EN_OVERRIDES: dict[str, str] = {
     "Westerlo": "KVC Westerlo",
     "Kashima Antlers": "Kashima",
     "Urawa Red Diamonds": "Urawa",
+    # 2026-07-04 瑞超事件后扩查市场模式联赛(nutmeg-registry-coverage 扩容首跑):
+    "Hokkaido Consadole Sapporo": "Consadole Sapporo",   # J2 26 赛季 AF 用短名
 }
 
 

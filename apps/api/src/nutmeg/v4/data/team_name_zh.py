@@ -872,6 +872,11 @@ _W2_2026_ROSTER_ADDITIONS = {
     # ── 比甲 BEL_PRO_LEAGUE ──
     "Lommel United": "洛默尔", "RAAL La Louvière": "拉卢维耶尔",
     "SK Beveren": "贝弗伦", "St. Truiden": "圣图尔登", "Zulte Waregem": "祖尔特瓦雷根",
+    # ── 市场模式联赛 (2026-07-04 瑞超事件后 registry-coverage 扩容查出) ──
+    "ST Johnstone": "圣约翰斯通",   # 苏超; AF 全大写 ST
+    "AC Horsens": "霍森斯",         # 丹超升班马
+    "Lyngby": "林比",               # 丹超
+    "FC Vaduz": "瓦杜兹",           # 瑞士超升班马
 }
 TEAM_NAME_ZH.update(_W2_2026_ROSTER_ADDITIONS)
 

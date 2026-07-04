@@ -105,15 +105,27 @@ def main(argv: list[str] | None = None) -> int:
         print(" · 未映射: " + ", ".join(
             f"{m['home_cn']}/{m['away_cn']}" for m in unmapped[:8]))
         # 体检 2026-07-03 — a whole league can vanish from ingest one team-name at
-        # a time (韩职: 6/6 matches dropped, each pair half-mapped). Shout when a
-        # league is FULLY unmapped so the cron log reads as an action item, not noise.
+        # a time (韩职: 6/6 matches dropped, each pair half-mapped). 2026-07-04 —
+        # 瑞超 proved the FULL-loss alarm has a「半坏」blind spot: 6/7 matches
+        # dropped (竞彩 zh spellings ≠ dict keys) but the one surviving match
+        # kept it silent. Alarm on MAJORITY loss too: ≥2 matches AND ≥50%
+        # unmapped in a league ⇒ same desktop push, distinct wording.
         from collections import Counter
         n_all = Counter(m["league_cn"] or "?" for m in matches)
         n_bad = Counter(m["league_cn"] or "?" for m in unmapped)
         gone = [lg for lg, n in n_bad.items() if n == n_all[lg]]
+        partial = [f"{lg} {n}/{n_all[lg]}" for lg, n in n_bad.items()
+                   if n < n_all[lg] and n >= 2 and n * 2 >= n_all[lg]]
+        alarm_bits = []
         if gone:
             print(f"  ⚠️ 整联赛丢失(0 场入库): {', '.join(gone)} — "
                   f"补 sporttery.py _ZH_OVERRIDES(对照 gather 真实拼写)")
+            alarm_bits.append(f"整联赛丢失: {', '.join(gone)}")
+        if partial:
+            print(f"  ⚠️ 联赛过半丢失: {', '.join(partial)} — "
+                  f"竞彩中文拼法≠字典键,补 _ZH_OVERRIDES")
+            alarm_bits.append(f"过半丢失: {', '.join(partial)}")
+        if alarm_bits:
             # 体检 Wave3 (P2) — this alarm used to live ONLY in the cron's
             # out.log, which nobody reads (the 韩职 loss sat there unseen).
             # Push it to the desktop like data_freshness does. Fail-soft.
@@ -121,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
                 import subprocess
                 subprocess.run(
                     ["osascript", "-e",
-                     f'display notification "整联赛 SP 丢失: {", ".join(gone)} — '
+                     f'display notification "{"; ".join(alarm_bits)} — '
                      f'补 _ZH_OVERRIDES" with title "⚠️ Nutmeg 竞彩联赛丢失"'],
                     check=False, capture_output=True, timeout=10)
             except Exception:  # noqa: BLE001 — alert is best-effort

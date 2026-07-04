@@ -44,6 +44,19 @@ CRON_LEAGUES: tuple[str, ...] = (
     "JPN_J1",
 )
 
+# 竞彩-common market-mode leagues (V12 W8 expansion — served via Pinnacle
+# de-vig, no model). 2026-07-04 lesson: 瑞超 sat OUTSIDE the coverage scope,
+# and 竞彩 listed 7 matches whose zh spellings missed the dict → 6 silently
+# dropped. NB the offline zh-reachability check can be GREEN while 竞彩's own
+# spellings still miss (no 竞彩 roster endpoint exists to diff against) — the
+# ingest-time 过半丢失 alarm is the catcher for that; this scope extension
+# catches the OTHER cells (sport key / AF id / empty table / EN drift).
+MARKET_MODE_LEAGUES: tuple[str, ...] = (
+    "NOR_ELITESERIEN", "SWE_ALLSVENSKAN", "FIN_VEIKKAUSLIIGA",
+    "DNK_SUPERLIGA", "KOR_K_LEAGUE_1", "JPN_J2", "AUS_A_LEAGUE",
+    "SCO_PREMIERSHIP", "TUR_SUPER_LIG", "SUI_SUPER_LEAGUE",
+)
+
 
 def check_league(league: str, *, refresh: bool = False) -> dict:
     """One coverage row: registry cells + dict-unreachable AF team names."""
@@ -88,7 +101,13 @@ def run(leagues, *, refresh: bool = False) -> tuple[list[dict], list[str], list[
         if r["af_id"] is None:
             gaps.append(f"{lg}: AF league-id 未注册 (_DOMESTIC_LEAGUE_IDS)")
         if r["sport_key"] is None:
-            gaps.append(f"{lg}: Odds-API sport key 未注册 (SPORT_KEYS)")
+            # A missing sport key is only a HARD gap for cron leagues (the
+            # fresher-line overlay/closing anchor need it). Market-mode
+            # leagues price off the AF mirror by design — warn, don't gate.
+            if lg in CRON_LEAGUES:
+                gaps.append(f"{lg}: Odds-API sport key 未注册 (SPORT_KEYS)")
+            else:
+                warns.append(f"{lg}: 无 Odds-API sport key (市场模式走 AF 镜像, 设计内)")
         if r["error"]:
             warns.append(f"{lg}: AF /teams 拉取失败 — {r['error']}")
         elif r["n_teams"] == 0:
@@ -147,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     leagues = ([s.strip() for s in args.leagues.split(",") if s.strip()]
-               if args.leagues else list(CRON_LEAGUES))
+               if args.leagues else list(CRON_LEAGUES) + list(MARKET_MODE_LEAGUES))
     rows, gaps, warns = run(leagues, refresh=args.refresh)
     print(render(rows, gaps, warns))
     return 1 if (args.gate and gaps) else 0
