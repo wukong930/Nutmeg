@@ -4642,6 +4642,23 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
           }
         });
       }
+      // 2026-07-04 bug — 只覆盖了让球 SP、没改线(线==服务端线 ⇒ 不算覆盖没存)时,
+      // saved.hc 会让下面的服务端预填分支整个跳过 → 线选择器留在"—"、未覆盖的 SP
+      // 框空着,让球区看似被手填应用清零。补缺口:线空则回选服务端线;线==服务端线
+      // 时把未被会话覆盖的 SP 框补回预填(自选线≠服务端线不补 — 预填 SP 只属于服务端线)。
+      if (pr.jc_hc_line != null) {
+        const lsel2 = $(`#spcalc-hcline-${idx}`);
+        if (lsel2) {
+          if (lsel2.value === '') lsel2.value = String(pr.jc_hc_line);
+          if (String(lsel2.value) === String(pr.jc_hc_line)) {
+            ['H', 'D', 'A'].forEach(o => {
+              const v = { H: pr.jc_hc_home, D: pr.jc_hc_draw, A: pr.jc_hc_away }[o];
+              const el = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+              if (el && !el.value && v != null) el.value = v;
+            });
+          }
+        }
+      }
       if (saved.hcline || saved.hc) _spcalcHcLine(idx);
     }
     // 体检 — recompute EV for EVERY card: the 竞彩 SP box may be filled by a
@@ -5736,6 +5753,21 @@ function renderCupMarket(preds, pending) {
             if (el) el.value = saved.hc[o];
           }
         });
+      }
+      // 2026-07-04 bug — 同 renderTodaySpCalc:只覆盖让球 SP 没改线时,saved.hc 跳过
+      // 服务端预填分支 → 手填应用后让球区清零(线"—"+SP 空)。缺口回填,规则同上。
+      if (pr.jc_hc_line != null) {
+        const lsel2 = $(`#cuphcline-${idx}`);
+        if (lsel2) {
+          if (lsel2.value === '') lsel2.value = String(pr.jc_hc_line);
+          if (String(lsel2.value) === String(pr.jc_hc_line)) {
+            ['H', 'D', 'A'].forEach(o => {
+              const v = { H: pr.jc_hc_home, D: pr.jc_hc_draw, A: pr.jc_hc_away }[o];
+              const el = document.querySelector(`.cuphcsp[data-idx="${idx}"][data-outcome="${o}"]`);
+              if (el && !el.value && v != null) el.value = v;
+            });
+          }
+        }
       }
       if (saved.hcline || saved.hc) _cupHcLine(idx);
     }
