@@ -56,6 +56,11 @@ class FixtureOddsInput(BaseModel):
     # away}}); the server de-vigs it for the 让球胜平负 prediction (DC fallback
     # when absent). JSON-encoded so it survives the pandas/pydantic round-trip.
     asian_handicap: Optional[str] = None
+    # 体检 P1#10 — when API-Football last refreshed this fixture's Pinnacle
+    # snapshot (ISO). Display echo only (never a model feature): threads to
+    # SinglePrediction / SingleTicketResponse so the 今日推荐 ticket shows the
+    # same odds-age badge the 市场模式 card already has.
+    odds_update: str | None = None
 
 
 class RecommendRequest(BaseModel):
@@ -598,6 +603,11 @@ class SingleTicketResponse(BaseModel):
     # "authoritative" 让球 refit anchored on the wrong line → the RECORDED
     # P/EV/stake themselves were wrong (15/22 WC matches had non-2.5 lines).
     ou_line: float | None = None
+    # 体检 P1#10 — Pinnacle snapshot timestamp (ISO) echoed from the source
+    # fixture. The psc_* echoes above drive the card's 市场同意 chip + the 📌
+    # record refit, so the 今日推荐 card shows their age (>2h → amber), same as
+    # the 市场模式 card's freshness badge.
+    odds_update: str | None = None
     handicap_home: int | None = None
     # V14 — market-reverse 让球 board (−3..+3) carried onto the prediction ticket
     # so the 今日推荐 boards can show a 让球胜平负 prediction with a line selector
