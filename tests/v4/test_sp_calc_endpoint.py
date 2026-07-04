@@ -113,6 +113,55 @@ class TestSpCalcHappyPath:
         p = r.json()["predictions"][0]
         assert p["ou_line"] == 2.25
 
+    def test_odds_update_threads_through_whole_chain(self, client):
+        """体检 P1#10 — the Pinnacle snapshot timestamp must survive every hop:
+        odds row → _fixture_rows_to_inputs → FixtureOddsInput →
+        _calc_predictions → SinglePrediction → _argmax_prediction_tickets →
+        SingleTicketResponse. Before the fix each hop silently dropped it
+        (pydantic ignores unknown kwargs), so the 今日推荐 board couldn't show
+        the odds-age badge the 市场模式 card already has."""
+        from unittest.mock import patch
+        row = self._row("Arsenal", "Chelsea")
+        row["odds_update"] = "2026-07-04T08:00:00+00:00"
+        with patch("nutmeg.v4.cli.ingest_odds._gather_rows",
+                   return_value=([row], 1, 0)):
+            r = client.get("/api/v4/predictions/sp-calc?days=1")
+        if r.status_code == 503:
+            pytest.skip("production artifact not available")
+        assert r.status_code == 200, r.text
+        p = r.json()["predictions"][0]
+        assert p["odds_update"] == "2026-07-04T08:00:00+00:00"
+        # …and onto the 今日推荐 single ticket — the board renders the badge
+        # from the TICKET (renderTodaySingle), not the prediction.
+        from nutmeg.v4.api.routes import _argmax_prediction_tickets
+        from nutmeg.v4.api.schemas import SinglePrediction
+        tk = _argmax_prediction_tickets([SinglePrediction(**p)])[0]
+        assert tk.odds_update == "2026-07-04T08:00:00+00:00"
+
+    def test_recommend_single_ticket_echoes_odds_update(self, client):
+        """体检 P1#10 — the OTHER SingleTicketResponse constructor (POST
+        /recommend/single, the 竞彩盘口推荐/custom flow) must echo the source
+        fixture's odds_update too. Uniform 9.0 竞彩 odds make every outcome +EV
+        (argmax P ≥ 1/3 → EV ≥ +2.0), so ≥1 ticket regardless of the model P."""
+        from datetime import date as _date
+        body = {
+            "fixtures": [{
+                "date": _date.today().isoformat(), "league": "EPL",
+                "home_team": "Arsenal", "away_team": "Chelsea",
+                "psc_home": 1.90, "psc_draw": 3.5, "psc_away": 4.2,
+                "odds_1x2_H": 9.0, "odds_1x2_D": 9.0, "odds_1x2_A": 9.0,
+                "odds_update": "2026-07-04T08:00:00+00:00",
+            }],
+            "bankroll": 1000.0,
+        }
+        r = client.post("/api/v4/recommend/single", json=body)
+        if r.status_code == 503:
+            pytest.skip("production artifact not available")
+        assert r.status_code == 200, r.text
+        tickets = r.json()["tickets"]
+        assert tickets, "expected ≥1 ticket at uniformly +EV 竞彩 odds"
+        assert tickets[0]["odds_update"] == "2026-07-04T08:00:00+00:00"
+
 
 # ============ Pending fixtures (V12 W6 — 待开盘) =======================
 

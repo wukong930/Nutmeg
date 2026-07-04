@@ -654,6 +654,34 @@ class TestMarketOddsFreshness:
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
 
 
+class TestTodayOddsAge:
+    """体检 P1#10 — the 今日推荐 ticket shows the SAME odds-age signal as the
+    市场模式 card: the ticket's psc_* echoes drive the 市场同意 chip + the 📌
+    record refit, so a stale snapshot misleads there too. Compact variant —
+    no 手动反推 link (that calculator lives in the 近期赛事 tab, unreachable
+    from this board)."""
+
+    def test_helper_defined_and_rendered_on_ticket(self, html):
+        assert "function _todayOddsAgeHtml(tk)" in html
+        assert "const iso = tk && tk.odds_update;" in html      # reads the field
+        assert "${_todayOddsAgeHtml(t)}" in html                # renderTodaySingle card
+
+    def test_compact_variant_no_cross_tab_link(self, html):
+        idx = html.index("function _todayOddsAgeHtml(tk)")
+        body = html[idx:html.index("function renderTodaySingle", idx)]
+        assert "_ODDS_STALE_MIN" in body                        # shares the 2h threshold
+        assert "odds_stale_note" in body                        # amber 临场请核对 kept
+        assert "_openManualReverse" not in body                 # cross-tab link dropped
+
+    def test_collect_board_forwards_odds_update(self, html):
+        # jc flow: sp-calc/cup pred → _collectBoard fixture → /recommend/jingcai
+        # → recommend_single ticket echo → renderTodaySingle('jc') badge.
+        assert "odds_update: pr.odds_update ?? null," in html
+
+    def test_i18n_tip_both_locales(self, html):
+        assert html.count("today_odds_age_tip:") >= 2
+
+
 class TestManualReverseCalcFix:
     """手动反推计算器曾卡在"计算中"不出结果: the render called nv('mrev-j1')
     but nv is local to _mrevBuildBody — a ReferenceError, and the render sat
