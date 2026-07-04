@@ -92,8 +92,9 @@ class TestI18nStaleKeys:
             assert html.count(f"{key}:") >= 2, f"{key} missing from either zh or en"
 
     def test_zh_uses_chinese(self, html):
-        # 刚刚更新 is the zh value for stale_just_now
-        assert "刚刚更新" in html
+        # 页面刚刚刷新 is the zh value for stale_just_now (体检 Wave3 — the label
+        # names the PAGE refresh time, not the odds time).
+        assert "页面刚刚刷新" in html
 
 
 class TestSWCacheBumped:

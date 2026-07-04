@@ -52,10 +52,22 @@ _HAD = ("主胜", "平局", "客胜")
 _HC = ("让胜", "让平", "让负")
 
 
+# 体检 Wave3 (P2) — the display order MUST be derived from the same labels
+# _tier() emits: the old hand-copied list still contained the retired
+# "高估区 (15–20%)"/"边缘 (20–25%)" rows and LACKED "边缘 (15–25%)", so the
+# `k not in groups: continue` filter silently evaporated every 15–25% leg
+# from the tier section. One registry, no drift.
+_TIER_ORDER: tuple[str, ...] = (
+    "chalk (>77%)", "甜区 (25–67%)", "边缘 (67–77%)", "边缘 (15–25%)",
+    "cold (P<15%)",
+)
+
+
 def _tier(p: float) -> str:
     """EV reliability tier by P (cuts 0.15/0.25/0.67/0.77 — ev_tier_calibration). The
     old 0.20 '高估区/overpriced' cut was RETIRED 2026-06-26 (an n=323 phantom; −0.21pp
-    on a 28k WPO recheck) → [0.15,0.25) folds into 边缘/edge."""
+    on a 28k WPO recheck) → [0.15,0.25) folds into 边缘/edge. Labels MUST stay in
+    sync with _TIER_ORDER above."""
     if p < 0.15:
         return "cold (P<15%)"
     if p < 0.25:
@@ -248,9 +260,7 @@ def render(report: dict, min_ev: float = _MIN_EV) -> str:
             n, mean, beat = _agg(groups[k])
             out.append(f"  {k:16} {n:3} 腿 · 平均 CLV {mean*100:+5.1f}% · 打败收盘 {beat}/{n}")
 
-    _section("EV 可靠性分级", "tier",
-             ["chalk (>77%)", "甜区 (25–67%)", "边缘 (67–77%)", "边缘 (20–25%)",
-              "高估区 (15–20%)", "cold (P<15%)"])
+    _section("EV 可靠性分级", "tier", list(_TIER_ORDER))
     _section("腿排名", "rank", ["热门", "居中", "冷门"])
     _section("玩法", "market", ["had", "hhad"])
 

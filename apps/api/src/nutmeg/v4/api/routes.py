@@ -378,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v76-fe-wave1-ouline-record"
+_FE_VERSION = "nutmeg-v77-fe-wave3-refresh-preserve"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1154,8 +1154,11 @@ def record_jingcai_sp_endpoint(req: JingcaiSpRequest) -> JingcaiSpResponse:
 def sporttery_refresh_endpoint() -> SportteryRefreshResponse:
     """🎯 刷新竞彩 — on-demand 竞彩 SP harvest from sporttery → jingcai_sp, so the
     cards pick up the latest frozen line WITHOUT waiting for the 23:15 cron or the
-    CLI. Read-only vs sporttery (public odds); protect_manual so it NEVER clobbers
-    a hand-priced line. Env-gated (observation DB) + fail-soft."""
+    CLI. Read-only vs sporttery (public odds). protect_manual=False ON PURPOSE:
+    an explicit 🎯 click means "give me the latest OFFICIAL SP", which outranks a
+    stale hand-typed line (the unattended cron keeps protect_manual=True — only
+    the explicit button overwrites). 体检 Wave3 — docstring was still claiming
+    the opposite. Env-gated (observation DB) + fail-soft."""
     db_path = _observation_db_path()
     if not db_path:
         return SportteryRefreshResponse(ok=False, reason="未配置观测库 (NUTMEG_V4_OBSERVATION_DB)")

@@ -126,6 +126,25 @@ def record_jingcai_sp(
                     "AND away_team=? AND market=?",
                     (match_date, home_team, away_team, market)).fetchone()
                 if ex and ex[0] == "market_mode":
+                    # 体检 Wave3 (P2) — the manual-line protection used to ALSO
+                    # swallow the 初盘 stamp: if the user hand-priced a match
+                    # before the 11:00 开售 cron ran, jc_open_* was never set
+                    # (forward-only → the open→freeze movement lost for good).
+                    # The 初盘 is a pure capture, not a line the user owns —
+                    # stamp it set-once WITHOUT touching jc_*/psc_*.
+                    if _open:
+                        conn.execute(
+                            "UPDATE jingcai_sp SET "
+                            "jc_open_home=COALESCE(jc_open_home, ?), "
+                            "jc_open_draw=COALESCE(jc_open_draw, ?), "
+                            "jc_open_away=COALESCE(jc_open_away, ?), "
+                            "opened_at=COALESCE(opened_at, ?) "
+                            "WHERE match_date=? AND home_team=? AND away_team=? "
+                            "AND market=?",
+                            (o_h, o_d, o_a, o_at,
+                             match_date, home_team, away_team, market),
+                        )
+                        return True
                     return False  # user's hand-priced line is canonical; don't clobber
             conn.execute(
                 "INSERT INTO jingcai_sp (captured_at, source, fixture_id, league, "
@@ -140,9 +159,17 @@ def record_jingcai_sp(
                 "kickoff_utc=COALESCE(excluded.kickoff_utc, jingcai_sp.kickoff_utc), "
                 "handicap_home=excluded.handicap_home, "
                 "jc_home=excluded.jc_home, jc_draw=excluded.jc_draw, jc_away=excluded.jc_away, "
-                "psc_home=excluded.psc_home, psc_draw=excluded.psc_draw, "
-                "psc_away=excluded.psc_away, ou_line=excluded.ou_line, "
-                "psc_over=excluded.psc_over, psc_under=excluded.psc_under, "
+                # 体检 Wave3 (P2) — a re-capture WITHOUT a Pinnacle reading must
+                # not NULL-out the stored Pinnacle-at-capture (manual re-pin of
+                # the 竞彩 SP has no psc_*; the old unconditional overwrite
+                # erased the sharp anchor). Present values still overwrite
+                # (latest capture = freshest line).
+                "psc_home=COALESCE(excluded.psc_home, jingcai_sp.psc_home), "
+                "psc_draw=COALESCE(excluded.psc_draw, jingcai_sp.psc_draw), "
+                "psc_away=COALESCE(excluded.psc_away, jingcai_sp.psc_away), "
+                "ou_line=COALESCE(excluded.ou_line, jingcai_sp.ou_line), "
+                "psc_over=COALESCE(excluded.psc_over, jingcai_sp.psc_over), "
+                "psc_under=COALESCE(excluded.psc_under, jingcai_sp.psc_under), "
                 # 初盘 set-once:只在还没记过开售盘时填,终盘(phase='close')传 NULL 不覆盖。
                 "jc_open_home=COALESCE(jingcai_sp.jc_open_home, excluded.jc_open_home), "
                 "jc_open_draw=COALESCE(jingcai_sp.jc_open_draw, excluded.jc_open_draw), "

@@ -186,13 +186,20 @@ def record_jingcai_vote(
                 "league_cn=COALESCE(excluded.league_cn, jingcai_vote.league_cn), "
                 "home_team=COALESCE(excluded.home_team, jingcai_vote.home_team), "
                 "away_team=COALESCE(excluded.away_team, jingcai_vote.away_team), "
-                "handicap_home=excluded.handicap_home, "
+                # 体检 Wave3 (P2) — a re-capture whose payload lacks odds/handicap
+                # must not NULL-out previously captured values (forward-only
+                # data; an overwrite is a permanent loss). Crowd numbers
+                # (support/counts/prob/err) stay overwrite-on-recapture — the
+                # LATEST crowd reading is the point of the capture.
+                "handicap_home=COALESCE(excluded.handicap_home, jingcai_vote.handicap_home), "
                 "h_support=excluded.h_support, d_support=excluded.d_support, "
                 "a_support=excluded.a_support, h_count=excluded.h_count, "
                 "d_count=excluded.d_count, a_count=excluded.a_count, "
                 "h_prob=excluded.h_prob, d_prob=excluded.d_prob, a_prob=excluded.a_prob, "
                 "h_err=excluded.h_err, d_err=excluded.d_err, a_err=excluded.a_err, "
-                "jc_home=excluded.jc_home, jc_draw=excluded.jc_draw, jc_away=excluded.jc_away",
+                "jc_home=COALESCE(excluded.jc_home, jingcai_vote.jc_home), "
+                "jc_draw=COALESCE(excluded.jc_draw, jingcai_vote.jc_draw), "
+                "jc_away=COALESCE(excluded.jc_away, jingcai_vote.jc_away)",
                 (
                     now, source, match_date, match_num, league_cn, home_zh, away_zh,
                     home_team, away_team, pool_code.upper(),

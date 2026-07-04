@@ -199,11 +199,24 @@ def recommend_pool(
        quantize down to ¥2 (rules.stake_unit)
     5. If sum(stakes) > max_total_budget: proportionally rescale + re-quantize
 
+    体检 Wave3 (P1#7) — CORRELATED-EXPOSURE CAP: every C(M,N) ticket shares
+    legs with the others, so their independent Kelly stakes are stakes on the
+    SAME information and must never be summed as if independent (a synthetic
+    M=6/N=5 pool reached 30.9% of bankroll — 6× the single-ticket cap; the
+    Kelly research doc: simultaneous correlated bets take a joint/minimal
+    stake vector, not a sum). When the caller passes no explicit budget, the
+    whole pool is treated as ONE structured bet and capped at the single-ticket
+    ceiling (``max_stake_fraction_per_ticket × bankroll``). Conservative by
+    construction: stakes can only shrink. An explicit ``max_total_budget``
+    still overrides (the user owns their exposure).
+
     Sort tickets by EV-per-unit descending so users see the best-value
     combinations first.
     """
     m = len(chosen_per_match)
     n_combos = comb(m, n)
+    if max_total_budget is None:
+        max_total_budget = max_stake_fraction_per_ticket * bankroll
 
     raw_combos = enumerate_combinations(chosen_per_match, n, rules=rules)
     tickets: list[PoolTicket] = []

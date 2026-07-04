@@ -344,4 +344,7 @@ class TestLaunchdPlistContent:
 
     def test_health_check_script_knows_about_calibration_job(self):
         health = (REPO_ROOT / "scripts" / "health_check.sh").read_text()
-        assert "com.nutmeg.weekly_calibration_check" in health
+        # 体检 Wave3 (P1#14) — the job list is now DERIVED from the persisted
+        # plists (glob), so the calibration job is covered by construction;
+        # assert the mechanism instead of one hand-copied label.
+        assert 'com.nutmeg.*.plist' in health

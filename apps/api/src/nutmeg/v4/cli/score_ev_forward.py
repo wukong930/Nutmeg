@@ -64,7 +64,11 @@ def do_record(args) -> int:
     from nutmeg.v4.data.sources import api_football as af
     from nutmeg.v4.model.market_handicap import DEFAULT_RHO
     rho = DEFAULT_RHO if args.rho is None else args.rho
-    d = _date.fromisoformat(args.date) if args.date else _date.today()
+    # 体检 Wave3 (P1#12 第 3 处) — UTC anchor, NEVER process-local date: the
+    # local Asia/Shanghai date rolls at Beijing midnight (=16:00 UTC), so a
+    # sleep-catch-up run in the 00:00–07:59 Beijing window would record for
+    # the WRONG UTC day (the Spain/Portugal-vanish class; routes._utc_today).
+    d = _date.fromisoformat(args.date) if args.date else datetime.now(UTC).date()
     fx = af.fetch_fixtures_for_date(d, refresh=True)
     upcoming = [f for f in fx
                 if ((f.get("fixture") or {}).get("status") or {}).get("short") in UPCOMING]

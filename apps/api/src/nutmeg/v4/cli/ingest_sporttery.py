@@ -114,6 +114,18 @@ def main(argv: list[str] | None = None) -> int:
         if gone:
             print(f"  ⚠️ 整联赛丢失(0 场入库): {', '.join(gone)} — "
                   f"补 sporttery.py _ZH_OVERRIDES(对照 gather 真实拼写)")
+            # 体检 Wave3 (P2) — this alarm used to live ONLY in the cron's
+            # out.log, which nobody reads (the 韩职 loss sat there unseen).
+            # Push it to the desktop like data_freshness does. Fail-soft.
+            try:
+                import subprocess
+                subprocess.run(
+                    ["osascript", "-e",
+                     f'display notification "整联赛 SP 丢失: {", ".join(gone)} — '
+                     f'补 _ZH_OVERRIDES" with title "⚠️ Nutmeg 竞彩联赛丢失"'],
+                    check=False, capture_output=True, timeout=10)
+            except Exception:  # noqa: BLE001 — alert is best-effort
+                pass
     else:
         print()
 

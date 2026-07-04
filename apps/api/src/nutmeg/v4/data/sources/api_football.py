@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import threading
 import time
 from datetime import UTC, date, datetime
@@ -150,7 +151,13 @@ def _request(
     cf = _cache_path(endpoint, params, cache_dir)
     cf.parent.mkdir(parents=True, exist_ok=True)
     if cf.exists() and not refresh:
-        return json.loads(cf.read_text())
+        try:
+            return json.loads(cf.read_text())
+        except (json.JSONDecodeError, OSError):
+            # 体检 Wave3 (P2) — a half-written/corrupt cache used to crash the
+            # caller FOREVER (the bad file never healed). Fall through to a
+            # live fetch, whose atomic rewrite below replaces it.
+            log.warning("corrupt cache %s — refetching", cf)
 
     # Retry transient network failures (read timeout / connection reset);
     # non-network errors (bad status, auth) fall through to raise immediately.
@@ -190,7 +197,11 @@ def _request(
             raise ApiFootballError(f"{endpoint} errors: {errs}")
 
     response = body.get("response", [])
-    cf.write_text(json.dumps(response, indent=2, ensure_ascii=False))
+    # 体检 Wave3 (P2) — atomic write (tmp + rename): a crash/power-cut mid-write
+    # used to leave a truncated JSON that poisoned every later cache read.
+    _tmp = cf.with_name(f"{cf.name}.{os.getpid()}.tmp")
+    _tmp.write_text(json.dumps(response, indent=2, ensure_ascii=False))
+    _tmp.replace(cf)
     return response
 
 

@@ -53,20 +53,23 @@ fi
 
 # ===== 2. launchd jobs =====
 section "2. launchd jobs"
-JOBS=(
-  "com.nutmeg.daily_odds"
-  "com.nutmeg.daily_recommend"
-  "com.nutmeg.daily_settle"
-  "com.nutmeg.weekly_gate"
-  "com.nutmeg.weekly_calibration_check"
-  "com.nutmeg.daily_wc_predict"
-  "com.nutmeg.daily_wc_settle"
-)
+# 体检 Wave3 (P1#14) — the job list is DERIVED from the persisted plists (the
+# setup script is their only writer), never hand-copied: the old 7-name array
+# silently ignored 14 of the 21 installed jobs, so a dead capture cron among
+# them looked "healthy" here.
+JOBS=()
+for _plist in "$HOME/Library/LaunchAgents"/com.nutmeg.*.plist; do
+  [[ -e "$_plist" ]] || continue
+  JOBS+=("$(basename "$_plist" .plist)")
+done
+if [[ ${#JOBS[@]} -eq 0 ]]; then
+  warn "no com.nutmeg.*.plist installed — run ./scripts/setup_local_pipeline.sh"
+fi
 # Snapshot launchctl list ONCE (avoid SIGPIPE issues with grep -q + pipefail
 # + repeated large-output pipes that previously caused false negatives).
 LIST_SNAPSHOT="$(launchctl list 2>/dev/null || true)"
 ANY_LOADED=0
-for job in "${JOBS[@]}"; do
+for job in ${JOBS[@]+"${JOBS[@]}"}; do   # ${arr[@]+...}: empty-safe under bash 3.2 set -u
   # Use grep -F (fixed-string) so the . in com.nutmeg... isn't a regex wildcard.
   line="$(printf '%s\n' "$LIST_SNAPSHOT" | grep -F "$job" || true)"
   if [[ -n "$line" ]]; then

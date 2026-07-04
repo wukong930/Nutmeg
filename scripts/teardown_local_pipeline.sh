@@ -10,19 +10,18 @@
 set -euo pipefail
 
 PLIST_DIR="$HOME/Library/LaunchAgents"
-JOBS=(
-  "com.nutmeg.api_server"             # V12 W0 — always-on FastAPI daemon
-  "com.nutmeg.morning_odds"           # V12 W0 Plan A — Asian (J1)
-  "com.nutmeg.morning_recommend"      # V12 W0 Plan A
-  "com.nutmeg.daily_odds"
-  "com.nutmeg.daily_recommend"
-  "com.nutmeg.daily_settle"
-  "com.nutmeg.weekly_settle"          # legacy (renamed → daily_settle 2026-05-29); boot out leftover
-  "com.nutmeg.weekly_gate"
-  "com.nutmeg.weekly_calibration_check"
-  "com.nutmeg.daily_wc_predict"
-  "com.nutmeg.daily_wc_settle"
-)
+# 体检 Wave3 (P1#14) — the job list is DERIVED from the persisted plists, never
+# hand-copied: the old 11-name array had drifted from the 21 installed jobs
+# (setup_local_pipeline.sh is the only writer of com.nutmeg.*.plist, so the
+# glob IS the installed set; a job added there is torn down here for free).
+JOBS=()
+for _plist in "$PLIST_DIR"/com.nutmeg.*.plist; do
+  [[ -e "$_plist" ]] || continue
+  JOBS+=("$(basename "$_plist" .plist)")
+done
+# Legacy label that may be loaded WITHOUT a persisted plist (renamed →
+# daily_settle 2026-05-29); boot out the leftover if present.
+JOBS+=("com.nutmeg.weekly_settle")
 
 echo "Uninstalling launchd jobs ..."
 for job in "${JOBS[@]}"; do

@@ -24,6 +24,7 @@ import contextlib
 import json
 import logging
 import math
+import os
 import re
 import time
 from datetime import UTC, datetime, timedelta
@@ -214,7 +215,11 @@ def _request(
                 log.warning("sporttery API not success: %s", data.get("errorMessage"))
                 return None
             with contextlib.suppress(OSError):
-                cache.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+                # 体检 Wave3 (P2) — atomic write (tmp + rename) so a crash
+                # mid-write can't leave a truncated JSON behind.
+                _tmp = cache.with_name(f"{cache.name}.{os.getpid()}.tmp")
+                _tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+                _tmp.replace(cache)
             return data
         except Exception as exc:  # noqa: BLE001 — fail-soft; never raise to the caller
             if attempt < retries - 1:

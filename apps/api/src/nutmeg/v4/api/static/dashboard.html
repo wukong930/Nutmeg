@@ -2283,9 +2283,9 @@ const I18N = {
     banner_updated:      '推荐已更新',
     badge_updated:       '已更新',
     // V11 P1-FE#6 — auto-refresh stale indicator
-    stale_just_now:      '刚刚更新',
-    stale_seconds_ago:   '{n} 秒前更新',
-    stale_minutes_ago:   '{n} 分钟前更新',
+    stale_just_now:      '页面刚刚刷新',
+    stale_seconds_ago:   '页面 {n} 秒前刷新',
+    stale_minutes_ago:   '页面 {n} 分钟前刷新',
     stale_hours_ago:     '{n} 小时前更新',
 
     // Page section headings
@@ -2731,9 +2731,9 @@ const I18N = {
     banner_updated:      'Recommendations updated',
     badge_updated:       'Updated',
     // V11 P1-FE#6 — auto-refresh stale indicator
-    stale_just_now:      'Just now',
-    stale_seconds_ago:   '{n}s ago',
-    stale_minutes_ago:   '{n}m ago',
+    stale_just_now:      'Page refreshed just now',
+    stale_seconds_ago:   'Page refreshed {n}s ago',
+    stale_minutes_ago:   'Page refreshed {n}m ago',
     stale_hours_ago:     '{n}h ago',
 
     h_single_rec:     'Single-bet recommendations',
@@ -3707,6 +3707,18 @@ function renderTodaySingle(single, pfx = 'today') {
   const confTossupLabel = t('today_conf_tossup');
   const confTrustLabel = t('today_conf_trust');
   const showRec = (pfx === 'today');
+  // 体检 Wave3 (P2 两板规则相反) — preserve user-typed 竞彩 SP across
+  // re-renders, keyed by match_id, same policy as the spcalc board. The
+  // auto-poll (P1-FE#6) re-renders every interval and used to WIPE a
+  // half-typed SP mid-entry; these inputs have no server pre-fill VALUE
+  // (only a placeholder), so any non-empty value is a genuine user entry.
+  const _keptSp = {};
+  if (showRec && Array.isArray(_TODAY_SINGLES)) {
+    _TODAY_SINGLES.forEach((tk, i) => {
+      const el = document.querySelector(`.today-rec-sp[data-i="${i}"]`);
+      if (el && el.value && tk && tk.match_id) _keptSp[tk.match_id] = el.value;
+    });
+  }
   if (showRec) _TODAY_SINGLES = single.tickets;
   list.innerHTML = single.tickets.map((t, i) => {
     const marketLabel = t.market_type === 'handicap_1x2' ? '让球' : '胜平负';
@@ -3770,6 +3782,16 @@ function renderTodaySingle(single, pfx = 'today') {
         ${recRow}
       </div>`;
   }).join('');
+  // Restore preserved SP into the fresh inputs + recompute their EV rows.
+  if (showRec) {
+    single.tickets.forEach((tk, i) => {
+      const kept = tk && tk.match_id ? _keptSp[tk.match_id] : null;
+      if (kept) {
+        const el = document.querySelector(`.today-rec-sp[data-i="${i}"]`);
+        if (el && !el.value) { el.value = kept; _todayRecCalc(i); }
+      }
+    });
+  }
 }
 
 // V12 W8i — recompute EV at the typed 竞彩 SP; enable 📌 only when it clears the
@@ -6075,7 +6097,11 @@ $('#today-min-ev').addEventListener('input', () => {
   }
   _debouncedReload();
 });
-$('#today-refresh').addEventListener('click', loadTodayRecommendations);
+// 体检 Wave3 (P1#10) — the explicit 刷新 button pulls LIVE odds (refresh_odds),
+// matching the market-mode 🔄 semantics. Passing the handler bare made opts =
+// the click Event → refreshOdds undefined → the button silently served the
+// same cron cache it claimed to refresh. Auto-polls/slider reloads stay cached.
+$('#today-refresh').addEventListener('click', () => loadTodayRecommendations({ refreshOdds: true }));
 // V11 P1-FE#5 — banner dismiss button
 const _bannerDismiss = $('#today-update-banner-dismiss');
 if (_bannerDismiss) _bannerDismiss.addEventListener('click', _hideUpdateBanner);

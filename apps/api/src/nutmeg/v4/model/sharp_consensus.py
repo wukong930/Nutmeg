@@ -17,14 +17,15 @@ margin-shaded followers). It is to:
      downgraded. Same philosophy as the Polymarket detector's favorite-flip guard
      and the Australia-vs-Switzerland anomaly we caught.
 
-All pure functions — de-vig is the same multiplicative inverse-normalize used
-everywhere else in the system (consistency over cleverness).
+All pure functions — de-vig is the SERVING method (WPO via
+``nutmeg.v4.model.devig``), so the consensus/guard compares like with like.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from nutmeg.v4.data.odds_parser import extract_1x2_odds
+from nutmeg.v4.model.devig import devig_1x2 as _wpo_devig_1x2
 
 # API-Football bookmaker ids for the three sharp sources (verified from cache).
 SHARP_BOOKS: dict[str, int] = {"pinnacle": 4, "betfair": 3, "sbobet": 5}
@@ -32,7 +33,16 @@ _OUTCOMES = ("H", "D", "A")
 
 
 def devig_1x2(odds: dict[str, float]) -> dict[str, float]:
-    """{H,D,A} decimal odds → de-vig fair probabilities (multiplicative)."""
+    """{H,D,A} decimal odds → de-vig fair probabilities, SAME method as serving
+    (WPO). 体检 Wave3 (P2) — this was the codebase's THIRD independent basic
+    (multiplicative) de-vig: basic overprices longshots vs WPO by enough to
+    flip a cold-side EV sign, so the guard/eval was judging Pinnacle against a
+    P the serving path never produces. Falls back to basic normalization only
+    if WPO rejects the triple (degenerate odds — extract_1x2_odds already
+    filters ≤1.0, so this is a belt-and-braces path)."""
+    p = _wpo_devig_1x2(odds["H"], odds["D"], odds["A"])
+    if p is not None:
+        return {"H": p[0], "D": p[1], "A": p[2]}
     inv = {k: 1.0 / odds[k] for k in _OUTCOMES}
     s = sum(inv.values())
     return {k: inv[k] / s for k in _OUTCOMES}

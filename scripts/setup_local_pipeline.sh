@@ -367,7 +367,7 @@ install_job "com.nutmeg.daily_recommend" \
 # extra calls are cheap (settle window is 3 days × pending leagues only).
 install_job "com.nutmeg.daily_settle" \
   2 0 "" \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto --refresh-fixtures && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $VENV_PY -m nutmeg.v4.cli.jingcai_staleness --settle --db $DB_PATH > $REPO_ROOT/logs/jingcai_staleness_latest.md 2>/dev/null || true; $VENV_PY -m nutmeg.v4.cli.clv_ledger --db $DB_PATH --out '' > $REPO_ROOT/logs/clv_ledger_latest.md 2>/dev/null || true; $VENV_PY -m nutmeg.v4.cli.name_sentinel --quiet || true; $VENV_PY -m nutmeg.v4.cli.data_freshness --db $DB_PATH --out $REPO_ROOT/logs/data_freshness_latest.md >/dev/null || osascript -e 'display notification \"捕获表停长,某 cron 可能死了 — 跑 health_check\" with title \"⚠️ Nutmeg 数据漏\"' || true; $REPO_ROOT/scripts/rotate_logs.sh || true" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.auto_settle --db $DB_PATH --leagues auto --refresh-fixtures && $VENV_PY -m nutmeg.v4.cli.ab_report --weeks 4 --db $DB_PATH --out $REPO_ROOT/docs/local_ab_report_latest.md || true; $VENV_PY -m nutmeg.v4.cli.jingcai_staleness --settle --db $DB_PATH > $REPO_ROOT/logs/jingcai_staleness_latest.md || true; $VENV_PY -m nutmeg.v4.cli.clv_ledger --db $DB_PATH --out '' > $REPO_ROOT/logs/clv_ledger_latest.md || true; $VENV_PY -m nutmeg.v4.cli.name_sentinel --quiet || true; $VENV_PY -m nutmeg.v4.cli.data_freshness --db $DB_PATH --out $REPO_ROOT/logs/data_freshness_latest.md >/dev/null || osascript -e 'display notification \"捕获表停长,某 cron 可能死了 — 跑 health_check\" with title \"⚠️ Nutmeg 数据漏\"' || true; $REPO_ROOT/scripts/rotate_logs.sh || true" \
   "13:00 20:00"   # 防睡眠(同 #356):02:00 睡过去 → 白天 13:00/20:00 兜底(launchd 唤醒后合并跑一次)。末尾 data_freshness 哨兵:任一 critical 捕获表停长 → 桌面弹通知(主动报警,不等你查)。
 
 # 体检(2026-06-12)— 竞彩 SP harvest (23:15, after the ~23:00 竞彩 freeze).
@@ -520,7 +520,7 @@ install_job "com.nutmeg.weekly_calibration_check" \
 WC_OUT_DIR="$REPO_ROOT/docs/wc"
 install_job "com.nutmeg.daily_wc_predict" \
   9 0 "" \
-  "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_predict --date \$(date +%Y-%m-%d) --fetch-current-odds --record-to $DB_PATH --out $WC_OUT_DIR/wc_\$(date +%Y-%m-%d).json --quiet || true"
+  "$ENV_PREFIX && mkdir -p $WC_OUT_DIR && $VENV_PY -m nutmeg.v4.cli.wc_predict --date \$(date -u +%Y-%m-%d) --fetch-current-odds --record-to $DB_PATH --out $WC_OUT_DIR/wc_\$(date -u +%Y-%m-%d).json --quiet || true"
 
 # Job 7: V10 W4 WC daily settle (02:00 daily)
 # Pulls finished WC fixtures from API-Football, fills outcome columns

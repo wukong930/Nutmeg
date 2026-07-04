@@ -51,6 +51,9 @@ WRONG (fell into this 2026-05-27):
 """
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +63,36 @@ from nutmeg.v4.observation.store import (
     insert_single_prediction,
     open_db,
 )
+
+# 体检 Wave3 (P2) — record idempotency. The 📌 flow disables the button on
+# SUCCESS, but a request that times out client-side after committing
+# server-side invites a retry = double-booked stake in the ledger. Dedup on
+# the exact (request, response) payload within a short window: a re-POST of
+# the identical payload returns the existing session; a REGENERATED board
+# (new generated_at_utc) is a new decision and records normally.
+_IDEMPOTENCY_WINDOW_MINUTES = 10
+
+
+def _idempotency_key(request: dict[str, Any], response: dict[str, Any]) -> str:
+    payload = json.dumps({"req": request, "resp": response},
+                         sort_keys=True, default=str)
+    return hashlib.sha1(payload.encode()).hexdigest()
+
+
+def _recent_duplicate_session(conn, key: str) -> int | None:
+    cutoff = (dt.datetime.now(dt.UTC)
+              - dt.timedelta(minutes=_IDEMPOTENCY_WINDOW_MINUTES)).isoformat()
+    try:
+        row = conn.execute(
+            "SELECT session_id FROM recommendation_sessions "
+            "WHERE created_at >= ? "
+            "AND json_extract(metadata_json, '$.idempotency_key') = ? "
+            "ORDER BY session_id DESC LIMIT 1",
+            (cutoff, key),
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — dedup is best-effort, never blocks a record
+        return None
+    return row[0] if row else None
 
 
 def record_session(
@@ -82,7 +115,11 @@ def record_session(
     """
     model_info = response.get("model", {}) or {}
     model_type = model_info.get("model_type", "lightgbm")
+    idem = _idempotency_key(request, response)
     with open_db(db_path) as conn:
+        dup = _recent_duplicate_session(conn, idem)
+        if dup is not None:
+            return dup
         session_id = insert_session(
             conn,
             bankroll=float(response.get("bankroll", 0.0)),
@@ -91,7 +128,9 @@ def record_session(
             n_fixtures=int(response.get("n_fixtures", 0)),
             n_recommendations=int(response.get("n_recommendations", 0)),
             request=request,
-            metadata={"model": model_info, "generated_at_utc": response.get("generated_at_utc")},
+            metadata={"model": model_info,
+                      "generated_at_utc": response.get("generated_at_utc"),
+                      "idempotency_key": idem},
             snapshot_phase=snapshot_phase,
             model_type=model_type,
         )
@@ -153,8 +192,12 @@ def record_single_session(
     model_info = response.get("model", {}) or {}
     model_type = model_info.get("model_type", "catboost")
     bankroll = float(response.get("bankroll", 0.0))
+    idem = _idempotency_key(request, response)
 
     with open_db(db_path) as conn:
+        dup = _recent_duplicate_session(conn, idem)
+        if dup is not None:
+            return dup
         session_id = insert_session(
             conn,
             bankroll=bankroll,
@@ -168,6 +211,7 @@ def record_single_session(
                 "generated_at_utc": response.get("generated_at_utc"),
                 # P1#5: tag the session shape so AB reports can slice
                 "session_kind": "single",
+                "idempotency_key": idem,
             },
             snapshot_phase=snapshot_phase,
             model_type=model_type,
@@ -252,7 +296,11 @@ def record_parlay_session(
             leg["handicap_home"] = int(le["handicap_home"])
         legs.append(leg)
 
+    idem = _idempotency_key(request, response)
     with open_db(db_path) as conn:
+        dup = _recent_duplicate_session(conn, idem)
+        if dup is not None:
+            return dup
         session_id = insert_session(
             conn,
             bankroll=bankroll,
@@ -265,6 +313,7 @@ def record_parlay_session(
                 "model": model_info,
                 "generated_at_utc": response.get("generated_at_utc"),
                 "session_kind": "parlay",
+                "idempotency_key": idem,
             },
             snapshot_phase=snapshot_phase,
             model_type=model_type,

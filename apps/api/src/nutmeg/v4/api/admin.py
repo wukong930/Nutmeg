@@ -91,18 +91,28 @@ def _cron_status() -> dict:
                 "last_exit": exit_code,
             })
         plist_dir = Path.home() / "Library" / "LaunchAgents"
-        persisted = len(list(plist_dir.glob("com.nutmeg.*.plist"))) if plist_dir.exists() else 0
+        persisted_labels = (
+            {p.stem.replace("com.nutmeg.", "") for p in plist_dir.glob("com.nutmeg.*.plist")}
+            if plist_dir.exists() else set()
+        )
         # A job with a live PID is healthy regardless of a stale previous exit
         # code — e.g. api_server right after `kickstart -k` reports the SIGKILL
         # as its last_exit but is running fine. Only flag NOT-running jobs whose
         # last run exited non-zero (a one-shot cron that genuinely failed).
         bad = [j["label"] for j in jobs
                if not j["running"] and j["last_exit"] not in ("0", "-")]
+        # 体检 Wave3 (P2) — healthy by LABEL SET, not by count: "loaded ≥ 21"
+        # stays green when job A silently unloads while a stray job B is
+        # loaded. The persisted plists ARE the installed set (setup writes
+        # exactly those), so every persisted label must be loaded.
+        loaded_labels = {j["label"] for j in jobs}
+        missing = sorted(persisted_labels - loaded_labels)
         return {
             "loaded": len(jobs),
             "expected": _EXPECTED_JOBS,
-            "persisted_plists": persisted,
-            "healthy": len(jobs) >= _EXPECTED_JOBS and not bad,
+            "persisted_plists": len(persisted_labels),
+            "missing_labels": missing,
+            "healthy": bool(persisted_labels) and not missing and not bad,
             "bad_exits": bad,
             "jobs": sorted(jobs, key=lambda j: j["label"]),
         }

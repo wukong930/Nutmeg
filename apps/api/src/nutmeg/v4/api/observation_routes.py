@@ -6,6 +6,7 @@ observation DB is optional (a deployment may run without it).
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -44,6 +45,11 @@ def _db_path() -> str:
 
 def _db_exists() -> bool:
     return Path(_db_path()).exists()
+
+# 体检 Wave3 (P2) — this file had ZERO logging: every fail-soft except-path
+# degraded silently (empty board / empty legs / 默认校准卡) with no trace
+# to debug from. Swallowed exceptions now leave a warning.
+log = logging.getLogger(__name__)
 
 
 # ----- Schemas -----------------------------------------------------------
@@ -372,6 +378,8 @@ def _parse_legs_json(
         import json as _json
         data = _json.loads(raw)
     except Exception:  # noqa: BLE001
+        log.warning("history legs JSON unparseable — row shown without legs",
+                    exc_info=True)
         return []
     if not isinstance(data, list):
         return []
@@ -714,6 +722,8 @@ def prediction_scoreboard() -> PredictionScoreboardResponse:
     try:
         rows = fetch_league_predictions(db)
     except Exception:  # noqa: BLE001
+        log.warning("prediction scoreboard: fetch_league_predictions failed — "
+                    "serving empty scoreboard", exc_info=True)
         rows = []
     pred = scoreboard(rows)
     cal = dict(empty_cal)
@@ -729,7 +739,8 @@ def prediction_scoreboard() -> PredictionScoreboardResponse:
                 "n_samples": (j.get("n_train") or 0) + (j.get("n_holdout") or 0),
             }
     except Exception:  # noqa: BLE001
-        pass
+        log.warning("prediction scoreboard: calibration journal read failed — "
+                    "serving defaults", exc_info=True)
     return PredictionScoreboardResponse(db_exists=True, prediction=pred, calibration=cal)
 
 
@@ -865,6 +876,8 @@ def polymarket_board() -> dict:
     try:
         upcoming, finished = _assemble_polymarket_board(_db_path())
     except Exception:  # noqa: BLE001 — a bad read must return an empty board, not a 500
+        log.warning("polymarket board assembly failed — serving empty board",
+                    exc_info=True)
         upcoming, finished = [], []
     return {"db_exists": True, "matches": upcoming, "finished": finished,
             "count": len(upcoming), "finished_count": len(finished),

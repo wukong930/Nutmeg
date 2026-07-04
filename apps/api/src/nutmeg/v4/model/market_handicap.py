@@ -265,7 +265,17 @@ def dc_home_cover_prob(grid: np.ndarray, line: float) -> float:
     home handicap: −0.5 ⇒ home must win; +0.5 ⇒ home win-or-draw; −1.5 ⇒ home
     wins by ≥ 2. For a half-line the margin can never tie the line, so there is
     no push and ``P(away covers) = 1 − P(home covers)``.
+
+    体检 Wave3 (P2) — the half-line contract is now ENFORCED: on an integer
+    line the margin CAN tie it (AH push, stake returned), and the ``1 − P``
+    complement everywhere downstream would silently dump that push mass onto
+    "away covers" — a mispriced cover-P with no error raised. Integer/quarter
+    lines must price via the market de-vig (``devig_asian_handicap_line``) or
+    the 3-way ``implied_handicap_lines``; raising keeps the wrong path loud.
     """
+    if abs(line * 2 - round(line * 2)) > 1e-9 or int(round(line * 2)) % 2 == 0:
+        raise ValueError(
+            f"dc_home_cover_prob is half-line-only (no push); got line={line}")
     n = grid.shape[0]
     idx = np.arange(n)
     margin = idx[:, None] - idx[None, :]          # margin[i, j] = i − j

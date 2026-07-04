@@ -65,6 +65,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import threading
 import time
 import unicodedata
@@ -281,7 +282,13 @@ def _request(
         fresh_enough = (time.time() - cf.stat().st_mtime) <= ttl_seconds
     if cf.exists() and not refresh and fresh_enough:
         log.debug("cache hit %s", cf)
-        return json.loads(cf.read_text())
+        try:
+            return json.loads(cf.read_text())
+        except (json.JSONDecodeError, OSError):
+            # 体检 Wave3 (P2) — a half-written/corrupt cache used to crash the
+            # caller FOREVER (the bad file never healed). Fall through to a
+            # live fetch, whose atomic rewrite below replaces it.
+            log.warning("corrupt cache %s — refetching", cf)
 
     # Attach key at request time; don't cache it
     full_params = {**params, "apiKey": settings.odds_api_key}
@@ -299,7 +306,11 @@ def _request(
             raise OddsApiError(f"{endpoint} HTTP {r.status_code}: {r.text[:200]}")
 
     body = r.json()
-    cf.write_text(json.dumps(body, separators=(",", ":")))
+    # 体检 Wave3 (P2) — atomic write (tmp + rename): a crash/power-cut mid-write
+    # used to leave a truncated JSON that poisoned every later cache read.
+    _tmp = cf.with_name(f"{cf.name}.{os.getpid()}.tmp")
+    _tmp.write_text(json.dumps(body, separators=(",", ":")))
+    _tmp.replace(cf)
     # Log quota state
     quota_remaining = r.headers.get("x-requests-remaining", "?")
     last_cost = r.headers.get("x-requests-last", "?")

@@ -347,7 +347,7 @@ class TestDashboardWiring:
             idx = html.index(f"function {fn}")
             # Look in the next 4000 chars (renderTodaySingle grew with the V12
             # W8i inline 竞彩 SP row + W8k prediction body before the header).
-            body = html[idx:idx+4000]
+            body = html[idx:idx+5200]
             assert "zhTeam(" in body, f"{fn} doesn't call zhTeam"
 
     def test_team_zh_endpoint_url_used(self, html):

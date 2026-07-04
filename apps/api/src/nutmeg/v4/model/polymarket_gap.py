@@ -134,9 +134,15 @@ def _q_for(spec: str, line: float | None, p_h: float, p_d: float, p_a: float,
         return p_a
     if line is None or grid is None:
         return None
-    if spec == HANDICAP_HOME:
-        return dc_home_cover_prob(grid, line)
-    if spec == HANDICAP_AWAY:
+    if spec in (HANDICAP_HOME, HANDICAP_AWAY):
+        # 体检 Wave3 (P2) — dc_home_cover_prob is half-line-only (integer
+        # lines push). Polymarket handicap lines are external input: a
+        # non-half line is skipped honestly (None → market excluded) rather
+        # than mispriced via the no-push complement.
+        if abs(line * 2 - round(line * 2)) > 1e-9 or int(round(line * 2)) % 2 == 0:
+            return None
+        if spec == HANDICAP_HOME:
+            return dc_home_cover_prob(grid, line)
         return 1.0 - dc_home_cover_prob(grid, -line)
     if spec == OVER:
         return asian_total_over_prob(grid, line)

@@ -50,7 +50,7 @@ CAPTURE_TABLES: list[tuple[str, str, int, bool, str, str | None, str | None]] = 
     ("odds_snapshots", "captured_at", 2, True,
      "Pinnacle 线史 (CLV 地基)", None, None),
     ("odds_snapshots", "captured_at", 2, True,
-     "Pinnacle 收盘锚 (closing 子流; WC 后 plist 需扩联赛)",
+     "Pinnacle 收盘锚 (closing 子流; --sports auto 随赛程自选联赛)",
      "source='closing'", "odds_snapshots[closing]"),
     ("jingcai_sp", "captured_at", 2, True, "竞彩 SP 捕获 (软水)", None, None),
     ("jingcai_sp", "opened_at", 2, True,
@@ -175,6 +175,44 @@ def check_freshness(
     return out
 
 
+def check_api_quota() -> list[str]:
+    """体检 Wave3 (P1#13) — quota-exhaustion alarm. Both feeds have PULL-only
+    panels; hitting the cap means the fresher-line overlay/closing anchor
+    silently fall back to stale mirrors (EV cards quietly go wrong). Probe the
+    FREE endpoints (AF /status; OA /sports, whose response headers carry the
+    credit counters) and return alarm lines when usage crosses the red line.
+    Fail-soft + key-gated: no keys in env (tests, offline) → no probe, no alarm."""
+    import os
+
+    alarms: list[str] = []
+    af_key = os.environ.get("NUTMEG_API_FOOTBALL_KEY")
+    if af_key:
+        try:
+            import httpx
+            r = httpx.get("https://v3.football.api-sports.io/status",
+                          headers={"x-apisports-key": af_key}, timeout=6)
+            req = ((r.json() or {}).get("response") or {}).get("requests") or {}
+            cur, lim = req.get("current"), req.get("limit_day")
+            if cur is not None and lim and float(cur) / float(lim) >= 0.9:
+                alarms.append(
+                    f"AF 日配额 {cur}/{lim} (≥90%) — 耗尽后叠加静默回落陈旧线")
+        except Exception:  # noqa: BLE001 — probe failure ≠ quota alarm
+            pass
+    oa_key = os.environ.get("NUTMEG_ODDS_API_KEY")
+    if oa_key:
+        try:
+            import httpx
+            r = httpx.get("https://api.the-odds-api.com/v4/sports/",
+                          params={"apiKey": oa_key}, timeout=6)
+            rem = r.headers.get("x-requests-remaining")
+            if rem is not None and float(rem) < 50:
+                alarms.append(
+                    f"Odds API 剩余 credit {rem} (<50) — 收盘锚/鲜线将断供")
+        except Exception:  # noqa: BLE001
+            pass
+    return alarms
+
+
 def write_heartbeat(db_path: str | Path) -> None:
     """Touch `<db dir>/.data_freshness_heartbeat` — proof the sentinel ran.
     Fail-soft: a heartbeat failure must never break the freshness report."""
@@ -241,6 +279,8 @@ def main(argv: list[str] | None = None) -> int:
         help="TSV 输出 (STATUS<TAB>name<TAB>rows<TAB>last<TAB>days<TAB>crit<TAB>note) 供脚本解析",
     )
     p.add_argument("--out", default=None, help="把人类报告写到文件 (cron 用)")
+    p.add_argument("--no-quota", action="store_true",
+                   help="跳过 AF/OA 配额探针 (默认: env 里有 key 才探,fail-soft)")
     args = p.parse_args(argv)
 
     db_path = Path(args.db)
@@ -254,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     # the vote-cron watchdog alarms on ITS absence (P0-2 mutual watching).
     write_heartbeat(db_path)
     crit_stale = [s for s in statuses if s.stale and s.critical]
+    quota_alarms = [] if args.no_quota else check_api_quota()
 
     if args.porcelain:
         for s in statuses:
@@ -263,13 +304,20 @@ def main(argv: list[str] | None = None) -> int:
                 f"{'-' if s.days_stale is None else s.days_stale}\t"
                 f"{int(s.critical)}\t{s.note}"
             )
+        for q in quota_alarms:
+            print(f"QUOTA\t{q}")
     else:
         report = render(statuses, db_path, today)
+        if quota_alarms:
+            report += "\n" + "\n".join(f"⚠️ 配额: {q}" for q in quota_alarms)
         print(report)
         if args.out:
             Path(args.out).write_text(report + "\n", encoding="utf-8")
 
-    return 1 if crit_stale else 0
+    # Quota exhaustion rides the SAME non-zero exit as a stale capture table →
+    # the daily_settle chain's osascript push fires for it too (P1#13: the
+    # pull-only panels meant a burned-out key was discovered days later).
+    return 1 if (crit_stale or quota_alarms) else 0
 
 
 if __name__ == "__main__":

@@ -147,7 +147,14 @@ def _ft_outcome(fixture: dict) -> tuple[int, int, int] | None:
     goals = fixture.get("goals") or {}
     hg = ft.get("home")
     ag = ft.get("away")
-    if hg is None or ag is None:  # fall back to final goals if FT split absent
+    if hg is None or ag is None:
+        # 体检 Wave3 (P2) — the `goals` fallback is only safe for FT: on an
+        # AET/PEN fixture `goals` is the FINAL score incl. extra time, so a
+        # missing fulltime split would settle a 90'-draw cup tie as a win
+        # (wrong convention — 竞彩/auto_settle score at 90'). Skip instead of
+        # faking; the next settle pass retries once AF fills the split.
+        if status != "FT":
+            return None
         hg, ag = goals.get("home"), goals.get("away")
     if hg is None or ag is None:
         return None

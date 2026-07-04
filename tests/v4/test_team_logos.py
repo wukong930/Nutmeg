@@ -163,7 +163,7 @@ class TestDashboardLogoWiring:
             idx = html.index(f"function {fn}")
             # Window 4000 (was 3000): renderTodaySingle grew with the V12 W8m
             # 3-tier confidence badge, pushing the teamLogo() call further down.
-            body = html[idx:idx+4000]
+            body = html[idx:idx+5200]
             assert "teamLogo(" in body, f"{fn} doesn't call teamLogo"
 
 
