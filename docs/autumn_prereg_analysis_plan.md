@@ -89,5 +89,6 @@ CLV 闸门(`nutmeg.v4.model.clv_gate`)已经管住了**联赛间**的多重检�
 
 ## 9 · Changelog
 
+- **v1.2 · 2026-07-05**:S6 检验工具**提前建成并冻结**(原计划「秋季随数据补」,改为现在锁死以保可复现)。normative 实现:`nutmeg.v4.model.split_bias`(纯统计,复用 `clv_gate.mean_clv_test` 聚类 t)+ `nutmeg-s6-split-check` CLI(读自家缓存,`--since` 默认冻结窗口 2026-08-01,`--include-discovery` 在发现期数据上复现结论作锁验证)。**自检通过**:发现期数据上复现出让平 under +2.19pp / 让胜 over −2.13pp / 让负 −0.06pp、符号一致、锚完好、t=1.83(印证功率注记「t≈2 边缘」);默认窗口 N=0(秋季前无数据,正确)。冻结件(δ=0.028、窗口、|h|=1、残差公式)进 `test_s6_split_check` 回归线。**此为工具冻结,非规格变更**——S6 定义与 C1 的 δ 均未动,读数仍等秋季 forward 数据 + S-family BHY-FDR。
 - **v1.1 · 2026-07-04**:新增 **S6 让球切分偏差复现**(S family m 5→6)+ **C1 修正式冻结与部署闸**(见 §4 S6 特别条款)。来源:同日三方回测附录(`docs/ah_vs_grid_three_way_backtest_2026-07-04.md`)发现网格在竞彩让球真实区(h≠0)让胜 +2.7pp/让平 −2.7pp/让负 ±0 的切分偏差(in-sample ≈2.5σ),EV 口径影响 让胜 +5pp(超闸门)/让平 −9.6pp。**修订先于窗口首条数据(窗口 2026-08-01 起,受训联赛尚未复赛),family 扩容不损 FDR 有效性;S6 检验的是窗口内新数据,发现样本(≤2026-07)不计入读数。**
 - **v1.0 · 2026-07-02**:初版锁定。常数:`WARN_MIN_N=15 / CONFIRM_T=2.8 / CONFIRM_MIN_N=200 / FDR_Q=0.05 / _MIN_EV=0.05`;联赛全集 = 13(artifact 训练面);同 commit 修复联赛标签跨 writer 分裂(`league_labels.canonical_league` 进 `clv_ledger`,芬超/FIN_VEIKKAUSLIIGA 实测合一)。
