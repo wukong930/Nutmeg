@@ -280,3 +280,89 @@ def backfill_vote_pinnacle(db_path: str | Path) -> int:
     except Exception:  # noqa: BLE001 — co-capture is best-effort, never break the capture
         log.warning("backfill_vote_pinnacle failed (db=%s)", db_path, exc_info=True)
         return 0
+
+
+def settle_jingcai_vote(
+    db_path: str | Path,
+    *,
+    fetch_fixtures=None,
+    today: dt.date | None = None,
+) -> int:
+    """Fill 90' results for unsettled vote rows whose match_date is today-or-past.
+
+    Byte-for-byte mirror of ``jingcai_sp.settle_jingcai_sp`` (group by DATE only —
+    竞彩 spans leagues — match by national_match_key on both sides, poison
+    ambiguous keys to None, write ``home_goals/away_goals/ft_outcome/settled_at``).
+    Settles ALL pool_codes (HAD + HHAD) of a match in one pass. This closes the
+    loop for the autumn §1② retail-bias / S2 test: retail support × result ×
+    (later) closing CLV. ``fetch_fixtures(date)`` is injectable for tests.
+    Returns the number of vote rows newly settled.
+    """
+    from nutmeg.v4.data.national_alias import national_match_key
+    from nutmeg.v4.observation.prediction_log import _ft_outcome
+
+    if fetch_fixtures is None:
+        from nutmeg.v4.data.sources.api_football import fetch_fixtures_for_date
+
+        def fetch_fixtures(d: dt.date) -> list[dict]:  # type: ignore[misc]
+            return fetch_fixtures_for_date(d, refresh=True)
+
+    today = today or dt.datetime.now(dt.UTC).date()
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        ensure_jingcai_vote_table(conn)
+        rows = conn.execute(
+            "SELECT id, match_date, home_team, away_team FROM jingcai_vote "
+            "WHERE settled_at IS NULL AND home_team IS NOT NULL "
+            "AND away_team IS NOT NULL ORDER BY match_date").fetchall()
+        if not rows:
+            return 0
+        by_date: dict[str, list[sqlite3.Row]] = {}
+        for r in rows:
+            try:
+                d = dt.date.fromisoformat(r["match_date"])
+            except ValueError:
+                continue
+            if d > today:  # not kicked off yet
+                continue
+            by_date.setdefault(r["match_date"], []).append(r)
+
+        now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+        settled = 0
+        for date_str, drows in by_date.items():
+            try:
+                fixtures = fetch_fixtures(dt.date.fromisoformat(date_str)) or []
+            except Exception:  # noqa: BLE001 — one bad day must not abort the rest
+                log.warning("settle_jingcai_vote: fetch failed for %s", date_str, exc_info=True)
+                continue
+            index: dict[tuple[str, str], dict | None] = {}
+            for fx in fixtures:
+                teams = (fx.get("teams") or {})
+                h = national_match_key((teams.get("home") or {}).get("name", ""))
+                a = national_match_key((teams.get("away") or {}).get("name", ""))
+                if not (h and a):
+                    continue
+                key = (h, a)
+                if key in index:
+                    # ≥2 distinct fixtures share a normalized name → ambiguous;
+                    # poison to None so a wrong 90' score is never attributed.
+                    prev = index[key]
+                    fid = (fx.get("fixture") or {}).get("id")
+                    if prev is None or (prev.get("fixture") or {}).get("id") != fid:
+                        index[key] = None
+                else:
+                    index[key] = fx
+            for r in drows:
+                fx = index.get(
+                    (national_match_key(r["home_team"]), national_match_key(r["away_team"])))
+                if not fx:
+                    continue
+                res = _ft_outcome(fx)
+                if res is None:
+                    continue
+                hg, ag, outcome = res
+                conn.execute(
+                    "UPDATE jingcai_vote SET home_goals=?, away_goals=?, ft_outcome=?, "
+                    "settled_at=? WHERE id=?", (hg, ag, outcome, now, r["id"]))
+                settled += 1
+        return settled

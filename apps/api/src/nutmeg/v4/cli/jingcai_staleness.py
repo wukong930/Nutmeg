@@ -247,6 +247,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"冷门玩法结算: 新填 {ne} 行(比分/总进球)")
         except Exception as e:  # noqa: BLE001 — secondary feed, never block the map
             print(f"冷门玩法结算跳过: {e}")
+        # settle 散户投票表 (§1② retail-bias / autumn S2 feed) — best-effort,
+        # rides the same daily settle pass so 支持率×结果 accumulates forward.
+        try:
+            from nutmeg.v4.observation.jingcai_vote import settle_jingcai_vote
+            nv = settle_jingcai_vote(args.db)
+            print(f"散户投票结算: 新填 {nv} 行(支持率×结果)")
+        except Exception as e:  # noqa: BLE001 — secondary feed, never block the map
+            print(f"散户投票结算跳过: {e}")
         print()
 
     _print(analyze(args.db, min_ev=args.min_ev), args.min_ev)

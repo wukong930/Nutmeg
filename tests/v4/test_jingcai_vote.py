@@ -172,3 +172,80 @@ class TestAlarmHeartbeatWatchdog:
         monkeypatch.setattr(sp, "run", boom)
         # missing heartbeat → tries to alarm → alarm explodes → still no raise
         assert watch_alarm_heartbeat(tmp_path / "obs.db") is False
+
+
+# ---------- 2026-07-05 — settle_jingcai_vote (§1② retail-bias / S2 feed) --------
+
+class TestSettleJingcaiVote:
+    def _fixture(self, home, away, hg, ag, status="FT"):
+        return {
+            "fixture": {"id": abs(hash((home, away))) % 100000,
+                        "status": {"short": status}},
+            "teams": {"home": {"name": home}, "away": {"name": away}},
+            "score": {"fulltime": {"home": hg, "away": ag}},
+            "goals": {"home": hg, "away": ag},
+        }
+
+    def _db(self, tmp_path):
+        import datetime as dt
+
+        from nutmeg.v4.observation.jingcai_vote import record_jingcai_vote
+        db = tmp_path / "vote.db"
+        # HAD + HHAD rows for one mapped match, past date
+        for pool in ("HAD", "HHAD"):
+            record_jingcai_vote(
+                db, match_date="2026-07-05", home_zh="首尔FC", away_zh="仁川联",
+                home_team="FC Seoul", away_team="Incheon United", pool_code=pool,
+                h_support=65.0, d_support=24.0, a_support=11.0)
+        # an UNMAPPED row (home_team NULL) — must stay unsettled
+        record_jingcai_vote(
+            db, match_date="2026-07-05", home_zh="某队", away_zh="另一队",
+            home_team=None, away_team=None, pool_code="HAD", h_support=50.0)
+        # a FUTURE match — must not settle (needs vote data to be recorded at all)
+        record_jingcai_vote(
+            db, match_date="2099-01-01", home_zh="未来主", away_zh="未来客",
+            home_team="Future Home", away_team="Future Away", pool_code="HAD",
+            h_support=40.0, d_support=30.0, a_support=30.0)
+        return db, dt.date(2026, 7, 5)
+
+    def test_settles_mapped_past_rows_both_pools(self, tmp_path):
+        import sqlite3
+
+        from nutmeg.v4.observation.jingcai_vote import settle_jingcai_vote
+        db, today = self._db(tmp_path)
+
+        def fetch(d):
+            if str(d) != "2026-07-05":
+                return []
+            return [self._fixture("FC Seoul", "Incheon United", 1, 0)]
+
+        n = settle_jingcai_vote(db, fetch_fixtures=fetch, today=today)
+        assert n == 2   # both HAD + HHAD rows of the mapped match
+        con = sqlite3.connect(str(db))
+        con.row_factory = sqlite3.Row
+        seoul = con.execute(
+            "SELECT * FROM jingcai_vote WHERE home_team='FC Seoul' "
+            "AND pool_code='HAD'").fetchone()
+        assert seoul["home_goals"] == 1 and seoul["away_goals"] == 0
+        assert seoul["ft_outcome"] == 0        # home win
+        assert seoul["settled_at"] is not None
+
+    def test_unmapped_and_future_stay_unsettled(self, tmp_path):
+        import sqlite3
+
+        from nutmeg.v4.observation.jingcai_vote import settle_jingcai_vote
+        db, today = self._db(tmp_path)
+        settle_jingcai_vote(
+            db, fetch_fixtures=lambda d: [self._fixture("FC Seoul", "Incheon United", 1, 0)],
+            today=today)
+        con = sqlite3.connect(str(db))
+        unsettled = con.execute(
+            "SELECT COUNT(*) FROM jingcai_vote WHERE settled_at IS NULL").fetchone()[0]
+        assert unsettled == 2   # the NULL-team row + the 2099 future row
+
+    def test_idempotent(self, tmp_path):
+        from nutmeg.v4.observation.jingcai_vote import settle_jingcai_vote
+        db, today = self._db(tmp_path)
+        f = lambda d: [self._fixture("FC Seoul", "Incheon United", 1, 0)]  # noqa: E731
+        assert settle_jingcai_vote(db, fetch_fixtures=f, today=today) == 2
+        assert settle_jingcai_vote(db, fetch_fixtures=f, today=today) == 0  # nothing left
