@@ -104,6 +104,7 @@ nutmeg-score-ev-forward = "nutmeg.v4.cli.score_ev_forward:main"
 nutmeg-polymarket-gaps = "nutmeg.v4.cli.polymarket_gaps:main"
 nutmeg-handicap-triples = "nutmeg.v4.cli.handicap_triples:main"
 nutmeg-s6-split-check = "nutmeg.v4.cli.s6_split_check:main"
+nutmeg-vig-shape = "nutmeg.v4.cli.vig_shape:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
