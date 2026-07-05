@@ -353,3 +353,34 @@ class TestDashboardWiring:
     def test_team_zh_endpoint_url_used(self, html):
         """Dashboard JS must call the new endpoint."""
         assert "/team-name-zh" in html
+
+
+# ---------- 2026-07-05 — ALL-CAPS anomaly class fix (PAU/GO Ahead/RED Star) ----
+
+class TestAllCapsAnomalyFix:
+    def test_red_star_fc_93_explicit_entry(self):
+        """AF 2026-27 Ligue 2 spelling 'Red Star FC 93' — the 'FC 93' suffix is
+        unreachable by case-fold or _zhFold, so it needs an explicit key."""
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Red Star FC 93") == "巴黎红星"
+
+    def test_dict_has_no_case_only_collisions(self):
+        """Safety proof for the frontend's case-insensitive zhTeam fallback:
+        no two dict keys may differ ONLY by case (else lowercasing would pick a
+        nondeterministic Chinese name). This invariant MUST hold for the
+        fallback to be collision-free."""
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+        by_lower: dict[str, set[str]] = {}
+        for k, v in TEAM_NAME_ZH.items():
+            by_lower.setdefault(k.lower(), set()).add(v)
+        collisions = {k: v for k, v in by_lower.items() if len(v) > 1}
+        assert not collisions, f"case-only collisions break the fallback: {collisions}"
+
+    def test_frontend_zhTeam_has_case_insensitive_fallback(self, html):
+        """dashboard.html must build the lowercased index + use it as the last
+        resort in zhTeam (kills the AF ALL-CAPS anomaly without per-team aliases)."""
+        assert "TEAM_ZH_LOWER" in html
+        assert "_rebuildTeamZhLower" in html
+        idx = html.index("function zhTeam(name)")
+        body = html[idx:idx + 1400]
+        assert "TEAM_ZH_LOWER[name.toLowerCase()]" in body

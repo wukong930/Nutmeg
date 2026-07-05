@@ -346,6 +346,7 @@ _LIGUE_2: Dict[str, str] = {
     "Pau": "波城",
     "Pau FC": "波城",
     "Red Star": "巴黎红星",
+    "Red Star FC 93": "巴黎红星",     # AF 2026-27 全名(FC 93 后缀 fold/大小写都够不到)
     "Rodez": "罗德兹",
     "Troyes": "特鲁瓦",
     "ESTAC Troyes": "特鲁瓦",

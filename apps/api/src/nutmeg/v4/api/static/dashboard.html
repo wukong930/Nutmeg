@@ -2862,10 +2862,19 @@ function initLocale() {
 // /api/v4/team-name-zh. Covers ~100 top-5 European league teams. Used
 // by `zhTeam(name)` which falls through unchanged for unknown teams.
 let TEAM_ZH_DICT = {};
+// 2026-07-05 — lowercased index of the SAME dict, built once on load, so the
+// last-ditch lookup below tolerates API-Football's ALL-CAPS spelling anomaly
+// ("PAU"/"GO Ahead Eagles"/"ST Johnstone") without a per-team alias. Verified
+// collision-free (no two dict keys differ only by case → 0 mis-maps).
+let TEAM_ZH_LOWER = {};
+function _rebuildTeamZhLower() {
+  TEAM_ZH_LOWER = {};
+  for (const k in TEAM_ZH_DICT) TEAM_ZH_LOWER[k.toLowerCase()] = TEAM_ZH_DICT[k];
+}
 async function loadTeamZhDict() {
   try {
     const r = await fetch(API + '/team-name-zh');
-    if (r.ok) TEAM_ZH_DICT = await r.json();
+    if (r.ok) { TEAM_ZH_DICT = await r.json(); _rebuildTeamZhLower(); }
   } catch (_) { /* network fail is non-critical; fall through to English */ }
 }
 // Public helper — call from every team-name render site.
@@ -2880,6 +2889,13 @@ function zhTeam(name) {
   // hit (checked above) → can only improve, never mis-map a known team.
   const folded = _zhFold(name);
   if (folded && folded !== name && TEAM_ZH_DICT[folded]) return TEAM_ZH_DICT[folded];
+  // Last resort — case-insensitive match on raw + folded (AF ALL-CAPS anomaly).
+  // Collision-free by construction (see _rebuildTeamZhLower); only ever upgrades
+  // an English fall-through to the dict's Chinese, never re-maps a known team.
+  if (TEAM_ZH_LOWER[name.toLowerCase()]) return TEAM_ZH_LOWER[name.toLowerCase()];
+  if (folded && folded !== name && TEAM_ZH_LOWER[folded.toLowerCase()]) {
+    return TEAM_ZH_LOWER[folded.toLowerCase()];
+  }
   return name;
 }
 // 体检(2026-06-10)— settlement joins on API-Football ENGLISH names. The manual
