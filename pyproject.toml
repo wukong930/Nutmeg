@@ -105,6 +105,7 @@ nutmeg-polymarket-gaps = "nutmeg.v4.cli.polymarket_gaps:main"
 nutmeg-handicap-triples = "nutmeg.v4.cli.handicap_triples:main"
 nutmeg-s6-split-check = "nutmeg.v4.cli.s6_split_check:main"
 nutmeg-vig-shape = "nutmeg.v4.cli.vig_shape:main"
+nutmeg-line-origin = "nutmeg.v4.cli.line_origin:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
