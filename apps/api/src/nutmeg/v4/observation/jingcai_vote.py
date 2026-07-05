@@ -68,6 +68,44 @@ def ensure_jingcai_vote_table(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE jingcai_vote ADD COLUMN {col} REAL")
 
 
+# Append-only INTRADAY time-series. jingcai_vote above is upsert-latest (one row
+# per match, overwritten each re-capture — the CURRENT crowd view for serving).
+# That overwrite silently discards the intraday support trajectory, which is
+# forward-only (no backfill) and exactly what a lead-lag / crowding-curve study
+# needs. This table sits BESIDE it and appends one row per (match, captured_at),
+# mirroring how odds_snapshots retains the Pinnacle line-history beside current
+# odds. UNIQUE(...,captured_at) makes a same-timestamp re-run idempotent while
+# distinct pulls accumulate. No settle columns — the result lives on jingcai_vote
+# and is joined in at analysis time.
+_SNAP_DDL = """
+CREATE TABLE IF NOT EXISTS jingcai_vote_snapshots (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    captured_at  TEXT NOT NULL,
+    source       TEXT NOT NULL DEFAULT 'sporttery',
+    match_date   TEXT NOT NULL,
+    match_num    TEXT,
+    league_cn    TEXT,
+    home_zh      TEXT NOT NULL,
+    away_zh      TEXT NOT NULL,
+    home_team    TEXT,
+    away_team    TEXT,
+    pool_code    TEXT NOT NULL,
+    handicap_home INTEGER,
+    h_support    REAL, d_support REAL, a_support REAL,
+    h_count      INTEGER, d_count INTEGER, a_count INTEGER,
+    jc_home      REAL, jc_draw REAL, jc_away REAL,
+    UNIQUE(match_date, home_zh, away_zh, pool_code, captured_at)
+);
+CREATE INDEX IF NOT EXISTS idx_jingcai_vote_snap_match
+    ON jingcai_vote_snapshots (match_date, home_zh, away_zh, pool_code, captured_at);
+"""
+
+
+def ensure_jingcai_vote_snapshots_table(conn: sqlite3.Connection) -> None:
+    """Idempotent DDL for the append-only intraday support time-series."""
+    conn.executescript(_SNAP_DDL)
+
+
 def _pct(v) -> float | None:
     """'17%' / '-8%' / 17 → float; None/'' → None."""
     if v is None or v == "":
@@ -159,17 +197,20 @@ def record_jingcai_vote(
     jc_draw: float | None = None,
     jc_away: float | None = None,
     source: str = "sporttery",
+    captured_at: str | None = None,
 ) -> bool:
     """Upsert ONE 支持比例 snapshot for (match_date, home_zh, away_zh, pool_code).
     A re-capture overwrites the latest crowd numbers but preserves any settle-later
-    result. Returns False (no-op) if keys/support are absent, or on ANY internal
-    failure (logged, never raised)."""
+    result. ALSO appends the reading to jingcai_vote_snapshots (the intraday
+    time-series). ``captured_at`` (UTC ISO) is injectable for tests/backfill and
+    defaults to now. Returns False (no-op) if keys/support are absent, or on ANY
+    internal failure (logged, never raised)."""
     try:
         if not (match_date and home_zh and away_zh and pool_code):
             return False
         if h_support is None and d_support is None and a_support is None:
             return False
-        now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+        now = captured_at or dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         with sqlite3.connect(str(db_path)) as conn:
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA busy_timeout = 3000")
@@ -209,6 +250,28 @@ def record_jingcai_vote(
                     jc_home, jc_draw, jc_away,
                 ),
             )
+            # Append to the intraday time-series — INDEPENDENTLY best-effort: a
+            # snapshot failure must never roll back the current-view upsert above,
+            # so it gets its own guard rather than riding the outer try.
+            try:
+                ensure_jingcai_vote_snapshots_table(conn)
+                conn.execute(
+                    "INSERT OR IGNORE INTO jingcai_vote_snapshots (captured_at, "
+                    "source, match_date, match_num, league_cn, home_zh, away_zh, "
+                    "home_team, away_team, pool_code, handicap_home, h_support, "
+                    "d_support, a_support, h_count, d_count, a_count, jc_home, "
+                    "jc_draw, jc_away) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        now, source, match_date, match_num, league_cn, home_zh,
+                        away_zh, home_team, away_team, pool_code.upper(),
+                        int(handicap_home) if handicap_home is not None else None,
+                        h_support, d_support, a_support, h_count, d_count, a_count,
+                        jc_home, jc_draw, jc_away,
+                    ),
+                )
+            except sqlite3.Error:
+                log.warning("vote snapshot append failed for %s vs %s",
+                            home_zh, away_zh, exc_info=True)
         return True
     except Exception:  # noqa: BLE001 — a lost observation must never break the capture
         log.warning("jingcai_vote capture failed for %s vs %s (db=%s)",

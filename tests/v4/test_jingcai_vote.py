@@ -71,6 +71,29 @@ def test_record_upserts_latest_and_preserves_settlement(tmp_path):
     assert rows[0]["ft_outcome"] == 0 and rows[0]["home_goals"] == 2  # preserved
 
 
+def test_snapshots_append_intraday_series_while_current_view_upserts(tmp_path):
+    # The current-view table upserts to latest; the snapshots table must APPEND
+    # every capture so the intraday support trajectory survives (探索 #3).
+    db = tmp_path / "obs.db"
+    assert record_jingcai_vote(db, captured_at="2026-07-01T03:00:00",
+                               **parse_vote_row(_raw(), "had")) is True
+    assert record_jingcai_vote(db, captured_at="2026-07-01T09:00:00",
+                               **parse_vote_row(_raw(hsupportRate="81%"), "had")) is True
+    with sqlite3.connect(db) as c:
+        assert c.execute("SELECT COUNT(*) FROM jingcai_vote").fetchone()[0] == 1  # upsert
+        snaps = c.execute(
+            "SELECT captured_at, h_support FROM jingcai_vote_snapshots "
+            "ORDER BY captured_at").fetchall()
+    assert len(snaps) == 2  # append — both readings retained
+    assert [s[1] for s in snaps] == [77.0, 81.0]
+    # a same-timestamp re-run is idempotent (UNIQUE on captured_at) — no dup
+    assert record_jingcai_vote(db, captured_at="2026-07-01T09:00:00",
+                               **parse_vote_row(_raw(hsupportRate="81%"), "had")) is True
+    with sqlite3.connect(db) as c:
+        assert c.execute(
+            "SELECT COUNT(*) FROM jingcai_vote_snapshots").fetchone()[0] == 2
+
+
 def test_record_failsoft_on_missing_keys(tmp_path):
     db = tmp_path / "obs.db"
     # missing match_date → no-op False, no raise
