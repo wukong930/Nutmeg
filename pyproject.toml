@@ -107,6 +107,7 @@ nutmeg-s6-split-check = "nutmeg.v4.cli.s6_split_check:main"
 nutmeg-vig-shape = "nutmeg.v4.cli.vig_shape:main"
 nutmeg-line-origin = "nutmeg.v4.cli.line_origin:main"
 nutmeg-vote-crowding = "nutmeg.v4.cli.vote_crowding:main"
+nutmeg-sentiment-triangle = "nutmeg.v4.cli.sentiment_triangle:main"
 
 [tool.setuptools.packages.find]
 where = ["apps/api/src"]
