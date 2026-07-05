@@ -881,6 +881,31 @@ _W2_2026_ROSTER_ADDITIONS = {
 }
 TEAM_NAME_ZH.update(_W2_2026_ROSTER_ADDITIONS)
 
+# 2026-07-05 — Polymarket 交叉校验看板 (只读研究盘) surfaces leagues the betting
+# boards never touch: US NWSL 女足 + 巴西联赛. These render raw-English on the PM
+# board until keyed. Keys = exact Polymarket spellings (the "W" suffix = women's,
+# how Polymarket disambiguates). This board is a rotating window over ALL of
+# Polymarket's football markets, so new untranslated names WILL reappear as its
+# slate rotates — that's inherent to a global cross-check board, not a bug; add
+# them as they surface. Only the currently-displayed dozen are keyed here.
+_POLYMARKET_BOARD = {
+    # ── NWSL 美国女足大联盟 (Polymarket "W" 后缀) ──
+    "Angel City W": "天使城女足",
+    "Houston Dash W": "休斯顿冲刺女足",
+    "North Carolina Courage W": "北卡罗来纳勇气女足",
+    "Orlando Pride W": "奥兰多骄傲女足",
+    "Portland Thorns W": "波特兰荆棘女足",
+    "Racing Louisville W": "路易斯维尔竞技女足",
+    "Seattle Reign FC W": "西雅图君临女足",
+    "Washington Spirit W": "华盛顿精神女足",
+    # ── 巴西联赛 ──
+    "Ceara": "塞阿拉",
+    "Goias": "戈亚斯",
+    "São Bernardo": "圣贝尔纳多",
+    "Vila Nova": "维拉诺瓦",
+}
+TEAM_NAME_ZH.update(_POLYMARKET_BOARD)
+
 
 def lookup_zh(team_name: str) -> str:
     """Return Chinese name for a canonical team, else input unchanged.
@@ -943,5 +968,7 @@ def coverage_by_league() -> Dict[str, int]:
         "MARKET_MODE_NEW_LEAGUES": len(_V12_W8_NEW_LEAGUES),
         # 体检 Wave2 — 2026-27 roster diff additions (promoted/renamed clubs).
         "W2_2026_ROSTER":          len(_W2_2026_ROSTER_ADDITIONS),
+        # 2026-07-05 — Polymarket 交叉校验看板 (NWSL 女足 + 巴西).
+        "POLYMARKET_BOARD":        len(_POLYMARKET_BOARD),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }

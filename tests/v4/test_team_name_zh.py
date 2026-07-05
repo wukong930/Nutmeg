@@ -384,3 +384,25 @@ class TestAllCapsAnomalyFix:
         idx = html.index("function zhTeam(name)")
         body = html[idx:idx + 1400]
         assert "TEAM_ZH_LOWER[name.toLowerCase()]" in body
+
+
+# ---------- 2026-07-05 — Polymarket cross-check board teams (NWSL + Brazil) ----
+
+class TestPolymarketBoardTeams:
+    def test_nwsl_and_brazil_resolve(self):
+        """Teams the Polymarket board surfaced as raw-English must now translate
+        (they were the 'nothing changed' report — on the PM tab, not the betting
+        boards)."""
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Angel City W") == "天使城女足"
+        assert lookup_zh("Seattle Reign FC W") == "西雅图君临女足"
+        assert lookup_zh("Ceara") == "塞阿拉"
+        assert lookup_zh("Vila Nova") == "维拉诺瓦"
+
+    def test_block_counted_in_coverage(self):
+        """The new block must be registered in coverage_by_league or the
+        TOTAL≤sum invariant silently breaks (prior regression)."""
+        from nutmeg.v4.data.team_name_zh import coverage_by_league
+        cov = coverage_by_league()
+        assert "POLYMARKET_BOARD" in cov
+        assert cov["POLYMARKET_BOARD"] >= 12
