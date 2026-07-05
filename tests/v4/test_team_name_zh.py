@@ -406,3 +406,22 @@ class TestPolymarketBoardTeams:
         cov = coverage_by_league()
         assert "POLYMARKET_BOARD" in cov
         assert cov["POLYMARKET_BOARD"] >= 12
+
+
+# ---------- 2026-07-05 — UEFA Q1 small-nation champions (待开盘常客) -----------
+
+class TestUEFAQualifiers:
+    def test_qualifier_teams_resolve(self):
+        """The UEFA Q1 minnows that fill 近期赛事→待开盘 each July must translate
+        (accents & AF spelling variants unreachable by case/fold)."""
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("Dečić") == "德契奇"
+        assert lookup_zh("Rīgas FS") == "里加RFS"
+        assert lookup_zh("Vllaznia Shkodër") == "弗拉兹尼亚"
+        assert lookup_zh("St Joseph S Fc") == "圣约瑟夫"
+        assert lookup_zh("HNK Hajduk Split") == "哈伊杜克"
+
+    def test_block_counted_in_coverage(self):
+        from nutmeg.v4.data.team_name_zh import coverage_by_league
+        cov = coverage_by_league()
+        assert cov.get("UEFA_QUALIFIERS", 0) >= 48

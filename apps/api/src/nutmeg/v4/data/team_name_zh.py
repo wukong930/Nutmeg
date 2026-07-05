@@ -906,6 +906,63 @@ _POLYMARKET_BOARD = {
 }
 TEAM_NAME_ZH.update(_POLYMARKET_BOARD)
 
+# 2026-07-05 — UEFA 资格赛第一轮 (UCL/UEL/UECL Q1, 07-09/10 开踢) 的小国冠军.
+# 竞彩每年 7 月都列这批,占满「近期赛事 → 待开盘」;数量有界(48),不是全球
+# 长尾,值得译. 键 = AF 精确拼写(含重音 č/ž/ë/ī/à) —— 前端先查 raw 名,
+# 大小写/fold 兜底够不到带重音或 AF 变体拼法(如 "St Joseph S Fc"). 与
+# _V12_W7_CUP_AND_VARIANTS 同类,单列一块便于每年更新.
+_UEFA_QUALIFIERS_2026_07 = {
+    "Alashkert": "阿拉什凯尔特",
+    "Aluminij": "阿卢米尼",
+    "Atlètic Club d'Escaldes": "埃斯卡尔德斯竞技",
+    "Bohemians": "波希米亚人",
+    "CSKA Sofia": "索非亚中央陆军",
+    "Caernarfon Town": "卡纳芬镇",
+    "Derry City": "德里城",
+    "Dečić": "德契奇",
+    "Dila": "迪拉戈里",
+    "Dinamo Minsk": "明斯克迪纳摩",
+    "Dinamo Tbilisi": "第比利斯迪纳摩",
+    "Dinamo Tirana": "地拉那迪纳摩",
+    "Europa": "欧罗巴",
+    "FC Levadia Tallinn": "塔林利瓦迪亚",
+    "FC Santa Coloma": "圣科洛马",
+    "FK Liepaja": "利耶帕亚",
+    "FK Sarajevo": "萨拉热窝",
+    "FK Zalgiris Vilnius": "维尔纽斯萨尔吉里斯",
+    "Glentoran": "格伦托兰",
+    "HNK Hajduk Split": "哈伊杜克",
+    "Hamrun Spartans": "哈姆伦斯巴达",
+    "Hegelmann Litauen": "黑格尔曼",
+    "Kalju Nomme": "诺姆卡尔尤",
+    "Linfield": "林菲尔德",
+    "Malisheva": "马利舍瓦",
+    "Marsaxlokk": "马萨什洛克",
+    "Milsami Orhei": "米尔萨米",
+    "Mornar": "莫尔纳尔",
+    "NSI Runavik": "鲁纳维克",
+    "Paide": "派德",
+    "Penybont": "佩尼邦特",
+    "Petrovac": "佩特罗瓦茨",
+    "Pyunik Yerevan": "埃里温普尼克",
+    "Rīgas FS": "里加RFS",
+    "Shkendija": "什肯迪亚",
+    "Sileks": "锡莱克斯",
+    "St Joseph S Fc": "圣约瑟夫",
+    "Stjarnan": "斯坦纳恩",
+    "US Mondorf-les-bains": "蒙多夫",
+    "Universitatea Cluj": "克卢日大学",
+    "Velež": "韦莱日",
+    "Vestri": "韦斯特里",
+    "Vikingur Gota": "戈塔维京",
+    "Virtus": "维尔图斯",
+    "Vllaznia Shkodër": "弗拉兹尼亚",
+    "Vojvodina": "伏伊伏丁那",
+    "Yelimay Semey": "塞梅耶利迈",
+    "Žilina": "日利纳",
+}
+TEAM_NAME_ZH.update(_UEFA_QUALIFIERS_2026_07)
+
 
 def lookup_zh(team_name: str) -> str:
     """Return Chinese name for a canonical team, else input unchanged.
@@ -970,5 +1027,7 @@ def coverage_by_league() -> Dict[str, int]:
         "W2_2026_ROSTER":          len(_W2_2026_ROSTER_ADDITIONS),
         # 2026-07-05 — Polymarket 交叉校验看板 (NWSL 女足 + 巴西).
         "POLYMARKET_BOARD":        len(_POLYMARKET_BOARD),
+        # 2026-07-05 — UEFA 资格赛第一轮小国冠军.
+        "UEFA_QUALIFIERS":         len(_UEFA_QUALIFIERS_2026_07),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }
