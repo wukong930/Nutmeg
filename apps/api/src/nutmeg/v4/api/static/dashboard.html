@@ -5462,6 +5462,9 @@ async function _cupManualReprice(idx) {
     pr.psc_home = h; pr.psc_draw = d; pr.psc_away = a;
     pr.psc_over25 = (o && u) ? o : null; pr.psc_under25 = (o && u) ? u : null; pr.ou_line = line;
     pr._manual = true; pr.odds_update = null;
+    // 2026-07-07 — 持久化手填盘口(输入 + 派生 P/让球线),跨 tab/刷新/重开都活。
+    _cupManSave(pr, { h, d, a, line, o, u,
+      P: [data.p_home_1x2, data.p_draw_1x2, data.p_away_1x2], hc: data.handicap_lines });
     renderCupMarket(_CUPMKT.preds, _CUPMKT.pending || []);
     // re-open the freshly-rendered panel + show the overround as a fat-finger check
     const det = document.getElementById(`cupman-${idx}`); if (det) det.open = true;
@@ -5481,7 +5484,48 @@ function _cupManualRevert(idx) {
   if (!pr || !pr._apiSnapshot) return;
   Object.assign(pr, pr._apiSnapshot);
   delete pr._apiSnapshot; delete pr._manual;
+  _cupManForget(pr);   // 2026-07-07 — 撤销手填也从 localStorage 清掉
   renderCupMarket(_CUPMKT.preds, _CUPMKT.pending || []);
+}
+
+// 2026-07-07 — 手填实时 Pinnacle 盘口持久化(跨 tab 切换 / 整页刷新 / 关标签重开)。
+// 旧坑:手填盘口只在内存 _CUPMKT.preds[idx] 上;switchTab('upcoming') 每次重
+// loadCupMarket → 换掉 preds → 手填被冲掉(竞彩 SP 有 _entered 保留、手填盘口没有)。
+// 现按比赛身份(home|away|date)存 localStorage:被动加载(切 tab/整页刷新/重开)贴回;
+// ↩︎ 复原 / 显式 🔄 刷新清掉;prune 比赛日 < 今日的条目防无限增长。
+const _LS_CUPMAN = 'nutmeg.cupmkt.manual';
+function _cupManKey(pr) { return (pr.home_team || '') + '|' + (pr.away_team || '') + '|' + (pr.date || ''); }
+function _cupManStore() { try { return JSON.parse(localStorage.getItem(_LS_CUPMAN) || '{}'); } catch (_) { return {}; } }
+function _cupManWrite(store) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    for (const k of Object.keys(store)) { const d = (k.split('|')[2] || ''); if (d && d < today) delete store[k]; }
+    localStorage.setItem(_LS_CUPMAN, JSON.stringify(store));
+  } catch (_) {}
+}
+function _cupManSave(pr, m) { const s = _cupManStore(); s[_cupManKey(pr)] = m; _cupManWrite(s); }
+function _cupManForget(pr) { const s = _cupManStore(); delete s[_cupManKey(pr)]; _cupManWrite(s); }
+function _cupManForgetPreds(preds) { const s = _cupManStore(); (preds || []).forEach((pr) => delete s[_cupManKey(pr)]); _cupManWrite(s); }
+function _cupApplyStoredManual(preds) {
+  const s = _cupManStore();
+  (preds || []).forEach((pr) => {
+    const m = s[_cupManKey(pr)];
+    if (!m || !Array.isArray(m.P)) return;
+    // 备份 FRESH API 线,让 ↩︎ 复原回到最新自动盘口(而非陈旧的)。
+    pr._apiSnapshot = {
+      p_home_1x2: pr.p_home_1x2, p_draw_1x2: pr.p_draw_1x2, p_away_1x2: pr.p_away_1x2,
+      handicap_lines: pr.handicap_lines, psc_home: pr.psc_home, psc_draw: pr.psc_draw,
+      psc_away: pr.psc_away, psc_over25: pr.psc_over25, psc_under25: pr.psc_under25,
+      ou_line: pr.ou_line, odds_update: pr.odds_update,
+    };
+    pr.p_home_1x2 = m.P[0]; pr.p_draw_1x2 = m.P[1]; pr.p_away_1x2 = m.P[2];
+    if (m.hc) pr.handicap_lines = m.hc;
+    pr.psc_home = m.h; pr.psc_draw = m.d; pr.psc_away = m.a;
+    pr.psc_over25 = (m.o && m.u) ? m.o : null;
+    pr.psc_under25 = (m.o && m.u) ? m.u : null;
+    pr.ou_line = m.line;
+    pr._manual = true; pr.odds_update = null;
+  });
 }
 
 // V14 — 💠 市场模式盘口推荐 (今日推荐, DISPLAY-ONLY): the sharp de-vig BEST 1X2
@@ -5963,6 +6007,10 @@ async function loadCupMarket(opts = {}) {
     const body = await r.json();
     // 手动刷新(opts.manual:🔄/🎯/加载)→ 新数据为主:renderCupMarket 据此丢掉会话手填。
     _CUPMKT._freshWins = !!opts.manual;
+    // 2026-07-07 — 手填盘口持久化:被动加载(切 tab/整页刷新/关标签重开)贴回 localStorage
+    // 里的手填;显式 🔄 刷新(opts.manual)= 用户要鲜价 → 清掉这些场的手填(与上句语义一致)。
+    if (opts.manual) _cupManForgetPreds(body.predictions);
+    else _cupApplyStoredManual(body.predictions);
     renderCupMarket(body.predictions, body.pending_fixtures);   // full board (近期赛事)
     renderMarketPred(body.predictions);                         // lean mirror (今日推荐)
     if (statusEl) statusEl.textContent =
