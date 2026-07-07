@@ -2006,6 +2006,8 @@ const I18N = {
     h_today_spcalc:   '{chip:yuan} 竞彩 SP 实时计算',
     today_spcalc_hint:'输入你在竞彩终端看到的当前 SP → 立即按竞彩价算 EV / Kelly。SP 一变就改, 结果即时刷新。绿色 = 过 +EV 门槛。',
     spcalc_n_matches: '场',
+    jc_bettable_hdr:  '竞彩可投注',
+    jc_ref_hdr:       '竞彩未上架 · 仅模型 / Pinnacle 参考',
     spcalc_enter_sp:  '输入竞彩 SP 看 EV',
     spcalc_mkt:       '市',
     spcalc_mkt_tip:   'Pinnacle 去 vig 的市场公允概率(对照模型 P;两者背离时留个心眼)',
@@ -2463,6 +2465,8 @@ const I18N = {
     h_today_spcalc:   '{chip:yuan} 竞彩 SP live calc',
     today_spcalc_hint:'Enter the current 竞彩 SP from your terminal → instant EV / Kelly at the 竞彩 price. Edit as SP drifts; result updates live. Green = clears the +EV gate.',
     spcalc_n_matches: 'matches',
+    jc_bettable_hdr:  'Bettable on 竞彩',
+    jc_ref_hdr:       'Not on 竞彩 · model / Pinnacle reference',
     spcalc_enter_sp:  'Enter 竞彩 SP for EV',
     spcalc_mkt:       'Mkt',
     spcalc_mkt_tip:   'Pinnacle de-vig market fair prob (vs model P; watch when they diverge)',
@@ -4419,6 +4423,53 @@ function _lgGroupHtml(lg, col, count, cardsHtml, pfx) {
     </div>`;
 }
 
+// 2026-07-07 — 竞彩可投注置顶. The 近期赛事 list mixes matches 竞彩 lists for
+// betting with ones it does NOT (shown as model/Pinnacle reference only). Pin the
+// bettable ones into their OWN zone at the top — still league-grouped, colored
+// headers — so the slate you can actually bet reads first, by kickoff. Shared by
+// 标准模式 (renderTodaySpCalc) and 市场模式 (loadCupMarket) so both order identically.
+// A match is 竞彩-bettable when it has a full HAD 竞彩 SP on file (jc_home/draw/away
+// — the sporttery cron pre-fill, else a hand-price). 让球-only / no-SP → reference.
+function _isJcBettable(pr) {
+  return !!(pr && pr.jc_home != null && pr.jc_draw != null && pr.jc_away != null);
+}
+// Group [{pr, idx}] by league, order leagues by earliest kickoff, sort each league
+// by kickoff, render via _lgGroupHtml — the existing card layout, factored out so
+// the two zones reuse it. `idx` stays the ORIGINAL preds index (data-idx wiring +
+// _SPCALC/_CUPMKT.preds[idx] are order-independent, so reordering is safe). `pfx`
+// namespaces the collapse key so the SAME league folds independently per zone.
+function _lgGroupsHtml(items, cardHtml, pfx) {
+  const byLeague = {};
+  items.forEach(o => { (byLeague[o.pr.league] = byLeague[o.pr.league] || []).push(o); });
+  const order = Object.keys(byLeague).sort((a, b) =>
+    Math.min(...byLeague[a].map(o => _kickoffMs(o.pr))) -
+    Math.min(...byLeague[b].map(o => _kickoffMs(o.pr))));
+  return order.map(lg => {
+    const its = byLeague[lg].slice().sort((x, y) => _kickoffMs(x.pr) - _kickoffMs(y.pr));
+    return _lgGroupHtml(lg, leagueColor(lg), its.length,
+      its.map(o => cardHtml(o.pr, o.idx)).join(''), pfx);
+  }).join('');
+}
+// Partition preds into the 竞彩可投注 pin zone (top) + the reference rump (below),
+// each league-grouped. Returns the full inner HTML for the list container. With
+// nothing bettable it degrades to the plain league grouping (no headers = old look).
+function _bettableFirstHtml(preds, cardHtml) {
+  const bett = [], rest = [];
+  preds.forEach((pr, idx) => (_isJcBettable(pr) ? bett : rest).push({ pr, idx }));
+  if (!bett.length) return _lgGroupsHtml(rest, cardHtml, '');
+  let html = `<div class="jc-pin-hdr flex items-center gap-2 mb-2 px-2 py-1 rounded"
+      style="border-left:4px solid #059669;background:#05966914">
+      <span class="font-display font-semibold text-sm" style="color:#059669">💴 ${t('jc_bettable_hdr')}</span>
+      <span class="text-xs text-muted">· ${bett.length}</span></div>`;
+  html += _lgGroupsHtml(bett, cardHtml, 'jc:');
+  if (rest.length) {
+    html += `<div class="text-xs text-muted mt-4 mb-2 px-2 pt-2"
+        style="border-top:1px dashed var(--border-subtle)">${t('jc_ref_hdr')}</div>`;
+    html += _lgGroupsHtml(rest, cardHtml, '');
+  }
+  return html;
+}
+
 // V13 — 记此注: record the EXACT outcome the user bet + their real stake (incl
 // −EV) into the observation DB. Works for BOTH boards (mode 'spcalc'|'cup') and
 // BOTH markets ('1x2'|'handicap'); the 📌 per outcome row opens an inline stake
@@ -4629,20 +4680,10 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
         </details>
       </div>`;
   };
-  // V12 W4 — group cards by league, sort each group by kickoff, and order the
-  // groups by their earliest kickoff. Each group gets a colored header
-  // (zhLeague label + leagueColor accent) so leagues are visually distinct
-  // and matches read chronologically within a league.
-  const byLeague = {};
-  preds.forEach((pr, idx) => { (byLeague[pr.league] = byLeague[pr.league] || []).push({ pr, idx }); });
-  const order = Object.keys(byLeague).sort((a, b) =>
-    Math.min(...byLeague[a].map(o => _kickoffMs(o.pr))) -
-    Math.min(...byLeague[b].map(o => _kickoffMs(o.pr))));
-  const scoredHtml = order.map(lg => {
-    const items = byLeague[lg].slice().sort((x, y) => _kickoffMs(x.pr) - _kickoffMs(y.pr));
-    return _lgGroupHtml(lg, leagueColor(lg), items.length,
-      items.map(o => cardHtml(o.pr, o.idx)).join(''));
-  }).join('');
+  // V12 W4 → 2026-07-07 — 竞彩可投注 pinned to the top in its own zone, then the
+  // model/Pinnacle reference rump; each zone league-grouped by earliest kickoff
+  // with colored headers. Shared with 市场模式 via _bettableFirstHtml.
+  const scoredHtml = _bettableFirstHtml(preds, cardHtml);
   // V14 — 待开盘 fixtures now feed the merged 待开盘赛事 section at the page bottom.
   list.innerHTML = scoredHtml;
   _setPending('spcalc', pending);
@@ -5748,16 +5789,8 @@ function renderCupMarket(preds, pending) {
   }
   empty.classList.add('hidden'); sec.classList.remove('hidden');
   $('#cupmkt-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
-  const byC = {};
-  preds.forEach((pr, idx) => { (byC[pr.league] = byC[pr.league] || []).push({ pr, idx }); });
-  const order = Object.keys(byC).sort((a, b) =>
-    Math.min(...byC[a].map(o => _kickoffMs(o.pr))) - Math.min(...byC[b].map(o => _kickoffMs(o.pr))));
-  let html = order.map(lg => {
-    const items = byC[lg].slice().sort((x, y) => _kickoffMs(x.pr) - _kickoffMs(y.pr));
-    return _lgGroupHtml(lg, leagueColor(lg), items.length,
-      items.map(o => _cupCardHtml(o.pr, o.idx)).join(''));
-  }).join('');
-  list.innerHTML = html;
+  // 2026-07-07 — 竞彩可投注置顶 (same zoning as 标准模式 via _bettableFirstHtml).
+  list.innerHTML = _bettableFirstHtml(preds, _cupCardHtml);
   _setPending('cupmkt', pending);   // 待开盘 → merged bottom section
   // Restore preserved 竞彩 SP / 让球线 into the freshly-rendered inputs + recompute.
   preds.forEach((pr, idx) => {
