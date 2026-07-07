@@ -246,3 +246,121 @@ class TestVotePagination:
         monkeypatch.setattr(httpx, "get", fake_get)
         rows = sporttery.fetch_vote_support("HAD", page_size=2, retries=1)
         assert [r["matchId"] for r in rows] == [1, 2]  # partial > nothing
+
+
+class TestUnmappedSentinel:
+    """未映射队名主动上报 — 整场丢弃是对的(无 EN 名 join 不了 Pinnacle),但要留下
+    持久、可查的痕迹。2026-07-07 欧冠资格赛 2/3 场因队名未映射被静默丢:报警其实
+    在 open cron 触发了,却只进无头 launchd 的桌面推送 + 没人读的 out.log,靠人肉
+    发现「近期赛事」少了场。这些测试锁死 sink 层的持久报告 + health_check 契约。"""
+
+    def _m(self, home_en, away_en, league, home_cn, away_cn):
+        return {"home_en": home_en, "away_en": away_en, "league_cn": league,
+                "home_cn": home_cn, "away_cn": away_cn, "had": None, "hhad": None}
+
+    def test_partial_majority_loss_flagged(self):
+        """今日真实场景:3 场欧冠,2 场队名未映射 → 过半丢失报警(单场存活的「半坏」
+        盲区不再让它静默:体检 2026-07-04 瑞超 6/7)。"""
+        from nutmeg.v4.cli.ingest_sporttery import summarize_unmapped
+        s = summarize_unmapped([
+            self._m("FC Copenhagen", "Drita", "欧冠", "哥本哈根", "德里塔"),
+            self._m(None, None, "欧冠", "克拉克斯维克", "比森阿泰尔"),
+            self._m(None, "X", "欧冠", "雷克雅未克维京人", "杰尔"),
+        ])
+        assert len(s["unmapped"]) == 2
+        assert s["gone"] == []
+        assert s["partial"] == ["欧冠 2/3"]
+        assert s["alarm_bits"] == ["过半丢失: 欧冠 2/3"]
+
+    def test_whole_league_gone_flagged(self):
+        """整联赛全部未映射(韩职 6/6 类)→ gone 报警,不重复计过半。"""
+        from nutmeg.v4.cli.ingest_sporttery import summarize_unmapped
+        s = summarize_unmapped(
+            [self._m(None, None, "韩职", f"主{i}", f"客{i}") for i in range(3)])
+        assert s["gone"] == ["韩职"]
+        assert s["partial"] == []
+        assert s["alarm_bits"] == ["整联赛丢失: 韩职"]
+
+    def test_single_drop_below_threshold_recorded_not_alarmed(self):
+        """1/6 未映射 < 过半阈值 → 记入 unmapped(报告里可见)但不弹桌面报警。"""
+        from nutmeg.v4.cli.ingest_sporttery import summarize_unmapped
+        ms = [self._m("A", "B", "英超", "甲", "乙") for _ in range(5)]
+        ms.append(self._m(None, "B", "英超", "丙", "丁"))
+        s = summarize_unmapped(ms)
+        assert len(s["unmapped"]) == 1
+        assert s["gone"] == [] and s["partial"] == [] and s["alarm_bits"] == []
+
+    def test_all_mapped_is_empty(self):
+        from nutmeg.v4.cli.ingest_sporttery import summarize_unmapped
+        s = summarize_unmapped([self._m("A", "B", "WC", "甲", "乙")])
+        assert s["unmapped"] == [] and s["alarm_bits"] == []
+
+    def test_report_line2_is_health_check_contract(self):
+        """health_check.sh §11 用 `sed -n 2p` + 正则 `未映射 (N) 场` 解析计数,并用
+        `grep -E '^\\s*\\['` 抓明细行 — 锁死这两个契约,别在 render 里改坏。"""
+        import re
+
+        from nutmeg.v4.cli.ingest_sporttery import (
+            render_unmapped_report,
+            summarize_unmapped,
+        )
+        ms = [
+            self._m("A", "B", "欧冠", "甲", "乙"),
+            self._m(None, None, "欧冠", "丙", "丁"),
+            self._m(None, None, "欧冠", "戊", "己"),
+        ]
+        rep = render_unmapped_report(summarize_unmapped(ms), "2026-07-07 11:05", len(ms))
+        line2 = rep.splitlines()[1]
+        assert re.search(r"未映射 (\d+) 场", line2).group(1) == "2"
+        assert any(re.match(r"^\s*\[", ln) for ln in rep.splitlines())
+
+    def test_report_clean_reports_zero(self):
+        import re
+
+        from nutmeg.v4.cli.ingest_sporttery import (
+            render_unmapped_report,
+            summarize_unmapped,
+        )
+        rep = render_unmapped_report(
+            summarize_unmapped([self._m("A", "B", "WC", "甲", "乙")]),
+            "2026-07-07 23:15", 1)
+        assert re.search(r"未映射 (\d+) 场", rep.splitlines()[1]).group(1) == "0"
+        assert "✅" in rep
+
+    def test_harvest_persists_report_at_sink(self, tmp_path):
+        """sink 层持久化:harvest_to_db 把未映射写到 <repo>/logs/sporttery_unmapped_latest.txt
+        (repo 根由 db 路径反推 data/ 上一级)。cron 和 🎯 刷新按钮两条路都会写 —
+        旧代码报警只在 CLI main(),按钮路完全无痕。"""
+        from nutmeg.v4.cli.ingest_sporttery import harvest_to_db
+        (tmp_path / "data").mkdir()
+        db = str(tmp_path / "data" / "obs.db")   # 嵌套 ⇒ repo 根=tmp_path, 报告落 tmp_path/logs
+        matches = [
+            {"home_en": "Mexico", "away_en": "South Africa", "league_cn": "欧冠",
+             "match_date": "2026-07-07", "kickoff_utc": None,
+             "home_cn": "墨西哥", "away_cn": "南非", "had": (1.7, 3.4, 4.5), "hhad": None},
+            {"home_en": None, "away_en": None, "league_cn": "欧冠",
+             "home_cn": "克拉克斯维克", "away_cn": "比森阿泰尔",
+             "match_date": "2026-07-07", "had": (2.0, 3.0, 3.5), "hhad": None},
+        ]
+        r = harvest_to_db(db, matches=matches)
+        assert r["unmapped"] == 1
+        assert r["unmapped_teams"] == [
+            {"home_cn": "克拉克斯维克", "away_cn": "比森阿泰尔", "league_cn": "欧冠"}]
+        report = tmp_path / "logs" / "sporttery_unmapped_latest.txt"
+        assert report.exists()
+        text = report.read_text(encoding="utf-8")
+        assert "未映射 1 场" in text.splitlines()[1]
+        assert "克拉克斯维克 / 比森阿泰尔" in text
+
+    def test_harvest_empty_fetch_keeps_prior_report(self, tmp_path):
+        """抓取失败(0 场)绝不能把上次报告洗成 ✅ 假绿 — 留旧报告不动;那种漏由
+        data_freshness「jingcai_sp 停长」另行报警。"""
+        from nutmeg.v4.cli.ingest_sporttery import harvest_to_db
+        (tmp_path / "data").mkdir()
+        db = str(tmp_path / "data" / "obs.db")
+        report = tmp_path / "logs" / "sporttery_unmapped_latest.txt"
+        report.parent.mkdir()
+        report.write_text("上次报告\n未映射 2 场\n", encoding="utf-8")
+        r = harvest_to_db(db, matches=[])
+        assert r["matches"] == 0
+        assert report.read_text(encoding="utf-8") == "上次报告\n未映射 2 场\n"

@@ -284,6 +284,27 @@ else
 fi
 
 
+# ===== 11. 竞彩未映射队名哨兵 (sporttery zh→EN) =====
+# 竞彩 SP ingest 遇到任一队名不在 zh→EN 字典就**整场丢弃**(无英文名 join 不了
+# Pinnacle、算不了 EV — 丢是对的)。问题在丢得**静默**:一场从「近期赛事」消失,靠
+# 人肉发现少了场(2026-07-07 欧冠资格赛 2/3 场即此)。旧代码只桌面推送(无头 launchd
+# 里看不见)+ 进没人读的 out.log。现在 ingest 每次(cron 终盘/开售 + 🎯 按钮)把当日
+# 未映射写到这个 latest 文件(sink 层),这里主动读出来。补别名:
+# apps/api/src/nutmeg/v4/data/sources/sporttery.py 的 _ZH_OVERRIDES(对照 gather 真实拼写)。
+section "11. 竞彩未映射队名哨兵 (sporttery zh→EN)"
+UNMAPPED_REPORT="logs/sporttery_unmapped_latest.txt"
+if [[ -f "$UNMAPPED_REPORT" ]]; then
+  AGE_H=$(( ( $(date +%s) - $(stat -f %m "$UNMAPPED_REPORT" 2>/dev/null || echo 0) ) / 3600 ))
+  SUMLINE="$(sed -n '2p' "$UNMAPPED_REPORT")"
+  UNM="$(printf '%s' "$SUMLINE" | sed -E 's/.*未映射 ([0-9]+) 场.*/\1/')"
+  if [[ "$UNM" == "0" ]]; then ok "$SUMLINE  (${AGE_H}h ago)"; else warn "$SUMLINE  (${AGE_H}h ago)"; fi
+  if [[ "$UNM" != "0" ]]; then grep -E '^\s*\[' "$UNMAPPED_REPORT" | head -8 | while read -r l; do note "$l"; done; fi
+  [[ "$AGE_H" -ge 26 ]] && note "报告偏旧(>26h)— 竞彩 ingest cron 可能没跑(23:15/11:05);launchctl 查它真在跑没"
+else
+  note "no report yet — 竞彩 ingest 跑过一次即生成: nutmeg-ingest-sporttery"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then

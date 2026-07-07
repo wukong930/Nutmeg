@@ -14,13 +14,114 @@ from __future__ import annotations
 import argparse
 import logging
 
+# Persistent, queryable surface for「当日未映射竞彩队名」— repo 根下,由 db_path 反推
+# (data/v4_observation.db → 上两级)。桌面推送易逝(无头 launchd 里看不见)、cron
+# out.log 没人读(体检 2026-07-03 P2),这个 latest 文件被 health_check.sh 主动读出。
+_UNMAPPED_REPORT_RELPATH = "logs/sporttery_unmapped_latest.txt"
+
+
+def summarize_unmapped(matches: list[dict]) -> dict:
+    """从抓取到的竞彩场次里挑出「队名映射不到英文规范名」的场,并按联赛聚合出报警。
+
+    这类场 ingest 会**整场丢弃**(无 EN 名 join 不了 Pinnacle、算不了 EV — 丢是对的),
+    问题只在丢得**静默**:一场从「近期赛事」消失,靠人肉发现少了场(2026-07-07 欧冠
+    资格赛 2/3 场即此)。纯函数,CLI 展示 + sink 持久化共用同一口径。
+
+    返回 ``{unmapped, gone, partial, alarm_bits}``:
+      - ``unmapped``: ``[{home_cn, away_cn, league_cn}]`` — 每个被丢的场
+      - ``gone``:     整联赛 0 场入库的联赛名(该联赛全部未映射)
+      - ``partial``:  ``["联赛 n/total"]`` — ≥2 场且过半未映射(「半坏」盲区,体检
+                      2026-07-04:6/7 场丢但 1 场存活曾让整场静默报警失效)
+      - ``alarm_bits``: 给桌面推送的短句(gone/partial 各一条)
+    """
+    from collections import Counter
+    unmapped = [
+        {"home_cn": m.get("home_cn"), "away_cn": m.get("away_cn"),
+         "league_cn": m.get("league_cn")}
+        for m in matches if not (m.get("home_en") and m.get("away_en"))
+    ]
+    n_all = Counter((m.get("league_cn") or "?") for m in matches)
+    n_bad = Counter((u["league_cn"] or "?") for u in unmapped)
+    gone = [lg for lg, n in n_bad.items() if n == n_all[lg]]
+    partial = [f"{lg} {n}/{n_all[lg]}" for lg, n in n_bad.items()
+               if n < n_all[lg] and n >= 2 and n * 2 >= n_all[lg]]
+    alarm_bits: list[str] = []
+    if gone:
+        alarm_bits.append(f"整联赛丢失: {', '.join(gone)}")
+    if partial:
+        alarm_bits.append(f"过半丢失: {', '.join(partial)}")
+    return {"unmapped": unmapped, "gone": gone, "partial": partial,
+            "alarm_bits": alarm_bits}
+
+
+def render_unmapped_report(summary: dict, stamp: str, n_matches: int) -> str:
+    """把 ``summarize_unmapped`` 的结果渲成持久文本报告。第 2 行是给 health_check.sh
+    解析的计数摘要(照 name_sentinel_latest.txt 的约定:第 2 行 = 一行式计数)。"""
+    unmapped = summary["unmapped"]
+    lines = [
+        f"竞彩未映射队名 — {stamp}",
+        f"抓取 {n_matches} 场 · 未映射 {len(unmapped)} 场 · "
+        f"整联赛丢失 {len(summary['gone'])} · 过半丢失 {len(summary['partial'])}",
+        "",
+    ]
+    if not unmapped:
+        lines.append("✅ 全部映射 — 每场都拿到英文规范名,能 join Pinnacle 算 EV。")
+        return "\n".join(lines)
+    lines.append(
+        "⚠️ 这些竞彩队名映射不到英文规范名 → 整场被丢弃(无 EN 名 join 不了 Pinnacle)。"
+        "补 sporttery.py 的 _ZH_OVERRIDES(对照 gather 真实拼写):")
+    for u in unmapped:
+        lines.append(f"  [{u['league_cn'] or '?'}] "
+                     f"{u['home_cn'] or '?'} / {u['away_cn'] or '?'}")
+    if summary["gone"]:
+        lines.append(f"⚠️ 整联赛丢失(0 场入库): {', '.join(summary['gone'])}")
+    if summary["partial"]:
+        lines.append(f"⚠️ 联赛过半丢失: {', '.join(summary['partial'])}")
+    return "\n".join(lines)
+
+
+def _write_unmapped_report(db_path, report: str) -> None:
+    """把未映射报告写到 ``<repo>/logs/sporttery_unmapped_latest.txt``(repo 根由
+    db_path 反推)。Fail-soft:写失败绝不打断 ingest。sink 层调用 ⇒ cron **和** 🎯
+    刷新按钮两条路都留下持久记录(旧代码报警只在 CLI main(),按钮路完全无痕)。"""
+    from pathlib import Path
+    try:
+        out = Path(db_path).resolve().parent.parent / _UNMAPPED_REPORT_RELPATH
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(report + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _push_unmapped_alarm(alarm_bits: list[str]) -> None:
+    """桌面弹窗 — 即时但**易逝**的通道(无头 launchd 里常看不见)。持久通道是 sink 写的
+    logs/sporttery_unmapped_latest.txt(health_check.sh 主动读),即使这条推送没人看见
+    也不丢。Fail-soft。"""
+    if not alarm_bits:
+        return
+    try:
+        import subprocess
+        subprocess.run(
+            ["osascript", "-e",
+             f'display notification "{"; ".join(alarm_bits)} — '
+             f'补 _ZH_OVERRIDES" with title "⚠️ Nutmeg 竞彩联赛丢失"'],
+            check=False, capture_output=True, timeout=10)
+    except Exception:  # noqa: BLE001 — alert is best-effort
+        pass
+
 
 def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = False,
                   matches: list[dict] | None = None, protect_manual: bool = True,
                   phase: str = "close", exotics: bool = False) -> dict:
     """Upsert the current 竞彩 SP into jingcai_sp (source=sporttery). Fetches if
-    ``matches`` is None. Returns ``{matches, mapped, unmapped, had, hhad, crs, ttg}``.
-    Shared by the CLI and the 🎯 刷新竞彩 endpoint.
+    ``matches`` is None. Returns ``{matches, mapped, unmapped, had, hhad, crs, ttg,
+    unmapped_teams, alarm_bits}``. Shared by the CLI and the 🎯 刷新竞彩 endpoint.
+
+    As the SHARED sink it also persists「当日未映射队名」to
+    logs/sporttery_unmapped_latest.txt on every real harvest — so a dropped match
+    (no EN name → can't join Pinnacle → silently gone from 近期赛事) leaves a durable,
+    queryable trace via BOTH the cron and the 🎯 button (health_check.sh reads it).
+    The alarm used to live only in the CLI ``main()``; the button path had no signal.
 
     ``protect_manual``: True (default, for the unattended cron) skips any row a user
     hand-priced in 市场/标准 模式. The 🎯 button passes False — an *explicit* refresh
@@ -65,9 +166,19 @@ def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = Fals
                 crs_w += record_exotic_sp(db_path, market="crs", outcomes=m["crs"], **ex_common)
             if m.get("ttg"):
                 ttg_w += record_exotic_sp(db_path, market="ttg", outcomes=m["ttg"], **ex_common)
+    # 持久化「当日未映射队名」到 logs/sporttery_unmapped_latest.txt(sink 层 ⇒ cron 和
+    # 🎯 按钮两条路都留痕)。只在真抓到场次时刷新 — 抓取失败(0 场)别把上次报告洗成✅假绿;
+    # 那种漏由 data_freshness「jingcai_sp 停长」另行报警。Fail-soft,绝不打断入库。
+    summary = summarize_unmapped(matches)
+    if matches:
+        import datetime
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        _write_unmapped_report(
+            db_path, render_unmapped_report(summary, stamp, len(matches)))
     return {"matches": len(matches), "mapped": len(mapped),
-            "unmapped": len(matches) - len(mapped), "had": had_w, "hhad": hhad_w,
-            "crs": crs_w, "ttg": ttg_w}
+            "unmapped": len(summary["unmapped"]), "had": had_w, "hhad": hhad_w,
+            "crs": crs_w, "ttg": ttg_w,
+            "unmapped_teams": summary["unmapped"], "alarm_bits": summary["alarm_bits"]}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -99,45 +210,24 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     mapped = [m for m in matches if m["home_en"] and m["away_en"]]
-    unmapped = [m for m in matches if not (m["home_en"] and m["away_en"])]
+    summary = summarize_unmapped(matches)
+    unmapped = summary["unmapped"]
     print(f"队名映射: {len(mapped)}/{len(matches)} 成功", end="")
     if unmapped:
         print(" · 未映射: " + ", ".join(
-            f"{m['home_cn']}/{m['away_cn']}" for m in unmapped[:8]))
-        # 体检 2026-07-03 — a whole league can vanish from ingest one team-name at
-        # a time (韩职: 6/6 matches dropped, each pair half-mapped). 2026-07-04 —
-        # 瑞超 proved the FULL-loss alarm has a「半坏」blind spot: 6/7 matches
-        # dropped (竞彩 zh spellings ≠ dict keys) but the one surviving match
-        # kept it silent. Alarm on MAJORITY loss too: ≥2 matches AND ≥50%
-        # unmapped in a league ⇒ same desktop push, distinct wording.
-        from collections import Counter
-        n_all = Counter(m["league_cn"] or "?" for m in matches)
-        n_bad = Counter(m["league_cn"] or "?" for m in unmapped)
-        gone = [lg for lg, n in n_bad.items() if n == n_all[lg]]
-        partial = [f"{lg} {n}/{n_all[lg]}" for lg, n in n_bad.items()
-                   if n < n_all[lg] and n >= 2 and n * 2 >= n_all[lg]]
-        alarm_bits = []
-        if gone:
-            print(f"  ⚠️ 整联赛丢失(0 场入库): {', '.join(gone)} — "
+            f"{u['home_cn']}/{u['away_cn']}" for u in unmapped[:8]))
+        # 整场丢弃是对的(无 EN 名 join 不了 Pinnacle、算不了 EV);报警口径在
+        # summarize_unmapped:整联赛丢失 + 「半坏」过半丢失(体检 2026-07-03 韩职
+        # 6/6、07-04 瑞超 6/7 的盲区 — 单场存活曾让整场静默报警失效)。
+        if summary["gone"]:
+            print(f"  ⚠️ 整联赛丢失(0 场入库): {', '.join(summary['gone'])} — "
                   f"补 sporttery.py _ZH_OVERRIDES(对照 gather 真实拼写)")
-            alarm_bits.append(f"整联赛丢失: {', '.join(gone)}")
-        if partial:
-            print(f"  ⚠️ 联赛过半丢失: {', '.join(partial)} — "
+        if summary["partial"]:
+            print(f"  ⚠️ 联赛过半丢失: {', '.join(summary['partial'])} — "
                   f"竞彩中文拼法≠字典键,补 _ZH_OVERRIDES")
-            alarm_bits.append(f"过半丢失: {', '.join(partial)}")
-        if alarm_bits:
-            # 体检 Wave3 (P2) — this alarm used to live ONLY in the cron's
-            # out.log, which nobody reads (the 韩职 loss sat there unseen).
-            # Push it to the desktop like data_freshness does. Fail-soft.
-            try:
-                import subprocess
-                subprocess.run(
-                    ["osascript", "-e",
-                     f'display notification "{"; ".join(alarm_bits)} — '
-                     f'补 _ZH_OVERRIDES" with title "⚠️ Nutmeg 竞彩联赛丢失"'],
-                    check=False, capture_output=True, timeout=10)
-            except Exception:  # noqa: BLE001 — alert is best-effort
-                pass
+        # 即时通道:桌面推送(易逝,无头 launchd 里常看不见)。持久通道:harvest_to_db
+        # 写的 logs/sporttery_unmapped_latest.txt + health_check.sh — 互为兜底。
+        _push_unmapped_alarm(summary["alarm_bits"])
     else:
         print()
 
