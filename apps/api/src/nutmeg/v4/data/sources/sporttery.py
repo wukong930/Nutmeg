@@ -96,6 +96,12 @@ _ZH_OVERRIDES: dict[str, str] = {
     "佐加顿斯": "Djurgardens IF",
     "布鲁马波卡纳": "IF Brommapojkarna",
     "哥德堡盖斯": "Gais",
+    # 欧冠资格赛 UCL Q1 2026-07-07 — 竞彩上架 3 场,2 场因竞彩中文名≠字典键整对静默
+    # 丢弃(克拉克斯维克/萨巴赫/新圣徒已映射,余 3 队缺)。EN 值逐一对 odds_snapshots
+    # 的 UCL 拼写验证(Pinnacle 已有全部 3 场线,live diff 2026-07-07)。
+    "比森阿泰尔": "Atert Bissen",
+    "雷克雅未克维京人": "Vikingur Reykjavik",
+    "杰尔": "Gyori ETO FC",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
