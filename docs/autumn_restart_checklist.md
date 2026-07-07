@@ -30,7 +30,7 @@
 
 机器已就位(`nutmeg-handicap-triples` + `jingcai_sp` 初/终 + `clv_ledger` + `jingcai_exotic_sp`),到点喂数据即出。
 
-> ⚖️ **确认性/探索性边界以 `docs/autumn_prereg_analysis_plan.md`(预注册 v1.1)为准**:下列 ①–⑥ 里只有「逐联赛 CLV 闸门(P2)」能解锁资金;②③④ 对应预注册 S2/S1/S4(次级,不动钱);v1.1(2026-07-04)增 **S6 让球切分偏差复现 + C1 修正式冻结**(网格在 |h|=1 让胜 +2.8pp/让平 −3.1pp 切偏,让负=锚分毫不差;C1=让胜→让平挪 δ=2.8pp,**S6 过 FDR 才准进服务端**;禁再试 rho/亚盘直读;源 `docs/ah_vs_grid_three_way_backtest_2026-07-04.md` 附录);数据到达后改口径必须在预注册 Changelog 留痕且只对未读数据生效。
+> ⚖️ **确认性/探索性边界以 `docs/autumn_prereg_analysis_plan.md`(预注册 v1.1)为准**:下列 ①–⑦ 里只有「逐联赛 CLV 闸门(P2)」能解锁资金;②③④ 对应预注册 S2/S1/S4(次级,不动钱)、**⑦=探索性(禁动钱·自成 FDR·不进 P2,新发现不得塞进冻结的确认性 S 假设)**;v1.1(2026-07-04)增 **S6 让球切分偏差复现 + C1 修正式冻结**(网格在 |h|=1 让胜 +2.8pp/让平 −3.1pp 切偏,让负=锚分毫不差;C1=让胜→让平挪 δ=2.8pp,**S6 过 FDR 才准进服务端**;禁再试 rho/亚盘直读;源 `docs/ah_vs_grid_three_way_backtest_2026-07-04.md` 附录);数据到达后改口径必须在预注册 Changelog 留痕且只对未读数据生效。
 
 - [ ] **① 按联赛切软水 CLV**:13 个受训欧洲联赛**单独**量(别混 WC/杯/北欧),`jc_* × Pinnacle 收盘 × 捕获 EV`。检验竞彩 SP 在公众钱重的盘上是否真软。`parlay_soft_water_research §8`
 - [ ] **② 按「散户重仓 vs 冷门」切**(🆕 来自竞彩市场研究):竞彩按国内 handle 调线 → 偏差应在**大球队/大球/热门**。**这条可能比只按联赛切更能找到偏差。** `docs/jingcai_market_microstructure.md`
@@ -40,6 +40,11 @@
 - [ ] **④ 初盘 vs 终盘 EV**:`jc_open_*` vs `jc_*`,哪个对 Pinnacle 更划算。(最便宜的两个之一)
 - [ ] **⑤ 比分/总进球 EV**:`jingcai_exotic_sp × DC 网格 P`。**权重排序锁死:聚合/「其他」桶 ≫ 总进球 ≫ 具体比分单格**;预期比分=最厚 vig 墙。`docs/score_grid_cell_calibration.md`
 - [ ] **⑥ 数据源优化:500 档案当让球收盘 benchmark**(向前用,**≠** §3 的历史回填):一旦竞彩**让球 SP 向前**有了,500 的免费收盘级**亚洲盘口直接线**(Crown≈Pinnacle 收盘 1–4pp,回溯 2013)可直接算让球 CLV → **省 Odds API 配额 + 免 DC 反推让球**。`记忆 500-historical-odds-archive`
+- [ ] **⑦ 按「竞彩选择的 overround 带」切软水**(🆕 2026-07-07 只读实测,**探索性·禁动钱**):竞彩选场系统性挑**高效市场**(上架 Pinnacle overround **2.9%** vs 拒绝 **7.1%**,剔 WC 仍 4.0 vs 7.3,小国欧战资格赛被跳=薄到 10%)= **0/33 软水 null 的隐藏变量已量化**——能投的宇宙 by construction = 足球最高效子集,我们一直在池塘最清那半捞。秋季两件:
+  - **(a) 描述性复跑**(免动钱·免预注册):国内联赛复赛后重跑「竞彩上架 vs 我们追踪 · Pinnacle overround」,确认这条选择边界**不是 WC 档期假象**(本期 78 场拒绝里多数是 WC/小国欧战)。脚本照本会话:`jingcai_sp ↔ odds_snapshots` 按 date+归一队名 join,每场取近收盘一条快照算 overround=1/H+1/D+1/A−1。
+  - **(b) 探索性边缘切片**(⚠️ **禁动钱·自成 FDR·不进 P2**):把 ① 的逐联赛 CLV **按竞彩上架场的 overround 带**再切一刀(超流动 ~2.5% vs 半流动 ~3.7–5%),测残余软水是否**集中在半流动在校联赛带**(H:边缘只来自方向性散户偏差 / freeze-gap,**不来自市场薄**)。**这是对 P2 确认性数据的新切轴 = forking-path 风险 → 只作探索性;若出假设须另立预注册**(同 S2 候选纪律,发现期数据不得回喂确认性检验)。
+  - **🔒 已定死的反向结论(别手痒)**:**冷门 ≠ 软**。拒绝集那些薄场(overround 6–10%)= 不确定 = 方差陷阱(σ_EV 巨大,`记忆 ev-threshold-variance-sigmap`);竞彩真上架半薄场多半自己加最肥 vig = **最硬水**。**软水搜索不往冷门转**,竞彩跳过薄场 ≈ 替我们挡方差。选择 ≠ 结果 alpha(死路,别挖)。
+  - **Forward-only 守卫**(不急):竞彩几乎不越出可追踪联赛(142 场只 1 漏)→ 要守的是让 `odds_snapshots` 始终是竞彩菜单**超集**;把「竞彩菜单 vs 我们追踪」覆盖 diff 并进 `nutmeg-registry-coverage`(`记忆 health-check-guardrails`),秋季联赛轮换若竞彩上架了我们没跟的会主动报。`记忆 jingcai-selection-function-measured`
 
 > 全部用 §3 方法(本会话测量脚本)。**结构 ≠ 绝对 +EV**:缝最大的桶仍可能整个埋在 −11% 墙里;绝对能不能投仍是软水数据门。
 
