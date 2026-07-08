@@ -81,6 +81,14 @@ def test_record_idempotent(tmp_path: Path) -> None:
     assert close == (4.95, 1, 0)           # 终盘 draw odds + result + single flag
 
 
+def test_date_chunks() -> None:
+    from nutmeg.v4.cli.ingest_jingcai_history import _date_chunks
+    assert list(_date_chunks("2025-05-01", "2025-05-14", 14)) == [("2025-05-01", "2025-05-14")]
+    assert list(_date_chunks("2025-05-01", "2025-05-20", 14)) == [
+        ("2025-05-01", "2025-05-14"), ("2025-05-15", "2025-05-20")]
+    assert list(_date_chunks("2025-05-01", "2025-05-01", 14)) == [("2025-05-01", "2025-05-01")]
+
+
 def test_parse_match_list_enumeration() -> None:
     val = {"matchResult": [
         {"matchId": 2032770, "leagueId": 69, "leagueNameAbbr": "欧冠",
