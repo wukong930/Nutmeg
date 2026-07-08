@@ -7310,6 +7310,19 @@ $('#lang-toggle').addEventListener('click', () => {
 // P1#14: register service worker for PWA shell. Scoped to /api/v4/ so
 // the worker only intercepts requests within the dashboard's path.
 if ('serviceWorker' in navigator) {
+  // 2026-07-08 — auto-reload when a NEWER service worker takes control (after an
+  // _FE_VERSION bump). Keeps the freshest page+SW always paired, which fixes the
+  // iOS WebKit "first POST after an SW update fails with Load failed" transition
+  // artifact (hit on 手填盘口「应用」over Tailscale). Guards: skip the first-ever
+  // controller acquisition (a fresh install is not an update → no reload), and a
+  // one-shot flag prevents any reload loop.
+  let _swReloading = false;
+  const _swHadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_swReloading || !_swHadController) return;
+    _swReloading = true;
+    window.location.reload();
+  });
   // Defer registration so it doesn't compete with first-paint
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/api/v4/sw.js', { scope: '/api/v4/' })
