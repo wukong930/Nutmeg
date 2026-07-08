@@ -75,7 +75,8 @@ def backfill(db_path: str, begin: str, end: str, *, leagues: frozenset[str] | No
             if sleep:
                 time.sleep(sleep)
             if limit and stat["fetched"] >= limit:
-                print(f"  达到 --limit {limit},停"); return stat
+                print(f"  达到 --limit {limit},停")
+                return stat
     return stat
 
 
