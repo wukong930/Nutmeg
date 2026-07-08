@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS jingcai_sp (
     kickoff_utc  TEXT,
     market       TEXT NOT NULL DEFAULT 'had',   -- had(1X2) | hhad(让球) | ttg ...
     handicap_home INTEGER,   -- 竞彩 让球线 (DC: −1=主队让1球); NULL for 'had'
+    single_available INTEGER,   -- 竞彩 单关可投标记 (1=可单关 / 0=仅过关); PER-MARKET (pool-level)
     -- 竞彩 SP (the frozen lottery line the user is pricing against)
     jc_home      REAL, jc_draw REAL, jc_away REAL,
     -- Pinnacle raw at capture time (vig included) — 竞彩 vs Pinnacle-at-capture
@@ -69,6 +70,8 @@ def ensure_jingcai_sp_table(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE jingcai_sp ADD COLUMN {_c} REAL")
     if "opened_at" not in cols:
         conn.execute("ALTER TABLE jingcai_sp ADD COLUMN opened_at TEXT")
+    if "single_available" not in cols:   # 竞彩 单关可投标记 (per-market, forward-only)
+        conn.execute("ALTER TABLE jingcai_sp ADD COLUMN single_available INTEGER")
 
 
 def record_jingcai_sp(
@@ -91,6 +94,7 @@ def record_jingcai_sp(
     kickoff_utc: str | None = None,
     market: str = "had",
     handicap_home: int | None = None,
+    single_available: int | None = None,
     source: str = "market_mode",
     protect_manual: bool = False,
     phase: str = "close",
@@ -149,15 +153,19 @@ def record_jingcai_sp(
             conn.execute(
                 "INSERT INTO jingcai_sp (captured_at, source, fixture_id, league, "
                 "match_date, home_team, away_team, kickoff_utc, market, handicap_home, "
+                "single_available, "
                 "jc_home, jc_draw, jc_away, psc_home, psc_draw, psc_away, ou_line, "
                 "psc_over, psc_under, jc_open_home, jc_open_draw, jc_open_away, opened_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(match_date, home_team, away_team, market) DO UPDATE SET "
                 "captured_at=excluded.captured_at, source=excluded.source, "
                 "fixture_id=COALESCE(excluded.fixture_id, jingcai_sp.fixture_id), "
                 "league=COALESCE(excluded.league, jingcai_sp.league), "
                 "kickoff_utc=COALESCE(excluded.kickoff_utc, jingcai_sp.kickoff_utc), "
                 "handicap_home=excluded.handicap_home, "
+                # 单关标记:latest 覆盖 (终盘=canonical);None 再捕 (手填 re-pin 不带) 不清旧值
+                "single_available=COALESCE(excluded.single_available, "
+                "jingcai_sp.single_available), "
                 "jc_home=excluded.jc_home, jc_draw=excluded.jc_draw, jc_away=excluded.jc_away, "
                 # 体检 Wave3 (P2) — a re-capture WITHOUT a Pinnacle reading must
                 # not NULL-out the stored Pinnacle-at-capture (manual re-pin of
@@ -179,6 +187,7 @@ def record_jingcai_sp(
                     now, source, fixture_id, league, match_date, home_team,
                     away_team, kickoff_utc, market,
                     int(handicap_home) if handicap_home is not None else None,
+                    int(single_available) if single_available is not None else None,
                     float(jc_home), float(jc_draw), float(jc_away),
                     _f(psc_home), _f(psc_draw), _f(psc_away), _f(ou_line),
                     _f(psc_over), _f(psc_under),

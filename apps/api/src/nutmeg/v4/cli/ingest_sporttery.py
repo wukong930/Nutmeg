@@ -145,15 +145,17 @@ def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = Fals
             "source": "sporttery", "protect_manual": protect_manual,
             "phase": phase,  # 'open' (11:00 开售) stamps jc_open_*; 'close' = 终盘 (default)
         }
+        single = m.get("single") or {}   # {'had':0/1,'hhad':0/1} 竞彩 per-market 单关可投
         if m["had"]:
             jh, jd, ja = m["had"]
             had_w += int(record_jingcai_sp(
-                db_path, jc_home=jh, jc_draw=jd, jc_away=ja, market="had", **common))
+                db_path, jc_home=jh, jc_draw=jd, jc_away=ja, market="had",
+                single_available=single.get("had"), **common))
         if m["hhad"]:
             jh, jd, ja, line = m["hhad"]
             hhad_w += int(record_jingcai_sp(
                 db_path, jc_home=jh, jc_draw=jd, jc_away=ja, market="hhad",
-                handicap_home=line, **common))
+                handicap_home=line, single_available=single.get("hhad"), **common))
     if exotics:
         from nutmeg.v4.observation.jingcai_exotic import record_exotic_sp
         for m in mapped:

@@ -411,6 +411,25 @@ def _utc_date_and_kickoff(match_date: str | None, match_time: str | None):
     return utc.date().isoformat(), utc.isoformat()
 
 
+def _single_by_pool(g: dict) -> dict[str, int]:
+    """``{'had': 0/1, 'hhad': 0/1, ...}`` — 竞彩's per-market 单关 (single-bet)
+    availability, read from ``poolList[].bettingSingle``. AUTHORITATIVE per POOL:
+    probed 2026-07-08, the sub-match-level ``bettingSingle``/``bettingAllUp`` are
+    ALWAYS 0 (useless), while the pool-level flag really varies (same match can be
+    单关 on 胜平负 but 过关-only on 让球). Missing/garbage pool → key absent."""
+    out: dict[str, int] = {}
+    for p in (g.get("poolList") or []):
+        code = str(p.get("poolCode") or "").strip().lower()
+        bs = p.get("bettingSingle")
+        if not code or bs is None:
+            continue
+        try:
+            out[code] = int(bs)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def fetch_lottery_matches(
     *,
     pool_codes: str = "had,hhad",
@@ -460,6 +479,8 @@ def fetch_lottery_matches(
                     # 玩法扩展:比分 {结果:SP} + 总进球 {'0'..'7':SP}(pool 缺则空 dict)
                     "crs": _crs_outcomes(g.get("crs")),
                     "ttg": _ttg_outcomes(g.get("ttg")),
+                    # 竞彩 per-market 单关可投标记 {'had':0/1,'hhad':0/1}(pool 级权威)
+                    "single": _single_by_pool(g),
                 })
     except Exception:  # noqa: BLE001 — a parse failure must not raise
         log.warning("sporttery parse failed", exc_info=True)
