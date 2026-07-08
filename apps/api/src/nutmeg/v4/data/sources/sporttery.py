@@ -102,6 +102,46 @@ _ZH_OVERRIDES: dict[str, str] = {
     "比森阿泰尔": "Atert Bissen",
     "雷克雅未克维京人": "Vikingur Reykjavik",
     "杰尔": "Gyori ETO FC",
+    # ── 竞彩历史回填 name-join(2026-07-09)──— getFixedBonus/getUniformMatchResult 用
+    # 缩写中文名(巴萨/皇马…),TEAM_NAME_ZH 里没有 → 补 13 受训联赛缺口。value = AF/canonical
+    # EN(对齐 odds_snapshots)。genuinely 拿不准的(布城/里斯本/阿维SAD)故意留空 = 可见缺口
+    # 待 Phase-2 coverage-audit 校对,绝不瞎猜(错映射=静默污染 join)。`记忆
+    # jingcai-fixedbonus-history-endpoint` §H.2。
+    # 西甲
+    "巴萨": "Barcelona", "皇马": "Real Madrid", "马竞": "Atletico Madrid",
+    "比利亚雷": "Villarreal", "巴伦西亚": "Valencia", "巴利亚多": "Valladolid",
+    "拉帕马斯": "Las Palmas", "贝蒂斯": "Real Betis",
+    # 英超
+    "莱切斯特": "Leicester", "南安普敦": "Southampton", "诺丁汉": "Nottingham Forest",
+    "维拉": "Aston Villa", "布赖顿": "Brighton", "布伦特": "Brentford",
+    "西汉姆联": "West Ham", "伊普斯": "Ipswich",
+    # 英冠
+    "加的夫城": "Cardiff", "女王巡游": "QPR", "朴次茅斯": "Portsmouth",
+    "米堡": "Middlesbrough", "西布罗姆": "West Brom", "谢周三": "Sheffield Wednesday",
+    "谢菲联": "Sheffield Utd",
+    # 德甲
+    "拜仁": "Bayern München", "门兴": "Borussia Mönchengladbach", "沃夫斯堡": "VfL Wolfsburg",
+    "不来梅": "Werder Bremen", "基尔": "Holstein Kiel", "莱红牛": "RB Leipzig",
+    # 德乙
+    "沙尔克04": "FC Schalke 04", "凯泽": "1. FC Kaiserslautern", "卡斯鲁厄": "Karlsruher SC",
+    "不伦瑞克": "Eintracht Braunschweig", "达姆施塔": "SV Darmstadt 98",
+    "埃沃斯堡": "SV Elversberg", "杜塞多夫": "Fortuna Düsseldorf", "汉诺威96": "Hannover 96",
+    # 法甲/法乙
+    "巴黎圣曼": "Paris Saint Germain", "斯特拉斯": "Strasbourg", "巴黎FC": "Paris FC",
+    "圣旺红星": "RED Star FC 93", "波城FC": "PAU", "拉瓦勒": "Laval",
+    "格勒诺布": "Grenoble", "阿纳西": "Annecy",
+    # 荷甲
+    "乌德勒支": "Utrecht", "阿尔克马": "AZ Alkmaar", "鹿斯巴达": "Sparta Rotterdam",
+    "阿尔梅勒": "Almere City FC", "福图纳": "Fortuna Sittard", "赫拉克勒": "Heracles",
+    # 葡超
+    "博阿维斯": "Boavista", "吉维森特": "GIL Vicente", "埃斯托里": "Estoril",
+    "摩雷伦斯": "Moreirense", "法伦斯": "Farense", "葡国民": "Nacional",
+    "里奥阿维": "Rio Ave", "阿马多拉": "Estrela",
+    # 日职
+    "东京FC": "FC Tokyo", "京都": "Kyoto Sanga FC", "名古屋鲸": "Nagoya Grampus",
+    "新泻天鹅": "Albirex Niigata", "札幌冈萨": "Consadole Sapporo", "横滨FC": "Yokohama FC",
+    "清水鼓动": "Shimizu S-Pulse", "町田泽维": "Machida Zelvia", "神户胜利": "Vissel Kobe",
+    "鸟栖沙岩": "Sagan Tosu",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
