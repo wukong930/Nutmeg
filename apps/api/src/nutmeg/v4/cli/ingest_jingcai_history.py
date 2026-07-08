@@ -47,9 +47,21 @@ def backfill(db_path: str, begin: str, end: str, *, leagues: frozenset[str] | No
     match's odds series. Returns a summary dict. `leagues` are canonical CN abbrevs."""
     seen = _existing_ids(db_path) if skip_existing else set()
     stat = {"enumerated": 0, "in_scope": 0, "fetched": 0, "stored_rows": 0,
-            "skipped": 0, "failed": 0}
+            "skipped": 0, "failed": 0, "chunks_empty": 0}
     for cb, ce in _date_chunks(begin, end, chunk_days):
-        for m in iter_match_ids(cb, ce):
+        # 一个 14 天窗口跨全部竞彩联赛 NEVER 真空 → 枚举返回 0 = 节流/网络失败,不是真没赛。
+        # 退避重试(防「静默丢整段」——2024-25 首跑就这样丢了 09→05 段)。
+        matches = list(iter_match_ids(cb, ce))
+        tries = 0
+        while not matches and tries < 4:
+            tries += 1
+            time.sleep(min(15 * tries, 60))
+            matches = list(iter_match_ids(cb, ce))
+        if not matches:
+            stat["chunks_empty"] += 1
+            print(f"  ⚠️ {cb}→{ce} 枚举空(退避 4 次仍空)— 记为缺口,勿当已覆盖")
+            continue
+        for m in matches:
             stat["enumerated"] += 1
             if leagues is not None and canonical_league(m.get("league_cn")) not in leagues:
                 continue

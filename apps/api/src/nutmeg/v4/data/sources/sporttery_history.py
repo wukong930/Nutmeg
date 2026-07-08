@@ -53,7 +53,7 @@ def fetch_match_list(begin_date: str, end_date: str, *, league_id: str = "",
             return data.get("value") or {}
         except Exception as exc:  # noqa: BLE001 — fail-soft; never raise to caller
             if attempt < retries - 1:
-                time.sleep(1.0 + attempt)
+                time.sleep(min(3 * 2 ** attempt, 45))  # 指数退避,riding out 节流
                 continue
             log.warning("getUniformMatchResult failed (%s..%s): %s",
                         begin_date, end_date, exc)
@@ -123,7 +123,7 @@ def fetch_fixed_bonus(match_id: int | str, *, timeout: float = 15.0,
             return val
         except Exception as exc:  # noqa: BLE001 — fail-soft; never raise to caller
             if attempt < retries - 1:
-                time.sleep(1.0 + attempt)
+                time.sleep(min(3 * 2 ** attempt, 45))  # 指数退避,riding out 节流
                 continue
             log.warning("getFixedBonus fetch failed (mid=%s): %s", match_id, exc)
             return None
