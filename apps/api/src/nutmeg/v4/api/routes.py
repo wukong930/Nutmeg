@@ -378,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v84-fe-cupman-persist"
+_FE_VERSION = "nutmeg-v85-fe-sw-skip-nonget"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -433,6 +433,14 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // 2026-07-08 — Only GET is cacheable / safe to intercept. Non-GET
+  // (POST/PUT/… — e.g. the 手填盘口 /recommend/market-reprice, 记一笔 writes)
+  // MUST bypass the SW: re-fetching a Request that carries a body is fraught,
+  // and the network-first catch below falls to caches.match — which is
+  // undefined for a POST — so respondWith(undefined) throws
+  // "FetchEvent.respondWith received an error: Returned response is null"
+  // (hit on phone / Tailscale where the re-fetch is likelier to fail).
+  if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   // Cache-first for the truly-static shell (manifest + icon).
   if (STATIC_SHELL.some((u) => url.pathname === u || url.pathname.endsWith(u))) {
@@ -446,21 +454,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   // Network-first for the dashboard: always fresh online; cache it so an
-  // offline launch still works.
+  // offline launch still works. A never-cached miss → Response.error() (a real
+  // failed fetch the page can handle), NEVER undefined.
   if (url.pathname === '/api/v4/dashboard' || url.pathname.endsWith('/api/v4/dashboard')) {
     event.respondWith(
       fetch(event.request).then((resp) => {
         const respClone = resp.clone();
         caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, respClone));
         return resp;
-      }).catch(() => caches.match(event.request))
+      }).catch(() => caches.match(event.request).then((c) => c || Response.error()))
     );
     return;
   }
-  // Network-first, no cache, for everything else (API data must be fresh;
-  // offline = fail, intentional).
+  // Network-first, no cache, for everything else (GET API data must be fresh).
+  // catch → cache fallback, but a never-cached GET returns undefined, so coerce
+  // to Response.error() — respondWith must never receive null.
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request).catch(() => caches.match(event.request).then((c) => c || Response.error()))
   );
 });
 """.lstrip().replace("__FE_VERSION__", _FE_VERSION)
