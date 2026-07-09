@@ -5,7 +5,11 @@ C1 仅在 −1 线把 ``_C1_DELTA`` 从让胜(DC 高估)守恒地挪给让平(DC
 """
 import pytest
 
-from nutmeg.v4.model.market_handicap import _C1_DELTA, implied_handicap_lines
+from nutmeg.v4.model.market_handicap import (
+    _C1_DELTA,
+    _C1_DELTA_P1,
+    implied_handicap_lines,
+)
 
 
 def _by_line(rows):
@@ -23,13 +27,24 @@ def test_c1_shifts_line_minus1_conserving():
     assert sum(c) == pytest.approx(sum(r))           # 质量守恒
 
 
+def test_c1_shifts_line_plus1_mirror_conserving():
+    args = (0.20, 0.25, 0.55)                      # 客热;+1 线让负 ≈0.32 > δ(不 clamp)
+    raw = _by_line(implied_handicap_lines(*args))
+    c1 = _by_line(implied_handicap_lines(*args, c1=True))
+    r, c = raw[1], c1[1]
+    assert c[2] == pytest.approx(r[2] - _C1_DELTA_P1)   # 让负 −δ(热门在客,DC 高估)
+    assert c[1] == pytest.approx(r[1] + _C1_DELTA_P1)   # 让平 +δ
+    assert c[0] == pytest.approx(r[0])                  # 让胜 不动
+    assert sum(c) == pytest.approx(sum(r))              # 质量守恒
+
+
 def test_c1_leaves_other_lines_and_default_untouched():
     args = (0.55, 0.25, 0.20)
     raw = _by_line(implied_handicap_lines(*args))
     c1 = _by_line(implied_handicap_lines(*args, c1=True))
     for ln in raw:
-        if ln != -1:
-            assert c1[ln] == pytest.approx(raw[ln])  # 只 −1 变
+        if ln not in (-1, 1):                          # 只 ±1 变(−1 让胜 / +1 让负)
+            assert c1[ln] == pytest.approx(raw[ln])
     assert _by_line(implied_handicap_lines(*args)) == raw  # 默认 c1=False = raw(不动 eval)
 
 

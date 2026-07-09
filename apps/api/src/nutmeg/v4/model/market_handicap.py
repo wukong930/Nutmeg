@@ -170,11 +170,16 @@ def fit_lambdas(
     return float(res.x[0]), float(res.x[1])
 
 
-# C1 让球修正 — DC 网格系统性高估「热门净胜≥2」(让胜, −1 线),低估「净胜恰好1」
-# (让平)。仅 −1 线(热门在主队)已验:全季 500 Crown 3382 场 δ=DC−市场让胜 **+1.86pp**
-# (t=31.5)、时序样本外 3-way log-loss 配对 t=**+3.56**。+1 线(热门在客)是镜像偏
-# (让负 over),另立、**未部署**。防「假软让胜」。docs/autumn_prereg_analysis_plan.md §H。
-_C1_DELTA = 0.019
+# C1 让球修正 — DC 网格系统性高估「热门方净胜≥2 的爆盘尾」,低估「净胜恰好1」(让平)。
+# 按线符号镜像(全季 500 Crown 低噪配对):
+#   −1 线(热门在主):让胜 over δ=DC−市场 **+1.86pp**(t=31.5)→ 让胜−δ / 让平+δ;
+#                     样本外 3-way log-loss 配对 t=**+3.56**(强)。
+#   +1 线(热门在客):让负 over **+1.27pp**(t=20.2,与 −1 同量级)→ 让负−δ / 让平+δ;
+#                     样本外 log-loss t=**+1.89**(方向对但弱=功率受限,log-loss 对小 P 位
+#                     移钝 + N 半;凭底层偏差 t=20 + 对称镜像原理部署,如实标注弱确认)。
+# 让胜/让负爆盘尾以外不动。防「假软(让胜/让负)」。docs/autumn_prereg_analysis_plan.md §H(v1.5)。
+_C1_DELTA = 0.019       # −1 线:让胜 → 让平
+_C1_DELTA_P1 = 0.013    # +1 线:让负 → 让平(镜像)
 
 
 def implied_handicap_lines(
@@ -208,9 +213,12 @@ def implied_handicap_lines(
     out: list[tuple[int, float, float, float]] = []
     for line in lines:
         ph, pd_, pa = grid_to_handicap_1x2(grid, handicap_home=int(line))
-        if c1 and int(line) == -1:
-            shift = min(_C1_DELTA, ph)       # 守恒 + 不越界(ph 罕见 <δ 时不为负)
+        if c1 and int(line) == -1:            # 热门在主:让胜(DC 高估)→ 让平
+            shift = min(_C1_DELTA, ph)         # 守恒 + 不越界(ph 罕见 <δ 时不为负)
             ph, pd_ = ph - shift, pd_ + shift
+        elif c1 and int(line) == 1:           # 热门在客:让负(DC 高估)→ 让平(镜像)
+            shift = min(_C1_DELTA_P1, pa)
+            pa, pd_ = pa - shift, pd_ + shift
         out.append((int(line), float(ph), float(pd_), float(pa)))
     return out
 
