@@ -377,6 +377,16 @@ _NORM_ALIAS: dict[str, str] = {
     # is a legal-form token, so the club-core strip can't bridge them.
     "jeonbukmotors": "jeonbukhyundaimotors",   # AF Jeonbuk Motors ↔ OA Jeonbuk Hyundai Motors
     "gimcheonsangmufc": "sangjusangmufc",      # AF Gimcheon Sangmu FC ↔ OA Sangju Sangmu FC (旧名)
+    # EPL — our canonical / 竞彩 zh_to_canonical uses the SHORT club name; the Odds
+    # API keeps the FULL official name. Measured §H 竞彩↔Pinnacle join miss
+    # 2026-07-09 (14/57 → these 7 were the entire gap). our short → OA long.
+    "wolves": "wolverhamptonwanderers",        # Wolves ↔ Wolverhampton Wanderers
+    "tottenham": "tottenhamhotspur",           # Tottenham ↔ Tottenham Hotspur
+    "leicester": "leicestercity",              # Leicester ↔ Leicester City
+    "ipswich": "ipswichtown",                  # Ipswich ↔ Ipswich Town
+    "newcastle": "newcastleunited",            # Newcastle ↔ Newcastle United
+    "westham": "westhamunited",                # West Ham ↔ West Ham United
+    "brighton": "brightonandhovealbion",       # Brighton ↔ Brighton and Hove Albion
 }
 
 
