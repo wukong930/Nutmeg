@@ -170,6 +170,13 @@ def fit_lambdas(
     return float(res.x[0]), float(res.x[1])
 
 
+# C1 让球修正 — DC 网格系统性高估「热门净胜≥2」(让胜, −1 线),低估「净胜恰好1」
+# (让平)。仅 −1 线(热门在主队)已验:全季 500 Crown 3382 场 δ=DC−市场让胜 **+1.86pp**
+# (t=31.5)、时序样本外 3-way log-loss 配对 t=**+3.56**。+1 线(热门在客)是镜像偏
+# (让负 over),另立、**未部署**。防「假软让胜」。docs/autumn_prereg_analysis_plan.md §H。
+_C1_DELTA = 0.019
+
+
 def implied_handicap_lines(
     p_home: float,
     p_draw: float,
@@ -180,6 +187,7 @@ def implied_handicap_lines(
     ou_line: float = 2.5,
     rho: float = DEFAULT_RHO,
     max_goals: int = DEFAULT_MAX_GOALS,
+    c1: bool = False,
 ) -> list[tuple[int, float, float, float]]:
     """Fit the goal grid once, then return ``(line, P让胜, P让平, P让负)`` for
     each integer handicap line.
@@ -187,6 +195,10 @@ def implied_handicap_lines(
     ``line`` is ``handicap_home`` in DC convention (added to home's score):
     −1 = 主队让1球, +1 = 主队受让1球. The triple is
     (P(home covers), P(push), P(away covers)).
+
+    ``c1=True`` applies the **C1 让球修正** on the −1 line ONLY (serving path;
+    eval/measurement keeps raw): move ``_C1_DELTA`` from 让胜 (DC-inflated) to
+    让平 (DC-deflated), 让负 unchanged. Mass-conserving; validated OOS (t=+3.56).
     """
     lh, la = fit_lambdas(
         p_home, p_draw, p_away, p_over,
@@ -196,6 +208,9 @@ def implied_handicap_lines(
     out: list[tuple[int, float, float, float]] = []
     for line in lines:
         ph, pd_, pa = grid_to_handicap_1x2(grid, handicap_home=int(line))
+        if c1 and int(line) == -1:
+            shift = min(_C1_DELTA, ph)       # 守恒 + 不越界(ph 罕见 <δ 时不为负)
+            ph, pd_ = ph - shift, pd_ + shift
         out.append((int(line), float(ph), float(pd_), float(pa)))
     return out
 
