@@ -5070,7 +5070,14 @@ async function refreshJingcai() {
   try {
     const r = await fetch(API + '/observation/sporttery-refresh', { method: 'POST' });
     const j = await r.json();
-    const msg = j.ok ? `✅ ${j.matches} · 胜平负 ${j.had} · 让球 ${j.hhad}` : `⚠️ ${j.reason || '刷新失败'}`;
+    // 2026-07-09 — name the dropped matches, not just count them: an unmapped
+    // zh team name silently skips the WHOLE match (dictionary gap), and "SP 对
+    // 不上官网" was the only symptom. Now the gap is visible in 3 seconds.
+    const un = (j.unmapped_teams || []);
+    const unTxt = un.length
+      ? ` · ⚠️ 未映射${un.length}场: ${un.map(u => `${u.home_cn || '?'}vs${u.away_cn || '?'}`).join('、')}(SP 不更新,需补词典)`
+      : '';
+    const msg = j.ok ? `✅ ${j.matches} · 胜平负 ${j.had} · 让球 ${j.hhad}${unTxt}` : `⚠️ ${j.reason || '刷新失败'}`;
     sts.forEach(s => { s.textContent = msg; });
   } catch (e) {
     sts.forEach(s => { s.textContent = '⚠️ 竞彩刷新失败(网络)'; });

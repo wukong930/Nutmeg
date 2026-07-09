@@ -84,6 +84,32 @@ def test_harvest_to_db_counts(tmp_path):
     assert r["had"] == 1 and r["hhad"] == 1
 
 
+def test_refresh_response_carries_unmapped_teams(tmp_path):
+    """🎯 端点 schema 必须透传 unmapped_teams(WHO got dropped)。2026-07-09:字段
+    在 harvest 返回里一直有,但 SportteryRefreshResponse 没声明 → pydantic 静默吞掉,
+    UI 只见 unmapped=2 个数字,owner 只能从「SP 对不上官网」倒推词典缺口(UEL Q1)。"""
+    from nutmeg.v4.api.schemas import SportteryRefreshResponse
+    from nutmeg.v4.cli.ingest_sporttery import harvest_to_db
+    db = str(tmp_path / "obs.db")
+    matches = [
+        {"home_en": None, "away_en": "Derry City", "home_cn": "索菲亚中央陆军",
+         "away_cn": "德里城", "league_cn": "欧罗巴", "match_date": "2026-07-09",
+         "had": (1.14, 5.95, 12.0), "hhad": None},
+    ]
+    resp = SportteryRefreshResponse(ok=True, **harvest_to_db(db, matches=matches))
+    assert resp.unmapped == 1
+    assert resp.unmapped_teams == [
+        {"home_cn": "索菲亚中央陆军", "away_cn": "德里城", "league_cn": "欧罗巴"}]
+
+
+def test_uel_qualifier_zh_override():
+    """欧联资格赛 UEL Q1 (2026-07-09) — 主队中文名缺字典 → 2 场整场静默丢弃,面板
+    SP 落在数小时前的 market_mode 旧行,与竞彩官网对不上(owner 实报)。EN 值 =
+    库内 AF gather 名(jingcai_sp market_mode 行同名)。"""
+    assert sporttery.zh_to_canonical("索菲亚中央陆军") == "CSKA Sofia"
+    assert sporttery.zh_to_canonical("斯普利特海杜克") == "HNK Hajduk Split"
+
+
 def test_finnish_zh_override():
     """芬超 (market-mode league) — 竞彩's descriptive 中文 maps to the live cup-market
     gather name so the 竞彩 SP pre-fills (was 4/6 matches blank: 体检 2026-06-13)."""

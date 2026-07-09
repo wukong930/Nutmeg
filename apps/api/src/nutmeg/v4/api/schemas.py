@@ -485,6 +485,11 @@ class SportteryRefreshResponse(BaseModel):
     unmapped: int = 0
     had: int = 0
     hhad: int = 0
+    # 2026-07-09 — WHO got dropped, not just how many. harvest_to_db already
+    # returns [{home_cn, away_cn, league_cn}] (sink report had it); the schema
+    # silently swallowed it, so the UI could only show a count and the owner had
+    # to reverse-engineer "SP 对不上" back to a dictionary gap (UEL Q1 case).
+    unmapped_teams: list[dict] = []
 
 
 class JingcaiRecommendRequest(BaseModel):
