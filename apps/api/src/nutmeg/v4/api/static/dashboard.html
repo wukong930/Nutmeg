@@ -6400,7 +6400,8 @@ _startTodayPolling();
 
 // V12 W8c — 🧮 手动反推计算器. The market-reverse fit (λ from 1X2 + O/U) is
 // server-side scipy, so 让球 must POST to /recommend/market-handicap (now
-// ou_line-aware). 不让球 1X2 is a pure de-vig → computed client-side.
+// ou_line-aware). 不让球 1X2 fair P also uses the SERVER's WPO de-vig
+// (data.p_1x2); client falls back to basic-norm only if an old server omits it.
 // V12 W8d — shared body builder so 反推计算 and 📌 记一笔 read the same inputs.
 function _mrevBuildBody(record) {
   const gv = (id) => (document.getElementById(id).value || '').trim();
