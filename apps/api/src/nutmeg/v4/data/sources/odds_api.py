@@ -387,6 +387,22 @@ _NORM_ALIAS: dict[str, str] = {
     "newcastle": "newcastleunited",            # Newcastle ↔ Newcastle United
     "westham": "westhamunited",                # West Ham ↔ West Ham United
     "brighton": "brightonandhovealbion",       # Brighton ↔ Brighton and Hove Albion
+    # Eredivisie (NED) — 竞彩 canonical vs OA FC/city-suffix form. Measured §H
+    # 竞彩↔Pinnacle join miss 2026-07-09. our → OA.
+    "almerecityfc": "almerecity",              # Almere City FC ↔ Almere City
+    "twente": "fctwenteenschede",              # Twente ↔ FC Twente Enschede
+    "utrecht": "fcutrecht",                     # Utrecht ↔ FC Utrecht
+    "peczwolle": "fczwolle",                    # PEC Zwolle ↔ FC Zwolle
+    "heracles": "heraclesalmelo",              # Heracles ↔ Heracles Almelo
+    # Primeira Liga (PRT) — 竞彩 short vs OA long/legal-form. (Sporting/AVS 竞彩
+    # 无 canonical → 不别名,留 join 缺.)  our → OA.
+    "boavista": "boavistaporto",               # Boavista ↔ Boavista Porto
+    "scbraga": "braga",                        # SC Braga ↔ Braga
+    "estrela": "cfestrela",                     # Estrela ↔ CF Estrela
+    "moreirense": "moreirensefc",              # Moreirense ↔ Moreirense FC
+    "rioave": "rioavefc",                       # Rio Ave ↔ Rio Ave FC
+    "farense": "scfarense",                     # Farense ↔ SC Farense
+    "guimaraes": "vitoriasc",                   # Guimarães ↔ Vitória SC
 }
 
 
