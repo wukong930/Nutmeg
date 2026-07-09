@@ -47,9 +47,12 @@ def _floor30(iso: str) -> dt.datetime:
     return d.replace(minute=(d.minute // 30) * 30, second=0, microsecond=0)
 
 
-def _snap_at(sport: str, iso: str) -> tuple[list[dict], str | None, int]:
-    """(matches, snapshot_ts, cost). matches only where commence >= snapshot_ts (pre-KO)."""
-    snap = fetch_historical(sport, iso, markets="h2h,totals")
+def _snap_at(sport: str, iso: str,
+             markets: str = "h2h,totals") -> tuple[list[dict], str | None, int]:
+    """(matches, snapshot_ts, cost). matches only where commence >= snapshot_ts (pre-KO).
+    ``markets='h2h'`` halves the credit cost (10 vs 20) for 1X2-only confirmatory runs
+    — drops O/U, so HHAD DC reconstruction is unavailable, but HAD CLV is unaffected."""
+    snap = fetch_historical(sport, iso, markets=markets)
     if not snap:
         return [], None, 0
     ts = snap.get("timestamp")
@@ -67,6 +70,7 @@ def main() -> int:
     limit_days = 0
     if "--limit-days" in sys.argv:
         limit_days = int(sys.argv[sys.argv.index("--limit-days") + 1])
+    markets = "h2h" if "--h2h-only" in sys.argv else "h2h,totals"
 
     days = _match_days(league_cn, begin, end)
     if limit_days:
@@ -78,7 +82,7 @@ def main() -> int:
     spent = stored = 0
     for d in days:
         # pass1: 当日 T00:00 → 各场 kickoff(commence_time,含未来 ~2 周)
-        rows0, ts0, c0 = _snap_at(sport, f"{d}T00:00:00Z")
+        rows0, ts0, c0 = _snap_at(sport, f"{d}T00:00:00Z", markets)
         spent += c0
         buckets = sorted({_floor30(r["commence_time"]) for r in rows0 if r.get("commence_time")})
         snaps = [(b - dt.timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ") for b in buckets]
@@ -92,7 +96,7 @@ def main() -> int:
         # pass2: 逐「未抓过」的桶 (桶起−5min) 取紧收盘
         for snap in new_snaps:
             seen.add(snap)
-            rows, ts, c = _snap_at(sport, snap)
+            rows, ts, c = _snap_at(sport, snap, markets)
             spent += c
             for r in rows:
                 record_close(DB, r, snapshot_utc=ts or "")
