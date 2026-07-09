@@ -102,6 +102,12 @@ _ZH_OVERRIDES: dict[str, str] = {
     "比森阿泰尔": "Atert Bissen",
     "雷克雅未克维京人": "Vikingur Reykjavik",
     "杰尔": "Gyori ETO FC",
+    # 欧联资格赛 UEL Q1 2026-07-09 — 竞彩上架 2 场,主队中文名≠字典键 → 整场静默丢弃
+    # (客队 德里城/日利纳 已映射):🎯 刷新 unmapped=2,jingcai_sp 只剩数小时前的
+    # market_mode 旧行,面板 SP 与官网对不上(owner 实报)。EN 值 = 库内 AF gather 名
+    # (jingcai_sp market_mode 行 + cup-market 端点同名,live diff 2026-07-09)。
+    "索菲亚中央陆军": "CSKA Sofia",
+    "斯普利特海杜克": "HNK Hajduk Split",
     # ── 竞彩历史回填 name-join(2026-07-09)──— getFixedBonus/getUniformMatchResult 用
     # 缩写中文名(巴萨/皇马…),TEAM_NAME_ZH 里没有 → 补 13 受训联赛缺口。value = AF/canonical
     # EN(对齐 odds_snapshots)。genuinely 拿不准的(布城/里斯本/阿维SAD)故意留空 = 可见缺口
