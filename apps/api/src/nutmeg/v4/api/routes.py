@@ -1771,6 +1771,12 @@ def predictions_sp_calc(
     today = _utc_today()   # UTC anchor (local date drops the late-night EU slate)
     all_preds: list[SinglePrediction] = []
     pending: list[PendingFixture] = []
+    # 体检 Wave1 → 2026-07-09 hotfix: the OA feed is DATE-INDEPENDENT, so one 🔄
+    # should pull each sport at most ONCE. The old `d == 0` gate broke the
+    # bettable filter (a league whose 竞彩 match is tomorrow never refreshed);
+    # now _gather_rows dedups per sport via this shared set, firing on the
+    # FIRST day the league has a (bettable) fixture.
+    _oa_refreshed: set[str] = set()
     for d in range(days):
         on_date = today + _dt.timedelta(days=d)
         try:
@@ -1786,13 +1792,10 @@ def predictions_sp_calc(
                 snapshot_db=_observation_db_path(),
                 snapshot_source="sp_calc",
                 use_odds_api=_odds_api_available(),
-                # 体检 Wave1 — the OA feed is DATE-INDEPENDENT: force-refreshing it
-                # once per day-iteration re-pulled the same payload ×days
-                # (~2 credits × leagues × days per 🔄 click, 6/7 pure waste).
-                # Refresh on the first day only; later days hit the fresh cache.
-                odds_api_refresh=refresh_odds and d == 0,
+                odds_api_refresh=refresh_odds,
                 # 2026-07-09 — only spend that refresh on 竞彩-bettable leagues/fixtures.
                 bettable_refresh_only=bettable_only,
+                oa_refreshed=_oa_refreshed,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2175,6 +2178,8 @@ def predictions_cup_market(
     today = _utc_today()   # UTC anchor (local date drops the late-night EU slate)
     preds: list[SinglePrediction] = []
     pending: list[PendingFixture] = []
+    # 2026-07-09 hotfix — same one-pull-per-sport dedup as sp-calc (see there).
+    _oa_refreshed: set[str] = set()
     for d in range(days):
         on_date = today + _dt.timedelta(days=d)
         try:
@@ -2191,11 +2196,10 @@ def predictions_cup_market(
                 snapshot_db=_observation_db_path(),
                 snapshot_source="cup_market",
                 use_odds_api=_odds_api_available(),
-                # 体检 Wave1 — same date-independent-feed rule as sp-calc above:
-                # force-refresh OA once (first day), later days reuse the cache.
-                odds_api_refresh=refresh_odds and d == 0,
+                odds_api_refresh=refresh_odds,
                 # 2026-07-09 — refresh only 竞彩-bettable leagues/fixtures.
                 bettable_refresh_only=bettable_only,
+                oa_refreshed=_oa_refreshed,
             )
         except Exception:  # noqa: BLE001
             import logging

@@ -242,6 +242,36 @@ def _fixture_is_bettable(fixture: dict, bettable_pairs: set[tuple[str, str]] | N
     return (h, a) in bettable_pairs
 
 
+def _oa_refresh_decision(
+    odds_api_refresh: bool,
+    bettable_pairs: set[tuple[str, str]] | None,
+    fixtures: list[dict],
+    sport_key: str,
+    oa_refreshed: set[str] | None,
+) -> bool:
+    """Should THIS league force a live Odds API pull (vs serve cache)?
+
+    2026-07-09 hotfix — the old per-endpoint ``refresh_odds and d == 0`` gate
+    interacted badly with the per-day bettable filter: a league whose 竞彩-listed
+    match is on d≥1 (e.g. 芬超 VPS-SJK tomorrow, no Finnish fixture today) NEVER
+    fired its refresh — day 0 saw no bettable fixture, day 1 had the gate off.
+    New rule: one 🔄 = at most ONE forced pull per sport_key (``oa_refreshed``
+    dedup set threaded through the endpoint's day loop), fired on the FIRST day
+    the league has a (bettable, when filtering) fixture. The OA feed is
+    date-independent, so later days reuse that fresh cache — Wave1 economics kept."""
+    if not odds_api_refresh:
+        return False
+    if bettable_pairs is not None and not any(
+        _fixture_is_bettable(f, bettable_pairs) for f in fixtures
+    ):
+        return False
+    if oa_refreshed is not None:
+        if sport_key in oa_refreshed:
+            return False
+        oa_refreshed.add(sport_key)
+    return True
+
+
 def _gather_rows(
     leagues: list[str],
     on_date: dt.date,
@@ -258,6 +288,7 @@ def _gather_rows(
     use_odds_api: bool = False,
     odds_api_refresh: bool = False,
     bettable_refresh_only: bool = False,
+    oa_refreshed: set[str] | None = None,
 ) -> tuple[list[dict], int, int]:
     """Walk leagues × today's fixtures × /odds and produce CSV-ready rows.
 
@@ -335,9 +366,9 @@ def _gather_rows(
             if sport_key:
                 # bettable filter — spend the (scarce) Odds API credit on this
                 # league ONLY if it has a 竞彩-bettable fixture; else serve cache.
-                league_oa_refresh = odds_api_refresh and (
-                    bettable_pairs is None
-                    or any(_fixture_is_bettable(fx, bettable_pairs) for fx in fixtures)
+                # One 🔄 = one pull per sport (oa_refreshed dedup, see decision fn).
+                league_oa_refresh = _oa_refresh_decision(
+                    odds_api_refresh, bettable_pairs, fixtures, sport_key, oa_refreshed,
                 )
                 try:
                     oa_lookup = odds_api.fetch_pinnacle_lookup(

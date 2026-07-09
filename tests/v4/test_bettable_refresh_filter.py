@@ -10,7 +10,11 @@ wiring in ``_gather_rows`` reads ``_fixture_is_bettable`` exactly as tested here
 """
 from __future__ import annotations
 
-from nutmeg.v4.cli.ingest_odds import _fixture_is_bettable, _load_bettable_pairs
+from nutmeg.v4.cli.ingest_odds import (
+    _fixture_is_bettable,
+    _load_bettable_pairs,
+    _oa_refresh_decision,
+)
 from nutmeg.v4.data.sources.odds_api import _norm_team
 from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
 
@@ -63,6 +67,38 @@ def test_load_pairs_from_had_sp(tmp_path):
     assert pairs == {(_norm_team("Arsenal"), _norm_team("Chelsea"))}
     assert _fixture_is_bettable(_fx("Arsenal", "Chelsea"), pairs) is True
     assert _fixture_is_bettable(_fx("Everton", "Fulham"), pairs) is False
+
+
+def test_oa_refresh_fires_on_first_bettable_day_not_day0():
+    # 2026-07-09 回归复现(芬超 VPS-SJK):可投注场在「明天」(d=1),今天(d=0)
+    # 该联赛无可投注 → 旧的 `d == 0` 门永远不刷。新逻辑:d=0 判 False(该日无
+    # 可投注),d=1 判 True(首次出现可投注)→ 修复。
+    pairs = {(_norm_team("VPS"), _norm_team("SJK"))}
+    refreshed: set[str] = set()
+    d0_fixtures = []                                   # 今天芬超无赛程
+    d1_fixtures = [_fx("VPS", "SJK")]                  # 明天 VPS-SJK 可投注
+    assert _oa_refresh_decision(True, pairs, d0_fixtures, "soccer_fin", refreshed) is False
+    assert _oa_refresh_decision(True, pairs, d1_fixtures, "soccer_fin", refreshed) is True
+    assert refreshed == {"soccer_fin"}
+
+
+def test_oa_refresh_dedups_one_pull_per_sport():
+    # 同一 sport 多天都有可投注 → 只第一次强刷(Wave1 经济性保留)。
+    pairs = {(_norm_team("France"), _norm_team("Morocco")),
+             (_norm_team("Spain"), _norm_team("Belgium"))}
+    refreshed: set[str] = set()
+    d0 = [_fx("France", "Morocco")]
+    d1 = [_fx("Spain", "Belgium")]
+    assert _oa_refresh_decision(True, pairs, d0, "soccer_wc", refreshed) is True
+    assert _oa_refresh_decision(True, pairs, d1, "soccer_wc", refreshed) is False
+
+
+def test_oa_refresh_filter_off_still_one_pull():
+    # 全刷(bettable_pairs=None):d=0 刷、d≥1 走去重集 → 与旧 d==0 行为等价。
+    refreshed: set[str] = set()
+    assert _oa_refresh_decision(True, None, [], "soccer_epl", refreshed) is True
+    assert _oa_refresh_decision(True, None, [_fx("A", "B")], "soccer_epl", refreshed) is False
+    assert _oa_refresh_decision(False, None, [], "soccer_x", set()) is False
 
 
 def test_load_pairs_no_had_rows_is_empty_set_not_none(tmp_path):
