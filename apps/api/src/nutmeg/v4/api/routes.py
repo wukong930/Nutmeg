@@ -378,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v87-fe-sw-autoreload"
+_FE_VERSION = "nutmeg-v88-fe-sw-autoreload"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1745,7 +1745,9 @@ def _utc_today():
     response_model=SpCalcResponse,
     summary="V12 W3 — N-day fixtures + model P for the 竞彩 SP calculator",
 )
-def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResponse:
+def predictions_sp_calc(
+    days: int = 3, refresh_odds: bool = False, bettable_only: bool = True,
+) -> SpCalcResponse:
     import datetime as _dt
     from pathlib import Path as _Path
 
@@ -1789,6 +1791,8 @@ def predictions_sp_calc(days: int = 3, refresh_odds: bool = False) -> SpCalcResp
                 # (~2 credits × leagues × days per 🔄 click, 6/7 pure waste).
                 # Refresh on the first day only; later days hit the fresh cache.
                 odds_api_refresh=refresh_odds and d == 0,
+                # 2026-07-09 — only spend that refresh on 竞彩-bettable leagues/fixtures.
+                bettable_refresh_only=bettable_only,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2142,7 +2146,9 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
     response_model=SpCalcResponse,
     summary="V12 W7 — Tier-1 cup fixtures priced off Pinnacle de-vig (市场模式)",
 )
-def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcResponse:
+def predictions_cup_market(
+    days: int = 3, refresh_odds: bool = False, bettable_only: bool = True,
+) -> SpCalcResponse:
     """市场模式: Tier-1 cups (UCL/UEL/UECL + big domestic cups + WC/EURO) over an
     N-day window, each carrying Pinnacle de-vig fair 1X2 as its probability — NO
     model (it's OOD for cups). Fixtures with no Pinnacle line yet → 待开盘.
@@ -2188,6 +2194,8 @@ def predictions_cup_market(days: int = 3, refresh_odds: bool = False) -> SpCalcR
                 # 体检 Wave1 — same date-independent-feed rule as sp-calc above:
                 # force-refresh OA once (first day), later days reuse the cache.
                 odds_api_refresh=refresh_odds and d == 0,
+                # 2026-07-09 — refresh only 竞彩-bettable leagues/fixtures.
+                bettable_refresh_only=bettable_only,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2490,6 +2498,8 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             snapshot_source="today_rec",
             use_odds_api=_odds_api_available(),
             odds_api_refresh=req.refresh_odds,
+            # 2026-07-09 — refresh only 竞彩-bettable leagues/fixtures (§quota).
+            bettable_refresh_only=req.bettable_only,
         )
     except Exception as exc:  # noqa: BLE001
         # API-Football errors (rate limit, network, missing key) → return

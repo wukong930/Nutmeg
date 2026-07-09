@@ -208,6 +208,40 @@ def _fetch_odds_safe(fid: int, cache_dir, refresh: bool):
         return ("err", exc)
 
 
+def _load_bettable_pairs(db) -> set[tuple[str, str]] | None:
+    """竞彩可投注队名对 ``{(_norm_team(home), _norm_team(away))}`` from the jingcai_sp
+    HAD SP on file — the exact set the 💴 竞彩可投注 card zone shows.
+
+    Returns ``None`` ONLY when no observation DB is configured (``db`` falsy) → the
+    filter can't apply, so the caller refreshes everything (don't break 🔄 when
+    there's no DB to consult). Otherwise a set: possibly EMPTY when nothing is
+    竞彩-bettable yet — ``fetch_sp_lookup`` already swallows a DB read error into an
+    empty result, so an empty set means "skip every refresh" (0 quota; the 全刷
+    escape hatch + the empty-list hint are the recovery, matching the owner's
+    「空集→不刷+提示」 choice). Keyed by the SAME ``_norm_team`` the board↔jingcai_sp
+    join uses, so a fixture ``(norm_home, norm_away)`` hits iff the card shows its SP."""
+    if not db:
+        return None
+    from nutmeg.v4.data.sources.odds_api import _norm_team
+    from nutmeg.v4.observation.jingcai_sp import fetch_sp_lookup
+    had = fetch_sp_lookup(db, market="had")   # best-effort: {} on any DB error
+    return {(_norm_team(h), _norm_team(a)) for (_d, h, a) in had}
+
+
+def _fixture_is_bettable(fixture: dict, bettable_pairs: set[tuple[str, str]] | None) -> bool:
+    """True when the filter is off (``bettable_pairs is None``) OR the fixture's
+    teams are on the 竞彩 bettable list. Date-agnostic team-pair match — the same
+    two teams don't meet twice inside a 3-day window, so dropping the date sidesteps
+    the Beijing/UTC match-date skew while staying unambiguous."""
+    if bettable_pairs is None:
+        return True
+    from nutmeg.v4.data.sources.odds_api import _norm_team
+    teams = fixture.get("teams") or {}
+    h = _norm_team((teams.get("home") or {}).get("name") or "")
+    a = _norm_team((teams.get("away") or {}).get("name") or "")
+    return (h, a) in bettable_pairs
+
+
 def _gather_rows(
     leagues: list[str],
     on_date: dt.date,
@@ -223,6 +257,7 @@ def _gather_rows(
     snapshot_source: str = "gather",
     use_odds_api: bool = False,
     odds_api_refresh: bool = False,
+    bettable_refresh_only: bool = False,
 ) -> tuple[list[dict], int, int]:
     """Walk leagues × today's fixtures × /odds and produce CSV-ready rows.
 
@@ -259,6 +294,15 @@ def _gather_rows(
     n_snapshots = 0
     n_overlay = 0
 
+    # 竞彩可投注刷新过滤(2026-07-09):a manual 🔄 spends API quota ONLY on the
+    # matches 竞彩 lists as bettable — skip whole non-竞彩 leagues (Odds API credit)
+    # AND non-竞彩 fixtures (API-Football /odds). None = filter off (refresh all,
+    # legacy). Empty set = nothing bettable yet → every refresh is skipped. Only
+    # armed on an actual refresh so a plain load is untouched.
+    bettable_pairs: set[tuple[str, str]] | None = None
+    if bettable_refresh_only and (refresh_odds or odds_api_refresh):
+        bettable_pairs = _load_bettable_pairs(snapshot_db)
+
     if now_utc is None:
         now_utc = dt.datetime.now(dt.UTC)
     elif now_utc.tzinfo is None:
@@ -289,9 +333,15 @@ def _gather_rows(
             from nutmeg.v4.data.sources import odds_api
             sport_key = odds_api.SPORT_KEYS.get(league)
             if sport_key:
+                # bettable filter — spend the (scarce) Odds API credit on this
+                # league ONLY if it has a 竞彩-bettable fixture; else serve cache.
+                league_oa_refresh = odds_api_refresh and (
+                    bettable_pairs is None
+                    or any(_fixture_is_bettable(fx, bettable_pairs) for fx in fixtures)
+                )
                 try:
                     oa_lookup = odds_api.fetch_pinnacle_lookup(
-                        sport_key, refresh=odds_api_refresh, ttl_seconds=1800,
+                        sport_key, refresh=league_oa_refresh, ttl_seconds=1800,
                     )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("odds_api overlay failed for %s: %s", league, exc)
@@ -342,8 +392,11 @@ def _gather_rows(
             workers = min(_ODDS_FETCH_CONCURRENCY, len(pending))
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futs = {
-                    ex.submit(_fetch_odds_safe, fid, cache_dir, refresh_odds): fid
-                    for _, fid in pending
+                    ex.submit(
+                        _fetch_odds_safe, fid, cache_dir,
+                        refresh_odds and _fixture_is_bettable(fx, bettable_pairs),
+                    ): fid
+                    for fx, fid in pending
                 }
                 for fut in as_completed(futs):
                     odds_results[futs[fut]] = fut.result()

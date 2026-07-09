@@ -888,6 +888,12 @@ class TodayRecommendationsRequest(BaseModel):
     # well within the daily budget. Fixtures stay cached (only odds drift).
     refresh_odds: bool = Field(False, description=
         "Bypass the odds cache and pull live Pinnacle odds for this request.")
+    # 2026-07-09 — when a 🔄 refresh runs, spend API quota ONLY on matches 竞彩
+    # lists as bettable (full HAD SP on file). Skips whole non-竞彩 leagues (Odds
+    # API credit) + non-竞彩 fixtures (API-Football /odds). Default True (the 「只投
+    # 竞彩」 DNA); the 全刷 escape hatch sets it False. No effect unless refresh_odds.
+    bettable_only: bool = Field(True, description=
+        "On a refresh, only pull odds for 竞彩-bettable matches (skip non-竞彩 to save quota).")
     # V11 P1-FE#4 — pool sizing (when "pool" in include)
     pool_n: int = Field(
         3,
