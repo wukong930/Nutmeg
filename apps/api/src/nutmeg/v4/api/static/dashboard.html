@@ -2112,12 +2112,6 @@ const I18N = {
     mrev_let_labels:  '让胜/让平/让负',
     mrev_1x2_labels:  '主胜/平/客胜',
     mrev_hc_head:     '让球盘 · 主让',
-    mrev_c1_title:    '⚠️ C1 候选校正 · 仅 |主让/受让 1 球|(不改上方主 EV,待 S6 验证)',
-    mrev_c1_win:      '让胜',
-    mrev_c1_draw:     '让平',
-    mrev_c1_lose:     '让负',
-    mrev_c1_anchor:   '锚·不变',
-    mrev_c1_note:     '校正后 EV(谨慎参考,不改主 EV)。主让:让胜−δ/让平+δ/让负=锚;主受让:让胜=锚/让平+δ/让负−δ。δ=.028×SP;受让向为镜像推断、待 S6。',
     mrev_1x2_head:    '不让球 1X2',
     mrev_err_inputs:  '请填 Pinnacle 1X2 三个赔率 (>1.0)',
     mrev_err_hcap:    '让球数须是 -5..5 的整数',
@@ -2571,12 +2565,6 @@ const I18N = {
     mrev_let_labels:  'Cover/Push/Against',
     mrev_1x2_labels:  'Home/Draw/Away',
     mrev_hc_head:     'Handicap · home',
-    mrev_c1_title:    '⚠️ C1 candidate correction · |home ±1| only (main EV above unchanged; pending S6)',
-    mrev_c1_win:      'Cover',
-    mrev_c1_draw:     'Push',
-    mrev_c1_lose:     'Lose',
-    mrev_c1_anchor:   'anchor·unchanged',
-    mrev_c1_note:     'Corrected EV (caution only; main EV unchanged). Home−1: cover−δ/push+δ/lose=anchor. Home+1: cover=anchor/push+δ/lose−δ. δ=.028×SP; the +1 side is a mirror inference, pending S6.',
     mrev_1x2_head:    '1X2 (no handicap)',
     mrev_err_inputs:  'Enter all 3 Pinnacle 1X2 odds (>1.0)',
     mrev_err_hcap:    'Handicap must be an integer in -5..5',
@@ -6459,37 +6447,6 @@ function _mrevBuildBody(record) {
   };
 }
 
-// C1 候选校正(探索 S6 · model/split_bias.py):在 |主让/受让 1 球| 盘上,Dixon-Coles
-// 网格把「净胜/负 1 球」聚类算少、把「净 2+ 球」深尾算多。锚/split 角色随符号翻转:
-//   主让(−1):让胜=胜2+(深尾,−δ)  让平=胜1(+δ)  让负=平/负=1−P(主胜)=锚(不动)
-//   主受让(+1):让胜=胜/平=1−P(客胜)=锚(不动)  让平=负1(+δ)  让负=负2+(深尾,−δ)
-// 让平永远是「净±1」聚类腿(+δ);另一条 split 是 net-2+ 深尾(−δ);锚腿由 1X2 钉死、不动。
-// EV 修正=∓δ×SP(随 SP 放大)。此块只做「谨慎参考」:主 EV 不动、不进下注规则;δ 待 S6
-// 验证,且「主受让(+1)向」是镜像推断、更需秋季确认。仅 |h|=1(别的让球线未测)。
-const C1_DELTA = 0.028;
-function _c1HandicapAdvisory(hcap, hcP, jWin, jDraw, jLose) {
-  const h = Number(hcap);
-  if (Math.abs(h) !== 1 || !Array.isArray(hcP)) return '';
-  const cell = (pAdj, o) => {
-    if (!(o && o > 1.0)) return '<span class="text-muted">—</span>';
-    const ev = pAdj * o - 1;
-    const cls = ev >= 0.05 ? 'text-gold font-semibold' : (ev > 0 ? 'text-amber-600' : 'text-muted');
-    return `<span class="${cls}">${(ev * 100).toFixed(1)}%</span>`;
-  };
-  const anchor = `<span class="text-muted">${t('mrev_c1_anchor')}</span>`;
-  const isGive = h < 0;   // 主让1球 (net−1); else 主受让1球 (net+1)
-  // 让胜:主让→深尾 −δ / 主受让→锚。让平:恒为 net±1 聚类 +δ。让负:主让→锚 / 主受让→深尾 −δ。
-  const win  = isGive ? cell(hcP[0] - C1_DELTA, jWin)  : anchor;
-  const draw = cell(hcP[1] + C1_DELTA, jDraw);
-  const lose = isGive ? anchor : cell(hcP[2] - C1_DELTA, jLose);
-  return `
-      <div class="text-xs mt-1 p-1.5 rounded border border-dashed" style="border-color:rgba(217,119,6,.55)">
-        <div class="font-medium text-amber-600">${t('mrev_c1_title')}</div>
-        <div class="text-secondary">${t('mrev_c1_win')} ${win} · ${t('mrev_c1_draw')} ${draw} · ${t('mrev_c1_lose')} ${lose}</div>
-        <div class="text-muted">${t('mrev_c1_note')}</div>
-      </div>`;
-}
-
 async function manualReverseCalc() {
   const res = document.getElementById('mrev-result');
   const fail = (msg) => { res.innerHTML = `<div class="text-xs text-red-600">⚠️ ${msg}</div>`; };
@@ -6549,7 +6506,6 @@ async function manualReverseCalc() {
         <div class="text-xs font-medium">${t('mrev_hc_head')} ${hcapLabel} · O/U ${ouline}</div>
         ${head}
         ${row(hcLabels[0], hcP[0], jh)}${row(hcLabels[1], hcP[1], jd)}${row(hcLabels[2], hcP[2], ja)}
-        ${_c1HandicapAdvisory(hcap, hcP, jh, jd, ja)}
         <div class="text-xs font-medium pt-1" data-i18n="mrev_1x2_head">不让球 1X2</div>
         ${head}
         ${row(x2Labels[0], fair1x2[0], j1)}${row(x2Labels[1], fair1x2[1], jx)}${row(x2Labels[2], fair1x2[2], j2)}
