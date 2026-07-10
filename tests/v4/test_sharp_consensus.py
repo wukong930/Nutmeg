@@ -83,6 +83,24 @@ class TestFlipGuard:
         c = consensus(per_book_fair(env))
         assert c.pinnacle_flip is False   # can't flip against nothing
 
+    def test_no_flip_on_pickem_argmax_split(self):
+        # V14.1 regression (Ulsan-Jeonbuk): a near-pick'em (H≈A within ~1pp).
+        # Pinnacle's argmax lands on AWAY, Betfair+SBOBET on HOME, but all three
+        # price the two within <1pp — a rounding-noise split, NOT a material
+        # disagreement. The bare-argmax guard used to false-positive here.
+        env = _env({4: (2.80, 3.45, 2.74), 3: (2.74, 3.45, 2.80), 5: (2.73, 3.50, 2.80)})
+        c = consensus(per_book_fair(env))
+        assert c.argmax_agree is False      # they DO differ on the nominal favourite
+        assert c.pinnacle_flip is False     # …but it is a pick'em, so NOT flagged
+        assert c.max_spread < 0.02          # books agree to within ~1pp
+
+    def test_flip_fires_on_material_but_moderate_disagreement(self):
+        # Not a heavy-favourite blowout — a genuine ~9pp favourite disagreement
+        # (Pinnacle HOME, others AWAY, each well over FLIP_MARGIN) → still FLIP.
+        env = _env({4: (2.45, 3.45, 3.15), 3: (3.15, 3.45, 2.45), 5: (3.10, 3.40, 2.50)})
+        c = consensus(per_book_fair(env))
+        assert c.pinnacle_flip is True
+
 
 class TestEv:
     def test_ev_only_for_filled_sp(self):

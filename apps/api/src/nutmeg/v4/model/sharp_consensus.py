@@ -12,10 +12,11 @@ Goal is NOT to average soft books in (that would dilute Pinnacle with lagged,
 margin-shaded followers). It is to:
   1. build a SHARP-only consensus fair P (mean of the present sharps), and
   2. surface DISAGREEMENT as a staleness/anomaly guard — if Pinnacle disagrees
-     with the other sharps on the favourite (a "favorite flip"), that fixture's
-     Pinnacle line is suspect (stale, or missing news) and its EV read should be
-     downgraded. Same philosophy as the Polymarket detector's favorite-flip guard
-     and the Australia-vs-Switzerland anomaly we caught.
+     with the other sharps on the favourite by a MATERIAL margin (a "favorite
+     flip"; see FLIP_MARGIN — a near-pick'em argmax split does NOT count), that
+     fixture's Pinnacle line is suspect (stale, or missing news) and its EV read
+     should be downgraded. Same philosophy as the Polymarket detector's
+     favorite-flip guard and the Australia-vs-Switzerland anomaly we caught.
 
 All pure functions — de-vig is the SERVING method (WPO via
 ``nutmeg.v4.model.devig``), so the consensus/guard compares like with like.
@@ -30,6 +31,15 @@ from nutmeg.v4.model.devig import devig_1x2 as _wpo_devig_1x2
 # API-Football bookmaker ids for the three sharp sources (verified from cache).
 SHARP_BOOKS: dict[str, int] = {"pinnacle": 4, "betfair": 3, "sbobet": 5}
 _OUTCOMES = ("H", "D", "A")
+
+# V14.1 — favourite-flip minimum margin. A "flip" only counts when BOTH Pinnacle
+# and the other-sharp consensus prefer their (differing) favourite by at least
+# this much over the contested rival — otherwise a near-pick'em (H≈A) trips the
+# bare argmax on pure rounding noise. MEASURED on 3,306 settled cached fixtures:
+# τ=0 → 113 flips; τ=2pp → 34 flips (−70%, all the pick'em noise) with the
+# guard's signal intact (flagged-subset Pinnacle log-loss 1.08 vs 0.95 baseline,
+# same as τ=0). 2pp is the knee. Mirrors the Polymarket detector's near-even guard.
+FLIP_MARGIN = 0.02
 
 
 def devig_1x2(odds: dict[str, float]) -> dict[str, float]:
@@ -98,7 +108,17 @@ def consensus(by_book: dict[str, dict[str, float]]) -> Consensus:
     if "pinnacle" in by_book and len(present) >= 2:
         others = [b for b in present if b != "pinnacle"]
         other_cons = {k: sum(by_book[b][k] for b in others) / len(others) for k in _OUTCOMES}
-        flip = _argmax(by_book["pinnacle"]) != _argmax(other_cons)
+        pin_fav, oth_fav = _argmax(by_book["pinnacle"]), _argmax(other_cons)
+        # A favourite disagreement only counts when it is MATERIAL — both sides
+        # must name their (differing) favourite by ≥ FLIP_MARGIN over the
+        # contested rival. Near-pick'em matches (H≈A within ~1pp) otherwise trip
+        # the bare argmax on rounding noise while all sharps price identically
+        # (Ulsan-Jeonbuk: books agreed to 1.0pp yet argmax-flipped). See FLIP_MARGIN.
+        if pin_fav != oth_fav:
+            flip = min(
+                by_book["pinnacle"][pin_fav] - by_book["pinnacle"][oth_fav],
+                other_cons[oth_fav] - other_cons[pin_fav],
+            ) >= FLIP_MARGIN
 
     return Consensus(cons, dict(by_book), present, len(present), agree, spread, flip)
 
