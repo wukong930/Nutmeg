@@ -110,6 +110,20 @@ def test_uel_qualifier_zh_override():
     assert sporttery.zh_to_canonical("斯普利特海杜克") == "HNK Hajduk Split"
 
 
+def test_nor_eliteserien_zh_override():
+    """挪超 NOR_ELITESERIEN (2026-07-11) — 竞彩用传统译名,TEAM_NAME_ZH 用音译 →
+    4/8 在售挪超场整对静默丢弃(owner 实报「腓特烈 vs 利勒斯特 20:00 不在可投注列表」)。
+    EN 值 = TEAM_NAME_ZH 既有规范键,逐一对竞彩英文 abbr (FRD/AAE/STR/SJD/HKM) 核对。"""
+    assert sporttery.zh_to_canonical("腓特烈斯塔") == "Fredrikstad"
+    assert sporttery.zh_to_canonical("奥勒松") == "Aalesund"
+    assert sporttery.zh_to_canonical("斯达") == "Start"
+    assert sporttery.zh_to_canonical("桑纳菲尤尔") == "Sandefjord"
+    assert sporttery.zh_to_canonical("汉坎") == "Ham-Kam"
+    # 已映射侧未受影响(半联赛盲区的另一半)
+    assert sporttery.zh_to_canonical("利勒斯特罗姆") == "Lillestrom"
+    assert sporttery.zh_to_canonical("特罗姆瑟") == "Tromso"
+
+
 def test_finnish_zh_override():
     """芬超 (market-mode league) — 竞彩's descriptive 中文 maps to the live cup-market
     gather name so the 竞彩 SP pre-fills (was 4/6 matches blank: 体检 2026-06-13)."""

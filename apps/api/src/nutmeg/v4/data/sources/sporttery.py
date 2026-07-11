@@ -96,6 +96,18 @@ _ZH_OVERRIDES: dict[str, str] = {
     "佐加顿斯": "Djurgardens IF",
     "布鲁马波卡纳": "IF Brommapojkarna",
     "哥德堡盖斯": "Gais",
+    # 挪超 NOR_ELITESERIEN 2026-07-11 — 竞彩用传统译名,TEAM_NAME_ZH 用音译 →
+    # 4/8 在售挪超场因主/客中文名≠字典键整对静默丢弃(腓特烈斯塔≠弗雷德里克斯塔、
+    # 奥勒松≠阿勒松、斯达≠斯塔特、桑纳菲尤尔≠桑德菲尤尔、汉坎≠哈马卡姆;特罗姆瑟/
+    # 瓦勒伦加/莫尔德/布兰… 已映射,半联赛丢失不触发整联赛报警 = 又一「半坏」盲区)。
+    # owner 实报「腓特烈 vs 利勒斯特 20:00 不在可投注列表」。EN 值 = TEAM_NAME_ZH 既有
+    # 规范键,逐一对竞彩英文 abbr(FRD/AAE/STR/SJD/HKM)核对(live diff 2026-07-11)。
+    # 第 5 个复现「词典即开关」的联赛(韩职/瑞超/UCL-Q/UEL-Q 之后)。
+    "腓特烈斯塔": "Fredrikstad",
+    "奥勒松": "Aalesund",
+    "斯达": "Start",
+    "桑纳菲尤尔": "Sandefjord",
+    "汉坎": "Ham-Kam",
     # 欧冠资格赛 UCL Q1 2026-07-07 — 竞彩上架 3 场,2 场因竞彩中文名≠字典键整对静默
     # 丢弃(克拉克斯维克/萨巴赫/新圣徒已映射,余 3 队缺)。EN 值逐一对 odds_snapshots
     # 的 UCL 拼写验证(Pinnacle 已有全部 3 场线,live diff 2026-07-07)。
