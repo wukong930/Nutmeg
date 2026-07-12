@@ -132,6 +132,16 @@ SPORT_KEYS: dict[str, str] = {
     "NED_EREDIVISIE":       "soccer_netherlands_eredivisie",
     "PRT_PRIMEIRA_LIGA":    "soccer_portugal_primeira_liga",
     "BEL_PRO_LEAGUE":       "soccer_belgium_first_div",
+    # 体检 (2026-07-12) — 6 个市场模式联赛缺 sport key(注册表覆盖率警告)。/sports?all=true
+    # live 核对:5 个有真 key(丹超/苏超/瑞士超 active=True;澳超/土超 现休赛 active=False,
+    # 但 key 存在 → 加了 fetch fail-soft,复赛自激活,与 8 键批次同规律)。JPN_J2 = Odds
+    # API 根本没有(只有 J1 soccer_japan_j_league,已映射到 JPN_J1)→ 故意留空,继续走
+    # AF 镜像(市场模式设计内,registry-coverage 记为 warn 非 gap)。
+    "DNK_SUPERLIGA":        "soccer_denmark_superliga",
+    "SCO_PREMIERSHIP":      "soccer_spl",
+    "SUI_SUPER_LEAGUE":     "soccer_switzerland_superleague",
+    "AUS_A_LEAGUE":         "soccer_australia_aleague",
+    "TUR_SUPER_LIG":        "soccer_turkey_super_league",
     # Add more as needed: FA Cup, Copa del Rey etc.
 }
 

@@ -163,7 +163,7 @@ class TestResolveAutoSports:
         now = datetime.now(UTC)
 
         def fake(d):
-            return [self._fx(30, 119, now)]  # DNK_SUPERLIGA: AF id, no sport key
+            return [self._fx(30, 99, now)]  # JPN_J2: AF id, no sport key (DNK got a key 2026-07-12; Odds API has no J2)
         assert resolve_auto_sports(now=now, fetch_fixtures=fake) == []
 
     def test_af_outage_returns_empty_not_blind_fetch(self):

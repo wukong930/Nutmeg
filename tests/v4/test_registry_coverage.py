@@ -66,12 +66,14 @@ class TestCheckLeague:
 
     def test_missing_sport_key_gap_only_for_cron_leagues(self):
         # 2026-07-04 — market-mode leagues price off the AF mirror by design:
-        # DNK's missing sport key is a WARN (设计内), never a hard gap. A cron
-        # league without a key would still gate (guarded separately by
-        # test_every_cron_league_has_sport_key).
+        # a missing sport key is a WARN (设计内), never a hard gap. A cron league
+        # without a key would still gate (guarded separately by
+        # test_every_cron_league_has_sport_key). NB 2026-07-12: DNK/SCO/SUI/AUS/
+        # TUR got real keys (/sports?all=true live-verified); JPN_J2 is now the
+        # sole keyless market-mode league (Odds API has no J2, only J1).
         with patch("nutmeg.v4.data.sources.api_football.fetch_teams_for_league_season",
                    return_value=_teams()):
-            rows, gaps, warns = run(["DNK_SUPERLIGA"])  # AF id ✓, sport key ✗
+            rows, gaps, warns = run(["JPN_J2"])  # AF id ✓, sport key ✗ (no J2 key)
         assert not any("sport key" in g for g in gaps)
         assert any("设计内" in w for w in warns)
 

@@ -838,6 +838,10 @@ _V12_W8_NEW_LEAGUES = {
     "Gençlerbirliği S.K.": "根克勒比利吉", "Göztepe": "戈兹塔佩", "Kasımpaşa": "卡瑟姆帕萨",
     "Kayserispor": "开塞利士邦", "Kocaelispor": "科贾埃利士邦", "Konyaspor": "科尼亚士邦",
     "Rizespor": "里泽士邦", "Samsunspor": "萨姆松士邦",
+    # AF 队表新增 3 队(体检 2026-07-12 registry-coverage 硬缺口:3/18 zh 打不中 →
+    # 整对静默丢弃风险)。竞彩拼法未知(无竞彩队表可 diff)→ 用媒体标准音译;竞彩若
+    # 拼法不同,由 ingest 的「过半丢失」哨兵兜底(见 registry_coverage.py §51-53)。
+    "Amed": "阿米德", "Erzurumspor FK": "埃尔祖鲁姆士邦", "Çorum FK": "乔鲁姆",
     # ── 瑞士超 SUI_SUPER_LEAGUE ──
     "FC Aarau": "阿劳", "FC Luzern": "卢塞恩", "FC ST. Gallen": "圣加仑", "FC Sion": "锡永",
     "FC Thun": "图恩", "FC Winterthur": "温特图尔", "Grasshoppers": "草蜢", "Lausanne": "洛桑",
