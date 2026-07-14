@@ -2889,7 +2889,12 @@ function _rebuildTeamZhLower() {
 }
 async function loadTeamZhDict() {
   try {
-    const r = await fetch(API + '/team-name-zh');
+    // cache:'no-cache' → always revalidate the dict against the server before
+    // reuse. The endpoint's own max-age would otherwise pin a stale copy for
+    // hours, so a newly-added league (MLS/巴甲 …) shows English until the HTTP
+    // cache expires. The dict is a few KB → refetching each load is negligible,
+    // and it permanently kills the "added the zh name but it won't show" class.
+    const r = await fetch(API + '/team-name-zh', { cache: 'no-cache' });
     if (r.ok) { TEAM_ZH_DICT = await r.json(); _rebuildTeamZhLower(); }
   } catch (_) { /* network fail is non-critical; fall through to English */ }
 }

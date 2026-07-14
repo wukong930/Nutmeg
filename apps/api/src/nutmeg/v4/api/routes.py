@@ -378,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v90-fe-mls-bra"
+_FE_VERSION = "nutmeg-v91-fe-zhdict-nocache"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -546,20 +546,25 @@ def team_logo_endpoint(slug: str) -> Response:
 
 @router.get("/team-name-zh", include_in_schema=False)
 def team_name_zh_endpoint() -> Response:
-    """Return Chinese name dict for ~100 top-5 European league teams.
+    """Return the full Chinese team-name dict (~150 teams across every
+    served league).
 
-    Dashboard fetches this once at init and stores it as ``TEAM_ZH_DICT``.
-    When ``locale == 'zh'`` the frontend calls ``zhTeam(name)`` to swap
-    English → Chinese in match cards. Unknown teams fall through unchanged.
+    Dashboard fetches this at init (with ``cache: 'no-cache'``) and stores it
+    as ``TEAM_ZH_DICT``. When ``locale == 'zh'`` the frontend calls
+    ``zhTeam(name)`` to swap English → Chinese in match cards. Unknown teams
+    fall through unchanged.
 
-    Static — cached aggressively (1 day).
+    NOT static: the dict grows whenever a league/team is registered (MLS/巴甲
+    …), so a long cache would pin a stale copy and the new names would show
+    English for hours. Short max-age + must-revalidate so any consumer
+    self-heals; the dashboard's no-cache fetch makes its own load always fresh.
     """
     import json as _json
     from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
     return Response(
         content=_json.dumps(TEAM_NAME_ZH, ensure_ascii=False),
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "public, max-age=600, must-revalidate"},
     )
 
 
