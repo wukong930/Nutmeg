@@ -845,6 +845,32 @@ _V12_W8_NEW_LEAGUES = {
     # ── 瑞士超 SUI_SUPER_LEAGUE ──
     "FC Aarau": "阿劳", "FC Luzern": "卢塞恩", "FC ST. Gallen": "圣加仑", "FC Sion": "锡永",
     "FC Thun": "图恩", "FC Winterthur": "温特图尔", "Grasshoppers": "草蜢", "Lausanne": "洛桑",
+    # ── 美职联 USA_MLS(2026-07-14 owner 补)── key = AF /teams season-2026 英文名。
+    # 竞彩拼法未知(无竞彩队表可 diff)→ 标准媒体音译;竞彩若拼法不同由 ingest
+    # 「过半丢失」哨兵兜底(见 sporttery.py / registry_coverage.py §51-53)。
+    "Atlanta United FC": "亚特兰大联", "Austin": "奥斯汀",
+    "CF Montreal": "蒙特利尔", "Charlotte": "夏洛特",
+    "Chicago Fire": "芝加哥火焰", "Colorado Rapids": "科罗拉多急流",
+    "Columbus Crew": "哥伦布机员", "DC United": "华盛顿联",
+    "FC Cincinnati": "辛辛那提", "FC Dallas": "达拉斯",
+    "Houston Dynamo": "休斯顿迪纳摩", "Inter Miami": "迈阿密国际",
+    "Los Angeles FC": "洛杉矶FC", "Los Angeles Galaxy": "洛杉矶银河",
+    "Minnesota United FC": "明尼苏达联", "Nashville SC": "纳什维尔",
+    "New England Revolution": "新英格兰革命", "New York City FC": "纽约城",
+    "New York Red Bulls": "纽约红牛", "Orlando City SC": "奥兰多城",
+    "Philadelphia Union": "费城联", "Portland Timbers": "波特兰伐木者",
+    "Real Salt Lake": "盐湖城皇家", "San Diego": "圣地亚哥FC",
+    "San Jose Earthquakes": "圣何塞地震", "Seattle Sounders": "西雅图海湾人",
+    "Sporting Kansas City": "堪萨斯城竞技", "St. Louis City": "圣路易斯城",
+    "Toronto FC": "多伦多", "Vancouver Whitecaps": "温哥华白帽",
+    # ── 巴甲 BRA_SERIE_A(2026-07-14 owner 补)── 同上,标准媒体译名。
+    "Atletico Paranaense": "巴拉纳竞技", "Atletico-MG": "米内罗竞技", "Bahia": "巴伊亚",
+    "Botafogo": "博塔弗戈", "Chapecoense-sc": "沙佩科恩斯", "Corinthians": "科林蒂安",
+    "Coritiba": "库里蒂巴", "Cruzeiro": "克鲁塞罗", "Flamengo": "弗拉门戈",
+    "Fluminense": "弗鲁米嫩塞", "Gremio": "格雷米奥", "Internacional": "国际",
+    "Mirassol": "米拉索尔", "Palmeiras": "帕尔梅拉斯", "RB Bragantino": "布拉甘蒂诺",
+    "Remo": "雷莫", "Santos": "桑托斯", "Sao Paulo": "圣保罗",
+    "Vasco DA Gama": "瓦斯科达伽马", "Vitoria": "维多利亚",
 }
 TEAM_NAME_ZH.update(_V12_W8_NEW_LEAGUES)
 

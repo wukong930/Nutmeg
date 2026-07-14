@@ -378,7 +378,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v89-fe-sw-autoreload"
+_FE_VERSION = "nutmeg-v90-fe-mls-bra"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1982,6 +1982,7 @@ _CUP_MARKET_COMPETITIONS = [
     "NOR_ELITESERIEN", "SWE_ALLSVENSKAN", "DNK_SUPERLIGA", "FIN_VEIKKAUSLIIGA",
     "KOR_K_LEAGUE_1", "JPN_J2", "AUS_A_LEAGUE",
     "SCO_PREMIERSHIP", "TUR_SUPER_LIG", "SUI_SUPER_LEAGUE",
+    "USA_MLS", "BRA_SERIE_A",   # 补(2026-07-14)美洲市场模式
 ]
 
 

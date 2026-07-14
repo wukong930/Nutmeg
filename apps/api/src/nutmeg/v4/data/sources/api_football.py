@@ -244,6 +244,11 @@ _DOMESTIC_LEAGUE_IDS: dict[str, int] = {
     "SCO_PREMIERSHIP": 179,     # Scotland (Aug–May, European)
     "TUR_SUPER_LIG": 203,       # Turkey   (Aug–May, European)
     "SUI_SUPER_LEAGUE": 207,    # Switzerland (Jul–May, European)
+    # 补美职联+巴甲(2026-07-14 owner)— 美洲市场模式(竞彩深夜/凌晨窗常上架)。
+    # id 对 AF /teams?season=2026 live 验证:253=MLS(30 队,豪门对得上)、
+    # 71=巴甲(20 队);均日历年制(见 CALENDAR_YEAR_LEAGUES)。sport_key 已 live 核。
+    "USA_MLS": 253,             # USA MLS (calendar-year, ≈Feb–Dec)
+    "BRA_SERIE_A": 71,          # Brazil Série A (calendar-year, ≈Apr–Dec)
     # 体检(2026-06-10)— 国际友谊赛. The user records friendly bets via the
     # manual reverse calculator (e.g. Croatia vs Slovenia 6/7); without this
     # code the settle cron could NEVER fetch their results → permanent 未结算
@@ -283,6 +288,8 @@ CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({
     # Australia) run Aug/Oct–May → the European heuristic is correct for them.
     "NOR_ELITESERIEN", "SWE_ALLSVENSKAN", "FIN_VEIKKAUSLIIGA",
     "KOR_K_LEAGUE_1", "JPN_J2",
+    # 补(2026-07-14)— 美职联 Feb–Dec、巴甲 Apr–Dec 都在一个日历年内。
+    "USA_MLS", "BRA_SERIE_A",
     # V14 — single-summer national-team tournaments are held within ONE
     # calendar year, so season = that year (WC 2026 = season 2026). Without
     # this, a June date falls to the Aug–Jul heuristic → year−1 (2026→2025) →

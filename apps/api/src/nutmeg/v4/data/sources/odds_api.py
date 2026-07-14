@@ -142,6 +142,9 @@ SPORT_KEYS: dict[str, str] = {
     "SUI_SUPER_LEAGUE":     "soccer_switzerland_superleague",
     "AUS_A_LEAGUE":         "soccer_australia_aleague",
     "TUR_SUPER_LIG":        "soccer_turkey_super_league",
+    # 补美职联+巴甲(2026-07-14)— 均 /sports?all=true live 核实 active=True。
+    "USA_MLS":              "soccer_usa_mls",
+    "BRA_SERIE_A":          "soccer_brazil_campeonato",
     # Add more as needed: FA Cup, Copa del Rey etc.
 }
 
