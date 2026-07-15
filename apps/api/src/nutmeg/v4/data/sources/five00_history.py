@@ -7,10 +7,12 @@ N=36,median 0.62pp;`记忆 500-historical-odds-archive`)。给 Crown 1X2 + 让�
 """
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import os
 import time
 import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -18,6 +20,34 @@ log = logging.getLogger(__name__)
 
 _BASE = "https://www.500.com/static/public/jczq/xml/hisdata"
 _UA = {"User-Agent": "Mozilla/5.0"}
+_BJ = ZoneInfo("Asia/Shanghai")
+
+
+def _kickoff_utc(matchdate: str | None, matchtime: str | None) -> str | None:
+    """XML 的 ``matchdate`` + ``matchtime``(**都是北京时间**)→ UTC ISO 串。
+
+    ⚠️ 为什么需要这个:XML 里有三个日期语义,别混(2026-07-15 实测):
+      · ``matchnumdate`` = **竞彩期号日/投注日** ← 存进 ``crown_close_history.match_date``
+      · ``matchdate`` + ``matchtime`` = **北京**开赛日 + 时刻
+      · 而 ``jingcai_sp.match_date`` = **UTC 开赛日**(实测每行都严格 == kickoff_utc.date())
+
+    对欧洲晚场(北京凌晨开),期号日**碰巧**等于 UTC 日 → 直接拿 match_date 去 join
+    看着能用;但对北京上午开的美洲场(美职足/解放者杯/跨洲赛事),期号日比 UTC 日**早
+    一天** → 静默漏配。实测样本:美国vs波黑 北京 07-02 08:00 → UTC 日 07-02,期号日
+    07-01。这正是 CLV 侧 join 只有 58.9% 的首因(±1 天放宽能到 78.3%,但那是钝器)。
+
+    ⇒ 本函数给出**精确**的对齐键。**别改 ``match_date`` 的含义** —— 它(=期号日)恰好
+    对得上 football-data 的当地日期,那条 join 的 1,838 场比分 100% 一致就是证据;
+    改它会打断那边。**加字段,不改字段。**
+    """
+    if not matchdate or not matchtime:
+        return None
+    try:
+        naive = _dt.datetime.strptime(f"{matchdate} {matchtime}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        log.warning("500 hisdata: 无法解析开赛时刻 matchdate=%r matchtime=%r", matchdate, matchtime)
+        return None
+    return naive.replace(tzinfo=_BJ).astimezone(_dt.UTC).isoformat()
 
 
 def _clear_proxy() -> None:
@@ -134,7 +164,9 @@ def parse_hisdata(match_root: ET.Element | None,
             rangqiu = None
         out.append({
             "match_id": mm.get("id"),
+            # ⚠️ 期号日(投注日),**不是**开赛日 —— 对齐 jingcai_sp 请用下面的 kickoff_utc。
             "date": mm.get("matchnumdate") or mm.get("matchdate"),
+            "kickoff_utc": _kickoff_utc(mm.get("matchdate"), mm.get("matchtime")),
             "league_cn": mm.get("league"),
             "home_zh": mm.get("homename"), "away_zh": mm.get("awayname"),
             "home_goals": hg_, "away_goals": ag_,

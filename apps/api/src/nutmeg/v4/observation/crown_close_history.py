@@ -20,6 +20,7 @@ _DDL = """
 CREATE TABLE IF NOT EXISTS crown_close_history (
     match_id    TEXT PRIMARY KEY,          -- 500 match id
     match_date  TEXT NOT NULL,             -- 竞彩投注日 (matchnumdate, 北京)
+    kickoff_utc TEXT,                      -- 真·开赛时刻 UTC (由北京 matchdate+matchtime 推)
     league_cn   TEXT,
     home_zh     TEXT NOT NULL, away_zh TEXT NOT NULL,
     home_team   TEXT, away_team TEXT,       -- canonical EN (zh_to_canonical, 可空)
@@ -34,9 +35,32 @@ CREATE TABLE IF NOT EXISTS crown_close_history (
 CREATE INDEX IF NOT EXISTS idx_cch_date ON crown_close_history (match_date);
 """
 
+# 后加的列(旧库靠 ALTER 补;新库靠 _DDL 直接建好)。以后加列往这里追加即可。
+_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("kickoff_utc", "TEXT"),
+)
+
+# ⚠️ 引用【后加列】的索引必须放这里,不能放 _DDL —— 在老表上 _DDL 先于 ALTER 跑,
+# 那时列还不存在,executescript 会 "no such column" 整个炸掉(测试抓到过)。
+_POST_MIGRATION_DDL = """
+CREATE INDEX IF NOT EXISTS idx_cch_ko ON crown_close_history (kickoff_utc);
+"""
+
 
 def ensure_table(conn: sqlite3.Connection) -> None:
+    """建表 + **迁移已存在的旧表**。顺序:建表 → ALTER 补列 → 建索引。
+
+    ⚠️ `CREATE TABLE IF NOT EXISTS` 对**已存在**的表是 no-op —— 光在 _DDL 里加列,
+    线上那张 5,813 行的老表**永远不会长出新列**。新增列必须登记进 `_ADDED_COLUMNS`
+    走 ALTER。幂等(重复调用只是几次 PRAGMA)。
+    """
     conn.executescript(_DDL)
+    have = {r[1] for r in conn.execute("PRAGMA table_info(crown_close_history)")}
+    for col, decl in _ADDED_COLUMNS:
+        if col not in have:
+            conn.execute(f"ALTER TABLE crown_close_history ADD COLUMN {col} {decl}")
+            log.info("crown_close_history: 迁移新增列 %s", col)
+    conn.executescript(_POST_MIGRATION_DDL)
 
 
 def record_match(db_path: str | Path, rec: dict) -> int:
@@ -54,17 +78,25 @@ def record_match(db_path: str | Path, rec: dict) -> int:
             conn.execute("PRAGMA busy_timeout = 3000")
             ensure_table(conn)
             conn.execute(
-                "INSERT INTO crown_close_history (match_id, match_date, league_cn, "
-                "home_zh, away_zh, home_team, away_team, home_goals, away_goals, rangqiu, "
-                "c_home, c_draw, c_away, ou_line, ou_over, ou_under, rq_home, rq_draw, "
-                "rq_away, ingested_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                "INSERT INTO crown_close_history (match_id, match_date, kickoff_utc, "
+                "league_cn, home_zh, away_zh, home_team, away_team, home_goals, away_goals, "
+                "rangqiu, c_home, c_draw, c_away, ou_line, ou_over, ou_under, rq_home, "
+                "rq_draw, rq_away, ingested_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(match_id) DO UPDATE SET "
+                "kickoff_utc=COALESCE(excluded.kickoff_utc, crown_close_history.kickoff_utc), "
+                # ⚠️ 2026-07-15 — home_team/away_team 以前【不在 SET 里】= 补词典永远传不到
+                # 已有的行。实证:重抓后 kickoff_utc 更新了,home_team 却仍是 NULL。
+                # 于是 _ZH_OVERRIDES 越补越好、库里纹丝不动(和 clubelo 那个「数据不更新」同类)。
+                # COALESCE:解出来的新名字覆盖旧值(词典改进要能传播),但**解不出时的 None
+                # 绝不把已有的好名字冲成 NULL**(clubelo 自毁那条的教训)。
+                "home_team=COALESCE(excluded.home_team, crown_close_history.home_team), "
+                "away_team=COALESCE(excluded.away_team, crown_close_history.away_team), "
                 "home_goals=excluded.home_goals, away_goals=excluded.away_goals, "
                 "c_home=excluded.c_home, c_draw=excluded.c_draw, c_away=excluded.c_away, "
                 "ou_line=excluded.ou_line, ou_over=excluded.ou_over, "
                 "ou_under=excluded.ou_under, rq_home=excluded.rq_home, "
                 "rq_draw=excluded.rq_draw, rq_away=excluded.rq_away",
-                (mid, rec.get("date"), rec.get("league_cn"),
+                (mid, rec.get("date"), rec.get("kickoff_utc"), rec.get("league_cn"),
                  rec.get("home_zh"), rec.get("away_zh"),
                  zh_to_canonical(rec.get("home_zh")), zh_to_canonical(rec.get("away_zh")),
                  rec.get("home_goals"), rec.get("away_goals"), rec.get("rangqiu"),

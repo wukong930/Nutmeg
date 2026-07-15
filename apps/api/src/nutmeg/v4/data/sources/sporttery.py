@@ -177,6 +177,39 @@ _ZH_OVERRIDES: dict[str, str] = {
     "新泻天鹅": "Albirex Niigata", "札幌冈萨": "Consadole Sapporo", "横滨FC": "Yokohama FC",
     "清水鼓动": "Shimizu S-Pulse", "町田泽维": "Machida Zelvia", "神户胜利": "Vissel Kobe",
     "鸟栖沙岩": "Sagan Tosu",
+
+    # ── 2026-07-15 · 500 档案(`crown_close_history`)的中文变体 ─────────────────
+    # 为什么单独一块:500 和 竞彩 对同一支队用**不同的中文写法**,500 更爱截断
+    # (500「TPS图尔」vs 竞彩「TPS图尔库」、500「国际图尔」vs 竞彩「国际图尔库」——
+    # 上面那两个竞彩写法早就在了)。`crown_close_history` 的 ingest 直接把 500 的名字
+    # 喂进 zh_to_canonical → 解不出就整场落空 → CLV 侧 join 静默漏配。
+    #
+    # ⭐ **这 17 条是【推】出来的,不是猜的**(2026-07-15,同 [[cross-source-team-name-mismatch]]
+    # 的「measured alias table」处方):对每个解不出的 500 名字,找**同一 kickoff_utc**
+    # 且**对手已解析且与 jingcai_sp 一致**的那场 → 主队即得。一支队同一时刻不可能踢两场,
+    # 所以不存在误配空间;实跑 17 个唯一解、**0 歧义**。
+    # ⚠️ 以后补这里,请复用这个推法(`kickoff_utc` + 已确认对手当锚),**别模糊匹配**
+    # (difflib 会把 Club Brugge 配成 Cercle Brugge —— 那是另一家俱乐部)。
+    "TPS图尔": "Turku PS",              # 竞彩写「TPS图尔库」
+    "国际图尔": "Inter Turku",           # 竞彩写「国际图尔库」
+    "塞伊奈": "SJK",
+    # 瑞超
+    "哈尔姆斯": "Halmstad",
+    "索尔纳": "AIK Stockholm",           # AIK 主场在 Solna,500 用地名
+    "厄格里特": "Orgryte IS",
+    "埃夫斯堡": "IF Elfsborg",
+    "布鲁马波": "IF Brommapojkarna",
+    # 挪超
+    "克里斯蒂": "Kristiansund BK",
+    "奥斯KFUM": "KFUM Oslo",
+    "桑纳菲": "Sandefjord",
+    "萨普斯堡": "Sarpsborg 08 FF",
+    # 欧战 / 国家队(顺带捞到的,同一推法)
+    "索陆军": "CSKA Sofia",              # 索非亚陆军
+    "斯海杜克": "HNK Hajduk Split",
+    "克拉克斯": "KI Klaksvik",
+    "阿拉木图": "Kairat Almaty",
+    "乌兹别克": "Uzbekistan",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
