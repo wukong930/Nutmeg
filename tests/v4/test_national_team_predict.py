@@ -25,6 +25,16 @@ _HAS_WC_DATA = (DATA / "cup_history" / "WC_2022.parquet").exists() and any(
     (DATA / "eloratings").glob("eloratings_*.parquet")
 ) if (DATA / "eloratings").exists() else False
 
+# 2026-07-15 — 快照必须【钉死】。`build_wc_training_frame(elo_snapshot_path=None)` 会
+# 自动抓 data/external/eloratings/ 下【最新】的快照,而 Elo cron 每周写一个新的 → 这个
+# 号称「固定的 2018→2022 历史 walk-forward」的数每周都在悄悄变。实测同一份代码、同一批
+# 历史比赛,只换快照:
+#     2026-05-25 → 0.9802   2026-06-07 → 0.9767   2026-06-13 → 0.9832
+#     2026-06-27 → 0.9859   2026-07-04 → 0.9972   2026-07-11 → 1.0003 ❌
+# 当年 SHIP 时用的快照恰好在 1.00 以内,之后一路爬,上周三越线 → 测试红。
+# 那不是模型退化,是尺子自己在漂。钉死 = 至少可复现。
+_ELO_SNAPSHOT = DATA / "eloratings" / "eloratings_2026-07-11.parquet"
+
 
 class TestEloToOneXTwoProbs:
     """Closed-form Elo → 1X2."""
@@ -172,46 +182,96 @@ class TestNationalTeamModelUnit:
         np.testing.assert_allclose(probs.sum(axis=1), 1.0, atol=1e-5)
 
 
+def _wc_walk_forward(elo_snapshot=_ELO_SNAPSHOT):
+    """2018 训练 → 2022 测试。返回 (blend, pin, lgb, y) 四份对齐的数组。
+
+    显式传 elo_snapshot(绝不用默认的 None=抓最新),见 _ELO_SNAPSHOT 的漂移说明。
+    """
+    from nutmeg.v4.data.wc_training_frame import build_wc_training_frame
+
+    df_train = build_wc_training_frame(2018, elo_snapshot_path=elo_snapshot)
+    df_test = build_wc_training_frame(2022, elo_snapshot_path=elo_snapshot)
+    y_train = outcomes_from_goals(df_train["home_goals"], df_train["away_goals"])
+    y_test = outcomes_from_goals(df_test["home_goals"], df_test["away_goals"])
+
+    mask_t = df_train["home_elo"].notna() & df_train["away_elo"].notna() & (y_train >= 0)
+    mask_v = df_test["home_elo"].notna() & df_test["away_elo"].notna() & (y_test >= 0)
+    df_train_ok, y_train_ok = df_train[mask_t].reset_index(drop=True), y_train[mask_t]
+    df_test_ok, y_test_ok = df_test[mask_v].reset_index(drop=True), y_test[mask_v]
+
+    model = NationalTeamModel()
+    model.fit(df_train_ok, y_train_ok, host_country="Russia", host_advantage=50.0)
+    lgb = np.asarray(
+        model.predict_proba(df_test_ok, host_country="Qatar", host_advantage=50.0), float)
+    pin = np.asarray(market_implied_probs(
+        df_test_ok["psc_home"], df_test_ok["psc_draw"], df_test_ok["psc_away"]), float)
+    # α=0.4 per Day 3。NB bayesian_blend 在 pin 全 NaN 的行上【回退成纯模型】(fail-soft),
+    # 所以 blend 没有 NaN 行,而 pin 有 —— 下面比大小必须先对齐到 pin 可用的子集。
+    blend = np.asarray(bayesian_blend(lgb, pin, alpha=0.4), float)
+    return blend, pin, lgb, np.asarray(y_test_ok)
+
+
 @pytest.mark.skipif(
-    not _HAS_WC_DATA,
-    reason="WC 2022 fixtures/odds + eloratings snapshot required",
+    not _HAS_WC_DATA or not _ELO_SNAPSHOT.exists(),
+    reason=f"WC 2022 fixtures/odds + 钉死的 Elo 快照 {_ELO_SNAPSHOT.name} required",
 )
 class TestWalkForwardOnWC:
-    """Integration: actual 2018→2022 walk-forward must meet the ship gate."""
+    """2018→2022 WC walk-forward。
 
-    def test_blend_meets_ship_gate(self):
-        from nutmeg.v4.data.wc_training_frame import build_wc_training_frame
+    ⚠️⚠️ 2026-07-15 复盘 —— 这个 walk-forward 目前【在科学上是无效的】,别拿它的数字当
+    模型好坏的证据。原 `test_blend_meets_ship_gate`(绝对闸门 log-loss ≤ 1.00,d427edd
+    「→ SHIP」)三重破产:
 
-        df_train = build_wc_training_frame(2018)
-        df_test = build_wc_training_frame(2022)
-        y_train = outcomes_from_goals(df_train["home_goals"], df_train["away_goals"])
-        y_test = outcomes_from_goals(df_test["home_goals"], df_test["away_goals"])
+    1. **未来函数**:磁盘上的 eloratings 快照【全是 2026 年的】(schema 只有 rank/
+       country_code/elo/elo_1y_ago,没有时间维度)。于是 2018 年踢的比赛被贴上 2026 年
+       7 月的 Elo —— 那份评分里已经编码了要预测的结果本身,外加之后 8 年。
+    2. **特征退化**:同一份快照同时贴给 2018 帧和 2022 帧 → 两季都出现的 24 支队
+       【24/24 Elo 完全相同】。模型根本区分不了 2018-法国 和 2022-法国,只能背一张静态
+       国家强弱表。这解释了实测:纯模型 log-loss 1.0983 vs 均匀先验 1.0986 —— 它其实
+       什么都没学到。
+    3. **闸门本身不自洽**:在同样这 63 场上,【sharp 市场自己】log-loss = 1.0056。
+       原闸门要求 ≤ 1.00,等于要求我们在 64 场样本上打赢 Pinnacle。而 1.0003 这个
+       「差点就过」的数还是被【一场】撑出来的:卡塔尔 vs 厄瓜多尔没有 Pinnacle 线 →
+       blend 回退成纯模型 → 模型恰好给了厄瓜多尔 79% 且押中 → 这一行的 loss 0.2324
+       把均值从 1.0125 拉到 1.0003(单行撬动 0.012,而闸门余量只有 0.0003)。
 
-        mask_t = (df_train["home_elo"].notna()
-                  & df_train["away_elo"].notna()
-                  & (y_train >= 0))
-        df_train_ok = df_train[mask_t].reset_index(drop=True)
-        y_train_ok = y_train[mask_t]
+    CI 从没发现这些:`skipif` + data/external 是 gitignore 的 → 这个测试【在 CI 里从未
+    运行过】,一直"绿"。它只在 owner 的机器上跑,而那台机器的 Elo 快照每周被 cron 换掉。
 
-        mask_v = (df_test["home_elo"].notna()
-                  & df_test["away_elo"].notna()
-                  & (y_test >= 0))
-        df_test_ok = df_test[mask_v].reset_index(drop=True)
-        y_test_ok = y_test[mask_v]
+    修法(未做,需单独一轮):去 eloratings.net 回填【时点】Elo(2018/2022 当时的评分),
+    才能做一次诚实的 walk-forward,然后再决定 WC 模型到底该不该上。现有 6 个快照全是
+    2026 的,救不了。
+    """
 
-        model = NationalTeamModel()
-        model.fit(df_train_ok, y_train_ok, host_country="Russia", host_advantage=50.0)
+    def test_walk_forward_is_reproducible_under_pinned_elo(self):
+        """钉死快照后必须可复现 —— 这是防【尺子自己漂】那个坑复发的护栏。
 
-        lgb_probs = model.predict_proba(df_test_ok, host_country="Qatar", host_advantage=50.0)
-        pin_probs = market_implied_probs(
-            df_test_ok["psc_home"], df_test_ok["psc_draw"], df_test_ok["psc_away"]
-        )
+        原实现走 elo_snapshot_path=None(=抓最新),Elo cron 每周写一个新快照,同一段
+        代码同一批历史比赛就每周换一个数,直到某周越过闸门、看起来像"模型退化"。
+        """
+        blend1, _, _, y1 = _wc_walk_forward()
+        blend2, _, _, y2 = _wc_walk_forward()
+        ll1, ll2 = log_loss_1x2(blend1, y1), log_loss_1x2(blend2, y2)
+        assert ll1 == pytest.approx(ll2, abs=1e-12), "同一钉死快照下两次跑出不同的数"
 
-        # Best alpha per Day 3 walk-forward: α=0.4
-        blend = bayesian_blend(lgb_probs, pin_probs, alpha=0.4)
-        ll = log_loss_1x2(blend, y_test_ok)
-        SHIP_GATE = 1.00
-        assert ll <= SHIP_GATE, (
-            f"WC walk-forward log-loss {ll:.4f} exceeds ship gate {SHIP_GATE}; "
-            f"investigate before shipping WC predictions."
+    @pytest.mark.xfail(
+        strict=True,
+        reason="已知红:blend 1.0125 打不过单用市场 1.0056(63 场有市场的比赛)。这与主轴一致"
+               " —— 市场就是前沿,把我们的模型掺进去反而更差。留 strict=True 当探针:哪天它真"
+               "过了(比如回填了时点 Elo 之后),测试会转红,提醒回来重新判断 WC 模型该不该上。",
+    )
+    def test_blend_beats_market_alone(self):
+        """唯一有意义的闸门是【相对】的:掺进模型后,得比单用市场更好。
+
+        绝对闸门(≤1.00)不自洽 —— sharp 市场自己都是 1.0056。而且必须只在【市场可用】
+        的行上比:blend 在 pin=NaN 的行会回退成纯模型,拿全 64 行比就是拿"有市场的预测"
+        和"没市场的预测"混着比,那 1 行幸运球还会把均值撬走 0.012。
+        """
+        blend, pin, _lgb, y = _wc_walk_forward()
+        ok = np.isfinite(pin).all(axis=1)          # 只比市场可用的 63 场
+        ll_blend = log_loss_1x2(blend[ok], y[ok])
+        ll_market = log_loss_1x2(pin[ok], y[ok])
+        assert ll_blend <= ll_market, (
+            f"WC blend log-loss {ll_blend:.4f} 差于单用市场 {ll_market:.4f} "
+            f"(N={int(ok.sum())}) → 掺模型没有增益,别盖过市场。"
         )
