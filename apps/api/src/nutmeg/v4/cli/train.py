@@ -36,6 +36,8 @@ from nutmeg.v4.model.persist import V4Artifact, build_team_state, save_artifact
 
 
 DEFAULT_VALIDATION_DAYS = 90
+# 温度校准所需的最小验证行数。低于此值以前是【静默跳过】,现在硬失败(见 main() 里那段)。
+_MIN_VAL_FOR_TEMPERATURE = 100
 DEFAULT_OUTPUT_DIR = "data/v4_model"
 DEFAULT_GBM_RHO = -0.10
 
@@ -166,6 +168,11 @@ def main(argv: list[str] | None = None) -> int:
         "stays 0 on single-league data (gate enabled only when training "
         "frame includes UCL/UEL via --with-cup-data).",
     )
+    parser.add_argument(
+        "--allow-uncalibrated", action="store_true",
+        help=f"允许在验证集 < {_MIN_VAL_FOR_TEMPERATURE} 行时【跳过温度校准】并照样出 artifact。"
+             "默认关闭:验证窗空掉以前是静默降级(artifact 带 temperature=None 出厂,看着像"
+             "成功),现在硬失败。只在你明确要一个未校准 artifact 时加。")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -370,11 +377,37 @@ def main(argv: list[str] | None = None) -> int:
     _info("Fitting temperature calibrator on validation pool ...", args.quiet)
     probs_val = lambdas_to_1x2_array(np.column_stack([lh_val, la_val]), rho=args.gbm_rho)
     temperature_T = None
-    if len(probs_val) >= 100:
+    if len(probs_val) >= _MIN_VAL_FOR_TEMPERATURE:
         cal = fit_temperature_1x2(probs_val, val_clean.result_1x2.values)
         temperature_T = cal.T
         _info(f"  fitted T = {temperature_T:.3f} (nll: {cal.nll_before:.4f} → {cal.nll_after:.4f})",
               args.quiet)
+    elif not args.allow_uncalibrated:
+        # ⚠️ 2026-07-15 — 以前这里【静默跳过】:只打印上面那句「正在拟合…」然后一声不吭,
+        # artifact 带着 temperature_T=None 照常出厂,看着像成功。而 cron 用 --quiet 跑
+        # (成功时不写 stdout)→ 加警告也是隐形的 ⇒ 只能硬失败。
+        #
+        # 秋季的真实剧本(这不是假想):football-data 的 Pinnacle 已於 2026-01-14 断供
+        # (`记忆 pinnacle-dead-in-footballdata-2026-01`),而 train 行要求 psc_home.notna()。
+        # cutoff 一旦前移过 01-14,默认 90 天的验证窗就整个落进无 Pinnacle 区 → val=0 →
+        # 静默出一个没校准的生产盘。2026-07-15 的解冻重训被迫用 --validation-days 227
+        # 正是为了跨过这道坎;那个 227 会随 cutoff 前移而失效,所以这道闸必须在。
+        print(
+            f"ERROR: 验证集只有 {len(probs_val)} 行(需 ≥{_MIN_VAL_FOR_TEMPERATURE})"
+            f"→ 温度无法校准。\n"
+            f"       train={len(train):,} 行没问题,是【验证窗口】空了。\n"
+            f"       最常见成因:--validation-days={args.validation_days} 的窗口 "
+            f"[{val_start.date()}, {cutoff.date()}) 落在了【无 Pinnacle 收盘】的区间\n"
+            f"       (football-data 自 2026-01-14 起不再发 Pinnacle;训练行要 psc_home 非空)。\n"
+            f"       修法:把 --validation-days 调大到让窗口跨过最后一个有 Pinnacle 的日子,\n"
+            f"       或换收盘源。若确实要一个【没有温度校准】的 artifact,显式加 "
+            f"--allow-uncalibrated。",
+            file=sys.stderr,
+        )
+        return 1
+    else:
+        _info(f"  ⚠️ 验证集仅 {len(probs_val)} 行 < {_MIN_VAL_FOR_TEMPERATURE} → "
+              f"跳过温度校准(--allow-uncalibrated 已显式授权)", args.quiet)
 
     # Team state snapshot at cutoff
     _info("Capturing team state at cutoff ...", args.quiet)
@@ -390,6 +423,9 @@ def main(argv: list[str] | None = None) -> int:
             "validation_days": args.validation_days,
             "n_train": int(len(train)),
             "n_val": int(len(val)),
+            # 温度到底校没校准 —— 写进 artifact,别让后人只能翻跑批日志去猜
+            # (以前 val 空掉是静默跳过,artifact 上看不出区别)。
+            "temperature_fitted": temperature_T is not None,
             "gbm_rho": args.gbm_rho,
             "gbm_best_iter_home": int(best_iter_home),
             "gbm_best_iter_away": int(best_iter_away),
