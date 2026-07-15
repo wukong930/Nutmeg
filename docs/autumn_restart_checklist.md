@@ -21,7 +21,10 @@
 
 生产模型 40 特征里 8 个 market 特征(`market_p_*`/`market_logit_*`/`market_overround`)**全部**来自这三列,且它们是主力特征 → **训练行从此永远卡在 2026-01-14,不再增长**。
 
-⇒ 因配额暂停的 3 个 odds cron(`bash scripts/resume_odds_crons.sh`)抓的 `pinnacle_close_history`,**从「CLV 地基」升级为「CLV 地基 + 模型训练的唯一锚」**。复赛前不恢复 = 两样一起断。历史回填的唯一候选 = 500 档案的皇冠收盘(≈Pinnacle 1–4pp,回溯 2013)。详见 `记忆 pinnacle-dead-in-footballdata-2026-01`。
+⇒ 因配额暂停的 3 个 odds cron(`bash scripts/resume_odds_crons.sh`)抓的 `pinnacle_close_history`,**从「CLV 地基」升级为「CLV 地基 + 模型训练的唯一锚」**。复赛前不恢复 = 两样一起断。详见 `记忆 pinnacle-dead-in-footballdata-2026-01`。
+
+**✅ 训练锚已找到替代:500 档案的皇冠收盘 —— 已评估通过**(`docs/crown_anchor_evaluation_2026-07-15.md`)。两个独立配对 bootstrap 都判打平:①线本身 Pinnacle 0.9674 vs 皇冠 0.9683(CI 跨 0)②**Pinnacle 训的模型改喂皇冠**(1,836 场样本外,唯一变量=赔率源)0.9594 vs 0.9604(CI 跨 0)。⚠️「Crown≈Pinnacle **1–4pp**」是**尾部**,典型值=中位 **0.6pp**、偏差 ≤0.4pp。
+🚨 **但它只解决【训练锚】,解决不了【实盘锚】** —— 500 是赛后档案,EV 要赛前活线 ⇒ **上面那句「必须恢复 odds cron」不因此打折**。代价:竞彩宇宙 → 训练密度 **60%**(英超 95% 但法乙 23%)。500 已探活、正好覆盖缺口(2026-03-01 → 24 场)。待做见该文 §8。
 
 ### 连带:retrain / ingest cron 推迟到这时一起装(2026-07-15 决定)
 今天已手工完成一次解冻(见 §0 最后一条),但**没装 cron**,因为现在装等于装一个明知会崩的东西:
