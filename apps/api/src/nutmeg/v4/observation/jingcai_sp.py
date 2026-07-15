@@ -162,7 +162,10 @@ def record_jingcai_sp(
                 "fixture_id=COALESCE(excluded.fixture_id, jingcai_sp.fixture_id), "
                 "league=COALESCE(excluded.league, jingcai_sp.league), "
                 "kickoff_utc=COALESCE(excluded.kickoff_utc, jingcai_sp.kickoff_utc), "
-                "handicap_home=excluded.handicap_home, "
+                # 体检 W1 2026-07-15 — 以前直写:不带让球线的再捕(手填 re-pin/HAD 路)
+                # 会把已存的线抹成 NULL(同表 psc_*/jc_open_* Wave3 都加了,漏了这列;
+                # 姊妹表 vote 的同列有)。新非空值照常覆盖。
+                "handicap_home=COALESCE(excluded.handicap_home, jingcai_sp.handicap_home), "
                 # 单关标记:latest 覆盖 (终盘=canonical);None 再捕 (手填 re-pin 不带) 不清旧值
                 "single_available=COALESCE(excluded.single_available, "
                 "jingcai_sp.single_available), "

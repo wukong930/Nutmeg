@@ -26,6 +26,14 @@ log = logging.getLogger(__name__)
 _DEFAULT_REPORT = "logs/name_sentinel_latest.txt"
 
 
+class SentinelBlindError(RuntimeError):
+    """探测器自己失明(AF fixtures 全数拉取失败)— 与「扫描通过」严格区分。
+
+    体检 W1 2026-07-15:以前 fetch 失败被吞成空列表 → 「没比赛 = 没 mismatch」
+    假绿。哨兵坏了必须坏得响(报告文件写失败 + exit 1),否则监控本身成为盲区。
+    """
+
+
 def _real_lookup(sport_key: str) -> dict:
     from nutmeg.v4.data.sources.odds_api import fetch_pinnacle_lookup
     return fetch_pinnacle_lookup(sport_key, ttl_seconds=3600)
@@ -59,12 +67,21 @@ def scan(
     # Fixtures fetched ONCE per day (not per league) — the overlay is per-league,
     # but a day's fixtures cover every league.
     day_fx: dict[datetime.date, list] = {}
+    n_fetch_failed = 0
     for off in range(days):
         d = today + datetime.timedelta(days=off)
         try:
             day_fx[d] = fetch_fixtures(d) or []
-        except Exception:  # noqa: BLE001 — fail-soft
+        except Exception:  # noqa: BLE001 — 单日失败可容(下面有全盲闸)
+            # 体检 W1 2026-07-15 — 以前静默吞:fixtures 拉不到 = 「没比赛」= 没
+            # mismatch = 假绿。单日失败留 log 继续;全部失败在循环后升级为异常。
+            log.warning("name sentinel: fixtures fetch failed for %s", d, exc_info=True)
             day_fx[d] = []
+            n_fetch_failed += 1
+    if days > 0 and n_fetch_failed == days:
+        # 哨兵自盲闸:探测器自己坏了必须响,绝不能把「看不见」报成「没问题」。
+        raise SentinelBlindError(
+            f"AF fixtures 全数拉取失败({days}/{days} 天)— 本次扫描无结论")
 
     mismatches: list[dict] = []
     not_covered = 0
@@ -126,6 +143,11 @@ def format_report(mismatches: list[dict], not_covered: int, scanned: int, stamp:
         "",
     ]
     if not mismatches:
+        if scanned == 0:
+            # 体检 W1 — 0 联赛可扫(全休赛/OA 无盘/lookup 全失败)是「无结论」,
+            # 不是「无错配」;别发 ✅ 把空扫描洗成绿灯。
+            head.append("➖ 0 联赛可扫 — 本次无结论(休赛期正常;赛季中连续出现要查 OA)。")
+            return "\n".join(head)
         head.append("✅ 无名字错配 — 有 OA 覆盖的赛事都能 join 鲜线。")
         return "\n".join(head)
     head.append("⚠️ 这些 AF 队名 join 不到 Odds API(叠加层会漏 → 卡片陈旧)。加 _NORM_ALIAS:")
@@ -142,9 +164,17 @@ def main(argv=None) -> int:
     p.add_argument("--quiet", action="store_true", help="write the report file only")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
-    mismatches, not_covered, scanned = scan(days=a.days)
     stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    report = format_report(mismatches, not_covered, scanned, stamp)
+    try:
+        mismatches, not_covered, scanned = scan(days=a.days)
+    except SentinelBlindError as exc:
+        # 探测失败也要写进 latest 文件(它是持久通道,health_check 读它)——
+        # 否则文件停在上次的 ✅,盲跑期间没人知道哨兵瞎了。
+        report = f"名字错配哨兵 — {stamp}\n⛔ 探测失败:{exc}\n(这不是绿灯 — 查 AF key/网络)"
+        rc = 1
+    else:
+        report = format_report(mismatches, not_covered, scanned, stamp)
+        rc = 0
     try:
         path = Path(a.report)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -153,7 +183,7 @@ def main(argv=None) -> int:
         pass
     if not a.quiet:
         print(report)
-    return 0
+    return rc
 
 
 if __name__ == "__main__":

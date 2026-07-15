@@ -23,6 +23,13 @@ from nutmeg.v4.observation.auto_calibration import (
 from tests.v4.test_auto_calibration import _seed_db_with_calibration_pairs
 
 
+@pytest.fixture(autouse=True)
+def _pre_era_fixtures_ok(monkeypatch):
+    # 体检 W1(D7):合成 fixture 跨 2026-07-15 时代界 → 界推史前(同 test_auto_calibration.py)
+    import nutmeg.v4.observation.prediction_log as _pl
+    monkeypatch.setattr(_pl, "CURRENT_ARTIFACT_ERA_START", "2000-01-01T00:00:00")
+
+
 def _plant_correction(
     artifact_dir: Path,
     T: float,

@@ -83,19 +83,42 @@ def record_match(db_path: str | Path, rec: dict) -> int:
                 "rangqiu, c_home, c_draw, c_away, ou_line, ou_over, ou_under, rq_home, "
                 "rq_draw, rq_away, ingested_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(match_id) DO UPDATE SET "
+                # 体检 W1 2026-07-15 全列收口 —— 上午只补了出事的队名列,漏了 rangqiu
+                # (「修坏的那列而不是修 sink」的活标本,当天被 L2 扫描抓回来)。现在
+                # 一次修完:数据列全跟最新抓取走;可空捕获列(kickoff/league/rangqiu/
+                # 队名)COALESCE —— 新值能传播、None 不冲好数据(clubelo 自毁教训)。
+                "match_date=excluded.match_date, "
                 "kickoff_utc=COALESCE(excluded.kickoff_utc, crown_close_history.kickoff_utc), "
+                "league_cn=COALESCE(excluded.league_cn, crown_close_history.league_cn), "
+                "home_zh=excluded.home_zh, away_zh=excluded.away_zh, "
                 # ⚠️ 2026-07-15 — home_team/away_team 以前【不在 SET 里】= 补词典永远传不到
                 # 已有的行。实证:重抓后 kickoff_utc 更新了,home_team 却仍是 NULL。
                 # 于是 _ZH_OVERRIDES 越补越好、库里纹丝不动(和 clubelo 那个「数据不更新」同类)。
-                # COALESCE:解出来的新名字覆盖旧值(词典改进要能传播),但**解不出时的 None
-                # 绝不把已有的好名字冲成 NULL**(clubelo 自毁那条的教训)。
                 "home_team=COALESCE(excluded.home_team, crown_close_history.home_team), "
                 "away_team=COALESCE(excluded.away_team, crown_close_history.away_team), "
                 "home_goals=excluded.home_goals, away_goals=excluded.away_goals, "
+                "rangqiu=COALESCE(excluded.rangqiu, crown_close_history.rangqiu), "
                 "c_home=excluded.c_home, c_draw=excluded.c_draw, c_away=excluded.c_away, "
                 "ou_line=excluded.ou_line, ou_over=excluded.ou_over, "
                 "ou_under=excluded.ou_under, rq_home=excluded.rq_home, "
-                "rq_draw=excluded.rq_draw, rq_away=excluded.rq_away",
+                "rq_draw=excluded.rq_draw, rq_away=excluded.rq_away, "
+                "ingested_at=excluded.ingested_at "
+                # 第二 UNIQUE(match_date,home_zh,away_zh):500 给同一场换发新 match_id
+                # (改期回挂)时,首个子句不匹配 → 以前直接 IntegrityError 被外层吃掉、
+                # 该行每次重抓重复丢。第二子句按赛事身份接住,把行迁移到新 match_id。
+                "ON CONFLICT(match_date, home_zh, away_zh) DO UPDATE SET "
+                "match_id=excluded.match_id, "
+                "kickoff_utc=COALESCE(excluded.kickoff_utc, crown_close_history.kickoff_utc), "
+                "league_cn=COALESCE(excluded.league_cn, crown_close_history.league_cn), "
+                "home_team=COALESCE(excluded.home_team, crown_close_history.home_team), "
+                "away_team=COALESCE(excluded.away_team, crown_close_history.away_team), "
+                "home_goals=excluded.home_goals, away_goals=excluded.away_goals, "
+                "rangqiu=COALESCE(excluded.rangqiu, crown_close_history.rangqiu), "
+                "c_home=excluded.c_home, c_draw=excluded.c_draw, c_away=excluded.c_away, "
+                "ou_line=excluded.ou_line, ou_over=excluded.ou_over, "
+                "ou_under=excluded.ou_under, rq_home=excluded.rq_home, "
+                "rq_draw=excluded.rq_draw, rq_away=excluded.rq_away, "
+                "ingested_at=excluded.ingested_at",
                 (mid, rec.get("date"), rec.get("kickoff_utc"), rec.get("league_cn"),
                  rec.get("home_zh"), rec.get("away_zh"),
                  zh_to_canonical(rec.get("home_zh")), zh_to_canonical(rec.get("away_zh")),

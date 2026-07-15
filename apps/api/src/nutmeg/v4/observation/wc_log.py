@@ -156,6 +156,16 @@ def record_wc_prediction(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(fixture_id) DO UPDATE SET
                 recorded_at = excluded.recorded_at,
+                -- 体检 W1 2026-07-15(upsert 全列收口)— 身份列以前不在 SET:
+                -- kickoff_utc 每天刷新,但派生的 match_date 与 home/away_team 冻结在
+                -- 首见值 → AF 改期跨日/改名后两列自相矛盾,settle 镜像(下方
+                -- settle_wc_prediction)用旧身份写 match_outcomes,让球 rec 永远
+                -- still_unknown。身份跟着源走;结算列(actual/won/settled_at 族)
+                -- 不在 INSERT 列表 = 天然保留。
+                season      = excluded.season,
+                match_date  = excluded.match_date,
+                home_team   = excluded.home_team,
+                away_team   = excluded.away_team,
                 kickoff_utc = excluded.kickoff_utc,
                 round       = excluded.round,
                 home_elo    = excluded.home_elo,

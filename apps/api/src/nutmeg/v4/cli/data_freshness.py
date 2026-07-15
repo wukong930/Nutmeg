@@ -175,16 +175,22 @@ def check_freshness(
     return out
 
 
-def check_api_quota() -> list[str]:
+def check_api_quota() -> tuple[list[str], list[str]]:
     """体检 Wave3 (P1#13) — quota-exhaustion alarm. Both feeds have PULL-only
     panels; hitting the cap means the fresher-line overlay/closing anchor
     silently fall back to stale mirrors (EV cards quietly go wrong). Probe the
     FREE endpoints (AF /status; OA /sports, whose response headers carry the
-    credit counters) and return alarm lines when usage crosses the red line.
+    credit counters).
+
+    Returns ``(alarms, probe_failures)``. 体检 W1 2026-07-15 — 探针失败以前被
+    `pass` 吞成「无报警」= 哨兵自盲:恢复 odds cron 后全靠这个探针确认配额,探针
+    瞎了必须可见。失败**不**冒充配额报警(瞬时网络抖动 ≠ 配额红线,不走 exit-1
+    推送),但进报告/porcelain 留痕,连续出现人眼能看到。
     Fail-soft + key-gated: no keys in env (tests, offline) → no probe, no alarm."""
     import os
 
     alarms: list[str] = []
+    probe_failures: list[str] = []
     af_key = os.environ.get("NUTMEG_API_FOOTBALL_KEY")
     if af_key:
         try:
@@ -196,8 +202,8 @@ def check_api_quota() -> list[str]:
             if cur is not None and lim and float(cur) / float(lim) >= 0.9:
                 alarms.append(
                     f"AF 日配额 {cur}/{lim} (≥90%) — 耗尽后叠加静默回落陈旧线")
-        except Exception:  # noqa: BLE001 — probe failure ≠ quota alarm
-            pass
+        except Exception as exc:  # noqa: BLE001 — probe failure ≠ quota alarm
+            probe_failures.append(f"AF 配额探针失败: {type(exc).__name__}: {exc}")
     oa_key = os.environ.get("NUTMEG_ODDS_API_KEY")
     if oa_key:
         try:
@@ -208,9 +214,94 @@ def check_api_quota() -> list[str]:
             if rem is not None and float(rem) < 50:
                 alarms.append(
                     f"Odds API 剩余 credit {rem} (<50) — 收盘锚/鲜线将断供")
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            probe_failures.append(f"Odds API 配额探针失败: {type(exc).__name__}: {exc}")
+    return alarms, probe_failures
+
+
+# 体检 W1 2026-07-15(D1 冻结不报警)— 生产 artifact 曾冻 724 天无人知:哨兵只看
+# 采集表,从不看模型供应链。年龄红线 120 天:秋季 retrain cron 落地后永远碰不到;
+# cron 没装(D1 家族的真实剧本)则 11 月准时响 = 正确的兜底。
+ARTIFACT_MAX_AGE_DAYS = 120
+SOURCE_TREE_MAX_AGE_DAYS = 120
+
+
+def check_model_supply_chain(
+    today: date,
+    *,
+    artifact_dir: str | Path | None = None,
+    sources_dir: str | Path = "data/historical_sources/football_data_co_uk",
+    external_dir: str | Path = "data/external",
+) -> tuple[list[str], list[str]]:
+    """模型供应链探针:artifact 年龄 / 训练源树年龄 / 空 parquet 计数。
+
+    Returns ``(info_lines, alarms)``。缺目录 = 跳过(CI/测试环境无 data/,report
+    不 alarm);存在才查。空 parquet 只报数不报警(clubelo 日职空文件属正常,
+    当前基线 ~121/459 — 突增才值得人看,那是趋势判断,交给读报告的人)。
+    """
+    import os
+
+    info: list[str] = []
+    alarms: list[str] = []
+
+    art = Path(artifact_dir or os.environ.get("NUTMEG_V4_ARTIFACT_PATH")
+               or "data/v4_model_cat")
+    meta = art / "metadata.json"
+    if meta.exists():
+        trained: date | None = None
+        try:
+            import json
+            raw = (json.loads(meta.read_text()) or {}).get("trained_at_utc")
+            if raw:
+                trained = date.fromisoformat(str(raw)[:10])
+        except Exception:  # noqa: BLE001 — 坏 metadata 走 mtime 兜底
             pass
-    return alarms
+        if trained is None:
+            # 旧格式 artifact 无 trained_at_utc(47435ce 之前)→ 文件 mtime 兜底
+            trained = datetime.fromtimestamp(meta.stat().st_mtime, UTC).date()
+        age = max(0, (today - trained).days)
+        line = f"artifact {art.name}: 训练于 {trained} · {age}d(红线 {ARTIFACT_MAX_AGE_DAYS}d)"
+        if age > ARTIFACT_MAX_AGE_DAYS:
+            alarms.append(f"生产 artifact 已 {age} 天未重训 — 724 天冻结的路重演中,去装/修 retrain")
+        info.append(line)
+    else:
+        info.append(f"artifact {art}: 不存在 — 跳过(非生产环境?生产缺盘 daemon 自己会响)")
+
+    src = Path(sources_dir)
+    if src.exists():
+        newest: float | None = None
+        for f in src.rglob("*.csv"):
+            m = f.stat().st_mtime
+            newest = m if newest is None else max(newest, m)
+        if newest is None:
+            alarms.append(f"训练源树 {src} 存在但没有任何 CSV — 训练无粮")
+        else:
+            nd = datetime.fromtimestamp(newest, UTC).date()
+            age = max(0, (today - nd).days)
+            info.append(f"训练源树: 最新 CSV {nd} · {age}d(红线 {SOURCE_TREE_MAX_AGE_DAYS}d)")
+            if age > SOURCE_TREE_MAX_AGE_DAYS:
+                alarms.append(f"football-data 源树 {age} 天没进新数据 — ingest 断供,重训会空转")
+    else:
+        info.append(f"训练源树 {src}: 不存在 — 跳过")
+
+    ext = Path(external_dir)
+    if ext.exists():
+        try:
+            import pyarrow.parquet as pq
+            total = empty = 0
+            for f in ext.rglob("*.parquet"):
+                total += 1
+                try:
+                    if pq.ParquetFile(f).metadata.num_rows == 0:
+                        empty += 1
+                except Exception:  # noqa: BLE001 — 读不了按空计(保守方向)
+                    empty += 1
+            info.append(
+                f"外部特征 parquet: 空 {empty}/{total}(基线 ~121/459;突增查 clubelo 自毁类)")
+        except Exception as exc:  # noqa: BLE001 — pyarrow 缺失等,报出来别装瞎
+            info.append(f"外部 parquet 探针失败: {type(exc).__name__}(非报警,连续出现修探针)")
+
+    return info, alarms
 
 
 def write_heartbeat(db_path: str | Path) -> None:
@@ -281,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default=None, help="把人类报告写到文件 (cron 用)")
     p.add_argument("--no-quota", action="store_true",
                    help="跳过 AF/OA 配额探针 (默认: env 里有 key 才探,fail-soft)")
+    p.add_argument("--no-supply", action="store_true",
+                   help="跳过模型供应链探针 (artifact/源树/parquet;缺目录本就自动跳过)")
     args = p.parse_args(argv)
 
     db_path = Path(args.db)
@@ -294,7 +387,9 @@ def main(argv: list[str] | None = None) -> int:
     # the vote-cron watchdog alarms on ITS absence (P0-2 mutual watching).
     write_heartbeat(db_path)
     crit_stale = [s for s in statuses if s.stale and s.critical]
-    quota_alarms = [] if args.no_quota else check_api_quota()
+    quota_alarms, probe_fails = ([], []) if args.no_quota else check_api_quota()
+    supply_info, supply_alarms = (
+        ([], []) if args.no_supply else check_model_supply_chain(today))
 
     if args.porcelain:
         for s in statuses:
@@ -306,10 +401,24 @@ def main(argv: list[str] | None = None) -> int:
             )
         for q in quota_alarms:
             print(f"QUOTA\t{q}")
+        for q in probe_fails:
+            print(f"QPROBE-FAIL\t{q}")
+        for q in supply_info:
+            print(f"SUPPLY\t{q}")
+        for q in supply_alarms:
+            print(f"SUPPLY-STALE\t{q}")
     else:
         report = render(statuses, db_path, today)
+        if supply_info or supply_alarms:
+            report += "\n\n  — 模型供应链(体检 W1:哨兵以前只看采集表)—"
+            report += "".join(f"\n  · {q}" for q in supply_info)
+            report += "".join(f"\n  ✗ {q}" for q in supply_alarms)
         if quota_alarms:
             report += "\n" + "\n".join(f"⚠️ 配额: {q}" for q in quota_alarms)
+        if probe_fails:
+            report += "\n" + "\n".join(
+                f"⚠️ 探针: {q}(非配额报警;连续出现=探针本身坏了,修它)"
+                for q in probe_fails)
         print(report)
         if args.out:
             Path(args.out).write_text(report + "\n", encoding="utf-8")
@@ -317,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
     # Quota exhaustion rides the SAME non-zero exit as a stale capture table →
     # the daily_settle chain's osascript push fires for it too (P1#13: the
     # pull-only panels meant a burned-out key was discovered days later).
-    return 1 if (crit_stale or quota_alarms) else 0
+    # 体检 W1:模型供应链报警(artifact/源树超龄)同乘 — D1 冻结类必须响。
+    return 1 if (crit_stale or quota_alarms or supply_alarms) else 0
 
 
 if __name__ == "__main__":

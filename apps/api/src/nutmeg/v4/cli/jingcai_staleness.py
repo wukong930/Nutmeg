@@ -15,6 +15,7 @@ user prices matches in 市场模式.
 from __future__ import annotations
 
 import argparse
+import logging
 import sqlite3
 from collections import defaultdict
 
@@ -102,7 +103,11 @@ def _hhad_pinn_and_outcome(close: tuple, row: dict) -> tuple | None:
     try:
         lines = implied_handicap_lines(
             fair[0], fair[1], fair[2], p_over, ou_line=ou_line, lines=(int(line),))
-    except Exception:  # noqa: BLE001 — a fit failure just drops this row
+    except Exception:  # noqa: BLE001 — a fit failure still drops the row, but LOUDLY
+        # 体检 W1 2026-07-15 — 同 clv_ledger:拟合失败丢行要带线值留痕,
+        # 深线成串失败 = S6 测量掉队偏置,不能只让 N 无声变小。
+        logging.getLogger(__name__).warning(
+            "hhad 网格拟合失败(line=%s)— 该行丢弃;成串出现=深线掉队偏置", line)
         return None
     if not lines:
         return None

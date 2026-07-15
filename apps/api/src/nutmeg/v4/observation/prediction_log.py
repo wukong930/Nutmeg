@@ -72,6 +72,15 @@ def ensure_league_predictions_table(db_path: str) -> None:
         conn.execute(LEAGUE_PREDICTIONS_SCHEMA)
 
 
+# 体检 W1 2026-07-15(D7 冻结时代测量污染)— 生产盘当日 ~07:00Z 重训解冻(此前
+# 724 天冻在 cutoff 2024-08-01);表里更早的 236 行全是冻结模型吐的 P,表又没有
+# 版本列 → 只能按 recorded_at 划代。测量读者(scoreboard/predict_report/Layer A
+# auto_calibration)默认只吃当代,否则秋天第一次 --apply 会把冻结时代的偏差拟合成
+# 修正施加到新盘。ISO 字符串前缀比较安全("…+00:00" 后缀 ≥ 裸前缀)。
+# ⚠️ 下次重训换盘时更新这里(秋季 retrain cron 落地后应自动化戳这个值)。
+CURRENT_ARTIFACT_ERA_START = "2026-07-15T07:00:00"
+
+
 def record_league_prediction(
     db_path: str,
     prediction: dict,
@@ -101,14 +110,17 @@ def record_league_prediction(
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(match_date, league, home_team, away_team) DO UPDATE SET
                 recorded_at = excluded.recorded_at,
-                kickoff_utc = excluded.kickoff_utc,
                 market_mode = excluded.market_mode,
                 p_home = excluded.p_home,
                 p_draw = excluded.p_draw,
                 p_away = excluded.p_away,
-                psc_home = excluded.psc_home,
-                psc_draw = excluded.psc_draw,
-                psc_away = excluded.psc_away
+                -- 体检 W1 2026-07-15 — kickoff/psc_* 原为直写:Pinnacle 断供窗口的
+                -- 再记录会把 sharp 基准冲成 NULL(护栏以前只在 caller 的过滤里 =
+                -- 反 altitude;sink 自己要能守)。新非空值照常覆盖。
+                kickoff_utc = COALESCE(excluded.kickoff_utc, kickoff_utc),
+                psc_home = COALESCE(excluded.psc_home, psc_home),
+                psc_draw = COALESCE(excluded.psc_draw, psc_draw),
+                psc_away = COALESCE(excluded.psc_away, psc_away)
             """,
             (
                 md, prediction["league"], prediction["home_team"],
@@ -124,14 +136,27 @@ def record_league_prediction(
 
 
 def fetch_league_predictions(
-    db_path: str, *, settled_only: bool = False
+    db_path: str, *, settled_only: bool = False, current_era_only: bool = True
 ) -> list[dict]:
-    """Return all league_predictions rows as dicts (newest first)."""
+    """Return league_predictions rows as dicts (newest first).
+
+    默认只返回当代(现役 artifact 时代)的行 —— 两个生产调用方(scoreboard 端点、
+    predict_report CLI)都是测量读者,混入冻结时代 = D7 污染。要读全史(考古/
+    对比)显式传 current_era_only=False。
+    """
     with open_db(db_path) as conn:
         conn.execute(LEAGUE_PREDICTIONS_SCHEMA)
-        where = "WHERE outcome IS NOT NULL" if settled_only else ""
+        clauses = []
+        params: list[str] = []
+        if settled_only:
+            clauses.append("outcome IS NOT NULL")
+        if current_era_only:
+            clauses.append("recorded_at >= ?")
+            params.append(CURRENT_ARTIFACT_ERA_START)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         cur = conn.execute(
-            f"SELECT * FROM league_predictions {where} ORDER BY match_date DESC"
+            f"SELECT * FROM league_predictions {where} ORDER BY match_date DESC",  # noqa: S608
+            params,
         )
         cols = [c[0] for c in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
@@ -188,6 +213,7 @@ def settle_league_predictions(
 
     today = today or dt.datetime.now(dt.UTC).date()
     settled = 0
+    join_miss = 0
     with open_db(db_path) as conn:
         conn.execute(LEAGUE_PREDICTIONS_SCHEMA)
         cur = conn.execute(
@@ -225,6 +251,11 @@ def settle_league_predictions(
             for h, a in pairs:
                 fx = by_pair.get((national_match_key(h), national_match_key(a)))
                 if fx is None:
+                    # 体检 W1 2026-07-15 — 以前零计数:队名断裂在这里无声蚕食记分板
+                    # 的 N(clv_ledger 有 name-suspect 拆分,这里没有)。fixtures 拉到
+                    # 了、行却配不上 = 别名嫌疑,点名留痕。
+                    join_miss += 1
+                    log.warning("settle: join-miss %s vs %s (%s %s) — 别名嫌疑", h, a, lg, md)
                     continue
                 res = _ft_outcome(fx)
                 if res is None:
@@ -237,4 +268,6 @@ def settle_league_predictions(
                     (hg, ag, outcome, ts, md, lg, h, a),
                 )
                 settled += max(0, upd.rowcount)
+    if join_miss:
+        log.warning("settle: %d 行 join-miss(记分板 N 被无声蚕食;上方逐行有队名)", join_miss)
     return settled

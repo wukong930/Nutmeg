@@ -24,7 +24,8 @@
 # (no plaintext key in plists). Logs go to logs/launchd/.
 #
 # Usage:   ./scripts/setup_local_pipeline.sh
-# Re-run:  safe to re-run; bootout + bootstrap each job before installing
+# Re-run:  safe to re-run **除非有 job 被有意 disable**(下方前置闸会诚实拒绝,
+#          见「体检 W1 F-RERUN」注释)。
 # Undo:    ./scripts/teardown_local_pipeline.sh
 #
 # Why launchd not crontab? macOS prefers launchd: (a) survives reboots
@@ -61,6 +62,23 @@ if [[ ! -f .env ]]; then
 fi
 
 mkdir -p "$LOG_DIR" "$PLIST_DIR"
+
+# 体检 W1 2026-07-15(F-RERUN)— 「可安全重跑」在有 job 被有意 disable 时不成立:
+# bootstrap 会在 disabled job 上失败中断(exit 1 卡在半程),而「先 enable 再装」
+# 又会**复活被有意暂停的 cron**(odds 三件套因配额暂停,恢复只该走
+# scripts/resume_odds_crons.sh + owner 口令)。所以:检测到 disabled 就诚实拒绝,
+# 不猜、不硬来。
+_disabled_jobs="$(launchctl print-disabled "gui/$UID" 2>/dev/null \
+  | grep -E '"com\.nutmeg\.[a-z_]+" => disabled' \
+  | grep -oE 'com\.nutmeg\.[a-z_]+' || true)"
+if [[ -n "$_disabled_jobs" ]]; then
+  echo "⛔ 以下 com.nutmeg job 处于 disabled(多半是有意暂停):" >&2
+  echo "$_disabled_jobs" | sed 's/^/     /' >&2
+  echo "   暂停期间禁止重跑 setup —— 会中途失败,硬修又会复活被暂停的 cron。" >&2
+  echo "   恢复暂停的 odds cron:bash scripts/resume_odds_crons.sh(需 owner 口令);" >&2
+  echo "   之后再跑本脚本。" >&2
+  exit 1
+fi
 
 # Helper: write a single plist atomically + bootstrap it
 install_job() {

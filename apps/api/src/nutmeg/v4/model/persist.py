@@ -23,6 +23,7 @@ in time to the cutoff and accept some staleness.
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from json import dump, load
@@ -41,6 +42,13 @@ from nutmeg.v4.features.form import WINDOW as FORM_WINDOW
 from nutmeg.v4.features.market import build_market_features
 from nutmeg.v4.features.market_dynamics import build_market_dynamics_features
 from nutmeg.v4.features.xg_lite import build_xg_lite_features
+
+log = logging.getLogger(__name__)
+
+# 体检 W1 2026-07-15 — rest_days 分布外红线:训练分布典型 3–14 天(赛季内),
+# 45 天以上 = 快照冻结/休赛期跨季,模型在外推(724 天事件的着火点,当时零信号)。
+# 只计数曝光,不截断——改输入是行为变更,留给秋季重训一并定(见体检报告 R2.3)。
+_REST_DAYS_OOD = 45.0
 
 
 # --------- helpers --------------------------------------------------------
@@ -384,11 +392,21 @@ def build_features_for_fixtures(
     rest_h = np.full(len(out), np.nan)
     rest_a = np.full(len(out), np.nan)
 
+    # 体检 W1 2026-07-15 — 服务端默认填充以前零观测:未知队静默吃 Elo=1500 +
+    # form 全 NaN(升班马/别名断裂全中),rest_days 无分布外信号。行为不变,
+    # 只把「这批预测有多少行是戴着默认值出门的」记下来。
+    unknown_teams: list[str] = []
+    n_rest_ood = 0
+
     for i, row in enumerate(out.itertuples(index=False)):
         league = row.league
         teams = artifact.team_state.get(league, {})
         sh = teams.get(row.home_team)
         sa = teams.get(row.away_team)
+        if sh is None:
+            unknown_teams.append(f"{league}:{row.home_team}")
+        if sa is None:
+            unknown_teams.append(f"{league}:{row.away_team}")
         if sh is not None:
             elo_h[i] = sh.elo
             form_h_gf[i] = _team_form_avg(sh.goals_for)
@@ -409,6 +427,16 @@ def build_features_for_fixtures(
             form_a_sot_ag[i] = _team_form_avg(sa.sot_against)
             if sa.last_match_iso:
                 rest_a[i] = (row.date - pd.Timestamp(sa.last_match_iso)).total_seconds() / 86400
+
+    with np.errstate(invalid="ignore"):
+        n_rest_ood = int(np.nansum(rest_h > _REST_DAYS_OOD) + np.nansum(rest_a > _REST_DAYS_OOD))
+    if unknown_teams or n_rest_ood:
+        preview = ", ".join(sorted(set(unknown_teams))[:5])
+        log.warning(
+            "served-with-defaults: %d 队名不在 team_state(Elo=1500+form NaN)%s%s"
+            "; rest_days>%.0fd(分布外)%d 腿 — 行为未变,只计数",
+            len(unknown_teams), " — " if preview else "", preview,
+            _REST_DAYS_OOD, n_rest_ood)
 
     out["elo_home"] = elo_h
     out["elo_away"] = elo_a

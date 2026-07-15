@@ -180,14 +180,30 @@ class TestQuotaAlarm:
         class R:
             headers = {"x-requests-remaining": "12"}
         monkeypatch.setattr(httpx, "get", lambda *a, **k: R())
-        alarms = df.check_api_quota()
+        alarms, probe_fails = df.check_api_quota()
         assert alarms and "12" in alarms[0]
+        assert probe_fails == []
 
     def test_no_keys_no_probe(self, monkeypatch):
         from nutmeg.v4.cli import data_freshness as df
         monkeypatch.delenv("NUTMEG_ODDS_API_KEY", raising=False)
         monkeypatch.delenv("NUTMEG_API_FOOTBALL_KEY", raising=False)
-        assert df.check_api_quota() == []
+        assert df.check_api_quota() == ([], [])
+
+    def test_probe_failure_visible_not_alarm(self, monkeypatch):
+        """体检 W1 — 探针失败必须可见(probe_failures),但不冒充配额报警。"""
+        import httpx
+
+        from nutmeg.v4.cli import data_freshness as df
+        monkeypatch.setenv("NUTMEG_ODDS_API_KEY", "test-key")
+        monkeypatch.delenv("NUTMEG_API_FOOTBALL_KEY", raising=False)
+
+        def boom(*a, **k):
+            raise httpx.ConnectError("network down")
+        monkeypatch.setattr(httpx, "get", boom)
+        alarms, probe_fails = df.check_api_quota()
+        assert alarms == []
+        assert probe_fails and "探针失败" in probe_fails[0]
 
 
 class TestClvTierRegistrySync:

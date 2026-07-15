@@ -18,6 +18,7 @@ Pure read + compute — does NOT touch the capture or serving chain, writes no t
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass
 
@@ -93,6 +94,7 @@ def assemble_handicap_triples(db_path: str) -> list[HandicapTriple]:
     ).fetchall()
 
     triples: list[HandicapTriple] = []
+    n_fit_dropped = 0
     for r in jc_rows:
         jc_raw = (r["jc_home"], r["jc_draw"], r["jc_away"])
         if any(x is None for x in jc_raw):
@@ -124,7 +126,10 @@ def assemble_handicap_triples(db_path: str) -> list[HandicapTriple]:
             board = implied_handicap_lines(
                 fair[0], fair[1], fair[2], p_over, ou_line=ou_line, lines=[hcap]
             )
-        except Exception:  # noqa: BLE001 — an unfittable grid just drops this match
+        except Exception:  # noqa: BLE001 — an unfittable grid drops this match, counted
+            # 体检 W1 2026-07-15 — 以前无声:深线拟合系统性失败时三元组只是变少,
+            # S6 读数被掉队偏置。聚合计数,循环后一次响。
+            n_fit_dropped += 1
             continue
         _, ph, pd_, pa = board[0]
         p_pin = (float(ph), float(pd_), float(pa))
@@ -150,6 +155,10 @@ def assemble_handicap_triples(db_path: str) -> list[HandicapTriple]:
             )
         )
     con.close()
+    if n_fit_dropped:
+        logging.getLogger(__name__).warning(
+            "handicap triples: %d 行因网格拟合失败被丢(共 %d 候选)— "
+            "深线成串失败=测量掉队偏置,读报告时记入", n_fit_dropped, len(jc_rows))
     return triples
 
 

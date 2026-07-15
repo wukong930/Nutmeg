@@ -31,6 +31,7 @@ spellings, not guessed ones (see [[cross-source-team-name-mismatch]]).
 from __future__ import annotations
 
 import argparse
+import logging
 import sqlite3
 import statistics as st
 import unicodedata
@@ -46,6 +47,8 @@ from nutmeg.v4.model.clv_gate import (
     evaluate,
     pooled_test,
 )
+
+log = logging.getLogger(__name__)
 
 _MIN_EV = 0.05
 _HAD = ("主胜", "平局", "客胜")
@@ -93,7 +96,10 @@ def _hhad_cover_p(close: tuple, line) -> tuple | None:
     try:
         lines = implied_handicap_lines(
             fair[0], fair[1], fair[2], p_over, ou_line=ou_line, lines=(int(line),))
-    except Exception:  # noqa: BLE001 — a fit failure just drops this row
+    except Exception:  # noqa: BLE001 — a fit failure still drops the row, but LOUDLY
+        # 体检 W1 2026-07-15 — 以前零信号:深线(|h|≥2)网格拟合系统性失败时,台账
+        # 只是 N 变小 = 掉队偏置 CLV 读数。带线值逐行响,成串出现一眼可见。
+        log.warning("hhad 网格拟合失败(line=%s)— 该行丢弃;成串出现=深线掉队偏置", line)
         return None
     if not lines:
         return None

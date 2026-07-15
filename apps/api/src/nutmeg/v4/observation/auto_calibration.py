@@ -211,6 +211,13 @@ def load_calibration_pairs(
     cutoff = as_of - dt.timedelta(weeks=weeks)
     cutoff_iso = cutoff.isoformat()
 
+    # 体检 W1 2026-07-15(D7)— 拟合窗下界不得早于现役 artifact 时代:07-15 前的
+    # session 记的是冻结盘(cutoff 2024-08)的 P。两条喂料臂(这里的竞彩 session 流
+    # + 下面的 league_predictions 流)同一个病,必须一起卡,只修一臂 = 报告 R2.5
+    # 点名的「修坏的那列」模式。
+    from nutmeg.v4.observation.prediction_log import CURRENT_ARTIFACT_ERA_START
+    cutoff_iso = max(cutoff_iso, CURRENT_ARTIFACT_ERA_START)
+
     rows: list[CalibrationPair] = []
     with open_db(db_path) as conn:
         cur = conn.execute(
@@ -264,18 +271,25 @@ def load_calibration_pairs(
         # de-vig, NOT model output, and must never calibrate the model. Deduped
         # against the 竞彩 rows above (a match bet on AND auto-logged counts
         # once — same model P either way).
-        from nutmeg.v4.observation.prediction_log import LEAGUE_PREDICTIONS_SCHEMA
+        from nutmeg.v4.observation.prediction_log import (
+            CURRENT_ARTIFACT_ERA_START,
+            LEAGUE_PREDICTIONS_SCHEMA,
+        )
         conn.execute(LEAGUE_PREDICTIONS_SCHEMA)
         seen = {(r.match_date, r.league, r.home_team, r.away_team) for r in rows}
+        # 体检 W1 2026-07-15(D7)— recorded_at 时代下界:表里 236 行是 2024-08 冻结盘
+        # 记的 P;拿它们拟合 Layer A = 把旧盘偏差当修正施加到新盘(--apply 才会咬,
+        # 但拟合窗必须从源头干净)。
         cur2 = conn.execute(
             """
             SELECT match_date, league, home_team, away_team,
                    p_home, p_draw, p_away, home_goals, away_goals
             FROM league_predictions
             WHERE outcome IS NOT NULL AND market_mode = 0 AND match_date >= ?
+              AND recorded_at >= ?
             ORDER BY match_date ASC
             """,
-            (cutoff.date().isoformat(),),
+            (cutoff.date().isoformat(), CURRENT_ARTIFACT_ERA_START),
         )
         n_blended_skipped = 0
         for r in cur2.fetchall():

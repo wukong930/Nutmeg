@@ -94,7 +94,13 @@ D1 冻结不报警 ×3(哨兵不看模型供应链 / lineups 盘未愈 / train �
   - D2/D3 执行(见决策表)+ 正典锁测试 `tests/v4/test_calibration_canon.py`(7 tests)
   - 删根目录游离「0」文件
   - 验证:新测试 7/7 过;全套 2406 passed + 1 xfailed;ruff 逐文件 vs HEAD 零新增
-- **Wave 1(本周,sink 级收口)**:6 张表 upsert **全列审计一次修完**(wc_log/pinnacle_close/crown rangqiu/score_ev REPLACE/jingcai_sp handicap/prediction_log)· league_predictions 时代过滤进 auto_calibration+scoreboard · 哨兵自盲两处 · data_freshness 加模型供应链探针(artifact 年龄+源树+空 parquet 计数)· served-with-defaults 计数器(未知队 1500 + rest_days OOD 守卫)· 测量 CLI fit-fail 计数 · teardown 排除 trickle + setup 重跑陷阱注记
+- **Wave 1(本周,sink 级收口)**:✅ **已执行 2026-07-15 当天**(测试锁 = `tests/v4/test_hc_wave1.py`,17 tests;全套 2431 passed):
+  - **6 张表 upsert 全列收口**:wc_log 身份四列进 SET(结算列天然保留)· pinnacle_close 补 commence_utc/ingested_at + NULL-snapshot 永久冻结解除(IS NULL 分支)· crown 补 rangqiu(COALESCE)+ match_date/league_cn/home_zh/away_zh/ingested_at + **第二 UNIQUE 双 ON CONFLICT 子句**(500 换发 match_id 时迁移行,不再 IntegrityError 重复丢)· score_ev INSERT OR REPLACE → upsert 只更捕获列(改期重赛不再冲掉 won/settled_at)· jingcai_sp handicap_home COALESCE · prediction_log psc_*/kickoff_utc COALESCE(护栏从 caller 收进 sink)
+  - **D7 时代过滤**:`prediction_log.CURRENT_ARTIFACT_ERA_START = 2026-07-15T07:00`(单一事实点,下次重训须更新/秋季 retrain cron 自动化);`fetch_league_predictions` 默认只吐当代(scoreboard/predict_report 两个读者自动干净);auto_calibration **两条喂料臂都卡下界**(竞彩 session 流 max(cutoff, era) + league_predictions 流 recorded_at >= era —— 只修一臂就是 R2.5 的病)。5 个 auto_calibration 测试文件的合成 fixture(now−50d 回填,跨界)加 autouse monkeypatch 把界推史前
+  - **哨兵自盲**:name_sentinel fixtures 全失败 → `SentinelBlindError` + latest 文件写 ⛔ + exit 1(不再「没比赛=没错配」假绿);0 联赛可扫 → 「无结论」非 ✅;data_freshness 配额探针失败 → `(alarms, probe_failures)` 双通道,失败可见但不冒充配额报警
+  - **模型供应链探针**(`check_model_supply_chain`,--no-supply 可关):artifact 年龄(trained_at_utc,缺则 mtime;>120d 报警=724 天冻结的疫苗)· 源树最新 CSV 年龄(>120d 报警;有目录无 CSV=训练无粮报警)· 空 parquet 计数(121/459 基线,只报数);报警同乘 exit-1 推送链;缺目录=跳过(CI 安全)
+  - **served-with-defaults 计数**:persist 服务循环记未知队(Elo=1500+form NaN,带队名前 5)+ rest_days>45d 分布外腿数,一批一条 warning(行为不变);测量 CLI fit-drop 曝光:clv_ledger/jingcai_staleness 逐行带线值警告、handicap_triples 聚合计数、prediction_log settle join-miss 计数(别名嫌疑点名)
+  - **运维脚本**:teardown 加 `TEARDOWN_EXCLUDE`(jingcai_history_trickle 不再被 glob 误删)+ 修正「setup 唯一 writer」失真注释;setup 加 disabled-job 前置闸(检测到有意暂停的 cron 诚实拒绝重跑,指路 resume_odds_crons.sh,不复活暂停件)
 - **Wave 2(秋季,随重训)**:market_handicap_line 服务恒 NaN 的去留 · market close-vs-live 语义(登记为已知尺子偏斜)· retrain/ingest cron · 5 套队名系统 resolver 门面 · CLI 第三校准态统一
 
 ---

@@ -11,13 +11,25 @@ set -euo pipefail
 
 PLIST_DIR="$HOME/Library/LaunchAgents"
 # 体检 Wave3 (P1#14) — the job list is DERIVED from the persisted plists, never
-# hand-copied: the old 11-name array had drifted from the 21 installed jobs
-# (setup_local_pipeline.sh is the only writer of com.nutmeg.*.plist, so the
-# glob IS the installed set; a job added there is torn down here for free).
+# hand-copied: the old 11-name array had drifted from the 21 installed jobs.
+# ⚠️ 体检 W1 2026-07-15 — 「setup 是 com.nutmeg.* 唯一 writer」已失真:存在
+# 手工装的短期 campaign job(下方排除表)。glob = 安装集 − 排除集。
+#
+# 排除表:游离于 setup/teardown 体系的 job。teardown 删了它们 setup 装不回
+# (= 回填永久中断);campaign 抓完自会 bootout。往这里加名字,别改 glob。
+TEARDOWN_EXCLUDE=("com.nutmeg.jingcai_history_trickle")
 JOBS=()
 for _plist in "$PLIST_DIR"/com.nutmeg.*.plist; do
   [[ -e "$_plist" ]] || continue
-  JOBS+=("$(basename "$_plist" .plist)")
+  _label="$(basename "$_plist" .plist)"
+  for _ex in "${TEARDOWN_EXCLUDE[@]}"; do
+    if [[ "$_label" == "$_ex" ]]; then
+      echo "  ⏭  跳过 campaign job $_label(不属 setup 体系,teardown 不碰)"
+      _label=""
+      break
+    fi
+  done
+  [[ -n "$_label" ]] && JOBS+=("$_label")
 done
 # Legacy label that may be loaded WITHOUT a persisted plist (renamed →
 # daily_settle 2026-05-29); boot out the leftover if present.

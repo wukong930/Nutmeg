@@ -99,10 +99,20 @@ def do_record(args) -> int:
             # pre-kickoff capture only (≈ closing once the cron stops re-touching it).
             conn.execute("DELETE FROM score_ev_flags WHERE fixture_id=? AND won IS NULL", (fid,))
             for fl in flags:
+                # 体检 W1 2026-07-15 — 原为 INSERT OR REPLACE:改期重赛(完场→又回
+                # UPCOMING)时上面的 DELETE 只清未结算行,REPLACE 撞已结算行会把
+                # actual_*/won/settled_at 整行冲掉 = 销毁测量。改 upsert 只更新
+                # 捕获列,结算四列不碰。
                 conn.execute(
-                    "INSERT OR REPLACE INTO score_ev_flags (fixture_id,league,home,away,"
+                    "INSERT INTO score_ev_flags (fixture_id,league,home,away,"
                     "kickoff_utc,match_date,pred_home,pred_away,model_p,odds,book,ev,"
-                    "prior_src,captured_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "prior_src,captured_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(fixture_id,pred_home,pred_away) DO UPDATE SET "
+                    "league=excluded.league, home=excluded.home, away=excluded.away, "
+                    "kickoff_utc=excluded.kickoff_utc, match_date=excluded.match_date, "
+                    "model_p=excluded.model_p, odds=excluded.odds, book=excluded.book, "
+                    "ev=excluded.ev, prior_src=excluded.prior_src, "
+                    "captured_at=excluded.captured_at",
                     (fid, league, h, a, ko, d.isoformat(), fl["home"], fl["away"],
                      fl["model_p"], fl["odds"], fl["book"], fl["ev"],
                      fl.get("prior_src"), now))

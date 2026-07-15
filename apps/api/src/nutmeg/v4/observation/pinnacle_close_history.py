@@ -54,11 +54,18 @@ def record_close(db_path: str | Path, row: dict, *, snapshot_utc: str) -> int:
                 "commence_utc, snapshot_utc, p_home, p_draw, p_away, ou_line, over, under, "
                 "ingested_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(match_date, home_team, away_team) DO UPDATE SET "
+                # 体检 W1 2026-07-15 — commence_utc/ingested_at 以前不在 SET:改时刻
+                # 永不传播(§H CLV 地基表),行内容更新了 ingested_at 却停在首见时刻。
+                "commence_utc=excluded.commence_utc, "
                 "snapshot_utc=excluded.snapshot_utc, p_home=excluded.p_home, "
                 "p_draw=excluded.p_draw, p_away=excluded.p_away, ou_line=excluded.ou_line, "
-                "over=excluded.over, under=excluded.under "
-                # 仅当新快照更贴近开赛(仍 < commence,由回填保证)时覆盖 → 保留最紧收盘
-                "WHERE excluded.snapshot_utc > pinnacle_close_history.snapshot_utc",
+                "over=excluded.over, under=excluded.under, "
+                "ingested_at=excluded.ingested_at "
+                # 仅当新快照更贴近开赛(仍 < commence,由回填保证)时覆盖 → 保留最紧收盘。
+                # 体检 W1 — 旧行 snapshot_utc 为 NULL 时比较结果是 NULL(假)→ 该行
+                # 永久冻结,任何新收盘都进不来;IS NULL 分支放行首次真快照。
+                "WHERE pinnacle_close_history.snapshot_utc IS NULL "
+                "OR excluded.snapshot_utc > pinnacle_close_history.snapshot_utc",
                 (match_date, home, away, commence, snapshot_utc,
                  row.get("p_home"), row.get("p_draw"), row.get("p_away"),
                  row.get("ou_line"), row.get("over"), row.get("under"), now),

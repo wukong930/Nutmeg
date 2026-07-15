@@ -30,6 +30,15 @@ from nutmeg.v4.observation.store import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _pre_era_fixtures_ok(monkeypatch):
+    # 体检 W1(D7)时代下界按真实生产史钉在 2026-07-15;本文件的合成 fixture 回填在
+    # now−50d..now−1d,会跨过那条界。这些测试模拟「同一 artifact 的干净窗口」,把界
+    # 推到史前;时代过滤本身的行为锁在 tests/v4/test_hc_wave1.py::TestEraFilter。
+    import nutmeg.v4.observation.prediction_log as _pl
+    monkeypatch.setattr(_pl, "CURRENT_ARTIFACT_ERA_START", "2000-01-01T00:00:00")
+
+
 # ---------- pure-math tests ---------------------------------------------
 
 class TestApplyPostTemperature:
