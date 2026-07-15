@@ -35,6 +35,9 @@ def build_wc_training_frame(
     cup_history_dir: Path | str = "data/external/cup_history",
     cup_odds_dir: Path | str = "data/external/cup_odds",
     elo_snapshot_path: Optional[Path | str] = None,
+    # NB 邻居用 Optional[...],这个新参数用 `X | None`:同义,但 ruff(UP045)判 Optional
+    # 为陈旧写法,而本仓要求「不新增 lint」→ 新代码走新写法,旧的留给统一迁移。
+    elo_match_history_path: Path | str | None = None,
 ) -> pd.DataFrame:
     """Build a flat per-match frame for one WC season.
 
@@ -106,11 +109,40 @@ def build_wc_training_frame(
             return float(elo[code]["elo"]), int(elo[code]["rank"])
         return None, None
 
+    # 2026-07-15 — 逐场【赛前】Elo(时点)。给了就用它,否则回退到快照口径。
+    # 为什么要它:快照是「一个队一个值」,一份 2026 的快照贴到 2018/2022 两季 → 未来函数
+    # + 两季共有的 24 队 Elo 24/24 相同(模型区分不了 2018-法国和 2022-法国)。逐场值既
+    # 无泄漏(pre = post − change 还原),又带赛中演进(法国 2018 七场 1986→2095)——
+    # 那正是真实下注者开赛前知道的信息。产出者:nutmeg-ingest-eloratings-history。
+    match_elo: dict[tuple[str, str, str], tuple[float, float]] = {}
+    if elo_match_history_path is not None:
+        hist = pd.read_parquet(elo_match_history_path)
+        for _, h in hist.iterrows():
+            match_elo[(str(h["date"]), str(h["home_code"]), str(h["away_code"]))] = (
+                float(h["home_elo_pre"]), float(h["away_elo_pre"]))
+
+    def _match_elo_for(row) -> tuple[float | None, float | None]:
+        """按 (日期, 主队码, 客队码) 取该场赛前 Elo;主客颠倒也认。"""
+        hc, ac = lookup_elo_code(row["home_team"]), lookup_elo_code(row["away_team"])
+        if not hc or not ac:
+            return None, None
+        d = str(pd.Timestamp(row["date"]).date())
+        if (d, hc, ac) in match_elo:
+            return match_elo[(d, hc, ac)]
+        if (d, ac, hc) in match_elo:      # 两边源对主客的判定可能相反
+            a, h = match_elo[(d, ac, hc)]
+            return h, a
+        return None, None
+
     home_elos, away_elos = [], []
     home_ranks, away_ranks = [], []
     for _, row in merged.iterrows():
         he, hr = _elo_for(row["home_team"])
         ae, ar = _elo_for(row["away_team"])
+        if match_elo:
+            mh, ma = _match_elo_for(row)
+            if mh is not None and ma is not None:
+                he, ae = mh, ma        # 逐场时点值覆盖快照值(rank 仍取快照,仅供展示)
         home_elos.append(he)
         away_elos.append(ae)
         home_ranks.append(hr)

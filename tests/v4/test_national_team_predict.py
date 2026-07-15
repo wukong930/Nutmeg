@@ -35,6 +35,10 @@ _HAS_WC_DATA = (DATA / "cup_history" / "WC_2022.parquet").exists() and any(
 # 那不是模型退化,是尺子自己在漂。钉死 = 至少可复现。
 _ELO_SNAPSHOT = DATA / "eloratings" / "eloratings_2026-07-11.parquet"
 
+# 逐场【赛前】Elo(时点,零泄漏)—— nutmeg-ingest-eloratings-history 产出。
+# 有它就用它:它把未来函数和特征退化一起修掉了(见下方 class docstring 的实测对照)。
+_ELO_HISTORY_DIR = DATA / "eloratings_history"
+
 
 class TestEloToOneXTwoProbs:
     """Closed-form Elo → 1X2."""
@@ -182,15 +186,23 @@ class TestNationalTeamModelUnit:
         np.testing.assert_allclose(probs.sum(axis=1), 1.0, atol=1e-5)
 
 
-def _wc_walk_forward(elo_snapshot=_ELO_SNAPSHOT):
+def _wc_walk_forward(elo_snapshot=_ELO_SNAPSHOT, elo_history=True):
     """2018 训练 → 2022 测试。返回 (blend, pin, lgb, y) 四份对齐的数组。
 
     显式传 elo_snapshot(绝不用默认的 None=抓最新),见 _ELO_SNAPSHOT 的漂移说明。
+    elo_history=True 时用【逐场赛前】Elo(时点,零泄漏),否则退回快照口径(有未来函数,
+    只留给对照实验)。
     """
     from nutmeg.v4.data.wc_training_frame import build_wc_training_frame
 
-    df_train = build_wc_training_frame(2018, elo_snapshot_path=elo_snapshot)
-    df_test = build_wc_training_frame(2022, elo_snapshot_path=elo_snapshot)
+    def _hist(year):
+        p = _ELO_HISTORY_DIR / f"matches_{year}.parquet"
+        return str(p) if (elo_history and p.exists()) else None
+
+    df_train = build_wc_training_frame(2018, elo_snapshot_path=elo_snapshot,
+                                       elo_match_history_path=_hist(2018))
+    df_test = build_wc_training_frame(2022, elo_snapshot_path=elo_snapshot,
+                                      elo_match_history_path=_hist(2022))
     y_train = outcomes_from_goals(df_train["home_goals"], df_train["away_goals"])
     y_test = outcomes_from_goals(df_test["home_goals"], df_test["away_goals"])
 
@@ -254,24 +266,38 @@ class TestWalkForwardOnWC:
         ll1, ll2 = log_loss_1x2(blend1, y1), log_loss_1x2(blend2, y2)
         assert ll1 == pytest.approx(ll2, abs=1e-12), "同一钉死快照下两次跑出不同的数"
 
+    def test_point_in_time_elo_beats_uniform(self):
+        """时点 Elo 修好后,纯模型必须真的比瞎猜强 —— 这是回填的回归护栏。
+
+        泄漏口径下纯模型 log-loss 1.0983 vs 均匀先验 1.0986 = 差 0.0003 = 什么都没学到
+        (同一份 2026 快照贴两季 → 24/24 队 Elo 相同 → 区分不了 2018-法国和 2022-法国)。
+        换成逐场时点 Elo 后 1.0097,领先均匀先验 0.089 —— 这个差距大到不是噪声。
+        若这条转红,多半是逐场 Elo 没接上(退回了快照口径),而不是模型退化。
+        """
+        _blend, _pin, lgb, y = _wc_walk_forward()
+        assert log_loss_1x2(lgb, y) < np.log(3) - 0.04
+
     @pytest.mark.xfail(
         strict=True,
-        reason="已知红:blend 1.0125 打不过单用市场 1.0056(63 场有市场的比赛)。这与主轴一致"
-               " —— 市场就是前沿,把我们的模型掺进去反而更差。留 strict=True 当探针:哪天它真"
-               "过了(比如回填了时点 Elo 之后),测试会转红,提醒回来重新判断 WC 模型该不该上。",
+        reason="已知红,且这才是诚实的判据。点估计上 blend(0.9797)确实优于单用市场"
+               "(1.0056),但【拿不出证据】:N=63、配对 t=0.98、95% bootstrap CI "
+               "[−0.024,+0.080] 跨 0;且 α=0.4 是当年在【这同一个测试集】上挑的(扫描显示"
+               "最优 α≈0.5=0.9793 就紧挨着)= 拿测试集调参。留 strict=True 当探针:等 WC2026"
+               "把 N 堆够、且 α 改成样本外选出来之后,若真显著会转红,提醒回来重判该不该上。",
     )
-    def test_blend_beats_market_alone(self):
-        """唯一有意义的闸门是【相对】的:掺进模型后,得比单用市场更好。
+    def test_blend_significantly_beats_market(self):
+        """闸门必须是【显著性】,不是点估计 —— 与 CLV gate 同一个教训(N 小时点估计骗人)。
 
-        绝对闸门(≤1.00)不自洽 —— sharp 市场自己都是 1.0056。而且必须只在【市场可用】
-        的行上比:blend 在 pin=NaN 的行会回退成纯模型,拿全 64 行比就是拿"有市场的预测"
-        和"没市场的预测"混着比,那 1 行幸运球还会把均值撬走 0.012。
+        必须只在【市场可用】的行上比:blend 在 pin=NaN 的行会回退成纯模型,拿全 64 行比
+        就是把"有市场的预测"和"没市场的预测"混着比(那 1 行幸运球曾把均值撬走 0.012)。
         """
         blend, pin, _lgb, y = _wc_walk_forward()
         ok = np.isfinite(pin).all(axis=1)          # 只比市场可用的 63 场
-        ll_blend = log_loss_1x2(blend[ok], y[ok])
-        ll_market = log_loss_1x2(pin[ok], y[ok])
-        assert ll_blend <= ll_market, (
-            f"WC blend log-loss {ll_blend:.4f} 差于单用市场 {ll_market:.4f} "
-            f"(N={int(ok.sum())}) → 掺模型没有增益,别盖过市场。"
+        b, p, yy = blend[ok], pin[ok], y[ok]
+        idx = np.arange(len(yy))
+        d = (-np.log(np.clip(p[idx, yy], 1e-15, 1))) - (-np.log(np.clip(b[idx, yy], 1e-15, 1)))
+        t = d.mean() / (d.std(ddof=1) / np.sqrt(len(d)))
+        assert t > 2.0, (
+            f"blend 相对市场的每场优势 {d.mean():+.4f} 但 t={t:.2f} (N={len(d)}) → 不显著,"
+            f"拿不出证据说掺模型有增益。别把点估计当信号。"
         )
