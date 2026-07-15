@@ -15,6 +15,22 @@
 
 ---
 
+## 🚨 复赛第一件事:恢复 odds cron —— 它现在是**仅存的 Pinnacle 源**
+
+2026-07-15 实测:**football-data.co.uk 从 2026-02 起永久停发 Pinnacle**(`PSCH/PSCD/PSCA` 列还在但全空;全联赛同步归零:英超 0/145 · 西甲 0/166 · 德甲 0/129 · 意甲 0/156;其他庄家全满;同期 schema 120→132 列重排庄家名单)。**全库有 Pinnacle 的最后一天 = 2026-01-14。**
+
+生产模型 40 特征里 8 个 market 特征(`market_p_*`/`market_logit_*`/`market_overround`)**全部**来自这三列,且它们是主力特征 → **训练行从此永远卡在 2026-01-14,不再增长**。
+
+⇒ 因配额暂停的 3 个 odds cron(`bash scripts/resume_odds_crons.sh`)抓的 `pinnacle_close_history`,**从「CLV 地基」升级为「CLV 地基 + 模型训练的唯一锚」**。复赛前不恢复 = 两样一起断。历史回填的唯一候选 = 500 档案的皇冠收盘(≈Pinnacle 1–4pp,回溯 2013)。详见 `记忆 pinnacle-dead-in-footballdata-2026-01`。
+
+### 连带:retrain / ingest cron 推迟到这时一起装(2026-07-15 决定)
+今天已手工完成一次解冻(见 §0 最后一条),但**没装 cron**,因为现在装等于装一个明知会崩的东西:
+- `--validation-days 227` 是**钉死在 2026-01-14 这个日期上的 hack**(要 cutoff 取满让 `team_state` 新鲜,又要验证窗跨过 01-14 才有 Pinnacle)。秋天 cutoff 一前移,窗口整体滑进无 Pinnacle 区 → **val 为空,温度校准必崩**。必须改成动态值,或换 Pinnacle 源。
+- football-data **没有 ingest CLI**(2526 那 13 个 CSV 是手工 curl 的),要装 cron 得先写抓取器。
+- 每次 retrain 后 daemon 需 `launchctl kickstart -k`(`_artifact_cache` 常驻内存)。Layer B 的 `live_artifact_pointer.json` 能免重启,但 `write_artifact_pointer()` 要求真实 ship-gate p 值,解冻式重训没有 → 别为了用它编数字。
+
+---
+
 ## §0 · 现在就能做的 pre-work(便宜、不等数据,让秋天口径干净)
 
 - [x] **WPO 去 vig**(纠正冷门偏差,治冷门假 +EV)—— ✅ 已做(commit `1d2c4df`)。`docs/devig_method_comparison.md`
@@ -23,6 +39,10 @@
 - [x] **队名 join 卫生(信 CLV 数字前的前提)** —— ✅ 现在能做的已做。CLV 那条 join(`jingcai_sp↔odds_snapshots`)双重覆盖:① **哨兵**(`nutmeg-clv-ledger` 把 `no_close` 拆「名字疑似不配/真没报价/去vig失败」+ 自动报警,commit `ec094de`)② **国家队层别名感知**(`_pinn_close` 走 elo-code 唯一配 + 补 `Czechia/Korea Republic`,commit `792683d`;真库 151→**153/153**)。哨兵实跑当场抓到 `Czech Republic↔Czechia`。**俱乐部别名仍数据门**(秋天对真拼写补,哨兵兜底不静默漏)。`记忆 cross-source-team-name-mismatch`
 - [x] **(可选)⑤ Kelly 补对抗核查** —— ✅ 已做(2026-06-25,两轮多 agent 对抗核查,5 条结论 5/5 已核、39 confirmed)。抓出 3 处改:§1 回撤数字降级为玩具算术、§3「外积」加条件(0-3 否决无条件版)、§4 删错引用 Laureti(改 Baker-McHale + Nekrasov)。结论方向不变:半 Kelly 默认 + 联合 stake 向量 + 强分数/RCK。`docs/kelly_staking_uncertainty_correlation.md`
 - [x] **秋季分析预注册(⭐ 防 forking-paths,§0 收尾件)** —— ✅ 已做(2026-07-02)。闸门管住了联赛间多重检验,但**分析菜单本身**(联赛×切片×玩法×时点=上百种组合)的自由度没人管 → 数据到达前把「确认性(P1 合并 + P2 逐联赛闸门,唯一动钱入口)vs 次级预指定(S1 冻结缺口/S2 散户逆向/S3 玩法差/S4 初终盘/S5 B2 方差门槛,自成 FDR family)vs 探索性(禁动钱)」+ 解锁流程 + kill 规则 + 读数前置全部写死。**顺带修了真雷**:`jingcai_sp` 双 writer 联赛标签分裂(芬超 vs FIN_VEIKKAUSLIIGA 同联赛两组 → 稀释 N + FDR family 多算成员)→ `league_labels.canonical_league` 归一进 `clv_ledger`(fail-open,读数前标签审计兜底)。`docs/autumn_prereg_analysis_plan.md`
+
+- [x] **生产 artifact 解冻(⭐ 2026-07-15,读 scoreboard 的前置)** —— ✅ 已做。查 clubelo 时撞见:生产 CatBoost 的 `team_state`(Elo + 12 个 form 特征)**冻在 2024-05**,381 队全部;服务时 `rest_days` 算出 **724 天**(训练只见过 3–14)= 分布外;`training_cutoff` 还是 2024-08-01,连源里已有的 24/25 赛季都没学;40 特征里 **26 个是冻的**(elo 4 + form 12 + xg_lite 10),只有 market 8 + clubelo 5 + league 新鲜。**不是钱的 bug**(`routes.py:1876` docstring 铁证 `EV = P(Pinnacle de-vig) × 竞彩SP − 1`,下注不经模型)**是尺子的 bug** —— `prediction-scoreboard` 一直在给戴镣铐的模型打分,而 §1 秋季计划正是去读它。
+  修法:补 25/26 赛季 13 联赛 CSV → 重训(`--validation-days 227`,见上方 🚨)→ 换盘 + `launchctl kickstart -k`。结果:`team_state` **724 天 → 45 天**(= 赛季末,休赛期正确值;秋季首轮 `rest_days` ≈ 76 天 = 训练里每个赛季首轮的正常量级)· 队数 **381→445**(多出的 64 队是升班马,老快照里根本没有 → 只能吃 elo=1500 默认 + form 全 NaN)· `n_train` **21,469→29,347**(+37%)· 温度 0.9004→0.9039(几乎没动 = 校准性格稳)。`/health` 已验证上线。可回滚:`data/v4_model_cat.superseded-20260715`。`记忆 production-artifact-frozen-724d`
+- [x] **clubelo 补回 = null(别再补外部 Elo)** —— ✅ 已测,封档。干净对照(唯一变量 clubelo 48.8%→82.4%)下**剂量-反应完全平坦**:数据一字节没变的西甲移动 0.0048(= 全局重训的噪声地板),剂量拉满的意甲(0→100%)移动 0.0050 **且方向错**;池化层 4 模型 3 个变差。因 `market_p_*` 已是特征,**Pinnacle 价格对球队强弱的编码远胜 Elo = 冗余**。生产 CatBoost **0.9952 vs Pinnacle 0.9942 = 仍然输** → 主轴(模型=前沿,赢不了收盘线)加固而非推翻。新卡 `docs/v4_baseline_card_clubelo_restored.md`(旧卡留着做对比)。`记忆 clubelo-null-not-underestimated`
 
 ---
 
