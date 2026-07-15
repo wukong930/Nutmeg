@@ -120,6 +120,23 @@ _ZH_OVERRIDES: dict[str, str] = {
     # (jingcai_sp market_mode 行 + cup-market 端点同名,live diff 2026-07-09)。
     "索菲亚中央陆军": "CSKA Sofia",
     "斯普利特海杜克": "HNK Hajduk Split",
+    # 美职联 USA_MLS 2026-07-14 — 注册当天竞彩上架 4 场,2 场整对静默丢弃。两个病因:
+    # (a) 竞彩保留拉丁后缀(蒙特利尔CF/多伦多FC),TEAM_NAME_ZH 却砍掉了(蒙特利尔/
+    # 多伦多)—— 且我们自己不一致(洛杉矶FC/圣地亚哥FC 保留了后缀);(b) 波特兰竞彩
+    # 写「伐木工」,我们写「伐木者」(一字之差)。owner 实报「竞彩 4 场只显示 2 场」。
+    # 第 6 个复现「词典即开关」的联赛(韩职/瑞超/UCL-Q/UEL-Q/挪超之后)。
+    # ⚠ 但这次的教训不是「哨兵瞎」——哨兵响了:logs/sporttery_unmapped_latest.txt
+    # 11:43 已写「过半丢失: 美职 2/4」并精确点名这 3 个名字,比 owner 人肉发现早几小时。
+    # 真缺口 = 可见性:告警只走易逝桌面推送(无头 launchd 看不见)+ 一个只有
+    # health_check.sh 才读的文件,面板上看不到 → owner 只能靠比对竞彩 App 才发现。
+    # 修这类问题请先读那个报告文件,别再造第二个检测器。
+    # EN 值 = live cup-market gather 名(逐一对上, live diff 2026-07-15)。
+    # ⚠ 只补已在竞彩实见的 3 个;其余 26 支 MLS 队的竞彩写法从未见过(纽约城/奥兰多城/
+    # 纳什维尔/明尼苏达联… 都可能带 FC/SC 后缀)= 同类雷仍埋着。按本文件既有铁律
+    # 「绝不瞎猜」不臆造拼法 —— 靠上面那份报告在它们上架当天点名,再照抄补进来。
+    "蒙特利尔CF": "CF Montreal",
+    "多伦多FC": "Toronto FC",
+    "波特兰伐木工": "Portland Timbers",
     # ── 竞彩历史回填 name-join(2026-07-09)──— getFixedBonus/getUniformMatchResult 用
     # 缩写中文名(巴萨/皇马…),TEAM_NAME_ZH 里没有 → 补 13 受训联赛缺口。value = AF/canonical
     # EN(对齐 odds_snapshots)。genuinely 拿不准的(布城/里斯本/阿维SAD)故意留空 = 可见缺口
