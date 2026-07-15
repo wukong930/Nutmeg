@@ -27,6 +27,7 @@ from nutmeg.v4.api.schemas import (
     HealthResponse,
     JingcaiRecommendRequest,
     JingcaiSpRequest,
+    JingcaiUnmappedResponse,
     JingcaiSpResponse,
     LegResponse,
     LotteryRulesResponse,
@@ -378,7 +379,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v91-fe-zhdict-nocache"
+_FE_VERSION = "nutmeg-v92-fe-jc-unmapped-banner"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1188,6 +1189,45 @@ def sporttery_refresh_endpoint() -> SportteryRefreshResponse:
     except Exception:  # noqa: BLE001 — fail-soft; the button surfaces the reason
         return SportteryRefreshResponse(ok=False, reason="竞彩抓取失败(网络/端点)")
     return SportteryRefreshResponse(ok=True, **r)
+
+
+@router.get("/observation/jingcai-unmapped", response_model=JingcaiUnmappedResponse)
+def jingcai_unmapped_endpoint() -> JingcaiUnmappedResponse:
+    """竞彩因队名映射不到英文规范名而被【整场丢弃】的场次 — 近期赛事页常驻横幅用。
+
+    为什么存在:检测早就有、而且工作正常 —— 2026-07-15 竞彩上架 4 场美职联而面板只
+    显示 2 场时,``summarize_unmapped`` 11:43 就精确点名了那 2 场、那 3 个错名字,并
+    写进了 logs/sporttery_unmapped_latest.txt(比 owner 人肉发现早几小时)。缺的从来
+    不是检测能力,是**可见性**:告警只走易逝的桌面推送(无头 launchd 里根本看不见)
+    加一个只有 health_check.sh 才主动读的文件,面板上一个字都没有 → owner 只能靠比对
+    竞彩 App 才发现少了场。本端点把同一份结论搬到他真正会看的那块屏幕上。
+
+    只读 cron 已写好的缓存(ttl 给极大值 = 只认缓存、绝不发请求):被动横幅在每次开页
+    都去打一次竞彩官网既不礼貌也没必要 —— 主动抓取是 🎯 刷新竞彩 的活。判据复用同一个
+    纯函数 ``summarize_unmapped``,不另立第二套口径。Fail-soft:读不到就 ok=False,
+    横幅缺席好过整页崩。
+    """
+    from nutmeg.v4.cli.ingest_sporttery import summarize_unmapped
+    from nutmeg.v4.data.sources.sporttery import (
+        fetch_lottery_matches,
+        lottery_cache_age_seconds,
+    )
+    try:
+        matches = fetch_lottery_matches(refresh=False, ttl_seconds=10**9)
+    except Exception:  # noqa: BLE001 — fail-soft; 横幅缺席好过整页崩
+        return JingcaiUnmappedResponse(ok=False, reason="读取竞彩缓存失败")
+    if not matches:
+        return JingcaiUnmappedResponse(ok=False, reason="暂无竞彩缓存(等下次抓取)")
+    s = summarize_unmapped(matches)
+    age = lottery_cache_age_seconds()
+    return JingcaiUnmappedResponse(
+        ok=True,
+        n_matches=len(matches),
+        unmapped=s["unmapped"],
+        gone=s["gone"],
+        partial=s["partial"],
+        age_seconds=int(age) if age is not None else None,
+    )
 
 
 # ---------- /v4/recommend/parlay (V12 W5 — hand-picked 串关) ----------

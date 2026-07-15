@@ -492,6 +492,23 @@ class SportteryRefreshResponse(BaseModel):
     unmapped_teams: list[dict] = []
 
 
+class JingcaiUnmappedResponse(BaseModel):
+    """上次竞彩抓取里因队名映射不到英文规范名而被【整场丢弃】的场次 — 被动可见性。
+
+    和 ``SportteryRefreshResponse.unmapped_teams`` 同一份结论,区别只在触发方式:
+    那个要 owner 主动点 🎯 刷新竞彩 才看得到,这个在开页时自己说出来。
+    """
+    # NB 邻居用 Optional[...],本模型用 `X | None`:同义,但 ruff(UP045)判 Optional
+    # 为陈旧写法,而本仓要求「不新增 lint」→ 新代码走新写法,旧的留给统一迁移。
+    ok: bool = False
+    reason: str | None = None
+    n_matches: int = 0            # 上次抓取到的在售总场次
+    unmapped: list[dict] = []     # [{home_cn, away_cn, league_cn}] — 每个被丢的场
+    gone: list[str] = []          # 整联赛 0 场入库的联赛
+    partial: list[str] = []       # ["美职 2/4"] — 该联赛≥半数被丢
+    age_seconds: int | None = None   # 这份结论的新鲜度(缓存距今)
+
+
 class JingcaiRecommendRequest(BaseModel):
     """V12 W5 — 竞彩盘口推荐: run single + parlay + pool over the fixtures the
     user filled with 竞彩 SP (+ 让球) in 近期赛事.

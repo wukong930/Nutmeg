@@ -280,6 +280,24 @@ def _cache_path(pool_codes: str, channel: str, cache_dir: str | Path) -> Path:
     return d / f"matchcalc_{safe}_{channel}.json"
 
 
+def lottery_cache_age_seconds(
+    *,
+    pool_codes: str = "had,hhad",
+    channel: str = "c",
+    cache_dir: str | Path = _DEFAULT_CACHE,
+) -> float | None:
+    """上次成功抓取竞彩在售名单距今多少秒(无缓存 → None)。
+
+    给「只读缓存」的消费者标注新鲜度用:任何基于缓存的被动展示都必须能说出「截至
+    何时」,否则就是又一个「看着权威其实过期」的陷阱。公开函数是为了让 API 层不必
+    去 import 本模块的私有 _cache_path/_DEFAULT_CACHE。
+    """
+    try:
+        return time.time() - _cache_path(pool_codes, channel, cache_dir).stat().st_mtime
+    except OSError:
+        return None
+
+
 def _request(
     pool_codes: str,
     channel: str,
