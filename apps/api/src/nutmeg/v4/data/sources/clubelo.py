@@ -59,22 +59,49 @@ CLUBELO_SLUGS: dict[str, str] = {
     "Ein Frankfurt": "Frankfurt",
     "M'gladbach": "Gladbach",
     "FC Koln": "Koeln",
-    "Werder Bremen": "Bremen",
     "Union Berlin": "UnionBerlin",
     "Schalke 04": "Schalke",
     "Hertha": "Hertha",
-    "Holstein Kiel": "Kiel",
     "St Pauli": "StPauli",
-    "Paris SG": "PSG",
-    "St Etienne": "SaintEtienne",
+    # NB "Werder Bremen"/"Holstein Kiel" 原本在这里,值是错的(Bremen/Kiel → 0 行);
+    # 已改正并移到下面 2026-07-15 那个块里,别在这重新加回来(重复键 = 后者胜,易踩)。
     "Le Havre": "LeHavre",
     "PSV Eindhoven": "PSV",
-    "AZ Alkmaar": "AZ",
     "NEC Nijmegen": "Nijmegen",
     "Sparta Rotterdam": "SpartaRotterdam",
     "Go Ahead Eagles": "GoAheadEagles",
     "For Sittard": "Sittard",
     "Sp Braga": "Braga",
+
+    # ── 2026-07-15 修正 + 补齐 ───────────────────────────────────────────────
+    # 权威来源:`http://api.clubelo.com/<YYYY-MM-DD>` 一次返回全部 ~589 家俱乐部的
+    # 【准确名字】+ 当前 Elo。slug 规则 = 权威名【去掉空格,保留连字符】(实测:
+    # ParisSG→4592 行 / Saint-Etienne→6024 / Alkmaar→3573,而 Paris%20SG→0)。
+    # 下面每一条都【逐个 fetch 验证过行数】,不是模糊匹配 —— 模糊匹配会把
+    # `Club Brugge` 配到 `Cercle Brugge`(另一家俱乐部)= 静默污染。以后要补别名,
+    # 先拉那个日期端点拿权威名,再验证,别猜。
+    #
+    # ⚠️ 前 5 条是【改正原本就错的别名】(它们一直返回空 → 静默丢特征):
+    "Paris SG": "ParisSG",              # 原 "PSG" → 0 行
+    "AZ Alkmaar": "Alkmaar",            # 原 "AZ" → 0 行
+    "Holstein Kiel": "Holstein",        # 原 "Kiel" → 0 行
+    "Werder Bremen": "Werder",          # 原 "Bremen" → 0 行
+    "St Etienne": "Saint-Etienne",      # 原 "SaintEtienne" → 0 行(权威名带连字符)
+    # 以下为新增(默认 slug 生成规则对不上权威名):
+    "Club Brugge": "Brugge",            # ⚠️ 不是 Cercle Brugge!
+    "AVS": "AVSFutebol",
+    "Andorra": "AndorraCF",
+    "Estrela": "EstrelaAmadora",
+    "Nurnberg": "Nuernberg",            # ü→ue 转写
+    "Osnabruck": "Osnabrueck",
+    "Sudtirol": "Suedtirol",
+    "Oud-Heverlee Leuven": "Leuven",
+    "Pau FC": "Pau",
+    "Sp Gijon": "Gijon",
+    "St. Gilloise": "StGillis",
+    "Vallecano": "RayoVallecano",
+    "Virtus Entella": "Entella",
+    "Waregem": "ZulteWaregem",
 }
 
 
@@ -182,6 +209,22 @@ def ingest_teams(
             except Exception as exc:  # noqa: BLE001 — log and continue with empty
                 log.warning("Clubelo fetch failed for %s: %s", team, exc)
                 df = _empty_history_frame(team, _slug_for(team))
+            # ⚠️ 2026-07-15 — 绝不用【空结果】覆盖【已有的好数据】。
+            # 这行以前是无条件 df.to_parquet():clubelo 限流时不报错、只回空 body →
+            # fetch_team_history 返回空 frame → 直接把好数据冲成空文件。这正是 335 个
+            # 缓存里 181 个(54%)变空的成因 —— 包括 Ajax(源上 5736 行)、斯图加特、
+            # 佛罗伦萨、波尔图这些主力队;而模型有 clubelo_available 标志会静默降级,
+            # 所以整整两个月没人发现。有了这道闸,一次 --refresh 撞上限流最多是「没更新」
+            # (下次再来),而不是「把历史毁掉」——周更 cron 才敢开。
+            if df.empty and p.exists():
+                cached = pd.read_parquet(p)
+                if not cached.empty:
+                    log.warning(
+                        "Clubelo returned EMPTY for %s but cache has %d rows — keeping "
+                        "cache (rate-limit/blip, not a real delisting)", team, len(cached))
+                    frames.append(cached)
+                    time.sleep(throttle_seconds)
+                    continue
             df.to_parquet(p, index=False)
             frames.append(df)
             time.sleep(throttle_seconds)

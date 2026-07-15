@@ -543,6 +543,22 @@ install_job "com.nutmeg.weekly_elo_refresh" \
   4 30 6 \
   "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_eloratings --quiet || true"
 
+# Job 8b: weekly CLUBELO refresh (Monday 05:00) — 2026-07-15, owner 授权改 cron
+# ⚠️ 这是【俱乐部】Elo,和上面 Job 8 的【国家队】eloratings 是两套不同的源/文件:
+#   · eloratings.net  → 244 国家队 → 只喂世界杯模型
+#   · api.clubelo.com → ~589 欧洲俱乐部 → 喂 13 个受训联赛的生产模型
+#     (40 个特征里 5 个是 clubelo_*:home/away/diff/p_home/available)
+# 为什么现在才加:clubelo 从 2026-05-23 一次性手抓之后【就没有任何 cron】,两个月无人
+# 更新。休赛期没比赛所以看不出来,但新赛季一开打它当天就开始烂,而且不会自愈 —— 模型
+# 有 clubelo_available 标志会【静默降级】,不崩不报,所以两个月没人发现。
+# 周一跑:收周末+周中的比赛结果(clubelo 只在有比赛时才变)。
+# --refresh(全量重抓)敢开的前提是 clubelo.ingest_teams 里那道【防覆盖闸】:限流时
+# 源返回空 body 而不报错,旧代码会把空结果写盘、冲掉好数据(335 份里 181 份变空就是
+# 这么来的)。现在空结果绝不覆盖非空缓存 → 最坏只是「这周没更新」,不会毁历史。
+install_job "com.nutmeg.weekly_clubelo_refresh" \
+  5 0 1 \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_external --source clubelo --refresh --skip-coverage-card || true"
+
 # Job 11: V12 W8j model-board + V14 市场模式 prediction accuracy (09:00/15:30/21:00 daily)
 # Logs the 1X2 prediction for every UPCOMING match (model board for the 13 trained
 # leagues + Pinnacle de-vig for cups/J1/J2/国际赛, market_mode=1), settles finished
