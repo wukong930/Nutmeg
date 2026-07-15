@@ -226,7 +226,11 @@ def main(argv: list[str] | None = None) -> int:
     # default by +16/+25/+46pp ROI consistently (all 3 chunks). Default
     # actually LOSES money in all 3 sub-periods (-2.6/-28.5/-16.8% ROI)
     # while lineup-aware is mean-positive. See docs/post_v9_p1_18_ship_lineup_aware.md.
-    parser.add_argument("--model", default="data/v4_model_cat_lineups", help="Trained artifact directory")
+    # 体检 D2 2026-07-15:lineups 盘冻结在 2024-08 未随解冻重训,且服务时 lineup
+    # 特征恒 0 → 默认切回生产盘。cron(morning/daily_recommend)不传 --model,
+    # 靠这里的默认值 —— 改这行 = 改 cron 的实际行为。显式 A/B 用 roi_backtest。
+    parser.add_argument("--model", default="data/v4_model_cat",
+                        help="Trained artifact directory")
     parser.add_argument("--bankroll", type=float, default=1000.0)
     parser.add_argument("--top-n", type=int, default=10)
     parser.add_argument("--min-hit-probability", type=float, default=0.05)
@@ -345,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
             # tags each session with the actual artifact (catboost / lightgbm
             # / xgboost). Without this key, recorder.py defaults the field
             # to "lightgbm" — which silently mis-tagged every CLI-driven
-            # session (production cron uses `data/v4_model_cat_lineups`,
+            # session (production cron uses `data/v4_model_cat`,
             # a CatBoost artifact) and would break A/B reports that
             # filter on `model_type`.
             "model": {

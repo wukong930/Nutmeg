@@ -35,10 +35,10 @@ fi
 
 # Default the observation DB if not in .env
 export NUTMEG_V4_OBSERVATION_DB="${NUTMEG_V4_OBSERVATION_DB:-$REPO_ROOT/data/v4_observation.db}"
-# post-v9 P1#18: default to lineup-aware artifact (V6 W7) — proven
-# +20.48pp ROI advantage over V5 W12 default on 35-week, 3-chunk
-# stable backtest. Can override via .env if you want to A/B locally.
-export NUTMEG_V4_ARTIFACT_PATH="${NUTMEG_V4_ARTIFACT_PATH:-$REPO_ROOT/data/v4_model_cat_lineups}"
+# post-v9 P1#18 曾默认 lineup-aware(当年 35 周回测 +20.48pp);2026-07-15 体检 D2
+# 切回生产盘:lineups 盘冻结在 cutoff 2024-08-01 未随解冻重训,且服务时 lineup
+# 特征恒 0(lookup 不传)→ 已不是当年那个臂。A/B 请显式设该变量或用 roi_backtest。
+export NUTMEG_V4_ARTIFACT_PATH="${NUTMEG_V4_ARTIFACT_PATH:-$REPO_ROOT/data/v4_model_cat}"
 export PYTHONPATH="$REPO_ROOT/apps/api/src"
 
 echo "Starting Nutmeg API on http://$HOST:$PORT (Ctrl-C to stop)"

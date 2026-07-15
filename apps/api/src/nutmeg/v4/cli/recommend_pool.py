@@ -186,7 +186,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fixtures", required=True,
                    help="CSV: M matches with date,league,teams,odds,handicap_home,pick")
     # post-v9 P1#18: flipped to lineup-aware (see docs/post_v9_p1_18_ship_lineup_aware.md)
-    p.add_argument("--model", default="data/v4_model_cat_lineups", help="Artifact dir")
+    p.add_argument("--model", default="data/v4_model_cat",  # 体检 D2 2026-07-15,同 recommend.py
+                   help="Artifact dir")
     p.add_argument("--n", type=int, required=True,
                    help=f"Legs per ticket (1..{MAX_LEGS_PER_TICKET})")
     p.add_argument("--bankroll", type=float, default=1000.0)

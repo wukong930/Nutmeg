@@ -11,6 +11,7 @@ cached LoadedModel.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -619,6 +620,12 @@ def _market_reverse_handicap_probs(row: pd.Series, line: int) -> dict[str, float
             if ln == int(line):
                 return {"H": float(ph), "D": float(pd_), "A": float(pa)}
     except Exception:  # noqa: BLE001
+        # 体检 W0 2026-07-15 — 以前零 log:反推失败时让球腿 P 静默降级回模型 grid,
+        # 与「Pinnacle 缺席」走同一条不可见的路。行为不变,只让降级可见。
+        logging.getLogger(__name__).warning(
+            "market-reverse handicap P failed for %s vs %s (line=%s) — "
+            "falling back to model grid",
+            row.get("home_team"), row.get("away_team"), line, exc_info=True)
         return None
     return None
 
@@ -685,7 +692,12 @@ def _fixture_to_match_input(row: pd.Series, lh: float, la: float, gbm_rho: float
                     fair[0], fair[1], fair[2], p_over, ou_line=ou_line
                 )
             except Exception:  # noqa: BLE001 — keep model λ if the fit fails
-                pass
+                # 体检 W0 2026-07-15 — 以前零 log:fit 失败后 1X2 用 de-vig fair、
+                # grid 留在模型 λ = 同一张 rec 内概率源静默劈叉。行为不变,仅曝光。
+                logging.getLogger(__name__).warning(
+                    "market λ fit failed for %s vs %s — grid stays on model λ "
+                    "while 1X2 uses de-vig fair",
+                    row.get("home_team"), row.get("away_team"), exc_info=True)
 
     # F1 — when a 让球 bet is present, use the MARKET-REVERSE P (de-vig Pinnacle
     # 1X2 + O/U), the SAME source the dashboard shows + the parlay path records,

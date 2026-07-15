@@ -374,6 +374,12 @@ def main(argv: list[str] | None = None) -> int:
     _info(f"  best_iter home={best_iter_home}, away={best_iter_away}", args.quiet)
 
     # Temperature calibration on validation predictions
+    #
+    # 📌 口径正典(体检 D3,2026-07-15,owner 拍板):这里拟合的 T 【不】在服务端应用。
+    # routes 只把它回显进 ModelInfo;线上模型 P = 裸 DC 网格,唯一运行时校准 = Layer A
+    # 的 live_T_correction.json(设计如此)。评估(walk_forward/bench 卡)应用 T 只为
+    # 跨模型可比 → 读评估 log-loss 时记得与线上口径差一个 T(当前 T≈0.90,ΔNLL≈0.0008)。
+    # 锁定测试:tests/v4/test_calibration_canon.py —— 要改口径,先去改它。
     _info("Fitting temperature calibrator on validation pool ...", args.quiet)
     probs_val = lambdas_to_1x2_array(np.column_stack([lh_val, la_val]), rho=args.gbm_rho)
     temperature_T = None

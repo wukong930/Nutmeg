@@ -241,7 +241,20 @@ def fetch_soccer_game_events(
     out: list[dict[str, Any]] = []
     offset = 0
     while offset < max_events:
-        page = fetch_events(limit=page_size, offset=offset, refresh=refresh)
+        try:
+            page = fetch_events(limit=page_size, offset=offset, refresh=refresh)
+        except PolymarketError as exc:
+            # 体检 W0 2026-07-15 — Polymarket 弃用深 offset 分页(offset≥2100 →
+            # 422 "use /events/keyset")。以前没接这个异常:它穿透整个 run,已抓的
+            # 页全部作废、零写入、exit 0 → cron 绿灯空转 4 天(07-12 起 —— 恰是
+            # soccer 开放事件数涨过 2100 的那天)。events 按 startDate 升序,深页
+            # 全是远期比赛 → 撞墙 = 视为「到底了」,接受已抓的近期页;其它错误照旧抛。
+            if "offset too large" in str(exc):
+                log.warning(
+                    "Polymarket offset cap hit at %d — accepting %d events fetched "
+                    "so far (deeper pages are far-future)", offset, len(out))
+                break
+            raise
         if not page:
             break
         out.extend(e for e in page if _is_game_event(e) and _in_window(e, start_date_min, end_date))

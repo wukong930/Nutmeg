@@ -257,10 +257,12 @@ def _run_single(args, reader: Callable[[str], str]) -> str:
         default=1000.0,
         reader=reader,
     )
-    # post-v9 P1#18: flipped to lineup-aware (see docs/post_v9_p1_18_ship_lineup_aware.md)
+    # post-v9 P1#18 曾切到 lineup-aware;2026-07-15 体检 D2 切回生产盘:lineups 盘
+    # 冻结在 cutoff 2024-08-01(未随当日解冻重训),且服务时 lineup 特征恒 0
+    # (lookup 从不传入)→ 它不是真·lineup 臂。显式 A/B 请用 roi_backtest。
     model_path = args.model or _prompt(
         "请输入模型路径",
-        default="data/v4_model_cat_lineups",
+        default="data/v4_model_cat",
         reader=reader,
     )
 
@@ -297,7 +299,7 @@ def _run_parlay(args, reader: Callable[[str], str]) -> str:
     )
     model_path = args.model or _prompt(
         "请输入模型路径",
-        default="data/v4_model_cat_lineups",   # post-v9 P1#18
+        default="data/v4_model_cat",   # 体检 D2 2026-07-15(理由见本文件单关处)
         reader=reader,
     )
     k_min = args.k_min if args.k_min is not None else _prompt_int(
@@ -354,7 +356,7 @@ def _run_pool(args, reader: Callable[[str], str]) -> str:
     )
     model_path = args.model or _prompt(
         "请输入模型路径",
-        default="data/v4_model_cat_lineups",   # post-v9 P1#18
+        default="data/v4_model_cat",   # 体检 D2 2026-07-15(理由见本文件单关处)
         reader=reader,
     )
     fixtures = _read_pool_fixtures(fixtures_path)
