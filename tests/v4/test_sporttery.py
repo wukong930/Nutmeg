@@ -124,6 +124,27 @@ def test_nor_eliteserien_zh_override():
     assert sporttery.zh_to_canonical("特罗姆瑟") == "Tromso"
 
 
+def test_mls_zh_override():
+    """美职联 USA_MLS (2026-07-14) — 竞彩保留拉丁后缀(蒙特利尔CF/多伦多FC)而字典砍了,
+    外加「伐木工」vs 我们的「伐木者」→ 4 场在售丢 2 场(owner 实报)。EN 值 = live
+    cup-market gather 名。补别名时没配测试(全文件唯一漏锁的联赛块),2026-07-16 补。"""
+    assert sporttery.zh_to_canonical("蒙特利尔CF") == "CF Montreal"
+    assert sporttery.zh_to_canonical("多伦多FC") == "Toronto FC"
+    assert sporttery.zh_to_canonical("波特兰伐木工") == "Portland Timbers"
+
+
+def test_bra_serie_a_zh_override():
+    """巴甲 BRA_SERIE_A (2026-07-16) — MLS 那条注释预言的姊妹雷(同日注册、同样只写了
+    标准媒体译名)。竞彩「布拉干蒂诺RB」≠ 字典「布拉甘蒂诺」(RB 后缀词序 + 干/甘 一字之差)
+    → 20 场在售丢 1 场。EN 值 = 实盘 gather 名(odds_snapshots BRA_SERIE_A 2026-07-17
+    'Fluminense' vs 'RB Bragantino',Pinnacle 线已在库)。"""
+    assert sporttery.zh_to_canonical("布拉干蒂诺RB") == "RB Bragantino"
+    # 已映射侧未受影响 —— 一队断即整场丢,这半边一直是好的(半坏盲区的另一半)
+    assert sporttery.zh_to_canonical("弗鲁米嫩塞") == "Fluminense"
+    # 字典原有拼法保持可用(竞彩若哪天改写法,两种都认)
+    assert sporttery.zh_to_canonical("布拉甘蒂诺") == "RB Bragantino"
+
+
 def test_finnish_zh_override():
     """芬超 (market-mode league) — 竞彩's descriptive 中文 maps to the live cup-market
     gather name so the 竞彩 SP pre-fills (was 4/6 matches blank: 体检 2026-06-13)."""

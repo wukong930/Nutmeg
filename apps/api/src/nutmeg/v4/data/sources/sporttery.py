@@ -137,6 +137,18 @@ _ZH_OVERRIDES: dict[str, str] = {
     "蒙特利尔CF": "CF Montreal",
     "多伦多FC": "Toronto FC",
     "波特兰伐木工": "Portland Timbers",
+    # 巴甲 BRA_SERIE_A 2026-07-16 — 上面那条 MLS 注释预言的姊妹雷,如期而至(两个
+    # 联赛同在 07-14 注册,zh 字典写的都是「标准媒体译名」而非竞彩实际拼法)。
+    # 竞彩上架 20 场丢 1 场,两个病因还是 MLS 那两个的合体:(a) 后缀词序——竞彩
+    # 写「布拉干蒂诺RB」,我们写「布拉甘蒂诺」把 RB 砍了;(b) 一字之差——干 vs 甘。
+    # 弗鲁米嫩塞 本就映射得上 → 一队断=整场丢(哨兵报告列整场是这个意思,不是两队都断);
+    # 单场丢不触发整联赛/过半报警 = 又一例「半坏」盲区,靠 unmapped 报告点名才可见。
+    # EN 值 = 实盘 gather 名,odds_snapshots 铁证:BRA_SERIE_A 2026-07-17
+    # 'Fluminense' vs 'RB Bragantino',Pinnacle 线 1.95 已在库 → 补上即能算 EV。
+    # 第 7 个复现「词典即开关」的联赛(韩职/瑞超/UCL-Q/UEL-Q/挪超/美职联之后)。
+    # ⚠ 其余 19 支巴甲队(米内罗竞技/瓦斯科达伽马/沙佩科恩斯…)的竞彩写法仍未实见
+    # = 同类雷继续埋着。同 MLS:不臆造拼法,等报告在它们上架当天点名再照抄。
+    "布拉干蒂诺RB": "RB Bragantino",
     # ── 竞彩历史回填 name-join(2026-07-09)──— getFixedBonus/getUniformMatchResult 用
     # 缩写中文名(巴萨/皇马…),TEAM_NAME_ZH 里没有 → 补 13 受训联赛缺口。value = AF/canonical
     # EN(对齐 odds_snapshots)。genuinely 拿不准的(布城/里斯本/阿维SAD)故意留空 = 可见缺口
