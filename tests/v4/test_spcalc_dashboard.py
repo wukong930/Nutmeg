@@ -987,6 +987,10 @@ class TestEvReliability:
         assert html.count("_evRelTag(P[o]") >= 2          # 两个 1X2 面
         assert html.count("_hcEvHtml(ev, evLo, evHi, P[o]") >= 2   # 两个让球面
         assert "return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip)}`" in html
+        # A′ 排版(owner 选型 2026-07-18):区间构造性对称(evHi = 2·点估 − evLo)
+        # → ±半宽与 [lo,hi] 信息完全等价、字符省一半。方括号别回来。
+        assert "±${(half * 100).toFixed(1)}%" in html
+        assert "[${f(evLo)},${f(evHi)}]" not in html
 
     def test_bare_checkmark_greenlight_removed(self, html):
         # the old "✅ on ANY +5% EV" (which green-lit longshots) is gone — the
