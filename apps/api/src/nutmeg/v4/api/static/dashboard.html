@@ -2114,9 +2114,10 @@ const I18N = {
     cupman_badge:     '手填实时盘口',
     cupman_just_now:  '刚刚',
     sw_board_hdr:     '甜区 EV 榜',
-    sw_board_note:    '只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。榜=扫描辅助,下注仍看 +5% 闸;卡片里手填改价后以卡片为准。点行跳卡片。',
+    sw_board_note:    '只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。',
     sw_second:        '次优',
     sw_jump_hint:     '点击跳到这场的卡片',
+    sw_refresh_hint:  '用当前手填 SP + 最新盘口重算排行',
     sw_1x2_h:         '胜',
     sw_1x2_d:         '平',
     sw_1x2_a:         '负',
@@ -2581,9 +2582,10 @@ const I18N = {
     cupman_badge:     'live odds (manual)',
     cupman_just_now:  'just now',
     sw_board_hdr:     'sweet-zone EV board',
-    sw_board_note:    'sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Scanning aid — the +5% gate still decides; card recalc wins after manual SP edits. Click a row to jump.',
+    sw_board_note:    'sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump.',
     sw_second:        '2nd',
     sw_jump_hint:     'jump to this match card',
+    sw_refresh_hint:  're-rank with current hand-typed SP + latest lines',
     sw_1x2_h:         'home',
     sw_1x2_d:         'draw',
     sw_1x2_a:         'away',
@@ -4507,7 +4509,18 @@ function _lgGroupsHtml(items, cardHtml, pfx) {
 //   甜区 = _evRelTier(P)==='sweet'(P∈[0.25,0.67]:SP 放大最小,EV 最可信)
 //   排序键 = **判闸 EV**:±1 让球腿用 A′ 下界(δ−2SE),其余=点估 —— 榜单
 //   不给「δ 恰好准」的点估插队的机会。榜只是扫描辅助:+5% 闸门照旧管下注。
-function _sweetLegs(pr) {
+// 「生效 SP」= 卡片里正在编辑的手填值优先,空/无效回落在售值 —— 榜和卡片看同一个
+// 现实(2026-07-18 owner 反馈:手填最新竞彩价后榜没跟着算)。让球腿只有当卡片的
+// 线选择器正停在**在售线**(jc_hc_line)上时才认输入框(换线探索时输入框对应的是
+// 别的线,认了就是张冠李戴)。
+function _sweetEffSp(mode, idx, market, outcome, fallback) {
+  const cls = market === 'hc' ? (mode === 'cup' ? 'cuphcsp' : 'spcalc-hcsp')
+                              : (mode === 'cup' ? 'cupsp' : 'spcalc-sp');
+  const el = document.querySelector(`.${cls}[data-idx="${idx}"][data-outcome="${outcome}"]`);
+  const v = el ? parseFloat(el.value) : NaN;
+  return v > 1.0 ? v : fallback;
+}
+function _sweetLegs(pr, idx, mode) {
   const legs = [];
   const push = (o, label, p, lo, sp) => {
     if (!(sp > 1.0) || !(p > 0)) return;
@@ -4515,17 +4528,20 @@ function _sweetLegs(pr) {
     const ev = p * sp - 1, evLo = (lo != null ? lo : p) * sp - 1;
     legs.push({ o, label, p, sp, ev, evLo, half: ev - evLo });
   };
-  push('H', t('sw_1x2_h'), pr.p_home_1x2, null, pr.jc_home);
-  push('D', t('sw_1x2_d'), pr.p_draw_1x2, null, pr.jc_draw);
-  push('A', t('sw_1x2_a'), pr.p_away_1x2, null, pr.jc_away);
+  push('H', t('sw_1x2_h'), pr.p_home_1x2, null, _sweetEffSp(mode, idx, '1x2', 'H', pr.jc_home));
+  push('D', t('sw_1x2_d'), pr.p_draw_1x2, null, _sweetEffSp(mode, idx, '1x2', 'D', pr.jc_draw));
+  push('A', t('sw_1x2_a'), pr.p_away_1x2, null, _sweetEffSp(mode, idx, '1x2', 'A', pr.jc_away));
   if (pr.jc_hc_line != null && pr.handicap_lines) {
     const lp = pr.handicap_lines.find(l => l.line === pr.jc_hc_line);
     const pb = lp && _hcLineP(lp);
     if (pb) {
+      const selEl = document.getElementById(`${mode === 'cup' ? 'cuphcline' : 'spcalc-hcline'}-${idx}`);
+      const onSale = selEl && parseInt(selEl.value, 10) === pr.jc_hc_line;
+      const sp = (o, fb) => onSale ? _sweetEffSp(mode, idx, 'hc', o, fb) : fb;
       const lbl = (o) => `${_hcLineLabel(pr.jc_hc_line)}${_hcOutcomeLabel(o)}`;
-      push('hcH', lbl('H'), pb.p.H, pb.lo.H, pr.jc_hc_home);
-      push('hcD', lbl('D'), pb.p.D, pb.lo.D, pr.jc_hc_draw);
-      push('hcA', lbl('A'), pb.p.A, pb.lo.A, pr.jc_hc_away);
+      push('hcH', lbl('H'), pb.p.H, pb.lo.H, sp('H', pr.jc_hc_home));
+      push('hcD', lbl('D'), pb.p.D, pb.lo.D, sp('D', pr.jc_hc_draw));
+      push('hcA', lbl('A'), pb.p.A, pb.lo.A, sp('A', pr.jc_hc_away));
     }
   }
   return legs.sort((a, b) => b.evLo - a.evLo);
@@ -4549,10 +4565,30 @@ function _sweetJump(mode, idx) {
   if (fold) fold.classList.remove('hidden');
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
+// 榜的独立刷新(2026-07-18 owner 反馈:手填最新 Pinnacle/竞彩价后要能重算排行)。
+// 三条路都通向这里:①四个卡片重算函数尾部挂了防抖调用(手填 SP 边打边进榜);
+// ②手填实时盘口「应用」走整板重渲(容器随之重建);③榜头的 ↻ 手动兜底。
+// 只重绘榜的容器,不动卡片 → 不会打断正在输入的焦点。
+let _swTimer = null;
+function _sweetBoardScheduleRefresh(mode) {
+  clearTimeout(_swTimer);
+  _swTimer = setTimeout(() => _sweetBoardRefresh(mode), 350);
+}
+function _sweetBoardRefresh(mode) {
+  const box = document.getElementById(`sweet-board-${mode}`);
+  if (!box) return;
+  const preds = (mode === 'cup' ? _CUPMKT.preds : _SPCALC.preds) || [];
+  const bett = [];
+  preds.forEach((pr, idx) => { if (_isJcBettable(pr)) bett.push({ pr, idx }); });
+  const wasOpen = box.querySelector('details') ? box.querySelector('details').open : true;
+  box.innerHTML = _sweetBoardHtml(bett, mode);
+  const det = box.querySelector('details');
+  if (det) det.open = wasOpen;
+}
 function _sweetBoardHtml(bett, mode) {
   const rows = [];
   (bett || []).forEach(({ pr, idx }) => {
-    const legs = _sweetLegs(pr);
+    const legs = _sweetLegs(pr, idx, mode);
     if (!legs.length) return;
     rows.push({ pr, idx, best: legs[0], second: legs[1] || null });
   });
@@ -4578,7 +4614,9 @@ function _sweetBoardHtml(bett, mode) {
     </div>`).join('');
   return `<details open class="mb-3 px-2 py-2 rounded" style="border:1px solid #05966940;background:#05966908">
     <summary class="text-sm font-display font-semibold" style="color:#059669;cursor:pointer">
-      🍬 ${t('sw_board_hdr')} <span class="text-xs text-muted">· ${rows.length}</span></summary>
+      🍬 ${t('sw_board_hdr')} <span class="text-xs text-muted">· ${rows.length}</span>
+      <span onclick="event.preventDefault();event.stopPropagation();_sweetBoardRefresh('${mode}')"
+            title="${t('sw_refresh_hint')}" style="cursor:pointer;padding:0 6px">↻</span></summary>
     <div class="text-xs text-muted px-2 mt-1 mb-1">${t('sw_board_note')}</div>
     ${body}</details>`;
 }
@@ -4594,7 +4632,8 @@ function _bettableFirstHtml(preds, cardHtml, mode) {
       style="border-left:4px solid #059669;background:#05966914">
       <span class="font-display font-semibold text-sm" style="color:#059669">💴 ${t('jc_bettable_hdr')}</span>
       <span class="text-xs text-muted">· ${bett.length}</span></div>`;
-  html += _sweetBoardHtml(bett, mode);
+  // 容器包一层:榜可被 _sweetBoardRefresh 单独重绘(手填 SP 防抖进榜),不动卡片
+  html += `<div id="sweet-board-${mode}">${_sweetBoardHtml(bett, mode)}</div>`;
   html += _lgGroupsHtml(bett, cardHtml, 'jc:');
   if (rest.length) {
     html += `<div class="text-xs text-muted mt-4 mb-2 px-2 pt-2"
@@ -5005,6 +5044,7 @@ function _spcalcRecalc(idx) {
   // V12 W5 — keep the 串关篮子 in sync when a leg's SP changes.
   if (typeof _parlayRender === 'function') _parlayRender();
   _jcStaleCapture(_SPCALC.preds[idx], 'spcalc-sp', idx, 'had');   // 体检 — 标准模式静默捕获
+  _sweetBoardScheduleRefresh('spcalc');   // 🍬 手填 SP 边打边进榜(防抖)
 }
 
 async function _spcalcRecord(idx) {
@@ -5164,6 +5204,7 @@ function _spcalcHcRecalc(idx) {
     btn.disabled = true; btn.style.cssText = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed';
   }
   _jcStaleCaptureHc(_SPCALC.preds[idx], 'spcalc-hcsp', 'spcalc-hcline-' + idx, idx);   // 体检 — 标准模式让球捕获
+  _sweetBoardScheduleRefresh('spcalc');   // 🍬 手填 SP 边打边进榜(防抖)
 }
 async function _spcalcHcRecord(idx) {
   const pr = _SPCALC.preds[idx];
@@ -5584,6 +5625,7 @@ function _cupRecalc(idx) {
     }
   });
   _jcStaleCapture(_CUPMKT.preds[idx], 'cupsp', idx, 'had');   // 体检 — 市场模式静默捕获
+  _sweetBoardScheduleRefresh('cup');   // 🍬 手填 SP 边打边进榜(防抖)
 }
 
 // V12 W8 — market-implied 让球 live EV on a cup-market card. P comes from the
@@ -5636,6 +5678,7 @@ function _cupHcRecalc(idx) {
     }
   });
   _jcStaleCaptureHc(_CUPMKT.preds[idx], 'cuphcsp', 'cuphcline-' + idx, idx);   // 体检 — 市场模式让球捕获
+  _sweetBoardScheduleRefresh('cup');   // 🍬 手填 SP 边打边进榜(防抖)
 }
 // V12 W8 — record a market-mode 让球 pick for tracking. Server recomputes the
 // market-implied P from Pinnacle (de-vig 1X2 + O/U), picks the highest-EV leg,

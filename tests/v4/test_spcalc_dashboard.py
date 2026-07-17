@@ -1091,7 +1091,8 @@ class TestSweetEvBoard:
         for fn in ("_sweetLegs", "_sweetBoardHtml", "_sweetJump", "_sweetLegHtml"):
             assert f"function {fn}(" in html, fn
         # 长在可投注置顶区头上,两个模式共享同一实现
-        assert "html += _sweetBoardHtml(bett, mode);" in html
+        assert ('html += `<div id="sweet-board-${mode}">'
+                '${_sweetBoardHtml(bett, mode)}</div>`;') in html
         assert "_bettableFirstHtml(preds, cardHtml, 'spcalc')" in html
         assert "_bettableFirstHtml(preds, _cupCardHtml, 'cup')" in html
 
@@ -1112,11 +1113,40 @@ class TestSweetEvBoard:
 
     def test_legs_cover_both_markets_from_jc_sp(self, html):
         # 1X2 三腿用在售 jc_*;让球三腿用 jc_hc_* 在 jc_hc_line 上,P 带 A′ 下界
-        assert "push('H', t('sw_1x2_h'), pr.p_home_1x2, null, pr.jc_home);" in html
+        assert ("push('H', t('sw_1x2_h'), pr.p_home_1x2, null, "
+                "_sweetEffSp(mode, idx, '1x2', 'H', pr.jc_home));" in html)
         assert "pr.handicap_lines.find(l => l.line === pr.jc_hc_line)" in html
-        assert "push('hcD', lbl('D'), pb.p.D, pb.lo.D, pr.jc_hc_draw);" in html
+        assert "push('hcD', lbl('D'), pb.p.D, pb.lo.D, sp('D', pr.jc_hc_draw));" in html
 
     def test_i18n_keys_both_locales(self, html):
         for k in ("sw_board_hdr", "sw_board_note", "sw_second", "sw_jump_hint",
                   "sw_1x2_h", "sw_1x2_d", "sw_1x2_a"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+    def test_live_refresh_wiring(self, html):
+        """2026-07-18 owner 反馈:手填最新 Pinnacle/竞彩价后榜要跟着重算。
+
+        三条路:①四个卡片重算函数尾部防抖刷新(手填 SP 边打边进榜);
+        ②手填实时盘口「应用」整板重渲(容器随之重建);③榜头 ↻ 手动兜底。
+        榜只重绘自己的容器 —— 不动卡片,不打断输入焦点。
+        """
+        assert "function _sweetBoardRefresh(" in html
+        assert "function _sweetBoardScheduleRefresh(" in html
+        # 独立容器:整板渲染时内容内联(无闪烁),刷新只换容器 innerHTML
+        assert ('html += `<div id="sweet-board-${mode}">'
+                '${_sweetBoardHtml(bett, mode)}</div>`;') in html
+        # 四个重算尾部都挂了钩(标准/市场 × 1X2/让球)
+        assert html.count("_sweetBoardScheduleRefresh('spcalc');") == 2
+        assert html.count("_sweetBoardScheduleRefresh('cup');") == 2
+        # ↻ 手动兜底 + 刷新保留折叠状态
+        assert "_sweetBoardRefresh('${mode}')" in html
+        assert "det.open = wasOpen;" in html
+
+    def test_effective_sp_prefers_hand_typed(self, html):
+        """生效 SP = 卡片输入框的手填值优先、空/无效回落在售值 —— 榜和卡片看同一个
+        现实。让球腿只有当线选择器停在**在售线**上才认输入框(换线探索≠在售价)。"""
+        assert "function _sweetEffSp(" in html
+        assert "return v > 1.0 ? v : fallback;" in html
+        assert "parseInt(selEl.value, 10) === pr.jc_hc_line" in html
+        for k in ("sw_refresh_hint",):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
