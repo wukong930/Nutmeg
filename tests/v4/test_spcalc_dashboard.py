@@ -32,6 +32,34 @@ class TestSpCalcMarkup:
         assert 'id="today-spcalc-section"' in html
         assert 'id="today-spcalc-list"' in html
 
+    def test_merged_single_card_per_mode(self, html):
+        """2026-07-18 owner 需求:按钮卡+列表卡合一(两模式同款)。section 不再
+        hidden —— 刷新按钮任何时候可点,空态走 empty 提示而不是藏整卡。"""
+        # 每个模式只剩一张卡:按钮和 count 同在 section 内
+        assert 'id="today-spcalc-section" class="bg-white' in html      # 无 hidden
+        assert 'id="cupmkt-section" class="bg-white' in html            # 无 hidden
+        # 旧「💴 竞彩 SP 实时计算」独立头已并入 → 键成孤儿删除
+        assert "h_today_spcalc" not in html
+        assert "today_spcalc_hint" not in html
+        # 空态不再藏 section(藏=藏按钮)
+        assert "section.classList.add('hidden'); _setPending('spcalc'" not in html
+        # (只针对市场模式的旧藏卡串;今日推荐的 #mktpred-section 无按钮,空了藏掉是对的)
+        assert ("sec.classList.add('hidden'); empty.classList.remove('hidden'); "
+                "_setPending('cupmkt'") not in html
+
+    def test_market_rows_left_aligned_fixed_columns(self, html):
+        """2026-07-18 owner 需求②:市场卡 SP 输入框/EV 列对齐。旧布局 ml-auto 右贴,
+        EV 文字长短不一 → 输入框跟着漂。现在与标准卡同构:左排 + 定宽列 + EV flex-1。
+        让球行 P 列与 1X2 公允列同宽(9.5rem)→ 两段输入框上下也对齐。"""
+        assert 'style="min-width:9.5rem">公允' in html
+        assert 'style="min-width:9.5rem">P —' in html
+        assert html.count('<span class="text-xs text-muted ml-auto">竞彩</span>') == 0
+        assert 'class="cupev flex-1' in html
+        assert 'class="cuphcev flex-1' in html
+        # 运行时 className 同步(重算覆盖 className,不同步一算就回旧样)
+        assert "evEl.className = 'cupev flex-1 text-xs font-medium';" in html
+        assert "evEl.className = 'cuphcev flex-1 text-xs font-medium';" in html
+
     def test_model_vs_market_1x2_shown(self, html):
         """V13 — each model-board outcome row shows the Pinnacle de-vig market
         1X2 (`市`/`Mkt`) next to the model P, for an at-a-glance divergence
@@ -151,7 +179,7 @@ class TestSpCalcMarkup:
 
 class TestSpCalcI18n:
     REQUIRED_KEYS = [
-        "h_today_spcalc", "today_spcalc_hint", "spcalc_n_matches",
+        "spcalc_n_matches",
         "spcalc_enter_sp", "spcalc_record_btn", "spcalc_pick", "spcalc_suggest",
         "spcalc_nobet", "spcalc_recorded", "spcalc_recorded_btn",
         "spcalc_record_err", "spcalc_need_all_sp", "spcalc_jc", "spcalc_fair",
