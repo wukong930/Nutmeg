@@ -2113,6 +2113,13 @@ const I18N = {
     cupman_vig:       '贴水',
     cupman_badge:     '手填实时盘口',
     cupman_just_now:  '刚刚',
+    sw_board_hdr:     '甜区 EV 榜',
+    sw_board_note:    '只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。榜=扫描辅助,下注仍看 +5% 闸;卡片里手填改价后以卡片为准。点行跳卡片。',
+    sw_second:        '次优',
+    sw_jump_hint:     '点击跳到这场的卡片',
+    sw_1x2_h:         '胜',
+    sw_1x2_d:         '平',
+    sw_1x2_a:         '负',
     // V12 W8c — 手动反推计算器
     mrev_title:       '{ic:calc} 手动反推计算器',
     mrev_hint:        '盘口未开 / 任意场次:从 Pinnacle 读数手填 → 即时反推让球 + EV(不用等 API)。',
@@ -2573,6 +2580,13 @@ const I18N = {
     cupman_vig:       'vig',
     cupman_badge:     'live odds (manual)',
     cupman_just_now:  'just now',
+    sw_board_hdr:     'sweet-zone EV board',
+    sw_board_note:    'sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Scanning aid — the +5% gate still decides; card recalc wins after manual SP edits. Click a row to jump.',
+    sw_second:        '2nd',
+    sw_jump_hint:     'jump to this match card',
+    sw_1x2_h:         'home',
+    sw_1x2_d:         'draw',
+    sw_1x2_a:         'away',
     // V12 W8c — manual reverse calculator
     mrev_title:       '{ic:calc} Manual reverse calculator',
     mrev_hint:        'No line / any match: type the numbers off Pinnacle → instant reverse 让球 + EV (no API wait).',
@@ -4485,10 +4499,94 @@ function _lgGroupsHtml(items, cardHtml, pfx) {
       its.map(o => cardHtml(o.pr, o.idx)).join(''), pfx);
   }).join('');
 }
+// ── 🍬 甜区 EV 榜(2026-07-17 owner 需求)────────────────────────────────
+// 比赛一多 EV 看不过来 → 把可投注场次的**甜区**腿拉平成一张榜:每场取最高 +
+// 次高两条腿,按 EV 从高到低。口径与卡片完全同源,不另起炉灶:
+//   P    = 服务端(1X2 de-vig p_*_1x2;让球 handicap_lines 含 A′ 下界)
+//   SP   = 在售竞彩价(jc_* / jc_hc_*;卡片里手填改价后以卡片内实时重算为准)
+//   甜区 = _evRelTier(P)==='sweet'(P∈[0.25,0.67]:SP 放大最小,EV 最可信)
+//   排序键 = **判闸 EV**:±1 让球腿用 A′ 下界(δ−2SE),其余=点估 —— 榜单
+//   不给「δ 恰好准」的点估插队的机会。榜只是扫描辅助:+5% 闸门照旧管下注。
+function _sweetLegs(pr) {
+  const legs = [];
+  const push = (o, label, p, lo, sp) => {
+    if (!(sp > 1.0) || !(p > 0)) return;
+    if (_evRelTier(p) !== 'sweet') return;
+    const ev = p * sp - 1, evLo = (lo != null ? lo : p) * sp - 1;
+    legs.push({ o, label, p, sp, ev, evLo, half: ev - evLo });
+  };
+  push('H', t('sw_1x2_h'), pr.p_home_1x2, null, pr.jc_home);
+  push('D', t('sw_1x2_d'), pr.p_draw_1x2, null, pr.jc_draw);
+  push('A', t('sw_1x2_a'), pr.p_away_1x2, null, pr.jc_away);
+  if (pr.jc_hc_line != null && pr.handicap_lines) {
+    const lp = pr.handicap_lines.find(l => l.line === pr.jc_hc_line);
+    const pb = lp && _hcLineP(lp);
+    if (pb) {
+      const lbl = (o) => `${_hcLineLabel(pr.jc_hc_line)}${_hcOutcomeLabel(o)}`;
+      push('hcH', lbl('H'), pb.p.H, pb.lo.H, pr.jc_hc_home);
+      push('hcD', lbl('D'), pb.p.D, pb.lo.D, pr.jc_hc_draw);
+      push('hcA', lbl('A'), pb.p.A, pb.lo.A, pr.jc_hc_away);
+    }
+  }
+  return legs.sort((a, b) => b.evLo - a.evLo);
+}
+function _sweetLegHtml(lg) {
+  const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
+  // 绿=判闸(下界)过 +5%,红=点估已负 —— 与卡片同一钱学
+  const color = lg.evLo >= 0.05 ? '#059669' : (lg.ev < 0 ? '#e11d48' : '');
+  const band = lg.half > 1e-9
+    ? ` <span class="text-muted" style="font-size:0.9em">±${(lg.half * 100).toFixed(1)}%</span>` : '';
+  return `<span class="font-medium">${lg.label}</span>
+    <span class="text-muted">@${lg.sp.toFixed(2)}</span>
+    <span style="color:${color};font-weight:${lg.evLo >= 0.05 ? '600' : '400'}">EV ${f(lg.ev)}</span>${band}`;
+}
+function _sweetJump(mode, idx) {
+  const el = document.querySelector(
+    `.${mode === 'cup' ? 'cupsp' : 'spcalc-sp'}[data-idx="${idx}"], ` +
+    `.${mode === 'cup' ? 'cuphcsp' : 'spcalc-hcsp'}[data-idx="${idx}"]`);
+  if (!el) return;
+  const fold = el.closest('.spcalc-lg-cards');           // 联赛组折叠着就先展开
+  if (fold) fold.classList.remove('hidden');
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function _sweetBoardHtml(bett, mode) {
+  const rows = [];
+  (bett || []).forEach(({ pr, idx }) => {
+    const legs = _sweetLegs(pr);
+    if (!legs.length) return;
+    rows.push({ pr, idx, best: legs[0], second: legs[1] || null });
+  });
+  if (!rows.length) return '';
+  rows.sort((a, b) => b.best.evLo - a.best.evLo);
+  const ko = (pr) => {
+    const ms = _kickoffMs(pr);
+    if (!isFinite(ms)) return '';
+    const d = new Date(ms), p2 = n => String(n).padStart(2, '0');
+    return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  };
+  const body = rows.map((r, i) => `
+    <div class="sw-row px-2 py-1 rounded" style="cursor:pointer" onclick="_sweetJump('${mode}',${r.idx})"
+         title="${t('sw_jump_hint')}">
+      <div class="text-xs">
+        <span class="text-muted">${i + 1}.</span>
+        <span class="font-medium">${zhTeam(r.pr.home_team)} vs ${zhTeam(r.pr.away_team)}</span>
+        <span class="text-muted"> · ${zhLeague(r.pr.league)} · ${ko(r.pr)}</span>
+      </div>
+      <div class="text-xs pl-4">${_sweetLegHtml(r.best)}${r.second
+        ? `<span class="text-muted"> ｜ ${t('sw_second')}: </span>${_sweetLegHtml(r.second)}` : ''}
+      </div>
+    </div>`).join('');
+  return `<details open class="mb-3 px-2 py-2 rounded" style="border:1px solid #05966940;background:#05966908">
+    <summary class="text-sm font-display font-semibold" style="color:#059669;cursor:pointer">
+      🍬 ${t('sw_board_hdr')} <span class="text-xs text-muted">· ${rows.length}</span></summary>
+    <div class="text-xs text-muted px-2 mt-1 mb-1">${t('sw_board_note')}</div>
+    ${body}</details>`;
+}
+
 // Partition preds into the 竞彩可投注 pin zone (top) + the reference rump (below),
 // each league-grouped. Returns the full inner HTML for the list container. With
 // nothing bettable it degrades to the plain league grouping (no headers = old look).
-function _bettableFirstHtml(preds, cardHtml) {
+function _bettableFirstHtml(preds, cardHtml, mode) {
   const bett = [], rest = [];
   preds.forEach((pr, idx) => (_isJcBettable(pr) ? bett : rest).push({ pr, idx }));
   if (!bett.length) return _lgGroupsHtml(rest, cardHtml, '');
@@ -4496,6 +4594,7 @@ function _bettableFirstHtml(preds, cardHtml) {
       style="border-left:4px solid #059669;background:#05966914">
       <span class="font-display font-semibold text-sm" style="color:#059669">💴 ${t('jc_bettable_hdr')}</span>
       <span class="text-xs text-muted">· ${bett.length}</span></div>`;
+  html += _sweetBoardHtml(bett, mode);
   html += _lgGroupsHtml(bett, cardHtml, 'jc:');
   if (rest.length) {
     html += `<div class="text-xs text-muted mt-4 mb-2 px-2 pt-2"
@@ -4718,7 +4817,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   // V12 W4 → 2026-07-07 — 竞彩可投注 pinned to the top in its own zone, then the
   // model/Pinnacle reference rump; each zone league-grouped by earliest kickoff
   // with colored headers. Shared with 市场模式 via _bettableFirstHtml.
-  const scoredHtml = _bettableFirstHtml(preds, cardHtml);
+  const scoredHtml = _bettableFirstHtml(preds, cardHtml, 'spcalc');
   // V14 — 待开盘 fixtures now feed the merged 待开盘赛事 section at the page bottom.
   list.innerHTML = scoredHtml;
   _setPending('spcalc', pending);
@@ -6031,7 +6130,7 @@ function renderCupMarket(preds, pending) {
   empty.classList.add('hidden'); sec.classList.remove('hidden');
   $('#cupmkt-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
   // 2026-07-07 — 竞彩可投注置顶 (same zoning as 标准模式 via _bettableFirstHtml).
-  list.innerHTML = _bettableFirstHtml(preds, _cupCardHtml);
+  list.innerHTML = _bettableFirstHtml(preds, _cupCardHtml, 'cup');
   _setPending('cupmkt', pending);   // 待开盘 → merged bottom section
   // Restore preserved 竞彩 SP / 让球线 into the freshly-rendered inputs + recompute.
   preds.forEach((pr, idx) => {

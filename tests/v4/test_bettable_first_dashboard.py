@@ -23,7 +23,7 @@ class TestBettableFirst:
     def test_helpers_defined(self, html: str) -> None:
         assert "function _isJcBettable(pr)" in html
         assert "function _lgGroupsHtml(items, cardHtml, pfx)" in html
-        assert "function _bettableFirstHtml(preds, cardHtml)" in html
+        assert "function _bettableFirstHtml(preds, cardHtml, mode)" in html
 
     def test_bettable_signal_is_full_had_sp(self, html: str) -> None:
         # A match is bettable iff it has a full HAD 竞彩 SP on file (all 3 legs).
@@ -31,11 +31,11 @@ class TestBettableFirst:
 
     def test_standard_mode_wired(self, html: str) -> None:
         # 标准模式 renders through the shared helper (not the old raw byLeague loop).
-        assert "const scoredHtml = _bettableFirstHtml(preds, cardHtml);" in html
+        assert "const scoredHtml = _bettableFirstHtml(preds, cardHtml, 'spcalc');" in html
 
     def test_market_mode_wired(self, html: str) -> None:
         # 市场模式 renders through the SAME helper so both modes order identically.
-        assert "list.innerHTML = _bettableFirstHtml(preds, _cupCardHtml);" in html
+        assert "list.innerHTML = _bettableFirstHtml(preds, _cupCardHtml, 'cup');" in html
 
     def test_zones_use_distinct_collapse_pfx(self, html: str) -> None:
         # Bettable zone namespaces its collapse keys ('jc:') so the SAME league

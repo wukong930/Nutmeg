@@ -1077,3 +1077,46 @@ class TestSharpFlipGuard:
     def test_i18n_keys_both_locales(self, html):
         for k in ("rel_flip", "rel_flip_hint"):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestSweetEvBoard:
+    """🍬 甜区 EV 榜(2026-07-17 owner 需求)— 比赛多时 EV 看不过来。
+
+    可投注场次的甜区腿拉平成一张榜:每场最高+次高,按**判闸 EV** 排序
+    (±1 让球腿 = A′ 下界 —— 榜单不给「δ 恰好准」的点估插队的机会)。
+    口径与卡片同源:P=服务端、SP=在售竞彩价、甜区=_evRelTier。
+    """
+
+    def test_functions_defined_and_wired(self, html):
+        for fn in ("_sweetLegs", "_sweetBoardHtml", "_sweetJump", "_sweetLegHtml"):
+            assert f"function {fn}(" in html, fn
+        # 长在可投注置顶区头上,两个模式共享同一实现
+        assert "html += _sweetBoardHtml(bett, mode);" in html
+        assert "_bettableFirstHtml(preds, cardHtml, 'spcalc')" in html
+        assert "_bettableFirstHtml(preds, _cupCardHtml, 'cup')" in html
+
+    def test_sweet_only_filter(self, html):
+        # 需求③:只挑甜区 —— 分级复用 _evRelTier,不另写阈值
+        assert "if (_evRelTier(p) !== 'sweet') return;" in html
+
+    def test_ranked_by_gate_ev_not_point(self, html):
+        # 腿内排序 + 场间排序都用判闸 EV(evLo);A′ 一致性的榜单版
+        assert "legs.sort((a, b) => b.evLo - a.evLo)" in html
+        assert "rows.sort((a, b) => b.best.evLo - a.best.evLo)" in html
+        # 绿灯口径同卡片:下界过 +5% 才绿
+        assert "lg.evLo >= 0.05 ? '#059669'" in html
+
+    def test_second_best_attached(self, html):
+        # 需求②:每场附带次高腿(不存在则只显示最高)
+        assert "second: legs[1] || null" in html
+
+    def test_legs_cover_both_markets_from_jc_sp(self, html):
+        # 1X2 三腿用在售 jc_*;让球三腿用 jc_hc_* 在 jc_hc_line 上,P 带 A′ 下界
+        assert "push('H', t('sw_1x2_h'), pr.p_home_1x2, null, pr.jc_home);" in html
+        assert "pr.handicap_lines.find(l => l.line === pr.jc_hc_line)" in html
+        assert "push('hcD', lbl('D'), pb.p.D, pb.lo.D, pr.jc_hc_draw);" in html
+
+    def test_i18n_keys_both_locales(self, html):
+        for k in ("sw_board_hdr", "sw_board_note", "sw_second", "sw_jump_hint",
+                  "sw_1x2_h", "sw_1x2_d", "sw_1x2_a"):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
