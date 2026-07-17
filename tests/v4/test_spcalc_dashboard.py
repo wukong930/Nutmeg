@@ -1138,9 +1138,26 @@ class TestSweetEvBoard:
         # 四个重算尾部都挂了钩(标准/市场 × 1X2/让球)
         assert html.count("_sweetBoardScheduleRefresh('spcalc');") == 2
         assert html.count("_sweetBoardScheduleRefresh('cup');") == 2
-        # ↻ 手动兜底 + 刷新保留折叠状态
+        # ↻ 手动兜底
         assert "_sweetBoardRefresh('${mode}')" in html
-        assert "det.open = wasOpen;" in html
+
+    def test_collapse_state_persists_across_rerenders(self, html):
+        """2026-07-18 owner 反馈:折叠着的榜被「应用」/60s 轮询/切 tab 的整板重渲
+        弹开(旧实现 open 写死在 HTML,只有防抖刷新记得状态)。现在 localStorage
+        是唯一真相:用户开合即存,所有渲染路径都从这里读,默认展开。"""
+        assert "const _LS_SWOPEN = 'nutmeg.sweetboard.open.';" in html
+        assert "function _sweetBoardOpen(" in html
+        assert "function _sweetBoardSaveOpen(" in html
+        # 渲染读持久化状态,不再写死 open
+        assert "`<details${_sweetBoardOpen(mode) ? ' open' : ''}" in html
+        # 用户开/合即存;渲染回声(插入即展开的补发 toggle)靠「值没变不写」滤掉,
+        # 否则异步 toggle 的竞态会覆盖用户刚点的折叠
+        assert "ontoggle=\"_sweetBoardSaveOpen('${mode}', this.open)\"" in html
+        assert "if (_sweetBoardOpen(mode) === !!open) return;" in html
+        # 缺省键 = 展开(!== '0')
+        assert "!== '0'" in html
+        # 旧的 DOM 快照式保留已删 —— 双真相必然漂移
+        assert "det.open = wasOpen;" not in html
 
     def test_effective_sp_prefers_hand_typed(self, html):
         """生效 SP = 卡片输入框的手填值优先、空/无效回落在售值 —— 榜和卡片看同一个

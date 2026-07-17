@@ -4574,16 +4574,27 @@ function _sweetBoardScheduleRefresh(mode) {
   clearTimeout(_swTimer);
   _swTimer = setTimeout(() => _sweetBoardRefresh(mode), 350);
 }
+// 折叠状态持久化(2026-07-18 owner 反馈:折叠着的榜被「应用」/60s 轮询/切 tab 的
+// 整板重渲弹开 —— 旧实现把 open 写死在 HTML 里,只有防抖刷新记得状态)。现在
+// localStorage 是唯一真相:用户点开/收起即存,**所有**渲染路径(整板重渲 + 防抖
+// 刷新)都从这里读。与联赛组折叠(_lgGroupHtml 的 collapse key)同一个模式。
+const _LS_SWOPEN = 'nutmeg.sweetboard.open.';
+function _sweetBoardOpen(mode) {
+  try { return localStorage.getItem(_LS_SWOPEN + mode) !== '0'; } catch (_) { return true; }
+}
+function _sweetBoardSaveOpen(mode, open) {
+  // toggle 是异步任务,且 Chrome 对**插入即展开**的 <details> 也补发一次 toggle ——
+  // 渲染回声若照单全收,会在竞态里覆盖用户刚点的折叠。值没变=回声,不写。
+  if (_sweetBoardOpen(mode) === !!open) return;
+  try { localStorage.setItem(_LS_SWOPEN + mode, open ? '1' : '0'); } catch (_) {}
+}
 function _sweetBoardRefresh(mode) {
   const box = document.getElementById(`sweet-board-${mode}`);
   if (!box) return;
   const preds = (mode === 'cup' ? _CUPMKT.preds : _SPCALC.preds) || [];
   const bett = [];
   preds.forEach((pr, idx) => { if (_isJcBettable(pr)) bett.push({ pr, idx }); });
-  const wasOpen = box.querySelector('details') ? box.querySelector('details').open : true;
   box.innerHTML = _sweetBoardHtml(bett, mode);
-  const det = box.querySelector('details');
-  if (det) det.open = wasOpen;
 }
 function _sweetBoardHtml(bett, mode) {
   const rows = [];
@@ -4612,7 +4623,9 @@ function _sweetBoardHtml(bett, mode) {
         ? `<span class="text-muted"> ｜ ${t('sw_second')}: </span>${_sweetLegHtml(r.second)}` : ''}
       </div>
     </div>`).join('');
-  return `<details open class="mb-3 px-2 py-2 rounded" style="border:1px solid #05966940;background:#05966908">
+  return `<details${_sweetBoardOpen(mode) ? ' open' : ''} class="mb-3 px-2 py-2 rounded"
+      style="border:1px solid #05966940;background:#05966908"
+      ontoggle="_sweetBoardSaveOpen('${mode}', this.open)">
     <summary class="text-sm font-display font-semibold" style="color:#059669;cursor:pointer">
       🍬 ${t('sw_board_hdr')} <span class="text-xs text-muted">· ${rows.length}</span>
       <span onclick="event.preventDefault();event.stopPropagation();_sweetBoardRefresh('${mode}')"
