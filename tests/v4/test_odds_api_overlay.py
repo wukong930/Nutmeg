@@ -16,7 +16,6 @@ import pytest
 from nutmeg.v4.cli.ingest_odds import (
     _apply_odds_api_overlay,
     _gather_rows,
-    _iso_newer,
 )
 from nutmeg.v4.data.sources import odds_api
 
@@ -104,14 +103,6 @@ class TestFetchPinnacleLookup:
 
 
 # ---------- overlay logic ---------------------------------------------
-
-class TestIsoNewer:
-    def test_basic(self):
-        assert _iso_newer("2026-06-11T03:00:00Z", "2026-06-10T00:00:00Z")
-        assert not _iso_newer("2026-06-10T00:00:00Z", "2026-06-11T03:00:00Z")
-        assert _iso_newer("2026-06-11T03:00:00Z", None)   # AF had no ts → fresher
-        assert not _iso_newer(None, "2026-06-11T03:00:00Z")
-
 
 def _lookup():
     return {("mexico", "southafrica", "2026-06-11"): {

@@ -109,19 +109,6 @@ def _odds_api_available() -> bool:
         return False
 
 
-def _iso_newer(a: str | None, b: str | None) -> bool:
-    """True if ISO timestamp ``a`` is strictly newer than ``b`` (None-safe)."""
-    if not a:
-        return False
-    if not b:
-        return True
-    try:
-        return (dt.datetime.fromisoformat(a.replace("Z", "+00:00"))
-                > dt.datetime.fromisoformat(b.replace("Z", "+00:00")))
-    except (ValueError, TypeError):
-        return False
-
-
 def _apply_odds_api_overlay(row: dict, oa_lookup: dict,
                             *, now: dt.datetime | None = None) -> bool:
     """Patch a row's Pinnacle 1X2 (+ O/U) from the fresher Odds API line when it
