@@ -4452,10 +4452,19 @@ function _lgGroupHtml(lg, col, count, cardsHtml, pfx) {
 // bettable ones into their OWN zone at the top — still league-grouped, colored
 // headers — so the slate you can actually bet reads first, by kickoff. Shared by
 // 标准模式 (renderTodaySpCalc) and 市场模式 (loadCupMarket) so both order identically.
-// A match is 竞彩-bettable when it has a full HAD 竞彩 SP on file (jc_home/draw/away
-// — the sporttery cron pre-fill, else a hand-price). 让球-only / no-SP → reference.
+// A match is 竞彩-bettable when it has a full 竞彩 SP on file for EITHER market —
+// 胜平负 (jc_*) 或 让球 (jc_hc_*);来源是 sporttery cron 预填或手填。无 SP → 参考区。
+// ⚠️ 2026-07-17 修:原来只认 HAD,把「竞彩只卖让球」当成不可投注(注释原文
+// 「让球-only → reference」= 当年就写错了这条)。竞彩 SP 有下限(实测 1.13):
+// 主队 fair P 高到胜平负 SP 跌破下限时,竞彩只上让球盘,那场照样能买。实测
+// 188 场里 19 场(10.1%)是让球-only,全是一边倒的大场、15 场是世界杯 —— 正是
+// 最该看见它们的时候,它们却掉进参考区(owner 实报挪超 Bodo/Glimt vs Fredrikstad)。
+// 后端 _load_bettable_pairs(ingest_odds.py)必须同口径 —— 两处同改。
 function _isJcBettable(pr) {
-  return !!(pr && pr.jc_home != null && pr.jc_draw != null && pr.jc_away != null);
+  if (!pr) return false;
+  const had  = pr.jc_home != null && pr.jc_draw != null && pr.jc_away != null;
+  const hhad = pr.jc_hc_home != null && pr.jc_hc_draw != null && pr.jc_hc_away != null;
+  return !!(had || hhad);
 }
 // Group [{pr, idx}] by league, order leagues by earliest kickoff, sort each league
 // by kickoff, render via _lgGroupHtml — the existing card layout, factored out so

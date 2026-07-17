@@ -101,16 +101,53 @@ def test_oa_refresh_filter_off_still_one_pull():
     assert _oa_refresh_decision(False, None, [], "soccer_x", set()) is False
 
 
-def test_load_pairs_no_had_rows_is_empty_set_not_none(tmp_path):
-    # Table exists (an HHAD-only row created it) but no HAD SP → empty SET, not
-    # None: a 🔄 with nothing 竞彩-bettable then skips every league (0 quota),
-    # which is distinct from the fail-open None above.
+def test_load_pairs_counts_handicap_only_as_bettable(tmp_path):
+    """让球-only 场次 = 可投注(2026-07-17 修;本测试原来断言的正是那个 bug)。
+
+    竞彩 SP 有下限(实测 1.13):主队 fair P 高到胜平负 SP 跌破它时,竞彩**只上
+    让球盘** —— 那场照样能买。原口径「只查 market='had'」把这类场判成不可投注 →
+    🔄 跳过它们(线不刷新)+ 前端掉进参考区。实测 188 场里 19 场(10.1%)如此,
+    且全是一边倒的大场(15/19 是世界杯)。owner 实报:挪超 Bodo/Glimt(Pinnacle
+    1.14 → 胜平负 SP 卖不了)vs Fredrikstad,竞彩只上让球 -2。
+    """
     db = str(tmp_path / "obs.db")
     record_jingcai_sp(
         db, match_date="2026-08-15", home_team="Arsenal", away_team="Chelsea",
         jc_home=1.9, jc_draw=3.4, jc_away=3.5, handicap_home=-1, market="hhad",
     )
-    pairs = _load_bettable_pairs(db)   # queries market="had"
+    pairs = _load_bettable_pairs(db)
+    assert pairs == {(_norm_team("Arsenal"), _norm_team("Chelsea"))}
+    assert _fixture_is_bettable(_fx("Arsenal", "Chelsea"), pairs) is True
+
+
+def test_load_pairs_empty_db_is_empty_set_not_none(tmp_path):
+    # 表存在但两个 market 都没行 → empty SET, not None:🔄 跳过每个联赛(0 配额),
+    # 与上面 fail-open 的 None 严格区分(「空集→不刷+提示」是 owner 定的)。
+    db = str(tmp_path / "obs.db")
+    record_jingcai_sp(   # 建表用,随后清空
+        db, match_date="2026-08-15", home_team="Arsenal", away_team="Chelsea",
+        jc_home=1.9, jc_draw=3.4, jc_away=3.5, market="had",
+    )
+    import sqlite3
+    with sqlite3.connect(db) as c:
+        c.execute("DELETE FROM jingcai_sp")
+    pairs = _load_bettable_pairs(db)
     assert pairs == set()
-    # empty set → no fixture is bettable → _gather_rows refreshes nothing.
     assert _fixture_is_bettable(_fx("Arsenal", "Chelsea"), pairs) is False
+
+
+def test_load_pairs_unions_both_markets(tmp_path):
+    # 前端 _isJcBettable(dashboard.html)= had || hhad;后端必须同口径,否则
+    # 「面板显示可投注、🔄 却跳过它」= 卡片挂着一条永不刷新的陈旧线。
+    db = str(tmp_path / "obs.db")
+    record_jingcai_sp(
+        db, match_date="2026-08-15", home_team="Arsenal", away_team="Chelsea",
+        jc_home=2.1, jc_draw=3.3, jc_away=3.4, market="had",
+    )
+    record_jingcai_sp(
+        db, match_date="2026-08-15", home_team="Spain", away_team="Saudi Arabia",
+        jc_home=1.9, jc_draw=3.4, jc_away=3.5, handicap_home=-2, market="hhad",
+    )
+    pairs = _load_bettable_pairs(db)
+    assert pairs == {(_norm_team("Arsenal"), _norm_team("Chelsea")),
+                     (_norm_team("Spain"), _norm_team("Saudi Arabia"))}

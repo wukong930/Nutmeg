@@ -210,7 +210,15 @@ def _fetch_odds_safe(fid: int, cache_dir, refresh: bool):
 
 def _load_bettable_pairs(db) -> set[tuple[str, str]] | None:
     """竞彩可投注队名对 ``{(_norm_team(home), _norm_team(away))}`` from the jingcai_sp
-    HAD SP on file — the exact set the 💴 竞彩可投注 card zone shows.
+    SP on file — the exact set the 💴 竞彩可投注 card zone shows.
+
+    ⚠️ HAD **或** HHAD(2026-07-17 owner 实报「今天一场挪超没上可投注列表」)。原实现
+    只查 had = 把「竞彩只卖让球」误当「不可投注」:竞彩 SP 有下限(实测 1.13),
+    主队去vig P 高到胜平负 SP 会跌破它时,竞彩**只上让球盘**——那场照样能买,
+    只是不能买胜平负。实测这不是个例:188 场抓取里 19 场(10.1%)是让球-only,
+    且集中在一边倒的大场(西班牙vs沙特、巴西vs海地、约旦vs阿根廷…15/19 是世界杯)。
+    病灶实例:挪超 Bodo/Glimt(Pinnacle 1.14,fair P=0.864 → 胜平负 SP≈1.03 卖不了)
+    vs Fredrikstad,竞彩只上让球 -2(1.98/4.05/2.65)。
 
     Returns ``None`` ONLY when no observation DB is configured (``db`` falsy) → the
     filter can't apply, so the caller refreshes everything (don't break 🔄 when
@@ -219,13 +227,17 @@ def _load_bettable_pairs(db) -> set[tuple[str, str]] | None:
     empty result, so an empty set means "skip every refresh" (0 quota; the 全刷
     escape hatch + the empty-list hint are the recovery, matching the owner's
     「空集→不刷+提示」 choice). Keyed by the SAME ``_norm_team`` the board↔jingcai_sp
-    join uses, so a fixture ``(norm_home, norm_away)`` hits iff the card shows its SP."""
+    join uses, so a fixture ``(norm_home, norm_away)`` hits iff the card shows its SP.
+    口径必须与前端 ``_isJcBettable`` 一致(dashboard.html)——两处同改,别只改一处。"""
     if not db:
         return None
     from nutmeg.v4.data.sources.odds_api import _norm_team
     from nutmeg.v4.observation.jingcai_sp import fetch_sp_lookup
-    had = fetch_sp_lookup(db, market="had")   # best-effort: {} on any DB error
-    return {(_norm_team(h), _norm_team(a)) for (_d, h, a) in had}
+    pairs: set[tuple[str, str]] = set()
+    for market in ("had", "hhad"):        # best-effort: {} on any DB error
+        for (_d, h, a) in fetch_sp_lookup(db, market=market):
+            pairs.add((_norm_team(h), _norm_team(a)))
+    return pairs
 
 
 def _fixture_is_bettable(fixture: dict, bettable_pairs: set[tuple[str, str]] | None) -> bool:
