@@ -413,6 +413,26 @@ def fetch_injuries(
                     cache_dir=cache_dir, refresh=refresh)
 
 
+def _odds_has_prices(rows: list[dict[str, Any]] | None) -> bool:
+    """True iff an /odds payload carries at least one bookmaker entry.
+
+    「空」不只是 ``[]`` —— AF 也可能给回带 fixture 壳但 ``bookmakers`` 全空的行,
+    两者对下游(psc 解析)同样是零价。"""
+    return any(isinstance(r, dict) and r.get("bookmakers") for r in (rows or []))
+
+
+def _cached_odds_with_prices(cf: Path) -> list[dict[str, Any]] | None:
+    """The cached /odds payload, only when it has usable prices; else None
+    (missing / corrupt / price-less cache ⇒ nothing worth protecting)."""
+    if not cf.exists():
+        return None
+    try:
+        rows = json.loads(cf.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    return rows if isinstance(rows, list) and _odds_has_prices(rows) else None
+
+
 def fetch_odds(
     fixture_id: int,
     *,
@@ -427,15 +447,43 @@ def fetch_odds(
     quota for thousands of settled fixtures). When set, a cache older than it is
     refetched — the gather passes it so a fixture's odds don't serve days-stale
     for leagues without a fresh-Pinnacle overlay (体检 F1). Network-fail → stale
-    fallback, so we're never worse than the permanent cache."""
+    fallback, so we're never worse than the permanent cache.
+
+    体检 2026-07-17(挪超 Bodo/Glimt 消失案)—「**空的成功也是失败**」:AF 会在
+    临近开赛时下架赛前赔率;到龄重拉恰好落进这个窗口时拿回 ``[]``,旧实现把它当
+    合法数据写缓存 ⇒ 下午还在的好线被空响应静默冲掉 → fixture 掉进待开盘 →
+    竞彩 SP 不再 join → 可投注区恰在**下注窗口**抹掉场次。现在:重拉(到龄或
+    显式 refresh)返回**无可用价**而旧缓存有价 ⇒ 写回旧缓存并照常返回;线龄由
+    卡片 odds_update 徽章如实标注(>2h ⚠️陈旧),临场真价走手填。恢复后 mtime
+    落在当下 ⇒ 下次到龄重拉自然退避一个 max_age,不会每请求一发。
+    同族先例:clubelo 空 body 闸、W2-2 空队表 TTL。"""
     params = {"fixture": fixture_id}
-    if not refresh and max_age_seconds is not None:
-        cf = _cache_path("/odds", params, Path(cache_dir))
-        if cf.exists() and time.time() - cf.stat().st_mtime > max_age_seconds:
-            try:
-                return _request("/odds", params, cache_dir=cache_dir, refresh=True)
-            except ApiFootballError:
-                pass
+    cf = _cache_path("/odds", params, Path(cache_dir))
+    stale_due = (
+        not refresh and max_age_seconds is not None
+        and cf.exists() and time.time() - cf.stat().st_mtime > max_age_seconds
+    )
+    if refresh or stale_due:
+        prior = _cached_odds_with_prices(cf)
+        try:
+            fresh = _request("/odds", params, cache_dir=cache_dir, refresh=True)
+        except ApiFootballError:
+            if stale_due:
+                # 原语义保持:到龄重拉失败 → 回落陈旧缓存;显式 refresh 失败仍上抛
+                return _request("/odds", params, cache_dir=cache_dir)
+            raise
+        if prior is not None and not _odds_has_prices(fresh):
+            # _request 刚用空响应覆盖了缓存 —— 同款原子写把旧内容恢复回去
+            _tmp = cf.with_name(f"{cf.name}.{os.getpid()}.tmp")
+            _tmp.write_text(json.dumps(prior, indent=2, ensure_ascii=False))
+            _tmp.replace(cf)
+            log.warning(
+                "AF /odds went empty for fixture %s — keeping prior cache "
+                "(%d rows); AF delists pre-match odds near kickoff",
+                fixture_id, len(prior),
+            )
+            return prior
+        return fresh
     return _request("/odds", params, cache_dir=cache_dir, refresh=refresh)
 
 
