@@ -979,10 +979,14 @@ class TestEvReliability:
         assert "_evRelTag(tk.probability)" in html   # 今日推荐 国际盘 single card
         assert "_evRelTag(pBest" in html             # 今日推荐 市场模式 lean (+sharp_flip)
         assert "_evRelTag(p)" in html                # 反推计算器 per-outcome row
-        # 近期赛事 (_cupRecalc 1X2 + _cupHcRecalc 让球) + SP计算器 (_spcalcRecalc
-        # 1X2 + _spcalcHcRecalc 让球) — all four iterate outcomes as P[o]. The two
-        # 近期赛事 ones now also pass the per-fixture sharp_flip (Phase B).
-        assert html.count("_evRelTag(P[o]") >= 4
+        # 4 个 P[o] 面:近期赛事(_cupRecalc 1X2 + _cupHcRecalc 让球)+ SP计算器
+        # (_spcalcRecalc 1X2 + _spcalcHcRecalc 让球)。A′(2026-07-17)起,两个**让球**
+        # 面改经 `_hcEvHtml`(点估 + δ 区间),分级由它内部转发 → 直接数 `_evRelTag(P[o]`
+        # 只剩 2 个 1X2 面。故分两段数,而不是把断言从 4 调成 2 —— 那样等于悄悄放弃
+        # 「让球面也必须分级」这条不变量。
+        assert html.count("_evRelTag(P[o]") >= 2          # 两个 1X2 面
+        assert html.count("_hcEvHtml(ev, evLo, evHi, P[o]") >= 2   # 两个让球面
+        assert "return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip)}`" in html
 
     def test_bare_checkmark_greenlight_removed(self, html):
         # the old "✅ on ANY +5% EV" (which green-lit longshots) is gone — the
@@ -1060,7 +1064,11 @@ class TestSharpFlipGuard:
         # 市场模式 lean card + 近期赛事 1X2 + 让球 all pass the per-fixture flag
         assert "_evRelTag(pBest, pr && pr.sharp_flip)" in html
         assert "_evRelTag(P[o], pr && pr.sharp_flip)" in html
-        assert "_evRelTag(P[o], (_CUPMKT.preds[idx] || {}).sharp_flip)" in html
+        # 近期赛事**让球**:A′(2026-07-17)起经 `_hcEvHtml` 出 HTML,flag 由它转发
+        # (`_evRelTag(p, sharpFlip)`)。转发那一跳单独锁在 TestEvReliability，
+        # 这里只认「_cupHcRecalc 确实把 flag 传下去了」。
+        assert "_hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip)" in html
+        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip)" in html
 
     def test_i18n_keys_both_locales(self, html):
         for k in ("rel_flip", "rel_flip_hint"):

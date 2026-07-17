@@ -171,15 +171,54 @@ def fit_lambdas(
 
 
 # C1 让球修正 — DC 网格系统性高估「热门方净胜≥2 的爆盘尾」,低估「净胜恰好1」(让平)。
-# 按线符号镜像(全季 500 Crown 低噪配对):
-#   −1 线(热门在主):让胜 over δ=DC−市场 **+1.86pp**(t=31.5)→ 让胜−δ / 让平+δ;
-#                     样本外 3-way log-loss 配对 t=**+3.56**(强)。
-#   +1 线(热门在客):让负 over **+1.27pp**(t=20.2,与 −1 同量级)→ 让负−δ / 让平+δ;
-#                     样本外 log-loss t=**+1.89**(方向对但弱=功率受限,log-loss 对小 P 位
-#                     移钝 + N 半;凭底层偏差 t=20 + 对称镜像原理部署,如实标注弱确认)。
-# 让胜/让负爆盘尾以外不动。防「假软(让胜/让负)」。docs/autumn_prereg_analysis_plan.md §H(v1.5)。
-_C1_DELTA = 0.019       # −1 线:让胜 → 让平
-_C1_DELTA_P1 = 0.013    # +1 线:让负 → 让平(镜像)
+# 结构(2026-07-17 在真实竞彩线上复核,质量守恒得几乎完美、第三腿分毫不动 → 结构正确):
+#   −1 线(热门在主):让胜 +4.6pp / 让平 −4.7pp / 让负 +0.1pp → 让胜−δ / 让平+δ
+#   +1 线(热门在客):让负 +1.6pp / 让平 −2.1pp / 让胜 +0.5pp → 让负−δ / 让平+δ(镜像)
+#
+# ⚠️ δ 于 2026-07-17 重估(owner 决定;docs/handicap_h2_calibration_2026-07-17.md,
+# prereg v1.7)。**靶子从「DC−市场」换成「DC−真实赛果」** —— 旧 δ(−1: 0.019 / +1: 0.013)
+# 拟合的是 DC 与让球市场价的差,而市场自己也高估让胜 ~2.7pp,于是 C1 把我们对齐到了一个
+# 有偏的靶子:真实竞彩 −1 线上,旧 δ 修完仍余 +2.7pp(样本外 +3.5pp,z=2.5)= EV 虚高 +12.8pp。
+#
+# 新 δ 的证据(涓流真实竞彩线 × football-data Pinnacle 收盘锚 × 比分硬闸门,拒绝率 0.00%):
+#   −1: N=1,882  裸偏差 +4.6pp(z=4.6);held-out train +3.7 / test +5.4(z=3.9)
+#   +1: N=1,044  裸偏差 +1.6pp(z=1.2,弱 —— 0.013→0.016 纯为口径统一,不是证据驱动)
+# 交叉验证:crown 路径(500 真实线 + 皇冠全收盘锚,N=3,505)−1 得 +4.2pp,换锚不变形。
+# ⚠️ 合成线(把 −1 套到全样本)只得 +2.2pp = 稀释一半 —— 校准必须在真实竞彩线上测。
+_C1_DELTA = 0.046       # −1 线:让胜 → 让平
+_C1_DELTA_P1 = 0.016    # +1 线:让负 → 让平(镜像)
+
+# δ 的估计标准误 —— A′ 的核心:δ 不是精确值,它的误差 1:1 传进被修正的腿,
+# 再乘 竞彩SP(让平常 ~4.2)放大成 EV 误差。判闸必须吃这个不确定性,否则
+# 「δ 恰好准」就成了下注的隐含前提(实测:按 δ−2SE 判闸,那 30 张让平票全部消失
+# ⇒ 它们的 +EV 完全依赖 δ 点估无误)。呼应 `记忆 ev-threshold-variance-sigmap`:
+# 门槛是不确定性的函数,不是平的 5%。
+# ⚠️ 这是**朴素二项 SE**,未做比赛日聚类 → 真实不确定性只会更大,故本带宽是**下限**。
+_C1_DELTA_SE = 0.010       # SE(δ₋₁),N=1,882
+_C1_DELTA_P1_SE = 0.0135   # SE(δ₊₁),N=1,044
+_C1_SE_K = 2.0             # 判闸用的保守倍数(≈95% 单侧)
+
+
+def c1_leg_lower_bounds(
+    line: int, p_home: float, p_draw: float, p_away: float, *, k: float = _C1_SE_K,
+) -> tuple[float, float, float]:
+    """给 **已应用 C1(点估)** 的三元组,返回每条腿在 δ 估计误差下的**自身下界**。
+
+    保守方向是**逐腿**的 —— 每条腿取「让它自己的 P 更小」的那侧:
+      −1 线:让胜 = 点估 − k·SE(δ 若更大 → 让胜更低);让平 = 点估 − k·SE(δ 若更小 → 让平更低)
+      +1 线:让负 / 让平 同理;未被 C1 碰的第三腿无 δ 误差 → 下界 = 点估。
+    (代数上两侧都落到「点估 − k·SE」,因为点估 = raw∓δ。)
+
+    ⚠️ **返回值不是概率分布**(和 < 1)—— 它是三个独立的单腿下界,**只用于判闸**,
+    绝不可用于展示/归一化/喂模型。展示请用点估(``implied_handicap_lines(c1=True)``)。
+    """
+    se = _C1_DELTA_SE if int(line) == -1 else (_C1_DELTA_P1_SE if int(line) == 1 else 0.0)
+    if se == 0.0:
+        return float(p_home), float(p_draw), float(p_away)
+    d = k * se
+    if int(line) == -1:      # C1 碰了 让胜 + 让平
+        return max(p_home - d, 0.0), max(p_draw - d, 0.0), float(p_away)
+    return float(p_home), max(p_draw - d, 0.0), max(p_away - d, 0.0)   # +1:让平 + 让负
 
 
 def implied_handicap_lines(
@@ -201,9 +240,10 @@ def implied_handicap_lines(
     −1 = 主队让1球, +1 = 主队受让1球. The triple is
     (P(home covers), P(push), P(away covers)).
 
-    ``c1=True`` applies the **C1 让球修正** on the −1 line ONLY (serving path;
-    eval/measurement keeps raw): move ``_C1_DELTA`` from 让胜 (DC-inflated) to
-    让平 (DC-deflated), 让负 unchanged. Mass-conserving; validated OOS (t=+3.56).
+    ``c1=True`` applies the **C1 让球修正** on the ±1 lines (serving path;
+    eval/measurement keeps raw): −1 移 ``_C1_DELTA`` 让胜→让平;+1 移
+    ``_C1_DELTA_P1`` 让负→让平。守恒(和仍 =1),故可用于展示。
+    **判闸别只用这个** —— δ 自带估计误差,见 ``c1_leg_lower_bounds``。
     """
     lh, la = fit_lambdas(
         p_home, p_draw, p_away, p_over,
@@ -364,6 +404,7 @@ __all__ = [
     "asian_total_over_prob",
     "fit_lambdas",
     "implied_handicap_lines",
+    "c1_leg_lower_bounds",
     "devig_asian_handicap_line",
     "dc_home_cover_prob",
     "asian_handicap_board",

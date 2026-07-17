@@ -98,6 +98,16 @@ class HandicapLineProb(BaseModel):
     p_home: float
     p_draw: float
     p_away: float
+    # A′(2026-07-17)— ±1 线的 P 里含 C1 修正,而 C1 的 δ 是**估计值**,其误差
+    # 1:1 传进被修正的腿、再乘 竞彩SP 放大成 EV 误差。这三个是**逐腿下界**
+    # (δ ∓ 2SE 中让该腿自己 P 更小的那侧);未被 C1 碰的腿 = 点估。
+    # 前端:EV 点估用 p_*,**判闸(绿灯/候选)用 p_*_lo**,显示区间
+    # [lo, 2×点估−lo](带宽对称)。⚠️ lo 三元组**不是分布**(和<1),别归一化。
+    # 计算在服务端(model.market_handicap.c1_leg_lower_bounds)—— 别把 C1 结构
+    # 抄进 JS(参照 devig-js-server-mismatch 的教训:客户端并行算法必然漂移)。
+    p_home_lo: float | None = None
+    p_draw_lo: float | None = None
+    p_away_lo: float | None = None
 
 
 class AsianHandicapLineProb(BaseModel):

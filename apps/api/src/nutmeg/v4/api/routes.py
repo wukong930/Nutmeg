@@ -380,7 +380,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v93-fe-jc-bettable-hhad"
+_FE_VERSION = "nutmeg-v94-fe-c1-delta-band"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1685,11 +1685,15 @@ def _model_board_handicap_lines(f, model_grid, corr) -> list[HandicapLineProb]:
     )
     if fair is not None:
         try:
-            from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+            from nutmeg.v4.model.market_handicap import (
+                c1_leg_lower_bounds,
+                devig_over,
+                implied_handicap_lines,
+            )
             p_over = devig_over(getattr(f, "psc_over25", None), getattr(f, "psc_under25", None))
             ou_line = float(getattr(f, "ou_line", None) or 2.5)
             return [
-                HandicapLineProb(line=ln, p_home=ph, p_draw=pd_, p_away=pa)
+                _hc_line_prob(ln, ph, pd_, pa, c1_leg_lower_bounds)
                 for ln, ph, pd_, pa in implied_handicap_lines(
                     fair[0], fair[1], fair[2], p_over, ou_line=ou_line, c1=True
                 )
@@ -1700,6 +1704,9 @@ def _model_board_handicap_lines(f, model_grid, corr) -> list[HandicapLineProb]:
                 "market-reverse handicap failed (%s vs %s); model-grid fallback",
                 getattr(f, "home_team", "?"), getattr(f, "away_team", "?"),
             )
+    # 模型网格兜底(Pinnacle 缺席时)—— **不吃 C1**:C1 修的是「市场 1X2 反推出的
+    # DC 网格」的净胜切分偏差,而这里的 grid 来自 CatBoost 自己的 λ,来源不同、偏差
+    # 未测。既然没上 δ,就没有 δ 的估计误差 → 下界留空(None),前端 `?? 点估` 兜住。
     out: list[HandicapLineProb] = []
     for line in range(-3, 4):
         hh, hd, ha = tuple(apply_correction_to_probs(
@@ -2043,6 +2050,20 @@ _CUP_MARKET_COMPETITIONS = [
 ]
 
 
+def _hc_line_prob(line, ph, pd_, pa, bounds_fn) -> HandicapLineProb:
+    """A′(2026-07-17)— 把点估 + δ 的逐腿下界一起打包给前端。
+
+    点估用于**显示 EV**;下界用于**判闸**(绿灯/候选)。两者同源同一次拟合,
+    所以面板上「+7.3% [−1.1%, +15.7%] · 下界未过闸」三者自洽 —— 这正是
+    B 方案做不到的(它会让绿灯和禁令打架)。
+    """
+    lo_h, lo_d, lo_a = bounds_fn(int(line), float(ph), float(pd_), float(pa))
+    return HandicapLineProb(
+        line=int(line), p_home=float(ph), p_draw=float(pd_), p_away=float(pa),
+        p_home_lo=lo_h, p_draw_lo=lo_d, p_away_lo=lo_a,
+    )
+
+
 def _market_handicap_lines(fair, r: dict) -> list[HandicapLineProb]:
     """V12 W8 — market-implied 让球 for a market-mode fixture: reverse-map the
     de-vig 1X2 + Pinnacle O/U 2.5 to a Dixon-Coles goal grid, then read off the
@@ -2050,11 +2071,15 @@ def _market_handicap_lines(fair, r: dict) -> list[HandicapLineProb]:
     Pinnacle's own Asian Handicap within ~1pp. Degrades to a 1X2-only fit when
     the O/U is absent, and to [] (1X2-only card) if the fit raises."""
     try:
-        from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+        from nutmeg.v4.model.market_handicap import (
+            c1_leg_lower_bounds,
+            devig_over,
+            implied_handicap_lines,
+        )
         p_over = devig_over(r.get("psc_over25"), r.get("psc_under25"))
         ou_line = float(r.get("ou_line") or 2.5)
         return [
-            HandicapLineProb(line=line, p_home=ph, p_draw=pd_, p_away=pa)
+            _hc_line_prob(line, ph, pd_, pa, c1_leg_lower_bounds)
             for line, ph, pd_, pa in implied_handicap_lines(
                 float(fair[0]), float(fair[1]), float(fair[2]), p_over,
                 ou_line=ou_line, c1=True,

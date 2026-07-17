@@ -154,18 +154,35 @@ class TestEndToEndSettlement:
 
 class TestMarketHandicapEndpoint:
     def _payload(self, **over):
+        # 让平 SP 4.30 是这里**唯一** +EV 的腿(P=25.65% → 打平 SP 3.90 → EV +10.3%),
+        # 记录路径(下面两个 gate 测试)全靠它才走得到。
+        #
+        # ⚠️ 原 fixture 的 +EV 腿是 让胜 @5.50 —— 它在 prereg v1.7(2026-07-17)δ 重估
+        # 前是 +1.03%,重估后是 **−13.8%**。那个 +EV 从来不是真的:它正是 C1 要杀的
+        # 「−1 线让胜虚高」(DC 高估爆盘尾 +4.6pp)。所以这里不是「测试挂了去迁就」,
+        # 是 fixture 当初把**错的校准**固化了下来。别把 +EV 腿搬回让胜。
         p = {
             "league": "JPN_J1", "date": "2026-05-30",
             "home_team": "Vissel Kobe", "away_team": "Kashima",
             "psc_home": 2.43, "psc_draw": 3.04, "psc_away": 3.41,
             "psc_over25": 1.95, "psc_under25": 1.95,
             "handicap_home": -1,
-            "odds_handicap_H": 5.50, "odds_handicap_D": 3.80, "odds_handicap_A": 1.46,
+            "odds_handicap_H": 5.50, "odds_handicap_D": 4.30, "odds_handicap_A": 1.46,
             "bankroll": 1000.0, "kelly_fraction": 0.25,
             "record_session": False,
         }
         p.update(over)
         return p
+
+    def test_payload_has_exactly_one_positive_ev_leg(self, client):
+        """守住上面那条注释 —— 两个 gate 测试只有在**真有** +EV 腿时才不是空转。
+
+        δ 若再动而这条先红,说明 fixture 又跟校准脱节了:重挑 SP,别删断言。
+        """
+        b = client.post("/api/v4/recommend/market-handicap",
+                        json=self._payload()).json()
+        assert [e > 0 for e in b["ev_per_unit"]].count(True) == 1
+        assert b["best_outcome"] == "D"          # 让平 —— 不是让胜(那个是 C1 修掉的假象)
 
     def test_computes_market_implied_p_and_ev(self, client):
         r = client.post("/api/v4/recommend/market-handicap", json=self._payload())
@@ -220,7 +237,10 @@ class TestMarketHandicapEndpoint:
             "psc_home": 2.43, "psc_draw": 3.04, "psc_away": 3.41,
             "psc_over25": 1.95, "psc_under25": 1.95,
             "handicap_home": -1,
-            # H lowered 5.50 → 4.50 so even the least-bad leg is now −EV.
+            # 三腿全 −EV:让胜 −29.5% / 让平 −2.5% / 让负 −14.3%(prereg v1.7 δ 下实测)。
+            # 关键是 让平 SP 3.80 < 打平线 3.90 —— 它是本盘最接近 +EV 的腿,压住它
+            # 才真的证明「无 +EV → 空仓」。(v1.7 前这里靠调低 H;那时让胜虚高才是
+            # 「最不差的腿」,现在不是了。)
             "odds_handicap_H": 4.50, "odds_handicap_D": 3.80,
             "odds_handicap_A": 1.46,
             "bankroll": 1000.0, "kelly_fraction": 0.25,

@@ -4963,6 +4963,22 @@ function _hcLineLabel(l) {
 function _hcOutcomeLabel(o) {
   return o === 'H' ? t('spcalc_hc_h') : o === 'D' ? t('spcalc_hc_d') : t('spcalc_hc_a');
 }
+// A′ 2026-07-17 — 把服务端算好的「点估 + δ 逐腿下界」一起取出。
+// ±1 线的 P 含 C1 修正,而 C1 的 δ 是估计值(δ₋₁=0.046±0.010):误差 1:1 进 P、
+// 再 ×竞彩SP(让平常 ~4.2)放大成 EV 误差。**显示用点估、判闸用下界** —— 否则
+// 「δ 恰好准」就成了下注的隐含前提(实测那 30 张让平票按下界判闸会全部消失)。
+// 下界由服务端 model.market_handicap.c1_leg_lower_bounds 算(别把 C1 结构抄进 JS —
+// 见 devig-js-server-mismatch:客户端并行算法必然漂移)。lo 缺省(模型网格兜底、
+// 非 ±1 线)→ 回落点估 = 无 δ 误差,正确。
+function _hcLineP(lp) {
+  if (!lp) return null;
+  return {
+    p:  { H: lp.p_home, D: lp.p_draw, A: lp.p_away },
+    lo: { H: lp.p_home_lo ?? lp.p_home,
+          D: lp.p_draw_lo ?? lp.p_draw,
+          A: lp.p_away_lo ?? lp.p_away },
+  };
+}
 function _spcalcHcP(idx) {
   // Model P(让胜/让平/让负) for the currently-selected line, or null.
   const pr = _SPCALC.preds[idx];
@@ -4971,6 +4987,12 @@ function _spcalcHcP(idx) {
   const line = parseInt(sel.value, 10);
   const lp = pr.handicap_lines.find(l => l.line === line);
   return lp ? { H: lp.p_home, D: lp.p_draw, A: lp.p_away } : null;
+}
+function _spcalcHcPB(idx) {          // 带下界的版本(判闸 + 区间用)
+  const pr = _SPCALC.preds[idx];
+  const sel = $(`#spcalc-hcline-${idx}`);
+  if (!pr || !sel || sel.value === '' || !pr.handicap_lines) return null;
+  return _hcLineP(pr.handicap_lines.find(l => l.line === parseInt(sel.value, 10)));
 }
 function _spcalcHcLine(idx) {
   // V13 — the 让球 SP boxes are usable only once a 让球线 is picked (the
@@ -4992,8 +5014,20 @@ function _spcalcHcLine(idx) {
   });
   _spcalcHcRecalc(idx);
 }
+// A′ — 让球腿的 EV 带 δ 不确定区间。判闸(绿灯/选注)用**下界**,显示用点估 + 区间,
+// 三者同源 → 面板自洽:「+7.3% [−1.1%,+15.7%] · 下界未过闸」一眼说清为什么不推。
+// (这正是 B 方案做不到的:B 会让绿灯和「别投」的口头禁令打架。)
+// ``sharpFlip`` 只有市场模式给(_cupHcRecalc);标准模式传 undefined = 不覆盖分级。
+// 两个让球面必须共用本函数 —— 各写各的等于给「区间」留了个只修一半的机会。
+function _hcEvHtml(ev, evLo, evHi, p, sharpFlip) {
+  const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
+  const band = (evLo != null && Math.abs(evHi - evLo) > 1e-9)
+    ? ` <span class="text-muted" style="font-size:0.9em">[${f(evLo)},${f(evHi)}]</span>` : '';
+  return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip)}`;
+}
 function _spcalcHcRecalc(idx) {
-  const P = _spcalcHcP(idx);
+  const PB = _spcalcHcPB(idx);
+  const P = PB && PB.p;
   const { minEv, bankroll, kelly } = _SPCALC;
   let best = null;
   ['H', 'D', 'A'].forEach(o => {
@@ -5002,17 +5036,23 @@ function _spcalcHcRecalc(idx) {
     const sp = parseFloat(inp.value);
     if (!P || !sp || sp <= 1.0) { evSpan.textContent = ''; evSpan.removeAttribute('style'); evSpan.className = 'flex-1 text-xs text-muted'; return; }
     const ev = P[o] * sp - 1.0;
-    const pass = ev >= minEv;
-    evSpan.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}% ${_evRelTag(P[o])}`;
+    const evLo = PB.lo[o] * sp - 1.0;
+    const evHi = ev + (ev - evLo);          // 带宽对称(δ ± k·SE)
+    const pass = evLo >= minEv;             // ⭐ 判闸用下界,不是点估
+    evSpan.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o]);
     evSpan.className = 'flex-1 text-xs';
     evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
     evSpan.style.fontWeight = pass ? '600' : '';
-    if (pass && (!best || ev > best.ev)) best = { o, ev, sp, stake: _spcalcStake(P[o], sp, bankroll, kelly) };
+    if (pass && (!best || evLo > best.evLo)) best = { o, ev, evLo, sp, stake: _spcalcStake(PB.lo[o], sp, bankroll, kelly) };
   });
   const verdict = $(`#spcalc-hcverdict-${idx}`);
   const btn = $(`#spcalc-hcrecord-${idx}`);
   if (best) {
-    verdict.textContent = `${t('spcalc_pick')}: ${_hcOutcomeLabel(best.o)} · EV +${(best.ev * 100).toFixed(1)}% · ${t('spcalc_suggest')} ${fmtMoney(best.stake)}`;
+    // A′ — 报下界(=判闸/定注额的那个数),点估附在括号里。若只报点估,会出现
+    // 「推荐 +7.3%、注额却按 +2.9% 算」的错位。
+    verdict.textContent = `${t('spcalc_pick')}: ${_hcOutcomeLabel(best.o)} · EV ≥+${(best.evLo * 100).toFixed(1)}%`
+      + (Math.abs(best.ev - best.evLo) > 1e-9 ? ` (点估 +${(best.ev * 100).toFixed(1)}%)` : '')
+      + ` · ${t('spcalc_suggest')} ${fmtMoney(best.stake)}`;
     verdict.style.color = '#059669'; verdict.style.fontWeight = '600';
     btn.disabled = false; btn.style.cssText = 'background:#059669;color:#fff;cursor:pointer';
   } else {
@@ -5445,6 +5485,12 @@ function _cupHcP(idx) {
   const lp = pr.handicap_lines.find(l => l.line === line);
   return lp ? { H: lp.p_home, D: lp.p_draw, A: lp.p_away } : null;
 }
+function _cupHcPB(idx) {             // A′ — 带 δ 下界(判闸 + 区间用),同标准盘
+  const pr = _CUPMKT.preds[idx];
+  const sel = $(`#cuphcline-${idx}`);
+  if (!pr || !sel || sel.value === '' || !pr.handicap_lines) return null;
+  return _hcLineP(pr.handicap_lines.find(l => l.line === parseInt(sel.value, 10)));
+}
 function _cupHcLine(idx) {
   const P = _cupHcP(idx);
   ['H', 'D', 'A'].forEach(o => {
@@ -5454,7 +5500,8 @@ function _cupHcLine(idx) {
   _cupHcRecalc(idx);
 }
 function _cupHcRecalc(idx) {
-  const P = _cupHcP(idx);
+  const PB = _cupHcPB(idx);
+  const P = PB && PB.p;
   ['H', 'D', 'A'].forEach(o => {
     const el = document.querySelector(`.cuphcsp[data-idx="${idx}"][data-outcome="${o}"]`);
     const evEl = document.querySelector(`.cuphcev[data-idx="${idx}"][data-outcome="${o}"]`);
@@ -5462,8 +5509,11 @@ function _cupHcRecalc(idx) {
     const sp = el ? parseFloat(el.value) : NaN;
     if (P && sp && sp > 1.0) {
       const ev = P[o] * sp - 1;
-      const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
-      evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '% ' + _evRelTag(P[o], (_CUPMKT.preds[idx] || {}).sharp_flip);
+      const evLo = PB.lo[o] * sp - 1;        // A′ — δ 下界
+      const evHi = ev + (ev - evLo);
+      // F3 — green only at ≥+5% (竞彩 rule), not ≥0;A′ — 且判的是**下界**
+      const pass = evLo >= _TODAY_REC_GATE;
+      evEl.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip);
       evEl.className = 'cuphcev text-xs font-medium shrink-0';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';
