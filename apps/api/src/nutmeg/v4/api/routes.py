@@ -2263,9 +2263,17 @@ def predictions_cup_market(
     model (it's OOD for cups). Fixtures with no Pinnacle line yet → 待开盘.
 
     Reuses _gather_rows(require_odds=False). No artifact needed (pure market).
-    Cup competitions are sparse — on most days discovery returns 0 fixtures — so
-    this is meant to be user-triggered (not on every page load) to keep API
-    usage low.
+
+    V14 — called PASSIVELY by the dashboard: 市场模式 lives on the 今日推荐 landing
+    tab (loadCupMarket → renderMarketPred → #mktpred-section), so this fires on
+    page load, on tab switch, and on the 60s poll — NOT user-triggered. Cost is
+    bounded by the TTL, not by call frequency: those passive calls leave
+    refresh_odds=False, so _gather_rows's odds_api.fetch_pinnacle_lookup serves
+    cache until ``_SERVING_OA_TTL_SECONDS`` (6h) lapses — only a call landing
+    after that window spends credit. Cup competitions are sparse (most days
+    discovery returns 0 fixtures), which is what keeps the auto-load affordable.
+    Owner decision 2026-07-17: keep the passive load and gate cost at that TTL
+    (same day the TTL itself moved 1800s→6h — see the constant's rationale).
     """
     import datetime as _dt
     from pathlib import Path as _Path

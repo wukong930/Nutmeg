@@ -111,9 +111,16 @@ def _odds_api_available() -> bool:
 
 def _apply_odds_api_overlay(row: dict, oa_lookup: dict,
                             *, now: dt.datetime | None = None) -> bool:
-    """Patch a row's Pinnacle 1X2 (+ O/U) from the fresher Odds API line when it
-    covers this fixture. API-Football keeps identity/results; we swap only the
-    PRICE — and only when Odds API is fresher, or AF had no line (待开盘 fill).
+    """Patch a row's Pinnacle 1X2 (+ O/U) from the Odds API line whenever the
+    lookup covers this fixture. API-Football keeps identity/results; we swap only
+    the PRICE.
+
+    V14 — COVERAGE wins, not recency. Relative age is never compared, so a stale
+    cached Odds API line DOES displace a fresher API-Football one (rationale in
+    the V14 note below; the staleness reaches the user via the card's odds_update
+    freshness badge, not by suppressing the patch). The only guards left are name
+    resolution (no lookup hit → no patch) and kickoff (never overlay a live line).
+
     Sets ``row['odds_source']='odds_api'`` on a patch. Returns True if patched."""
     from nutmeg.v4.data.sources.odds_api import _club_core, _norm_team
     # Probe exact key first, then per-side club-core candidates (体检 2026-07-03:
