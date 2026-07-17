@@ -9,6 +9,9 @@ is swapped, and only when Odds API is genuinely fresher (or AF had no line).
 from __future__ import annotations
 
 import datetime as dt
+import json
+
+import pytest
 
 from nutmeg.v4.cli.ingest_odds import (
     _apply_odds_api_overlay,
@@ -267,3 +270,105 @@ class TestClubCoreFallback:
         assert _apply_odds_api_overlay(row, lookup, now=now) is False
         # exact keys unaffected
         assert lookup[("iksirius", "mjallbyaif", "2026-07-03")]["psc_home"] == 1.43
+
+
+# ---------- quota/auth breaker ----------------------------------------
+
+class _Resp:
+    def __init__(self, status_code, body):
+        self.status_code, self._body = status_code, body
+        self.headers = {}
+
+    @property
+    def text(self):
+        return json.dumps(self._body)
+
+    def json(self):
+        return self._body
+
+
+class _CountingClient:
+    """Stands in for the keep-alive httpx client; counts live calls."""
+
+    def __init__(self, resp):
+        self.resp, self.n = resp, 0
+
+    def get(self, endpoint, params=None):
+        self.n += 1
+        return self.resp
+
+
+_QUOTA_401 = {"error_code": "OUT_OF_USAGE_CREDITS",
+              "message": "Usage quota has been reached."}
+
+
+class TestQuotaBreaker:
+    """Once the Odds API says the credits are gone, every later endpoint 401s
+    too — and a failed call caches nothing, so the 市场模式 overlay used to pay
+    a live ~0.4s round-trip per (sport × day): 119 of them = 45.2s of a 48.0s
+    /predictions/cup-market (measured 2026-07-17). One 401 is enough to know."""
+
+    @pytest.fixture(autouse=True)
+    def _closed_breaker(self):
+        odds_api.reset_quota_breaker()   # never inherit a sibling test's state
+        yield
+        odds_api.reset_quota_breaker()   # never leak into one
+
+    def _client(self, monkeypatch, status, body):
+        c = _CountingClient(_Resp(status, body))
+        monkeypatch.setattr(odds_api, "_client", lambda: c)
+        return c
+
+    def test_401_trips_breaker_so_the_next_call_never_leaves_the_process(
+        self, tmp_path, monkeypatch,
+    ):
+        c = self._client(monkeypatch, 401, _QUOTA_401)
+        for _ in range(5):
+            with pytest.raises(odds_api.OddsApiError):
+                odds_api._request("sports/a/odds", {"regions": "eu"}, cache_dir=tmp_path)
+        # 5 callers, ONE round-trip: the other 4 were answered locally.
+        assert c.n == 1
+
+    def test_open_breaker_still_serves_a_fresh_cache(self, tmp_path, monkeypatch):
+        # The breaker suppresses the pointless live call — it must NOT blind a
+        # warm cache, which is the whole point of the overlay on a passive load.
+        params = {"regions": "eu", "markets": "h2h"}
+        cf = odds_api._cache_path("sports/b/odds", params, tmp_path)
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        cf.write_text(json.dumps([{"id": "cached"}]))
+        c = self._client(monkeypatch, 401, _QUOTA_401)
+        odds_api._trip_breaker()
+        got = odds_api._request("sports/b/odds", params, cache_dir=tmp_path,
+                                ttl_seconds=1800)
+        assert got == [{"id": "cached"}]
+        assert c.n == 0
+
+    def test_stale_cache_is_never_served_while_open(self, tmp_path, monkeypatch):
+        # The TTL gate ("never serve a day-old line") outranks the breaker: a
+        # dead quota must degrade to the API-Football mirror, NOT to stale odds.
+        params = {"regions": "eu", "markets": "h2h"}
+        cf = odds_api._cache_path("sports/c/odds", params, tmp_path)
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        cf.write_text(json.dumps([{"id": "stale"}]))
+        self._client(monkeypatch, 401, _QUOTA_401)
+        odds_api._trip_breaker()
+        with pytest.raises(odds_api.OddsApiError):
+            odds_api._request("sports/c/odds", params, cache_dir=tmp_path,
+                              ttl_seconds=0.0)   # cache older than its TTL
+
+    def test_5xx_stays_retryable(self, tmp_path, monkeypatch):
+        # A transient is not a quota death — don't lock the overlay out for 15min.
+        c = self._client(monkeypatch, 503, {"message": "upstream hiccup"})
+        for _ in range(3):
+            with pytest.raises(odds_api.OddsApiError):
+                odds_api._request("sports/d/odds", {"regions": "eu"}, cache_dir=tmp_path)
+        assert c.n == 3
+
+    def test_reset_reopens_the_valve_after_a_top_up(self, tmp_path, monkeypatch):
+        c = self._client(monkeypatch, 401, _QUOTA_401)
+        with pytest.raises(odds_api.OddsApiError):
+            odds_api._request("sports/e/odds", {"regions": "eu"}, cache_dir=tmp_path)
+        odds_api.reset_quota_breaker()
+        with pytest.raises(odds_api.OddsApiError):
+            odds_api._request("sports/e/odds", {"regions": "eu"}, cache_dir=tmp_path)
+        assert c.n == 2   # reset → the retry really went out again

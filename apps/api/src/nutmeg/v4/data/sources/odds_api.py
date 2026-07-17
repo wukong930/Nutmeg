@@ -259,6 +259,47 @@ def _client() -> httpx.Client:
         return _CLIENT
 
 
+# ── Quota/auth breaker ────────────────────────────────────────────────────────
+# The Odds API fails ACCOUNT-WIDE: once the plan's credits are gone, every
+# endpoint answers 401 [OUT_OF_USAGE_CREDITS] until the quota resets, and a
+# failed call caches nothing — so the next caller re-asks and pays the same
+# ~0.4s round-trip to be told the same thing. The 市场模式 overlay asks once per
+# (sport × day): 17 sports × 7 days = 119 calls, which is fine when they hit the
+# TTL cache (`_oa_refresh_decision`: "the OA feed is date-independent, so later
+# days reuse that fresh cache") but degenerates to 119 live 401s once the cache
+# ages past the TTL with the quota dead. MEASURED 2026-07-17 on
+# /predictions/cup-market?days=7: 45.2s of 48.0s wall, and the E2E suite red
+# because the page never reaches networkidle inside Playwright's 30s.
+#
+# One 401 tells us the rest of the sweep is pointless, so trip a breaker and
+# fail the remainder locally. Deliberately NOT a stale-cache fallback: the
+# `ttl_seconds` gate exists so a passive load "never serves a day-old line"
+# (see _request), and the overlay is optional — an empty lookup degrades to the
+# API-Football mirror, which is the intended graceful path. This only makes the
+# degrade cheap. 401 ONLY (bad key / out of credits — both terminal until a
+# human acts, same read as odds_api_history's `if r.status_code in (401, 422)`);
+# a 5xx or timeout stays retryable. The cooldown self-heals after a top-up.
+_BREAKER_COOLDOWN_SECONDS = 900.0
+_breaker_until = 0.0   # time.monotonic() deadline; 0.0 = closed
+
+
+def _trip_breaker() -> None:
+    global _breaker_until
+    _breaker_until = time.monotonic() + _BREAKER_COOLDOWN_SECONDS
+
+
+def _breaker_remaining() -> float:
+    """Seconds the breaker stays open; 0.0 when closed (calls allowed)."""
+    return max(0.0, _breaker_until - time.monotonic())
+
+
+def reset_quota_breaker() -> None:
+    """Close the breaker now — for tests, and for a caller that knows the quota
+    was topped up and doesn't want to wait out the cooldown."""
+    global _breaker_until
+    _breaker_until = 0.0
+
+
 def _cache_path(endpoint: str, params: dict[str, Any], cache_dir: Path) -> Path:
     """One JSON per (endpoint, params). API key is excluded from the
     hash so cache survives key rotation."""
@@ -303,10 +344,21 @@ def _request(
             # live fetch, whose atomic rewrite below replaces it.
             log.warning("corrupt cache %s — refetching", cf)
 
+    # Checked AFTER the cache read: a fresh cache is still served with the
+    # breaker open — this only suppresses the pointless live call.
+    open_for = _breaker_remaining()
+    if open_for > 0.0:
+        raise OddsApiError(
+            f"{endpoint} not attempted: Odds API quota/auth breaker open for "
+            f"another {open_for:.0f}s (a previous call returned 401)"
+        )
+
     # Attach key at request time; don't cache it
     full_params = {**params, "apiKey": settings.odds_api_key}
     r = _client().get(endpoint, params=full_params)
     if r.status_code != 200:
+        if r.status_code == 401:
+            _trip_breaker()
         # Surface API error code if present for easier debugging
         try:
             err_body = r.json()
@@ -748,6 +800,7 @@ __all__ = [
     "SPORT_KEYS",
     "PREFERRED_BOOKMAKERS",
     "OddsApiError",
+    "reset_quota_breaker",
     "fetch_current_odds",
     "fetch_historical_snapshot",
     "parse_fixture_to_h2h",
