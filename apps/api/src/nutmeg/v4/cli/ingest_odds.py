@@ -301,6 +301,7 @@ def _gather_rows(
     odds_api_refresh: bool = False,
     bettable_refresh_only: bool = False,
     oa_refreshed: set[str] | None = None,
+    oa_ttl_seconds: float = 1800,
 ) -> tuple[list[dict], int, int]:
     """Walk leagues × today's fixtures × /odds and produce CSV-ready rows.
 
@@ -315,6 +316,22 @@ def _gather_rows(
     correct for the cron / 国际盘口 board, which can't score odds-less fixtures.
     Pass False (V12 W6 — 近期赛事 tab) to KEEP them as rows with psc_* = None so
     the UI can list them as '待开盘' until Pinnacle opens the line.
+
+    ``oa_ttl_seconds`` — how stale a cached Odds API pull may be before a PASSIVE
+    (non-🔄) load pays a credit to refresh it. This is the only meter on passive
+    spend: `odds_api._request` treats the TTL as a refresh TRIGGER, not a
+    cache-only gate, so an expired cache fires a live call even with
+    refresh=False. MEASURED 2026-07-17: the serving endpoints (which the
+    dashboard polls every 60s) were re-arming this every 30min across a 30
+    sport_key union ⇒ 30 × 48 = 1,440 credits/day vs a 20K/month ≈ 667/day plan
+    (2.2×). It only looked free while the odds crons kept the cache warm — the
+    same passive load costs 0 calls at cache age 10min and 17 at 31min — so
+    pausing the crons on 07-12 silently promoted the dashboard from cache READER
+    to cache REFRESHER. Serving passes 6h (see routes._SERVING_OA_TTL_SECONDS).
+    The default stays 1800 for `predict_log`, which passes refresh_odds=False +
+    snapshot_db and so depends on this TTL for the freshness of the lines it
+    samples into `odds_snapshots` — the CLV line history must not be fed a
+    6h-old quote. A 🔄 is unaffected either way (refresh=True bypasses the TTL).
 
     V12 W0 (2026-05-28) Plan A — pass ``min_kickoff_buffer_minutes`` > 0
     to drop fixtures that are already kicked off (or about to kick off
@@ -384,7 +401,8 @@ def _gather_rows(
                 )
                 try:
                     oa_lookup = odds_api.fetch_pinnacle_lookup(
-                        sport_key, refresh=league_oa_refresh, ttl_seconds=1800,
+                        sport_key, refresh=league_oa_refresh,
+                        ttl_seconds=oa_ttl_seconds,
                     )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("odds_api overlay failed for %s: %s", league, exc)

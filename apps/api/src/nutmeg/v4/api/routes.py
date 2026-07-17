@@ -1640,6 +1640,28 @@ def _fixture_rows_to_inputs(rows: list[dict]) -> list[FixtureOddsInput]:
     return out
 
 
+# 💸 Odds API 服务侧配额(2026-07-17)— how stale a cached Pinnacle pull may be
+# before a PASSIVE serving load pays a credit to refresh it. The three endpoints
+# the dashboard polls (today_rec / sp-calc / cup-market) share one on-disk cache
+# keyed by sport_key, spanning a 30-key union; at the CLI default an open
+# dashboard re-armed that meter 48×/day ⇒ 1,440 credits/day against a 20K/month
+# ≈ 667/day plan (2.2×), which is what drained the quota to 401 while the odds
+# crons sat paused since 07-12.
+#
+# That default (1800s) was never arbitrary: it is closing_odds' StartInterval,
+# i.e. serving was tuned to RIDE that cron's 30-min cache. But the TTL is a
+# refresh TRIGGER (odds_api._request), not a cache-only gate — so with the cron
+# paused, the same code silently promoted the dashboard from cache READER to
+# cache REFRESHER, spending on all 30 keys where closing_odds spends only on
+# sports kicking off inside 75min. Do NOT "restore" this to 1800 to re-couple
+# them; passive serving should never be a refresher at any cron cadence.
+#
+# 6h ⇒ ≤120/day (0.2× plan). Near-KO freshness is closing_odds' job, so what
+# ages here is mostly fixtures far from kickoff, and a stale line still surfaces
+# to the user via the card's odds_update badge (>2h → ⚠️ 陈旧) rather than
+# passing itself off as fresh. 🔄 is untouched (refresh=True bypasses the TTL).
+_SERVING_OA_TTL_SECONDS = 6 * 3600
+
 # ── V12 W3 — 竞彩 SP calculator data (近期赛事 tab) ─────────────────────
 # The full 14-league production set (matches TodayRecommendationsRequest's
 # default + the dashboard TODAY_DEFAULT_LEAGUES). Kept here so the sp-calc
@@ -1860,6 +1882,7 @@ def predictions_sp_calc(
                 # 2026-07-09 — only spend that refresh on 竞彩-bettable leagues/fixtures.
                 bettable_refresh_only=bettable_only,
                 oa_refreshed=_oa_refreshed,
+                oa_ttl_seconds=_SERVING_OA_TTL_SECONDS,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2283,6 +2306,7 @@ def predictions_cup_market(
                 # 2026-07-09 — refresh only 竞彩-bettable leagues/fixtures.
                 bettable_refresh_only=bettable_only,
                 oa_refreshed=_oa_refreshed,
+                oa_ttl_seconds=_SERVING_OA_TTL_SECONDS,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2587,6 +2611,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             odds_api_refresh=req.refresh_odds,
             # 2026-07-09 — refresh only 竞彩-bettable leagues/fixtures (§quota).
             bettable_refresh_only=req.bettable_only,
+            oa_ttl_seconds=_SERVING_OA_TTL_SECONDS,
         )
     except Exception as exc:  # noqa: BLE001
         # API-Football errors (rate limit, network, missing key) → return
