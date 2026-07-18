@@ -1277,3 +1277,43 @@ class TestFreezeGapBand:
     def test_badge_tooltip_i18n_both_locales(self, html):
         for k in ("frz_badge_tip",):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestSweetBoardProjectStyle:
+    """2026-07-18 owner:甜区榜卡片/图标换项目风格(Tabler sprite,非 emoji)。
+
+    范式对齐:details 卡 = #manual-reverse 同款(白卡+左色条+font-bold summary+
+    行内 {ic:});图标一律走 sprite(记忆 dashboard-icon-system:emoji 只许留在
+    代码注释里,渲染面用 IC()/{ic:})。竞彩可投注头、⏳缺口徽章一并换。"""
+
+    @pytest.fixture(scope="class")
+    def html(self):
+        return DASH.read_text(encoding="utf-8")
+
+    def test_candy_symbol_in_sprite(self, html):
+        # Tabler 官方 candy 三段 path(unpkg @tabler/icons candy.svg 原样)
+        assert '<symbol id="ic-candy" viewBox="0 0 24 24">' in html
+        assert "M7.05 11.293l4.243 -4.243a2 2 0 0 1 2.828 0" in html
+
+    def test_board_shell_is_project_card(self, html):
+        # 白卡 + 甜区绿左色条(同两模式卡的 border-left 4px 范式)
+        assert ('class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4"\n'
+                '      style="border-left:4px solid #059669"') in html
+        assert '<summary class="font-bold cursor-pointer">' in html
+
+    def test_board_icons_from_sprite_not_emoji(self, html):
+        assert "${IC('candy')}" in html
+        # ↻ 字符换 refresh 图标(与卡头刷新按钮同源)
+        assert ("event.stopPropagation();_sweetBoardRefresh()\"\n"
+                "            title=\"${t('sw_refresh_hint')}\" class=\"text-muted\"") in html
+        assert "${IC('refresh')}" in html
+        assert "🍬 ${t('sw_board_hdr')}" not in html
+
+    def test_bettable_header_uses_yuan_icon(self, html):
+        assert "${IC('yuan')} ${t('jc_bettable_hdr')}" in html
+        assert "💴 ${t('jc_bettable_hdr')}" not in html
+
+    def test_freeze_badge_uses_hourglass_icon(self, html):
+        # 与「待开盘」徽章(spcalc_pending_badge 的 {ic:hourglass})同款
+        assert "${IC('hourglass')}${label}" in html
+        assert ">⏳${label}" not in html
