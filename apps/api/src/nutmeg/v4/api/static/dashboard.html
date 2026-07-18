@@ -2106,7 +2106,8 @@ const I18N = {
     cupman_badge:     '手填实时盘口',
     cupman_just_now:  '刚刚',
     sw_board_hdr:     '甜区 EV 榜',
-    sw_board_note:    '只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。',
+    sw_board_note:    '只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽,⏳)。',
+    frz_badge_tip:    '距开球时长 — 现在下单,到收盘 Pinnacle 预计还漂 ±2σ(已并入 EV 的 ± 区间);凌晨场停售早、缺口不可压缩(A-1 实测:41% 凌晨场中位缺口 6h)',
     sw_second:        '次优',
     sw_jump_hint:     '点击跳到这场的卡片',
     sw_refresh_hint:  '用当前手填 SP + 最新盘口重算排行',
@@ -2572,7 +2573,8 @@ const I18N = {
     cupman_badge:     'live odds (manual)',
     cupman_just_now:  'just now',
     sw_board_hdr:     'sweet-zone EV board',
-    sw_board_note:    'sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump.',
+    sw_board_note:    'sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff, ⏳).',
+    frz_badge_tip:    'Hours to kickoff — commit now and Pinnacle keeps drifting until close (±2σ, folded into the EV ± band); overnight matches freeze early with an incompressible gap (A-1 measured: 41% of matches, median 6h)',
     sw_second:        '2nd',
     sw_jump_hint:     'jump to this match card',
     sw_refresh_hint:  're-rank with current hand-typed SP + latest lines',
@@ -3025,6 +3027,41 @@ function _kickoffMs(pr) {
   }
   // No time → sort by end-of-day so any timed match on the same date leads.
   return (pr && pr.date) ? new Date(pr.date + 'T23:59:59').getTime() : Infinity;
+}
+
+// A-2 冻结缺口带(2026-07-18,docs/freeze_gap_measurement_2026-07-18.md)。
+// 竞彩停售后市场继续走(41% 凌晨场停售→开球缺口中位 6h),点估无偏(反转不可
+// 预测)但方差真实:σ_P(h) = A·h^B,A-1 实测(75 条自家线史轨迹拟合,25,886 场
+// football-data 在 36h 处交叉验证,偏差 ~15%)。带宽用「当下距开球小时数」——
+// 晚场随等待自然收窄,凌晨场显示的就是不可压缩的底线。
+// ⭐只进**显示**(± 平方和合成、⏳徽章),不进判闸/选注/Kelly —— 进闸=A-3,须预注册。
+const _FRZ_COEF = { H: [0.0079, 0.31], D: [0.0042, 0.23], A: [0.0077, 0.27] };
+function _frzHours(pr) {
+  const ms = _kickoffMs(pr);
+  if (!isFinite(ms)) return null;
+  const h = (ms - Date.now()) / 3600000;
+  return h > 0 ? Math.min(h, 168) : null;   // 已开球/无时刻 → 无带(不装懂)
+}
+function _frzHalfEv(pr, leg, sp) {
+  // ±2σ_P(距开球) × SP。A-1 只测了 1X2 三腿;让球腿('hcH' 等)落到主胜曲线
+  // 当量级代理(三条里最宽=保守)。1X2 平局腿有自己的钉死曲线(σ≈0.9pp 封顶)。
+  const h = _frzHours(pr);
+  if (h == null || !(sp > 1)) return 0;
+  const c = _FRZ_COEF[leg] || _FRZ_COEF.H;
+  return 2 * c[0] * Math.pow(Math.max(h, 0.5), c[1]) * sp;   // 0.5h=数据下限,不外推
+}
+function _frzBandHtml(pr, leg, sp) {
+  // 1X2 行的 ±(无 δ 带,冻结带即全部);让球行走 _hcEvHtml 里的平方和。
+  const frz = _frzHalfEv(pr, leg, sp);
+  return frz > 1e-9
+    ? ` <span class="text-muted" style="font-size:0.9em">±${(frz * 100).toFixed(1)}%</span>` : '';
+}
+function _frzBadgeHtml(pr) {
+  // ⏳ 只在缺口成气候时出现(≥2h:冻结带开始压过 A′ δ 带的量级)。
+  const h = _frzHours(pr);
+  if (h == null || h < 2) return '';
+  const label = h < 48 ? h.toFixed(1) + 'h' : Math.round(h / 24) + 'd';
+  return ` <span style="font-size:0.9em;white-space:nowrap;cursor:help" title="${t('frz_badge_tip')}">⏳${label}</span>`;
 }
 
 // V11 P1-FE#2 Day 2 — team logo circle.
@@ -4516,7 +4553,8 @@ function _sweetLegs(pr, idx, mode) {
     if (!(sp > 1.0) || !(p > 0)) return;
     if (_evRelTier(p) !== 'sweet') return;
     const ev = p * sp - 1, evLo = (lo != null ? lo : p) * sp - 1;
-    legs.push({ o, label, p, sp, ev, evLo, half: ev - evLo });
+    // A-2 — 显示半宽 = A′ δ 带 ⊕ 冻结带(平方和);evLo/排序/绿灯不动(冻结带不判闸)
+    legs.push({ o, label, p, sp, ev, evLo, half: Math.hypot(ev - evLo, _frzHalfEv(pr, o, sp)) });
   };
   push('H', t('sw_1x2_h'), pr.p_home_1x2, null, _sweetEffSp(mode, idx, '1x2', 'H', pr.jc_home));
   push('D', t('sw_1x2_d'), pr.p_draw_1x2, null, _sweetEffSp(mode, idx, '1x2', 'D', pr.jc_draw));
@@ -4607,7 +4645,7 @@ function _sweetBoardHtml(bett, mode) {
       <div class="text-xs">
         <span class="text-muted">${i + 1}.</span>
         <span class="font-medium">${zhTeam(r.pr.home_team)} vs ${zhTeam(r.pr.away_team)}</span>
-        <span class="text-muted"> · ${zhLeague(r.pr.league)} · ${ko(r.pr)}</span>
+        <span class="text-muted"> · ${zhLeague(r.pr.league)} · ${ko(r.pr)}</span>${_frzBadgeHtml(r.pr)}
       </div>
       <div class="text-xs pl-4">${_sweetLegHtml(r.best)}${r.second
         ? `<span class="text-muted"> ｜ ${t('sw_second')}: </span>${_sweetLegHtml(r.second)}` : ''}
@@ -4815,7 +4853,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
           ${teamLogo(pr.home_team)}<span>${zhTeam(pr.home_team)}</span>
           <span class="text-muted font-normal">vs</span>
           ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
-          <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}</span>
+          <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}</span>
         </div>
         ${rows}
         <div class="flex items-center justify-between gap-2 mt-2 pt-2" style="border-top:1px solid rgba(0,0,0,0.08)">
@@ -5027,7 +5065,7 @@ function _spcalcRecalc(idx) {
     const ev = P[o] * sp - 1.0;
     const pass = ev >= minEv;
     const jcImplied = (100 / sp).toFixed(0);
-    evSpan.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}% ${_evRelTag(P[o])} · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(P[o] * 100).toFixed(0)}%`;
+    evSpan.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%${_frzBandHtml(pr, o, sp)} ${_evRelTag(P[o])} · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(P[o] * 100).toFixed(0)}%`;
     evSpan.className = 'flex-1 text-xs';
     evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
     evSpan.style.fontWeight = pass ? '600' : '';
@@ -5168,9 +5206,12 @@ function _spcalcHcLine(idx) {
 // 「EV ≥+X% (点估 +Y%)」。没被 C1 碰的腿(第三腿/非 ±1 线)无 δ → 无 ±,行内自然干净。
 // ``sharpFlip`` 只有市场模式给(_cupHcRecalc);标准模式传 undefined = 不覆盖分级。
 // 两个让球面必须共用本函数 —— 各写各的等于给「区间」留了个只修一半的机会。
-function _hcEvHtml(ev, evLo, evHi, p, sharpFlip) {
+// A-2 — ``frzHalf``(冻结带半宽,_frzHalfEv)与 δ 带独立(一个是让球重构校准误差,
+// 一个是停售→开球的市场漂移)→ 平方和合成显示;判闸仍只看 δ 下界(evLo),不动。
+function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf) {
   const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
-  const half = evLo != null ? (evHi - evLo) / 2 : 0;
+  const dHalf = evLo != null ? (evHi - evLo) / 2 : 0;
+  const half = Math.hypot(dHalf, frzHalf || 0);
   const band = half > 1e-9
     ? ` <span class="text-muted" style="font-size:0.9em">±${(half * 100).toFixed(1)}%</span>` : '';
   return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip)}`;
@@ -5189,7 +5230,8 @@ function _spcalcHcRecalc(idx) {
     const evLo = PB.lo[o] * sp - 1.0;
     const evHi = ev + (ev - evLo);          // 带宽对称(δ ± k·SE)
     const pass = evLo >= minEv;             // ⭐ 判闸用下界,不是点估
-    evSpan.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o]);
+    evSpan.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o], undefined,
+      _frzHalfEv(_SPCALC.preds[idx], 'hc' + o, sp));
     evSpan.className = 'flex-1 text-xs';
     evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
     evSpan.style.fontWeight = pass ? '600' : '';
@@ -5597,7 +5639,7 @@ function _cupCardHtml(pr, idx) {
           ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
         </span>
         <span class="shrink-0 flex items-center gap-2">
-          <span class="text-xs text-muted">${_fmtKickoff(pr)}</span>
+          <span class="text-xs text-muted">${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}</span>
           <span class="badge-gold text-xs whitespace-nowrap">${t('cupmkt_badge')}</span>
         </span>
       </div>
@@ -5619,7 +5661,8 @@ function _cupRecalc(idx) {
     if (sp && sp > 1.0) {
       const ev = P[o] * sp - 1;
       const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
-      evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '% ' + _evRelTag(P[o], pr && pr.sharp_flip);
+      evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '%'
+        + _frzBandHtml(pr, o, sp) + ' ' + _evRelTag(P[o], pr && pr.sharp_flip);
       evEl.className = 'cupev flex-1 text-xs font-medium';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';
@@ -5672,7 +5715,8 @@ function _cupHcRecalc(idx) {
       const evHi = ev + (ev - evLo);
       // F3 — green only at ≥+5% (竞彩 rule), not ≥0;A′ — 且判的是**下界**
       const pass = evLo >= _TODAY_REC_GATE;
-      evEl.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip);
+      evEl.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip,
+        _frzHalfEv(_CUPMKT.preds[idx], 'hc' + o, sp));
       evEl.className = 'cuphcev flex-1 text-xs font-medium';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';

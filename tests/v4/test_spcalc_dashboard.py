@@ -1099,8 +1099,9 @@ class TestSharpFlipGuard:
         # 近期赛事**让球**:A′(2026-07-17)起经 `_hcEvHtml` 出 HTML,flag 由它转发
         # (`_evRelTag(p, sharpFlip)`)。转发那一跳单独锁在 TestEvReliability，
         # 这里只认「_cupHcRecalc 确实把 flag 传下去了」。
-        assert "_hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip)" in html
-        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip)" in html
+        # (A-2 起第 6 参传冻结带半宽,flag 位置不变)
+        assert "_hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip," in html
+        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf)" in html
 
     def test_i18n_keys_both_locales(self, html):
         for k in ("rel_flip", "rel_flip_hint"):
@@ -1194,4 +1195,71 @@ class TestSweetEvBoard:
         assert "return v > 1.0 ? v : fallback;" in html
         assert "parseInt(selEl.value, 10) === pr.jc_hc_line" in html
         for k in ("sw_refresh_hint",):
+            assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestFreezeGapBand:
+    """2026-07-18 A-2 — 冻结缺口带(docs/freeze_gap_measurement_2026-07-18.md)。
+
+    竞彩停售后市场继续走(41% 凌晨场停售→开球缺口中位 6h),点估无偏但方差真实。
+    A-1 实测标度律 σ_P(h)=A·h^B → 前端把 ±2σ×SP 并入 EV 的 ± 区间(与 A′ δ 带
+    平方和合成,两者独立)+ ⏳徽章。⭐铁律:只进**显示**,不进判闸/选注/Kelly ——
+    进闸=A-3,须先预注册。这些断言两头锁:带宽算对 + 判闸没被碰。"""
+
+    @pytest.fixture(scope="class")
+    def html(self):
+        return DASH.read_text(encoding="utf-8")
+
+    def test_scaling_law_constants_match_a1_measurement(self, html):
+        # 三腿系数 = A-1 拟合原文(主 0.79pp·h^0.31 / 平 0.42·0.23 / 客 0.77·0.27)
+        assert ("const _FRZ_COEF = { H: [0.0079, 0.31], D: [0.0042, 0.23], "
+                "A: [0.0077, 0.27] };") in html
+        assert "freeze_gap_measurement_2026-07-18" in html   # 数据出处可追溯
+
+    def test_horizon_is_now_to_kickoff_with_honest_bounds(self, html):
+        # 带宽用「当下距开球」:已开球/无时刻 → null(不装懂);0.5h=数据下限不外推
+        assert "function _frzHours(" in html
+        assert "return h > 0 ? Math.min(h, 168) : null;" in html
+        assert "Math.pow(Math.max(h, 0.5), c[1])" in html
+        # ±2σ × SP,与 A′ 的 σ_EV=σ_P·SP 同一哲学
+        assert "return 2 * c[0] * Math.pow(Math.max(h, 0.5), c[1]) * sp;" in html
+
+    def test_hc_rows_combine_delta_and_freeze_in_quadrature(self, html):
+        # 让球行:δ 带 ⊕ 冻结带平方和;两个让球面都传 frzHalf(共用 _hcEvHtml)
+        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf)" in html
+        assert "const half = Math.hypot(dHalf, frzHalf || 0);" in html
+        assert "_frzHalfEv(_SPCALC.preds[idx], 'hc' + o, sp)" in html
+        assert "_frzHalfEv(_CUPMKT.preds[idx], 'hc' + o, sp)" in html
+
+    def test_1x2_rows_show_freeze_band_both_modes(self, html):
+        # 1X2 行原本无 δ 带 → ± 即冻结带;标准+市场两模式都接
+        assert "function _frzBandHtml(" in html
+        assert html.count("_frzBandHtml(pr, o, sp)") >= 2
+
+    def test_sweet_board_half_combines_but_ranking_untouched(self, html):
+        assert ("half: Math.hypot(ev - evLo, _frzHalfEv(pr, o, sp))") in html
+        # 排序键/绿灯仍是 δ 判闸 EV —— 冻结带不改榜序
+        assert "return legs.sort((a, b) => b.evLo - a.evLo);" in html
+        assert "const color = lg.evLo >= 0.05 ?" in html
+
+    def test_gate_pick_kelly_do_not_see_freeze_band(self, html):
+        """判闸三处原样:标准让球下界闸、市场让球下界闸、1X2 点估闸。冻结带若进闸
+        (A-3)须预注册 —— 此测试就是那道门。"""
+        assert "const pass = evLo >= minEv;" in html
+        assert "const pass = evLo >= _TODAY_REC_GATE;" in html
+        assert "const pass = ev >= minEv;" in html
+        # _frz* 只许出现在展示函数/调用里,不许出现在任何 pass/stake 行
+        for line in html.splitlines():
+            if "const pass" in line or "_spcalcStake(" in line:
+                assert "_frz" not in line, f"freeze band leaked into gate/stake: {line.strip()}"
+
+    def test_badge_on_cards_and_board_with_threshold(self, html):
+        # ⏳ 徽章:两模式卡头 + 甜区榜行;<2h 不出现(带宽尚未压过 δ 带量级)
+        assert "function _frzBadgeHtml(" in html
+        assert "if (h == null || h < 2) return '';" in html
+        assert html.count("${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}") == 2
+        assert "${_frzBadgeHtml(r.pr)}" in html
+
+    def test_badge_tooltip_i18n_both_locales(self, html):
+        for k in ("frz_badge_tip",):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
