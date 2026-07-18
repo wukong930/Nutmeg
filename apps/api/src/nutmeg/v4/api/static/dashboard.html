@@ -975,6 +975,9 @@
          style="border-left:4px solid #dc2626" role="status" aria-live="polite"></div>
     <!-- 2026-07-18 owner 需求:按钮卡 + 列表卡合一(市场模式同款),省一屏头部。
          section 不再 hidden —— 刷新按钮任何时候都要可点;空态走 #spcalc-empty。 -->
+    <!-- 🍬 全局甜区 EV 榜(2026-07-18 owner:两模式合并、独立排版、置于标准模式上方)。
+         内容由 _sweetBoardRefresh() 从 _SPCALC.preds + _CUPMKT.preds 合并渲染;空则不占位。 -->
+    <div id="sweet-board-global"></div>
     <div id="today-spcalc-section" class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #2563eb">
       <h3 class="font-bold mb-2"><span data-i18n="h_spcalc">📊 标准模式</span>
         <span id="today-spcalc-count" class="text-sm font-normal text-gray-500"></span>
@@ -2106,7 +2109,7 @@ const I18N = {
     cupman_badge:     '手填实时盘口',
     cupman_just_now:  '刚刚',
     sw_board_hdr:     '甜区 EV 榜',
-    sw_board_note:    '只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽,⏳)。',
+    sw_board_note:    '标准+市场两模式可投注场次合并成一张全局榜;只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽,⏳)。',
     frz_badge_tip:    '距开球时长 — 现在下单,到收盘 Pinnacle 预计还漂 ±2σ(已并入 EV 的 ± 区间);凌晨场停售早、缺口不可压缩(A-1 实测:41% 凌晨场中位缺口 6h)',
     sw_second:        '次优',
     sw_jump_hint:     '点击跳到这场的卡片',
@@ -2573,7 +2576,7 @@ const I18N = {
     cupman_badge:     'live odds (manual)',
     cupman_just_now:  'just now',
     sw_board_hdr:     'sweet-zone EV board',
-    sw_board_note:    'sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff, ⏳).',
+    sw_board_note:    'one global board merging bettable matches from both modes; sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff, ⏳).',
     frz_badge_tip:    'Hours to kickoff — commit now and Pinnacle keeps drifting until close (±2σ, folded into the EV ± band); overnight matches freeze early with an incompressible gap (A-1 measured: 41% of matches, median 6h)',
     sw_second:        '2nd',
     sw_jump_hint:     'jump to this match card',
@@ -4594,13 +4597,16 @@ function _sweetJump(mode, idx) {
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 // 榜的独立刷新(2026-07-18 owner 反馈:手填最新 Pinnacle/竞彩价后要能重算排行)。
-// 三条路都通向这里:①四个卡片重算函数尾部挂了防抖调用(手填 SP 边打边进榜);
-// ②手填实时盘口「应用」走整板重渲(容器随之重建);③榜头的 ↻ 手动兜底。
+// 2026-07-18 全局化(owner 需求):榜从两张模式卡里搬出来,独立渲染在标准模式卡
+// **上方**的 #sweet-board-global,一张榜合并两模式的可投注场次(两集合不相交:
+// 一场比赛要么受训联赛=标准,要么杯赛/未受训=市场)。通向这里的路:①四个卡片
+// 重算函数尾部防抖(手填 SP 边打边进榜);②两模式 render 的所有出口(含零场路径
+// —— 外部容器不再随列表 innerHTML 一起消失,必须显式重算);③榜头 ↻ 手动兜底。
 // 只重绘榜的容器,不动卡片 → 不会打断正在输入的焦点。
 let _swTimer = null;
-function _sweetBoardScheduleRefresh(mode) {
+function _sweetBoardScheduleRefresh() {
   clearTimeout(_swTimer);
-  _swTimer = setTimeout(() => _sweetBoardRefresh(mode), 350);
+  _swTimer = setTimeout(() => _sweetBoardRefresh(), 350);
 }
 // 折叠状态持久化(2026-07-18 owner 反馈:折叠着的榜被「应用」/60s 轮询/切 tab 的
 // 整板重渲弹开 —— 旧实现把 open 写死在 HTML 里,只有防抖刷新记得状态)。现在
@@ -4616,20 +4622,22 @@ function _sweetBoardSaveOpen(mode, open) {
   if (_sweetBoardOpen(mode) === !!open) return;
   try { localStorage.setItem(_LS_SWOPEN + mode, open ? '1' : '0'); } catch (_) {}
 }
-function _sweetBoardRefresh(mode) {
-  const box = document.getElementById(`sweet-board-${mode}`);
+function _sweetBoardRefresh() {
+  const box = document.getElementById('sweet-board-global');
   if (!box) return;
-  const preds = (mode === 'cup' ? _CUPMKT.preds : _SPCALC.preds) || [];
-  const bett = [];
-  preds.forEach((pr, idx) => { if (_isJcBettable(pr)) bett.push({ pr, idx }); });
-  box.innerHTML = _sweetBoardHtml(bett, mode);
+  const items = [];
+  [['spcalc', (_SPCALC && _SPCALC.preds) || []], ['cup', (_CUPMKT && _CUPMKT.preds) || []]]
+    .forEach(([mode, preds]) => preds.forEach((pr, idx) => {
+      if (_isJcBettable(pr)) items.push({ pr, idx, mode });
+    }));
+  box.innerHTML = _sweetBoardHtml(items);
 }
-function _sweetBoardHtml(bett, mode) {
+function _sweetBoardHtml(items) {
   const rows = [];
-  (bett || []).forEach(({ pr, idx }) => {
+  (items || []).forEach(({ pr, idx, mode }) => {
     const legs = _sweetLegs(pr, idx, mode);
     if (!legs.length) return;
-    rows.push({ pr, idx, best: legs[0], second: legs[1] || null });
+    rows.push({ pr, idx, mode, best: legs[0], second: legs[1] || null });
   });
   if (!rows.length) return '';
   rows.sort((a, b) => b.best.evLo - a.best.evLo);
@@ -4640,7 +4648,7 @@ function _sweetBoardHtml(bett, mode) {
     return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
   };
   const body = rows.map((r, i) => `
-    <div class="sw-row px-2 py-1 rounded" style="cursor:pointer" onclick="_sweetJump('${mode}',${r.idx})"
+    <div class="sw-row px-2 py-1 rounded" style="cursor:pointer" onclick="_sweetJump('${r.mode}',${r.idx})"
          title="${t('sw_jump_hint')}">
       <div class="text-xs">
         <span class="text-muted">${i + 1}.</span>
@@ -4651,12 +4659,12 @@ function _sweetBoardHtml(bett, mode) {
         ? `<span class="text-muted"> ｜ ${t('sw_second')}: </span>${_sweetLegHtml(r.second)}` : ''}
       </div>
     </div>`).join('');
-  return `<details${_sweetBoardOpen(mode) ? ' open' : ''} class="mb-3 px-2 py-2 rounded"
+  return `<details${_sweetBoardOpen('global') ? ' open' : ''} class="mb-4 px-2 py-2 rounded"
       style="border:1px solid #05966940;background:#05966908"
-      ontoggle="_sweetBoardSaveOpen('${mode}', this.open)">
+      ontoggle="_sweetBoardSaveOpen('global', this.open)">
     <summary class="text-sm font-display font-semibold" style="color:#059669;cursor:pointer">
       🍬 ${t('sw_board_hdr')} <span class="text-xs text-muted">· ${rows.length}</span>
-      <span onclick="event.preventDefault();event.stopPropagation();_sweetBoardRefresh('${mode}')"
+      <span onclick="event.preventDefault();event.stopPropagation();_sweetBoardRefresh()"
             title="${t('sw_refresh_hint')}" style="cursor:pointer;padding:0 6px">↻</span></summary>
     <div class="text-xs text-muted px-2 mt-1 mb-1">${t('sw_board_note')}</div>
     ${body}</details>`;
@@ -4673,8 +4681,8 @@ function _bettableFirstHtml(preds, cardHtml, mode) {
       style="border-left:4px solid #059669;background:#05966914">
       <span class="font-display font-semibold text-sm" style="color:#059669">💴 ${t('jc_bettable_hdr')}</span>
       <span class="text-xs text-muted">· ${bett.length}</span></div>`;
-  // 容器包一层:榜可被 _sweetBoardRefresh 单独重绘(手填 SP 防抖进榜),不动卡片
-  html += `<div id="sweet-board-${mode}">${_sweetBoardHtml(bett, mode)}</div>`;
+  // 甜区榜已全局化(#sweet-board-global,标准模式卡上方),不再嵌在模式卡里;
+  // 这里只剩可投注置顶区本体。榜的重算由 render 出口 + 重算尾部的防抖钩负责。
   html += _lgGroupsHtml(bett, cardHtml, 'jc:');
   if (rest.length) {
     html += `<div class="text-xs text-muted mt-4 mb-2 px-2 pt-2"
@@ -4772,8 +4780,11 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   if (preds.length === 0 && pending.length === 0) {
     // 合并卡(2026-07-18)后 section 常显 —— 藏它=藏刷新按钮;空态清列表,
     // 空提示由 loadSpCalc 的 #spcalc-empty toggle 负责。
+    // 全局榜:_SPCALC.preds 的正式赋值在成功路径尾部,这里必须显式清空——
+    // 否则外部的 #sweet-board-global 会继续用旧 preds 渲染幽灵行。
+    _SPCALC.preds = [];
     list.innerHTML = ''; $('#today-spcalc-count').textContent = '';
-    _setPending('spcalc', pending); return;
+    _setPending('spcalc', pending); _sweetBoardScheduleRefresh(); return;
   }
   // Preserve any 竞彩 SP the user already typed, keyed by fixture identity,
   // so a re-render (e.g. 🔄 刷新盘口) updates model P / Pinnacle odds WITHOUT
@@ -4905,6 +4916,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   // V14 — 待开盘 fixtures now feed the merged 待开盘赛事 section at the page bottom.
   list.innerHTML = scoredHtml;
   _setPending('spcalc', pending);
+  _sweetBoardScheduleRefresh();   // 🍬 全局榜:列表重渲后同步(外部容器不随卡重建)
   // Restore preserved SP into the freshly-rendered inputs + recompute.
   preds.forEach((pr, idx) => {
     const saved = _entered[pr.home_team + '|' + pr.away_team + '|' + pr.date];
@@ -5089,7 +5101,7 @@ function _spcalcRecalc(idx) {
   // V12 W5 — keep the 串关篮子 in sync when a leg's SP changes.
   if (typeof _parlayRender === 'function') _parlayRender();
   _jcStaleCapture(_SPCALC.preds[idx], 'spcalc-sp', idx, 'had');   // 体检 — 标准模式静默捕获
-  _sweetBoardScheduleRefresh('spcalc');   // 🍬 手填 SP 边打边进榜(防抖)
+  _sweetBoardScheduleRefresh();   // 🍬 手填 SP 边打边进榜(防抖,全局榜)
 }
 
 async function _spcalcRecord(idx) {
@@ -5253,7 +5265,7 @@ function _spcalcHcRecalc(idx) {
     btn.disabled = true; btn.style.cssText = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed';
   }
   _jcStaleCaptureHc(_SPCALC.preds[idx], 'spcalc-hcsp', 'spcalc-hcline-' + idx, idx);   // 体检 — 标准模式让球捕获
-  _sweetBoardScheduleRefresh('spcalc');   // 🍬 手填 SP 边打边进榜(防抖)
+  _sweetBoardScheduleRefresh();   // 🍬 手填 SP 边打边进榜(防抖,全局榜)
 }
 async function _spcalcHcRecord(idx) {
   const pr = _SPCALC.preds[idx];
@@ -5673,7 +5685,7 @@ function _cupRecalc(idx) {
     }
   });
   _jcStaleCapture(_CUPMKT.preds[idx], 'cupsp', idx, 'had');   // 体检 — 市场模式静默捕获
-  _sweetBoardScheduleRefresh('cup');   // 🍬 手填 SP 边打边进榜(防抖)
+  _sweetBoardScheduleRefresh();   // 🍬 手填 SP 边打边进榜(防抖,全局榜)
 }
 
 // V12 W8 — market-implied 让球 live EV on a cup-market card. P comes from the
@@ -5727,7 +5739,7 @@ function _cupHcRecalc(idx) {
     }
   });
   _jcStaleCaptureHc(_CUPMKT.preds[idx], 'cuphcsp', 'cuphcline-' + idx, idx);   // 体检 — 市场模式让球捕获
-  _sweetBoardScheduleRefresh('cup');   // 🍬 手填 SP 边打边进榜(防抖)
+  _sweetBoardScheduleRefresh();   // 🍬 手填 SP 边打边进榜(防抖,全局榜)
 }
 // V12 W8 — record a market-mode 让球 pick for tracking. Server recomputes the
 // market-implied P from Pinnacle (de-vig 1X2 + O/U), picks the highest-EV leg,
@@ -6219,13 +6231,15 @@ function renderCupMarket(preds, pending) {
   if (preds.length === 0 && pending.length === 0) {
     // 合并卡(2026-07-18)常显 —— 藏 section=藏刷新按钮;清列表 + 亮空提示卡。
     list.innerHTML = ''; $('#cupmkt-count').textContent = '';
-    empty.classList.remove('hidden'); _setPending('cupmkt', pending); return;
+    empty.classList.remove('hidden'); _setPending('cupmkt', pending);
+    _sweetBoardScheduleRefresh(); return;   // 🍬 全局榜:cup 侧清空也要同步
   }
   empty.classList.add('hidden');
   $('#cupmkt-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
   // 2026-07-07 — 竞彩可投注置顶 (same zoning as 标准模式 via _bettableFirstHtml).
   list.innerHTML = _bettableFirstHtml(preds, _cupCardHtml, 'cup');
   _setPending('cupmkt', pending);   // 待开盘 → merged bottom section
+  _sweetBoardScheduleRefresh();   // 🍬 全局榜:列表重渲后同步(外部容器不随卡重建)
   // Restore preserved 竞彩 SP / 让球线 into the freshly-rendered inputs + recompute.
   preds.forEach((pr, idx) => {
     const saved = _entered[pr.home_team + '|' + pr.away_team + '|' + pr.date];

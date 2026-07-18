@@ -1119,11 +1119,28 @@ class TestSweetEvBoard:
     def test_functions_defined_and_wired(self, html):
         for fn in ("_sweetLegs", "_sweetBoardHtml", "_sweetJump", "_sweetLegHtml"):
             assert f"function {fn}(" in html, fn
-        # 长在可投注置顶区头上,两个模式共享同一实现
-        assert ('html += `<div id="sweet-board-${mode}">'
-                '${_sweetBoardHtml(bett, mode)}</div>`;') in html
         assert "_bettableFirstHtml(preds, cardHtml, 'spcalc')" in html
         assert "_bettableFirstHtml(preds, _cupCardHtml, 'cup')" in html
+
+    def test_global_board_container_above_std_mode(self, html):
+        """2026-07-18 owner 需求:全局榜 —— 两模式合并、独立排版、置于标准模式上方。
+
+        静态容器在标准模式 section 之前;渲染函数从两模式 preds 合并收集,
+        每行带自己的 mode(跳转/生效 SP 都按行内 mode 解析);旧的每模式内嵌容器已删。"""
+        assert '<div id="sweet-board-global"></div>' in html
+        assert html.index('id="sweet-board-global"') < html.index('id="today-spcalc-section"')
+        assert "sweet-board-${mode}" not in html          # 旧内嵌容器不许回来
+        # 合并收集:两模式各自 (pr, idx, mode) 入列,判可投注口径不变
+        assert ("[['spcalc', (_SPCALC && _SPCALC.preds) || []], "
+                "['cup', (_CUPMKT && _CUPMKT.preds) || []]]") in html
+        assert "if (_isJcBettable(pr)) items.push({ pr, idx, mode });" in html
+        # 行点击跳的是**该行**的 mode(可能跳进另一张模式卡)
+        assert "_sweetJump('${r.mode}',${r.idx})" in html
+
+    def test_spcalc_zero_path_clears_preds_for_global_board(self, html):
+        # _SPCALC 的正式赋值在成功路径尾部 —— 零场路径若不显式清空,外部全局榜
+        # 会拿旧 preds 渲染幽灵行(嵌入式时代列表清空=榜消失,全局化后不再如此)
+        assert "_SPCALC.preds = [];" in html
 
     def test_sweet_only_filter(self, html):
         # 需求③:只挑甜区 —— 分级复用 _evRelTier,不另写阈值
@@ -1161,14 +1178,11 @@ class TestSweetEvBoard:
         """
         assert "function _sweetBoardRefresh(" in html
         assert "function _sweetBoardScheduleRefresh(" in html
-        # 独立容器:整板渲染时内容内联(无闪烁),刷新只换容器 innerHTML
-        assert ('html += `<div id="sweet-board-${mode}">'
-                '${_sweetBoardHtml(bett, mode)}</div>`;') in html
-        # 四个重算尾部都挂了钩(标准/市场 × 1X2/让球)
-        assert html.count("_sweetBoardScheduleRefresh('spcalc');") == 2
-        assert html.count("_sweetBoardScheduleRefresh('cup');") == 2
-        # ↻ 手动兜底
-        assert "_sweetBoardRefresh('${mode}')" in html
+        # 8 个钩:四个重算尾部(标准/市场 × 1X2/让球)+ 两模式 render 的
+        # 成功/零场出口各 2 —— 全局容器不随列表 innerHTML 重建,出口必须显式同步
+        assert html.count("_sweetBoardScheduleRefresh();") == 8
+        # ↻ 手动兜底(无参 = 全局)
+        assert "event.stopPropagation();_sweetBoardRefresh()" in html
 
     def test_collapse_state_persists_across_rerenders(self, html):
         """2026-07-18 owner 反馈:折叠着的榜被「应用」/60s 轮询/切 tab 的整板重渲
@@ -1177,11 +1191,11 @@ class TestSweetEvBoard:
         assert "const _LS_SWOPEN = 'nutmeg.sweetboard.open.';" in html
         assert "function _sweetBoardOpen(" in html
         assert "function _sweetBoardSaveOpen(" in html
-        # 渲染读持久化状态,不再写死 open
-        assert "`<details${_sweetBoardOpen(mode) ? ' open' : ''}" in html
+        # 渲染读持久化状态,不再写死 open;全局榜单一键 'global'
+        assert "`<details${_sweetBoardOpen('global') ? ' open' : ''}" in html
         # 用户开/合即存;渲染回声(插入即展开的补发 toggle)靠「值没变不写」滤掉,
         # 否则异步 toggle 的竞态会覆盖用户刚点的折叠
-        assert "ontoggle=\"_sweetBoardSaveOpen('${mode}', this.open)\"" in html
+        assert "ontoggle=\"_sweetBoardSaveOpen('global', this.open)\"" in html
         assert "if (_sweetBoardOpen(mode) === !!open) return;" in html
         # 缺省键 = 展开(!== '0')
         assert "!== '0'" in html
