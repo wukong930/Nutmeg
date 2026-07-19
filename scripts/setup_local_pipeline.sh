@@ -404,9 +404,17 @@ install_job "com.nutmeg.sporttery_ingest" \
 # SP into jc_open_* (set-once, preserved across the 23:15 终盘 overwrite into jc_*),
 # so 竞彩's own open→freeze line movement is recorded first-hand — no Okooo (which
 # only re-displays the same 竞彩 SP behind anti-bot). jc_* stays the canonical 终盘.
+# 2026-07-19 — extra 09:50 window: 官方 getFixedBonusV1 走势实测,竞彩每天的发布
+# 都落在 09:24–09:44(北京)晨批(样本:世界杯 D−3 09:35:49 / 韩职 D−1 09:44:30 /
+# 北欧 D−0 09:33:52 / WC-QF 09:24:44),而北欧等小联赛**当天早上才上架** —— 只有
+# 11:05 一窗时,2026-07-18 北欧 8 场从 09:33 发布到 11:05 首捕空窗 92 分钟(owner
+# 08:50 看板自然不见)。09:50 窗把同日新场的首捕/初盘拉近到发布后 ≤26 分钟;11:05
+# 保留作第二遍扫尾(晚批/睡眠兜底)。phase=open 的 jc_open_* set-once ⇒ 双窗互不冲突,
+# 初盘只会更贴近真开售。见 docs/jingcai_batch_opening_2026-07-18.md。
 install_job "com.nutmeg.sporttery_open" \
   11 5 "" \
-  "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH --phase open; else echo sporttery-disabled; fi || true"
+  "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH --phase open; else echo sporttery-disabled; fi || true" \
+  "9:50"
 
 # 体检(2026-06-30)— 竞彩 散户支持比例 harvest (THREE windows: 11:10 开售后 / 17:00 / 23:20 终盘后).
 # Same PUBLIC uniform endpoint + same NUTMEG_SPORTTERY_ENABLED kill switch as

@@ -45,7 +45,8 @@ class TestBettableFirst:
 
     def test_degrades_when_nothing_bettable(self, html: str) -> None:
         # No bettable matches → plain league grouping, no pin header (old look).
-        assert "if (!bett.length) return _lgGroupsHtml(rest, cardHtml, '');" in html
+        # (晨批提示 hint prefixes both paths — see test_jc_morning_hint_dashboard.)
+        assert "if (!bett.length) return hint + _lgGroupsHtml(rest, cardHtml, '');" in html
 
     def test_i18n_keys_present_both_locales(self, html: str) -> None:
         # zh + en dicts each carry the two headers (2 defs + ≥1 use site each).
