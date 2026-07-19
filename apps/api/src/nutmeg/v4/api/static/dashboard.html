@@ -5015,6 +5015,11 @@ const _jcCapT = {};
 // (_CUPMKT/.cupsp), which share the same H/D/A card shape + pr fields.
 function _jcStaleCapture(pr, selClass, idx, market) {
   if (!pr) return;
+  // 2026-07-19 RCA — 开球 15min 后不再静默捕获:冻结 SP 已定,此后的框值只会是
+  // what-if/误触(SJK 案:开球 62min 后 a 腿 7.25 被写成「终盘」,面板假 +71% EV)。
+  // 60s 轮询的会话恢复重渲会反复触发本函数 → 没有这道闸,一次误触会被永久重写。
+  // 服务端 record_jingcai_sp 有同闸兜底(booksum 带 + post-kickoff 拒写)。
+  if (pr.kickoff_utc && Date.now() > Date.parse(pr.kickoff_utc) + 15 * 60 * 1000) return;
   const get = (o) => {
     const el = document.querySelector(`.${selClass}[data-idx="${idx}"][data-outcome="${o}"]`);
     const v = el ? parseFloat(el.value) : NaN;
@@ -5048,6 +5053,8 @@ function _jcStaleCapture(pr, selClass, idx, market) {
 // cover P at that line. Same debounce / fire-and-forget / both-modes design.
 function _jcStaleCaptureHc(pr, hcspClass, lineSelId, idx) {
   if (!pr) return;
+  // 2026-07-19 RCA — 同 _jcStaleCapture:开球 15min 后停捕(服务端同闸兜底)。
+  if (pr.kickoff_utc && Date.now() > Date.parse(pr.kickoff_utc) + 15 * 60 * 1000) return;
   const sel = document.getElementById(lineSelId);
   if (!sel || sel.value === '') return;   // no 让球线 picked yet → nothing canonical
   const line = parseInt(sel.value, 10);

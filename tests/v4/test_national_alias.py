@@ -42,7 +42,7 @@ def test_settle_matches_across_czech_synonym(tmp_path):
     """竞彩 'Czech Republic' ↔ API-Football 'Czechia' now settles."""
     db = tmp_path / "obs.db"
     record_jingcai_sp(db, match_date="2026-06-18", home_team="Czech Republic",
-                      away_team="South Africa", jc_home=2.1, jc_draw=3.2, jc_away=3.6)
+                      away_team="South Africa", jc_home=2.0, jc_draw=3.2, jc_away=3.4)
 
     n = settle_jingcai_sp(
         db, fetch_fixtures=lambda d: [_fx("Czechia", "South Africa", 1, 1)],
@@ -57,7 +57,7 @@ def test_settle_robust_to_either_api_spelling(tmp_path):
     # API-Football returns on a given day (it has used BOTH for Czechia).
     db = tmp_path / "obs.db"
     record_jingcai_sp(db, match_date="2026-06-25", home_team="Czechia",
-                      away_team="Mexico", jc_home=3.4, jc_draw=3.3, jc_away=2.1)
+                      away_team="Mexico", jc_home=3.3, jc_draw=3.2, jc_away=2.0)
     n = settle_jingcai_sp(
         db, fetch_fixtures=lambda d: [_fx("Czech Republic", "Mexico", 0, 3)],
         today=dt.date(2026, 6, 26))

@@ -18,10 +18,50 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 import sqlite3
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+# ── 捕获端 sanity 闸(2026-07-19 RCA:周六212 SJK vs KuPS 的 hhad a 腿官方终盘
+# 5.25 被手滑成 7.25,经 market_mode 静默捕获写成「终盘」,protect_manual 又让它
+# 免疫后续 cron = 永生;面板让球 EV 假 +71%(真 +24%)。横扫 2026-07 已结算 164 可
+# 比行:官方 sporttery 通道 0 损坏,损坏 5/5 全在 market_mode 手填。
+# docs/jingcai_sp_capture_integrity_2026-07-19.md)──────────────────────────
+#
+# 闸 1 · booksum(Σ1/odds)带:竞彩管理员 vig 实测铁桶 — 2024-25 官方档案 15,959
+# 场终盘 booksum ∈ [1.125, 1.140],2026-07 现值 373 行 ∈ [1.127, 1.130]。官方变盘
+# 前后 booksum 恒定,而单腿脏值/跨变盘混拼必然把它拉出带(7.25 → 1.077)。带宽
+# [1.10, 1.15] 对上述全部官方数据零误报,仍容时代漂移;若竞彩哪天真把 vig 挪出带,
+# 捕获集体拒写 → jingcai_sp 停更 → data_freshness 哨兵响 = 响亮失败,不是静默污染。
+# ⚠ 曾考虑「与前值突变」闸,实测否决:合法 open→终盘单腿漂移最大 2.04×(>40% 的
+# 41/16k 场),幅度上与手滑不可分;booksum 才是判别不变量,勿回退成突变闸。
+_BOOKSUM_MIN, _BOOKSUM_MAX = 1.10, 1.15
+# 闸 2 · 开球后手填拒写(仅 market_mode 源):冻结 SP 开球后不可能再变,开球后的
+# 手填框值只会是 what-if/误触(SJK 案写于开球 62 min 后)。官方 sporttery 源不受
+# 此闸 — calculator 端点本就只列在售(未开球)场次。容差 15 min 吸收名义开球偏差。
+_POST_KICKOFF_GRACE_S = 15 * 60
+
+
+def _sane_booksum(h: float, d: float, a: float) -> float | None:
+    """三腿合法(1<x≤1000,同 sporttery._odds3 的物理闸)时返回 booksum,否则 None。"""
+    if not all(math.isfinite(x) and 1.0 < x <= 1000.0 for x in (h, d, a)):
+        return None
+    return 1.0 / h + 1.0 / d + 1.0 / a
+
+
+def _past_kickoff(kickoff_utc: str | None, *, grace_s: int = _POST_KICKOFF_GRACE_S) -> bool:
+    """now > kickoff+grace?(kickoff 未知/不可解析 → False = fail-open,手填新场仍可行)"""
+    if not kickoff_utc:
+        return False
+    try:
+        ko = dt.datetime.fromisoformat(str(kickoff_utc))
+    except ValueError:
+        return False
+    if ko.tzinfo is None:
+        ko = ko.replace(tzinfo=dt.UTC)
+    return dt.datetime.now(dt.UTC) > ko + dt.timedelta(seconds=grace_s)
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS jingcai_sp (
@@ -107,11 +147,24 @@ def record_jingcai_sp(
     ``phase='open'`` additionally stamps the 开售 (11:00) 初盘 into ``jc_open_*``
     (+ ``opened_at``), set ONCE and preserved across the latest=终盘 overwrites, so
     竞彩's own open→freeze line movement can be measured. ``jc_*`` always stays the
-    canonical 终盘. ``phase='close'`` (default) leaves ``jc_open_*`` untouched."""
+    canonical 终盘. ``phase='close'`` (default) leaves ``jc_open_*`` untouched.
+
+    两道捕获端 sanity 闸(2026-07-19 RCA,见模块头):booksum ∉ [1.10, 1.15] 拒写
+    (所有源);market_mode 源在开球 15 min 后拒写。拒写 = False + warning 日志。"""
     try:
         if jc_home is None or jc_draw is None or jc_away is None:
             return False  # no 竞彩 line to log
         if not (match_date and home_team and away_team):
+            return False
+        # 闸 1 — booksum 带(见模块头):单腿脏值/混拼在这里被拒,官方合法盘全通过。
+        booksum = _sane_booksum(float(jc_home), float(jc_draw), float(jc_away))
+        if booksum is None or not (_BOOKSUM_MIN <= booksum <= _BOOKSUM_MAX):
+            log.warning(
+                "jingcai_sp REJECT (booksum %s ∉ [%.2f, %.2f]): %s vs %s %s "
+                "jc=%s/%s/%s source=%s — 单腿脏值/混拼嫌疑,不入库",
+                f"{booksum:.4f}" if booksum is not None else "n/a",
+                _BOOKSUM_MIN, _BOOKSUM_MAX, home_team, away_team, market,
+                jc_home, jc_draw, jc_away, source)
             return False
         now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         # 初盘:仅 phase=='open' 记开售 SP;set-once(下方 COALESCE),之后被终盘覆盖也不丢。
@@ -124,32 +177,41 @@ def record_jingcai_sp(
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA busy_timeout = 3000")
             ensure_jingcai_sp_table(conn)
-            if protect_manual:
-                ex = conn.execute(
-                    "SELECT source FROM jingcai_sp WHERE match_date=? AND home_team=? "
-                    "AND away_team=? AND market=?",
-                    (match_date, home_team, away_team, market)).fetchone()
-                if ex and ex[0] == "market_mode":
-                    # 体检 Wave3 (P2) — the manual-line protection used to ALSO
-                    # swallow the 初盘 stamp: if the user hand-priced a match
-                    # before the 11:00 开售 cron ran, jc_open_* was never set
-                    # (forward-only → the open→freeze movement lost for good).
-                    # The 初盘 is a pure capture, not a line the user owns —
-                    # stamp it set-once WITHOUT touching jc_*/psc_*.
-                    if _open:
-                        conn.execute(
-                            "UPDATE jingcai_sp SET "
-                            "jc_open_home=COALESCE(jc_open_home, ?), "
-                            "jc_open_draw=COALESCE(jc_open_draw, ?), "
-                            "jc_open_away=COALESCE(jc_open_away, ?), "
-                            "opened_at=COALESCE(opened_at, ?) "
-                            "WHERE match_date=? AND home_team=? AND away_team=? "
-                            "AND market=?",
-                            (o_h, o_d, o_a, o_at,
-                             match_date, home_team, away_team, market),
-                        )
-                        return True
-                    return False  # user's hand-priced line is canonical; don't clobber
+            ex = conn.execute(
+                "SELECT source, kickoff_utc FROM jingcai_sp WHERE match_date=? "
+                "AND home_team=? AND away_team=? AND market=?",
+                (match_date, home_team, away_team, market)).fetchone()
+            # 闸 2 — 开球后 market_mode 拒写(见模块头)。kickoff 取请求值,缺则用
+            # 行内已存的(官方 harvest 填过);两处都没有 → fail-open(手填新场)。
+            if source == "market_mode" and _past_kickoff(
+                    kickoff_utc or (ex[1] if ex else None)):
+                log.warning(
+                    "jingcai_sp REJECT (post-kickoff market_mode): %s vs %s %s "
+                    "jc=%s/%s/%s kickoff=%s — 开球后手填不可信,不覆盖冻结线",
+                    home_team, away_team, market, jc_home, jc_draw, jc_away,
+                    kickoff_utc or (ex[1] if ex else None))
+                return False
+            if protect_manual and ex and ex[0] == "market_mode":
+                # 体检 Wave3 (P2) — the manual-line protection used to ALSO
+                # swallow the 初盘 stamp: if the user hand-priced a match
+                # before the 11:00 开售 cron ran, jc_open_* was never set
+                # (forward-only → the open→freeze movement lost for good).
+                # The 初盘 is a pure capture, not a line the user owns —
+                # stamp it set-once WITHOUT touching jc_*/psc_*.
+                if _open:
+                    conn.execute(
+                        "UPDATE jingcai_sp SET "
+                        "jc_open_home=COALESCE(jc_open_home, ?), "
+                        "jc_open_draw=COALESCE(jc_open_draw, ?), "
+                        "jc_open_away=COALESCE(jc_open_away, ?), "
+                        "opened_at=COALESCE(opened_at, ?) "
+                        "WHERE match_date=? AND home_team=? AND away_team=? "
+                        "AND market=?",
+                        (o_h, o_d, o_a, o_at,
+                         match_date, home_team, away_team, market),
+                    )
+                    return True
+                return False  # user's hand-priced line is canonical; don't clobber
             conn.execute(
                 "INSERT INTO jingcai_sp (captured_at, source, fixture_id, league, "
                 "match_date, home_team, away_team, kickoff_utc, market, handicap_home, "

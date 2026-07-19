@@ -61,7 +61,7 @@ def test_load_pairs_from_had_sp(tmp_path):
     db = str(tmp_path / "obs.db")
     record_jingcai_sp(
         db, match_date="2026-08-15", home_team="Arsenal", away_team="Chelsea",
-        jc_home=2.1, jc_draw=3.3, jc_away=3.4, market="had",
+        jc_home=2.0, jc_draw=3.2, jc_away=3.3, market="had",
     )
     pairs = _load_bettable_pairs(db)
     assert pairs == {(_norm_team("Arsenal"), _norm_team("Chelsea"))}
@@ -142,7 +142,7 @@ def test_load_pairs_unions_both_markets(tmp_path):
     db = str(tmp_path / "obs.db")
     record_jingcai_sp(
         db, match_date="2026-08-15", home_team="Arsenal", away_team="Chelsea",
-        jc_home=2.1, jc_draw=3.3, jc_away=3.4, market="had",
+        jc_home=2.0, jc_draw=3.2, jc_away=3.3, market="had",
     )
     record_jingcai_sp(
         db, match_date="2026-08-15", home_team="Spain", away_team="Saudi Arabia",

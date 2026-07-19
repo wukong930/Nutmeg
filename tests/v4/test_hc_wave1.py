@@ -154,7 +154,7 @@ class TestJingcaiSpHandicapCoalesce:
         from nutmeg.v4.observation.jingcai_sp import record_jingcai_sp
         db = tmp_path / "j.db"
         kw = dict(match_date="2026-07-16", home_team="H", away_team="A",
-                  market="hhad", jc_home=1.8, jc_draw=3.5, jc_away=4.0)
+                  market="hhad", jc_home=1.75, jc_draw=3.4, jc_away=3.9)
         record_jingcai_sp(db, source="cron", handicap_home=-1, **kw)
         record_jingcai_sp(db, source="manual", handicap_home=None, **kw)  # 手填 re-pin
         con = sqlite3.connect(db)

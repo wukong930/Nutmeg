@@ -34,9 +34,10 @@ def test_devig3():
 
 
 def _seed(db, jc_home):
+    # jc_draw/jc_away 取值让三元组落在 booksum 带 [1.10,1.15] 内(捕获端闸 2026-07-19)
     record_jingcai_sp(
         db, match_date="2026-06-20", home_team="Mexico", away_team="South Africa",
-        jc_home=jc_home, jc_draw=3.3, jc_away=3.4,
+        jc_home=jc_home, jc_draw=3.25, jc_away=3.35,
         psc_home=1.90, psc_draw=3.6, psc_away=4.4,  # Pinnacle AT CAPTURE
         fixture_id=12345, league="WC")
     settle_jingcai_sp(db, fetch_fixtures=lambda d: [_fx("Mexico", "South Africa", 2, 0)],
@@ -45,30 +46,30 @@ def _seed(db, jc_home):
 
 def test_candidate_detected_and_realized(tmp_path):
     db = str(tmp_path / "obs.db")
-    # 竞彩 prices home @2.10; Pinnacle CLOSE drifts to P_home≈0.585 (1.70/4.0/6.0)
-    _seed(db, jc_home=2.10)
+    # 竞彩 prices home @1.95; Pinnacle CLOSE drifts to P_home≈0.585 (1.70/4.0/6.0)
+    _seed(db, jc_home=1.95)
     _snapshot_pinn_close(db, fixture_id=12345, h=1.70, d=4.0, a=6.0)
     rep = analyze(db)
     assert rep["n_settled"] == 1 and rep["no_close"] == 0
     assert len(rep["candidates"]) == 1
     c = rep["candidates"][0]
     assert c["pick"] == "主胜" and c["won"] is True   # home won 2-0
-    assert c["ev"] > 0.05 and abs(c["profit"] - 1.10) < 1e-9
+    assert c["ev"] > 0.05 and abs(c["profit"] - 0.95) < 1e-9
     n, wr, roi = _roi(rep["candidates"])
-    assert (n, wr) == (1, 1.0) and abs(roi - 1.10) < 1e-9
+    assert (n, wr) == (1, 1.0) and abs(roi - 0.95) < 1e-9
 
 
 def test_no_candidate_when_no_edge(tmp_path):
     db = str(tmp_path / "obs.db")
-    _seed(db, jc_home=1.50)              # too short: 0.585×1.50−1 = −0.12
-    _snapshot_pinn_close(db, fixture_id=12345, h=1.70, d=4.0, a=6.0)
+    _seed(db, jc_home=1.90)              # close P_home≈0.485 → 0.485×1.90−1 ≈ −0.08
+    _snapshot_pinn_close(db, fixture_id=12345, h=2.10, d=3.6, a=4.4)
     rep = analyze(db)
     assert rep["n_settled"] == 1 and rep["candidates"] == []
 
 
 def test_no_pinnacle_close_is_skipped(tmp_path):
     db = str(tmp_path / "obs.db")
-    _seed(db, jc_home=2.10)              # settled, but NO odds_snapshot recorded
+    _seed(db, jc_home=1.95)              # settled, but NO odds_snapshot recorded
     rep = analyze(db)
     assert rep["no_close"] == 1 and rep["candidates"] == []
 
@@ -84,9 +85,11 @@ def test_hhad_reverse_fit_candidate_and_realized(tmp_path):
     p_letwin = implied_handicap_lines(
         fair[0], fair[1], fair[2], devig_over(1.9, 1.9), ou_line=2.5, lines=(-1,))[0][1]
     jc_letwin = round(1.12 / p_letwin, 2)            # ⇒ EV ≈ +12% on 让胜
+    # 让平/让负 filler 动态取值:booksum ≈ 1.13(带内),不再用会触发捕获闸的 2.0/2.0
+    filler = round(2.0 / (1.13 - 1.0 / jc_letwin), 2)
     record_jingcai_sp(
         db, match_date="2026-06-20", home_team="Mexico", away_team="South Africa",
-        jc_home=jc_letwin, jc_draw=2.0, jc_away=2.0,
+        jc_home=jc_letwin, jc_draw=filler, jc_away=filler,
         market="hhad", handicap_home=-1, fixture_id=12345)
     # home wins 3-0 → margin 3, +(−1) = 2 > 0 → 让胜 covered (idx 0)
     settle_jingcai_sp(db, fetch_fixtures=lambda d: [_fx("Mexico", "South Africa", 3, 0)],
@@ -105,7 +108,7 @@ def test_hhad_realized_loss_when_not_covered(tmp_path):
     _snapshot_pinn_close(db, fixture_id=99, h=1.50, d=4.0, a=6.0)
     record_jingcai_sp(
         db, match_date="2026-06-20", home_team="Mexico", away_team="South Africa",
-        jc_home=5.0, jc_draw=2.0, jc_away=2.0,   # jc_home huge → 让胜 is +EV
+        jc_home=4.2, jc_draw=2.24, jc_away=2.24,   # jc_home huge → 让胜 +EV(booksum 1.131)
         market="hhad", handicap_home=-1, fixture_id=99)
     settle_jingcai_sp(db, fetch_fixtures=lambda d: [_fx("Mexico", "South Africa", 1, 0)],
                       today=dt.date(2026, 6, 21))

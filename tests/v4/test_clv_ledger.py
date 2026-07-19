@@ -39,7 +39,7 @@ def test_settlement_independent_and_selected(tmp_path):
     a selected observation whose CLV is measured vs the CLOSE (no look-ahead)."""
     db = str(tmp_path / "obs.db")
     record_jingcai_sp(db, match_date="2026-06-20", home_team="A", away_team="B",
-                      jc_home=2.0, jc_draw=3.5, jc_away=4.5,
+                      jc_home=2.0, jc_draw=3.3, jc_away=3.3,
                       psc_home=1.8, psc_draw=3.6, psc_away=4.8, market="had")
     _seed_close(db, "2026-06-20", "A", "B", (1.85, 3.5, 4.6))
     rep = compute_ledger(db, min_ev=0.05)
@@ -55,7 +55,7 @@ def test_settlement_independent_and_selected(tmp_path):
 def test_no_close_skipped(tmp_path):
     db = str(tmp_path / "obs.db")
     record_jingcai_sp(db, match_date="2026-06-21", home_team="C", away_team="D",
-                      jc_home=2.0, jc_draw=3.5, jc_away=4.5, market="had")
+                      jc_home=2.0, jc_draw=3.3, jc_away=3.3, market="had")
     rep = compute_ledger(db)
     assert rep["legs"] == [] and rep["no_close"] == 1
 
@@ -63,9 +63,9 @@ def test_no_close_skipped(tmp_path):
 def test_below_threshold_not_selected(tmp_path):
     db = str(tmp_path / "obs.db")  # 竞彩 == Pinnacle → every leg is just −vig, none +EV
     record_jingcai_sp(db, match_date="2026-06-22", home_team="E", away_team="F",
-                      jc_home=1.9, jc_draw=3.3, jc_away=4.0,
-                      psc_home=1.9, psc_draw=3.3, psc_away=4.0, market="had")
-    _seed_close(db, "2026-06-22", "E", "F", (1.9, 3.3, 4.0))
+                      jc_home=1.9, jc_draw=3.2, jc_away=3.55,
+                      psc_home=1.9, psc_draw=3.2, psc_away=3.55, market="had")
+    _seed_close(db, "2026-06-22", "E", "F", (1.9, 3.2, 3.55))
     rep = compute_ledger(db, min_ev=0.05)
     assert len(rep["legs"]) == 3 and rep["selected"] == []
 
@@ -77,12 +77,12 @@ def test_name_join_tripwire_splits_miss_reason(tmp_path):
     alias (see test_jingcai_staleness), but club aliases stay autumn-gated → surface."""
     db = str(tmp_path / "obs.db")
     record_jingcai_sp(db, match_date="2026-08-01", home_team="Manchester City",
-                      away_team="Arsenal", jc_home=2.0, jc_draw=3.5, jc_away=4.5,
+                      away_team="Arsenal", jc_home=2.0, jc_draw=3.3, jc_away=3.3,
                       psc_home=1.8, psc_draw=3.6, psc_away=4.8, market="had")
     _seed_close(db, "2026-08-01", "Man City", "Arsenal", (1.85, 3.5, 4.6))
     # genuinely no Pinnacle quote that day
     record_jingcai_sp(db, match_date="2026-08-09", home_team="Foo", away_team="Bar",
-                      jc_home=2.0, jc_draw=3.5, jc_away=4.5, market="had")
+                      jc_home=2.0, jc_draw=3.3, jc_away=3.3, market="had")
     rep = compute_ledger(db, min_ev=0.05)
     assert rep["legs"] == [] and rep["no_close"] == 2
     assert rep["miss_quote"] == 1                                   # Foo v Bar
@@ -97,12 +97,12 @@ def test_league_labels_canonicalized_into_one_gate_group(tmp_path):
     db = str(tmp_path / "obs.db")
     # same +EV setup as the selected-leg test; two matches, two label vocabularies
     record_jingcai_sp(db, match_date="2026-08-15", home_team="A", away_team="B",
-                      jc_home=2.0, jc_draw=3.5, jc_away=4.5,
+                      jc_home=2.0, jc_draw=3.3, jc_away=3.3,
                       psc_home=1.8, psc_draw=3.6, psc_away=4.8,
                       market="had", league="芬超")
     _seed_close(db, "2026-08-15", "A", "B", (1.85, 3.5, 4.6))
     record_jingcai_sp(db, match_date="2026-08-16", home_team="C", away_team="D",
-                      jc_home=2.0, jc_draw=3.5, jc_away=4.5,
+                      jc_home=2.0, jc_draw=3.3, jc_away=3.3,
                       psc_home=1.8, psc_draw=3.6, psc_away=4.8,
                       market="had", league="FIN_VEIKKAUSLIIGA")
     _seed_close(db, "2026-08-16", "C", "D", (1.85, 3.5, 4.6))
@@ -127,8 +127,15 @@ def test_hhad_selected_reverse_fits_capture_ou(tmp_path):
     """让球选中腿: capture-time cover-P is reverse-fit from the stored 1X2 + O/U
     (psc_over/under), so an hhad +EV pick enters the validation counter."""
     db = str(tmp_path / "obs.db")
+    # 软腿构造(2026-07-19 捕获闸后不能再用 5.0/5.0/5.0 的离带假盘):用生产同款
+    # _hhad_cover_p 反推 −1 线三路 P,让平腿定价 1.12/p(EV≈+12% → 被选),其余两腿
+    # k/p 定价(EV≈−17%),booksum≈1.13 落在闸带内。
+    p3 = _hhad_cover_p((1.5, 4.0, 7.0, 1.9, 1.9, 2.5), -1)
+    jc_d = round(1.12 / p3[1], 2)
+    k = (p3[0] + p3[2]) / (1.13 - 1.0 / jc_d)
     record_jingcai_sp(db, match_date="2026-06-23", home_team="G", away_team="H",
-                      jc_home=5.0, jc_draw=5.0, jc_away=5.0,   # absurdly soft → some leg +EV
+                      jc_home=round(k / p3[0], 2), jc_draw=jc_d,
+                      jc_away=round(k / p3[2], 2),
                       psc_home=1.5, psc_draw=4.0, psc_away=7.0,
                       psc_over=1.9, psc_under=1.9, ou_line=2.5,
                       market="hhad", handicap_home=-1)

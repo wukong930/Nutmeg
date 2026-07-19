@@ -27,39 +27,39 @@ def _row(db, market="hhad"):
 
 def test_open_phase_stamps_jc_open(tmp_path):
     db = str(tmp_path / "o.db")
-    record_jingcai_sp(db, jc_home=2.0, jc_draw=3.2, jc_away=3.5,
+    record_jingcai_sp(db, jc_home=2.0, jc_draw=3.2, jc_away=3.3,
                       source="sporttery", phase="open", **_M)
     r = _row(db)
-    assert (r["jc_open_home"], r["jc_open_draw"], r["jc_open_away"]) == (2.0, 3.2, 3.5)
+    assert (r["jc_open_home"], r["jc_open_draw"], r["jc_open_away"]) == (2.0, 3.2, 3.3)
     assert r["opened_at"] is not None
     assert r["jc_home"] == 2.0  # first capture also seeds the canonical line
 
 
 def test_close_after_open_keeps_open_updates_canonical(tmp_path):
     db = str(tmp_path / "o.db")
-    record_jingcai_sp(db, jc_home=2.0, jc_draw=3.2, jc_away=3.5,
+    record_jingcai_sp(db, jc_home=2.0, jc_draw=3.2, jc_away=3.3,
                       source="sporttery", phase="open", **_M)
-    record_jingcai_sp(db, jc_home=2.6, jc_draw=3.3, jc_away=2.7,  # 终盘 moved
+    record_jingcai_sp(db, jc_home=2.5, jc_draw=3.2, jc_away=2.55,  # 终盘 moved
                       source="sporttery", phase="close", **_M)
     r = _row(db)
-    assert r["jc_open_home"] == 2.0 and r["jc_open_away"] == 3.5   # 初盘 preserved
-    assert r["jc_home"] == 2.6 and r["jc_away"] == 2.7             # 终盘 = canonical
+    assert r["jc_open_home"] == 2.0 and r["jc_open_away"] == 3.3   # 初盘 preserved
+    assert r["jc_home"] == 2.5 and r["jc_away"] == 2.55             # 终盘 = canonical
 
 
 def test_close_only_leaves_open_null(tmp_path):
     db = str(tmp_path / "o.db")
-    record_jingcai_sp(db, jc_home=2.6, jc_draw=3.3, jc_away=2.7,
+    record_jingcai_sp(db, jc_home=2.5, jc_draw=3.2, jc_away=2.55,
                       source="sporttery", phase="close", **_M)
     r = _row(db)
     assert r["jc_open_home"] is None and r["opened_at"] is None
-    assert r["jc_home"] == 2.6
+    assert r["jc_home"] == 2.5
 
 
 def test_open_after_close_backfills_open(tmp_path):
     db = str(tmp_path / "o.db")
-    record_jingcai_sp(db, jc_home=2.6, jc_draw=3.3, jc_away=2.7,
+    record_jingcai_sp(db, jc_home=2.5, jc_draw=3.2, jc_away=2.55,
                       source="sporttery", phase="close", **_M)
-    record_jingcai_sp(db, jc_home=2.0, jc_draw=3.2, jc_away=3.5,
+    record_jingcai_sp(db, jc_home=2.0, jc_draw=3.2, jc_away=3.3,
                       source="sporttery", phase="open", **_M)
     r = _row(db)
     assert r["jc_open_home"] == 2.0   # open backfilled
@@ -68,9 +68,9 @@ def test_open_after_close_backfills_open(tmp_path):
 
 def test_open_is_set_once(tmp_path):
     db = str(tmp_path / "o.db")
-    record_jingcai_sp(db, jc_home=2.0, jc_draw=3.2, jc_away=3.5,
+    record_jingcai_sp(db, jc_home=2.0, jc_draw=3.2, jc_away=3.3,
                       source="sporttery", phase="open", **_M)
-    record_jingcai_sp(db, jc_home=2.1, jc_draw=3.1, jc_away=3.4,  # cron ran twice
+    record_jingcai_sp(db, jc_home=2.05, jc_draw=3.15, jc_away=3.25,  # cron ran twice
                       source="sporttery", phase="open", **_M)
     r = _row(db)
     assert r["jc_open_home"] == 2.0   # first 开售 line kept (set-once)

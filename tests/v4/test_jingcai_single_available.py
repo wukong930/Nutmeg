@@ -44,7 +44,7 @@ def test_record_stores_single_available(tmp_path: Path) -> None:
     db = tmp_path / "t.db"
     assert record_jingcai_sp(
         db, match_date="2026-07-10", home_team="A", away_team="B",
-        jc_home=2.0, jc_draw=3.0, jc_away=4.0, market="had", single_available=1)
+        jc_home=2.0, jc_draw=3.2, jc_away=3.3, market="had", single_available=1)
     with sqlite3.connect(db) as c:
         row = c.execute(
             "SELECT single_available FROM jingcai_sp WHERE market='had'").fetchone()
@@ -56,16 +56,16 @@ def test_recapture_without_flag_preserves_stored(tmp_path: Path) -> None:
     # (mirrors the psc_* COALESCE-preserve rule).
     db = tmp_path / "t.db"
     record_jingcai_sp(db, match_date="2026-07-10", home_team="A", away_team="B",
-                      jc_home=2.0, jc_draw=3.0, jc_away=4.0, market="had",
+                      jc_home=2.0, jc_draw=3.2, jc_away=3.3, market="had",
                       single_available=1)
     record_jingcai_sp(db, match_date="2026-07-10", home_team="A", away_team="B",
-                      jc_home=2.1, jc_draw=3.1, jc_away=4.1, market="had",
+                      jc_home=1.95, jc_draw=3.25, jc_away=3.4, market="had",
                       single_available=None)
     with sqlite3.connect(db) as c:
         row = c.execute(
             "SELECT single_available, jc_home FROM jingcai_sp WHERE market='had'").fetchone()
     assert row[0] == 1     # flag preserved
-    assert row[1] == 2.1   # line still updated to latest
+    assert row[1] == 1.95  # line still updated to latest
 
 
 def test_migration_adds_column_to_legacy_table(tmp_path: Path) -> None:

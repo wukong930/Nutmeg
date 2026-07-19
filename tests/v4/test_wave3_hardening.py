@@ -82,11 +82,11 @@ class TestJingcaiSpWriteHygiene:
         from nutmeg.v4.observation.jingcai_sp import fetch_jingcai_sp, record_jingcai_sp
         db = tmp_path / "obs.db"
         record_jingcai_sp(db, match_date="2026-08-15", home_team="A", away_team="B",
-                          jc_home=2.1, jc_draw=3.2, jc_away=3.3,
+                          jc_home=2.0, jc_draw=3.2, jc_away=3.3,
                           psc_home=2.0, psc_draw=3.4, psc_away=3.6, ou_line=2.25)
         # manual re-pin of the 竞彩 SP with NO Pinnacle reading
         record_jingcai_sp(db, match_date="2026-08-15", home_team="A", away_team="B",
-                          jc_home=2.05, jc_draw=3.25, jc_away=3.4)
+                          jc_home=2.05, jc_draw=3.1, jc_away=3.2)
         r = fetch_jingcai_sp(db)[0]
         assert r["jc_home"] == 2.05          # latest 竞彩 line wins
         assert r["psc_home"] == 2.0          # sharp anchor NOT nulled
@@ -97,16 +97,16 @@ class TestJingcaiSpWriteHygiene:
         db = tmp_path / "obs.db"
         # user hand-priced first (source=market_mode)
         record_jingcai_sp(db, match_date="2026-08-15", home_team="A", away_team="B",
-                          jc_home=2.1, jc_draw=3.2, jc_away=3.3, source="market_mode")
+                          jc_home=2.0, jc_draw=3.2, jc_away=3.3, source="market_mode")
         # 11:00 开售 cron: protect_manual=True + phase=open
         ok = record_jingcai_sp(db, match_date="2026-08-15", home_team="A",
-                               away_team="B", jc_home=2.3, jc_draw=3.1,
-                               jc_away=3.0, source="sporttery",
+                               away_team="B", jc_home=2.25, jc_draw=3.05,
+                               jc_away=2.95, source="sporttery",
                                protect_manual=True, phase="open")
         assert ok
         r = fetch_jingcai_sp(db)[0]
-        assert r["jc_home"] == 2.1           # hand-priced line NOT clobbered
-        assert r["jc_open_home"] == 2.3      # …but the 初盘 IS stamped
+        assert r["jc_home"] == 2.0           # hand-priced line NOT clobbered
+        assert r["jc_open_home"] == 2.25     # …but the 初盘 IS stamped
         assert r["opened_at"] is not None
 
 

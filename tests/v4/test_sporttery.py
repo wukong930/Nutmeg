@@ -177,15 +177,15 @@ def test_harvest_protect_manual_toggle(tmp_path):
     db = str(tmp_path / "obs.db")
     key = ("2026-06-20", "Mexico", "South Africa")
     record_jingcai_sp(db, match_date="2026-06-20", home_team="Mexico",
-                      away_team="South Africa", jc_home=1.78, jc_draw=3.4, jc_away=4.5,
+                      away_team="South Africa", jc_home=1.70, jc_draw=3.4, jc_away=4.5,
                       market="had", source="market_mode")        # stale hand-capture
     fresh = [{"home_en": "Mexico", "away_en": "South Africa", "league_cn": "WC",
               "match_date": "2026-06-20", "kickoff_utc": None,
-              "had": (1.71, 3.5, 4.7), "hhad": None}]
+              "had": (1.60, 3.5, 4.7), "hhad": None}]
     harvest_to_db(db, matches=fresh, protect_manual=True)         # cron: blocked
-    assert fetch_sp_lookup(db, market="had")[key][0] == 1.78
+    assert fetch_sp_lookup(db, market="had")[key][0] == 1.70
     harvest_to_db(db, matches=fresh, protect_manual=False)        # 🎯: overwrites
-    assert fetch_sp_lookup(db, market="had")[key][0] == 1.71
+    assert fetch_sp_lookup(db, market="had")[key][0] == 1.60
 
 
 def test_attach_jingcai_sp_normalizes_team_names(tmp_path, monkeypatch):
