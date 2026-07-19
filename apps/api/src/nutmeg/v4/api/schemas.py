@@ -187,6 +187,10 @@ class SinglePrediction(BaseModel):
     jc_hc_draw: float | None = None
     jc_hc_away: float | None = None
     jc_hc_line: int | None = None
+    # 2026-07-20 — 竞彩价的捕获时刻(had/hhad 较旧者,ISO)。前端年龄标用:
+    # EV = P(t₁)×SP(t₂),Pinnacle 有 odds_update 年龄,竞彩侧此前不可见 —— 旧价
+    # 会静默美化/隐藏 EV(埃尔夫斯堡 +8pp / 库奥皮奥藏绿灯 两案)。
+    jc_captured_at: str | None = None
     # V14 — when API-Football last refreshed this Pinnacle snapshot (ISO). The
     # 市场模式 card shows the age so a stale de-vig prior isn't trusted near
     # kickoff (API-Football mirrors Pinnacle only every few hours).

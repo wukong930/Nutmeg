@@ -252,6 +252,11 @@ def _attach_jingcai_sp(preds: list) -> None:
         h = hhad.get(key)
         if h:
             p.jc_hc_home, p.jc_hc_draw, p.jc_hc_away, p.jc_hc_line = h[0], h[1], h[2], h[4]
+        # 竞彩价年龄标(2026-07-20):had/hhad 取**较旧**的捕获时刻——两块几乎总是
+        # 同批 upsert,若真分叉,旧的那侧才是风险所在(保守报龄)。
+        stamps = [x[5] for x in (r, h) if x and len(x) > 5 and x[5]]
+        if stamps:
+            p.jc_captured_at = min(stamps)
 
 
 def get_artifact() -> Optional[V4Artifact]:
@@ -380,7 +385,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v104-fe-capture-sanity-gates"
+_FE_VERSION = "nutmeg-v105-fe-jc-price-age"
 
 
 @router.get("/sw.js", include_in_schema=False)

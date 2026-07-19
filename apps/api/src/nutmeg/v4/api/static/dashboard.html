@@ -2112,6 +2112,8 @@ const I18N = {
     sw_board_hdr:     '甜区 EV 榜',
     sw_board_note:    '标准+市场两模式可投注场次合并成一张全局榜;只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽)。',
     frz_badge_tip:    '距开球时长 — 现在下单,到收盘 Pinnacle 预计还漂 ±2σ(已并入 EV 的 ± 区间);凌晨场停售早、缺口不可压缩(A-1 实测:41% 凌晨场中位缺口 6h)',
+    jc_price_age:     '竞彩价',
+    jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
     sw_second:        '次优',
     sw_jump_hint:     '点击跳到这场的卡片',
     sw_refresh_hint:  '用当前手填 SP + 最新盘口重算排行',
@@ -2580,6 +2582,8 @@ const I18N = {
     sw_board_hdr:     'sweet-zone EV board',
     sw_board_note:    'one global board merging bettable matches from both modes; sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff).',
     frz_badge_tip:    'Hours to kickoff — commit now and Pinnacle keeps drifting until close (±2σ, folded into the EV ± band); overnight matches freeze early with an incompressible gap (A-1 measured: 41% of matches, median 6h)',
+    jc_price_age:     '竞彩 price',
+    jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
     sw_second:        '2nd',
     sw_jump_hint:     'jump to this match card',
     sw_refresh_hint:  're-rank with current hand-typed SP + latest lines',
@@ -4885,6 +4889,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
           ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
           <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}</span>
         </div>
+        ${_jcFreshnessHtml(pr)}
         ${rows}
         <div class="flex items-center justify-between gap-2 mt-2 pt-2" style="border-top:1px solid rgba(0,0,0,0.08)">
           <span id="spcalc-verdict-${idx}" class="text-xs text-muted">${t('spcalc_enter_sp')}</span>
@@ -5488,6 +5493,27 @@ function _openManualReverse() {
   const el = document.getElementById('manual-reverse');
   if (el) { el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 }
+// 2026-07-20 — 竞彩价年龄标(owner 复盘发现:EV = P(t₁)×SP(t₂),Pinnacle 侧有
+// odds_update 年龄,竞彩侧的 t₂ 此前不可见 —— 旧竞彩价会静默美化/隐藏 EV:
+// 埃尔夫斯堡案:让胜峰值价 1.97 定格,实价已砍到 1.79,面板 −1.3% vs 真 −9~−10%;
+// 库奥皮奥案:客胜绿灯只存在于 20:39 后的价上,旧价把它藏掉。
+// amber 条件 = 价龄 >60min 且距开球 <3h(竞彩临停售调价最凶的窗口)→ 提示点 🎯。
+function _jcFreshnessHtml(pr) {
+  if (!pr || !pr.jc_captured_at || !_isJcBettable(pr)) return '';
+  const ts = Date.parse(pr.jc_captured_at);
+  if (isNaN(ts)) return '';
+  const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  const ago = mins < 60 ? `${mins} ${t('odds_min_ago')}`
+                        : `${(mins / 60).toFixed(1)} ${t('odds_hr_ago')}`;
+  const ko = pr.kickoff_utc ? Date.parse(pr.kickoff_utc) : NaN;
+  const hrsToKo = isNaN(ko) ? Infinity : (ko - Date.now()) / 3600000;
+  const stale = mins > 60 && hrsToKo < 3;
+  if (stale) {
+    return `<div class="text-xs mb-1" style="color:#d97706">${IC('yuan')} ${t('jc_price_age')} · ${ago}
+      · ${t('jc_age_stale_tip')}</div>`;
+  }
+  return `<div class="text-xs mb-1 text-muted">${IC('yuan')} ${t('jc_price_age')} · ${ago}</div>`;
+}
 function _oddsFreshnessHtml(pr) {
   if (pr && pr._manual) {
     // 2026-07-18 — 「刚刚」曾是写死文案:localStorage 贴回三天前的手填也说刚刚,
@@ -5681,7 +5707,7 @@ function _cupCardHtml(pr, idx) {
           <span class="badge-gold text-xs whitespace-nowrap">${t('cupmkt_badge')}</span>
         </span>
       </div>
-      ${_oddsFreshnessHtml(pr)}
+      ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}
       ${_pinRawHtml(pr)}
       ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _cupFoldAttrs('mb', _fk))}${manual}
     </div>`;
