@@ -275,6 +275,8 @@ class TestVotePagination:
                 self._resp([2, 3], 3) if params["pageNo"] == 2 else self._resp([4], 3))
 
             class R:
+                status_code = 200   # 真 httpx.Response 必有;2026-07-20 WAF 熔断读它
+
                 def raise_for_status(self):
                     pass
 
@@ -297,6 +299,8 @@ class TestVotePagination:
                 raise RuntimeError("page 2 down")
 
             class R:
+                status_code = 200   # 真 httpx.Response 必有;2026-07-20 WAF 熔断读它
+
                 def raise_for_status(self):
                     pass
 

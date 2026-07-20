@@ -193,8 +193,20 @@ def main(argv: list[str] | None = None) -> int:
                     help="open=11:00 开售初盘(记 jc_open_*,set-once) | close=终盘(默认)")
     ap.add_argument("--exotics", action="store_true",
                     help="也捕获 比分(crs)+总进球(ttg) → jingcai_exotic_sp(长格式)")
+    ap.add_argument("--jitter-seconds", type=int, default=0,
+                    help="启动前随机等待 0..N 秒(晚间高频窗用:打散固定周期指纹)")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    # 2026-07-20 — 晚间高频窗(17:00-23:30 每 30 分)的礼貌措施:launchd 的
+    # StartCalendarInterval 是**秒级精确**的,24h×N 个完美整点打点是最像机器人的
+    # 特征。随机抖动把它摊成人类节奏,代价是几十秒延迟(对 30 分钟窗无影响)。
+    if args.jitter_seconds > 0:
+        import random
+        import time as _t
+        delay = random.uniform(0, args.jitter_seconds)  # noqa: S311 — 非密码学用途
+        print(f"抖动等待 {delay:.0f}s(避开整点指纹)")
+        _t.sleep(delay)
 
     from nutmeg.v4.data.sources.sporttery import fetch_lottery_matches
 

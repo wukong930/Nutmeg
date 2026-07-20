@@ -36,6 +36,52 @@ from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
 
 log = logging.getLogger(__name__)
 
+# ── WAF 熔断(2026-07-20,晚间高频窗上线的前置护栏)────────────────────────
+# 端点是公开无认证的(没有账号可封),最坏情形 = 家庭 IP 被 WAF 临时 403/429。
+# 一旦被拦,**继续按点撞墙**会把临时节流熬成长期黑名单 —— 所以见 403/429 就静音
+# 6 小时(≈"安静的半天",次日 09:50/11:05 常规窗自然恢复)。
+# ⚠️ 与 odds_api 的内存熔断不同:sporttery 抓取跑在**一次性 cron 进程**里,内存
+# 状态出了进程就没了 —— 熔断必须落盘才跨进程有效。
+_BREAKER_HOURS = 6.0
+_BREAKER_FILE = "sporttery_breaker.json"
+
+
+def _breaker_path(cache_dir: str | Path) -> Path:
+    return Path(cache_dir) / _BREAKER_FILE
+
+
+def breaker_remaining(cache_dir: str | Path) -> float:
+    """熔断剩余秒数;0.0 = 关闭(允许请求)。文件损坏/缺失 → 0.0(fail-open)。"""
+    try:
+        raw = json.loads(_breaker_path(cache_dir).read_text(encoding="utf-8"))
+        return max(0.0, float(raw.get("until", 0)) - time.time())
+    except (OSError, ValueError, TypeError):
+        return 0.0
+
+
+def _trip_breaker(cache_dir: str | Path, status: int) -> None:
+    p = _breaker_path(cache_dir)
+    with contextlib.suppress(OSError):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        _tmp = p.with_name(f"{p.name}.{os.getpid()}.tmp")
+        _tmp.write_text(json.dumps({
+            "until": time.time() + _BREAKER_HOURS * 3600.0,
+            "status": status,
+            "tripped_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        }), encoding="utf-8")
+        _tmp.replace(p)
+    log.warning(
+        "sporttery WAF 熔断:HTTP %s → 静音 %.0f 小时(%s);"
+        "这是限流/拦截信号,别绕过 —— 到点自然恢复",
+        status, _BREAKER_HOURS, p)
+
+
+def reset_breaker(cache_dir: str | Path) -> None:
+    """手动关闭熔断(测试 / owner 确认拦截已解除时用)。"""
+    with contextlib.suppress(OSError):
+        _breaker_path(cache_dir).unlink(missing_ok=True)
+
+
 _BASE = "https://webapi.sporttery.cn"
 _ENDPOINT = "/gateway/uniform/football/getMatchCalculatorV1.qry"
 _HEADERS = {
@@ -364,11 +410,19 @@ def _request(
             except (OSError, ValueError):
                 pass  # corrupt cache → fall through to a live fetch
 
+    # 熔断在**缓存读之后**:被拦时仍可用缓存服务,只是不再打网络(同 odds_api 顺序)。
+    remaining = breaker_remaining(cache_dir)
+    if remaining > 0:
+        log.warning("sporttery 熔断中,跳过抓取(剩余 %.0f 分钟)", remaining / 60)
+        return None
     url = f"{_BASE}{_ENDPOINT}"
     params = {"poolCode": pool_codes, "channel": channel}
     for attempt in range(retries):
         try:
             resp = httpx.get(url, params=params, headers=_HEADERS, timeout=timeout)
+            if resp.status_code in (403, 429):
+                _trip_breaker(cache_dir, resp.status_code)
+                return None
             resp.raise_for_status()
             data = resp.json()
             if not data.get("success"):
@@ -393,12 +447,20 @@ def _request(
 def _fetch_vote_page(
     pool_code: str, page_size: int, page_no: int, timeout: float, retries: int
 ) -> tuple[list[dict], int]:
-    """One getVoteV1 page → (rows, total_pages). ([], 0) on failure."""
+    """One getVoteV1 page → (rows, total_pages). ([], 0) on failure.
+
+    与 calculator 端点共用同一把落盘熔断(同一域名/同一 IP:被拦就是全域被拦)。"""
+    if breaker_remaining(_DEFAULT_CACHE) > 0:
+        log.warning("sporttery 熔断中,跳过 vote 抓取(%s)", pool_code)
+        return [], 0
     url = f"{_BASE}/gateway/uniform/football/getVoteV1.qry"
     params = {"poolCode": pool_code, "pageSize": page_size, "pageNo": page_no}
     for attempt in range(retries):
         try:
             resp = httpx.get(url, params=params, headers=_HEADERS, timeout=timeout)
+            if resp.status_code in (403, 429):
+                _trip_breaker(_DEFAULT_CACHE, resp.status_code)
+                return [], 0
             resp.raise_for_status()
             data = resp.json()
             if not data.get("success"):

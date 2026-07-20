@@ -416,6 +416,20 @@ install_job "com.nutmeg.sporttery_open" \
   "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH --phase open; else echo sporttery-disabled; fi || true" \
   "9:50"
 
+# 2026-07-20 — 竞彩晚间跟盘窗(17:00–23:30 每 30 分,14 次/天)。owner 复盘发现:
+# EV = P(t₁)×SP(t₂),竞彩在**临停售**最后几小时调价最凶(埃尔夫斯堡 21:51 让胜
+# 1.97→1.79 急砍;库奥皮奥 20:39 后客胜才过闸),而此前 jc 价全靠 11:05/23:15 两窗
+# + 手点 🎯 —— 面板拿旧价算 EV,能虚高 8pp 或整个藏掉绿灯。
+# 只开晚间(白天低频窗已够),phase=close 写 jc_*(终盘口径不变,upsert-latest)。
+# 封禁风险:端点公开无认证、无账号可封;涓流 cron 每小时枚举 120-170 场已数周零
+# 事故,本窗只加 ~14 次/天。护栏三件:①--jitter-seconds 120 打散整点指纹
+# ②sporttery.py 落盘 WAF 熔断(403/429 → 静音 6h,跨进程有效)③既有指数退避。
+# 被拦时 jingcai_sp 停更 → data_freshness 哨兵响 = 响亮失败,不是静默污染。
+install_job "com.nutmeg.sporttery_evening" \
+  17 0 "" \
+  "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH --phase close --refresh --jitter-seconds 120; else echo sporttery-disabled; fi || true" \
+  "17:30 18:00 18:30 19:00 19:30 20:00 20:30 21:00 21:30 22:00 22:30 23:00"
+
 # 体检(2026-06-30)— 竞彩 散户支持比例 harvest (THREE windows: 11:10 开售后 / 17:00 / 23:20 终盘后).
 # Same PUBLIC uniform endpoint + same NUTMEG_SPORTTERY_ENABLED kill switch as
 # sporttery_ingest, but getVoteV1 → jingcai_vote: forward-only retail 支持比例
