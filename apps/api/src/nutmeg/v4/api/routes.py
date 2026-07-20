@@ -385,7 +385,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v105-fe-jc-price-age"
+_FE_VERSION = "nutmeg-v106-fe-key-rotation"
 
 
 @router.get("/sw.js", include_in_schema=False)

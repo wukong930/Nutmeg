@@ -1722,6 +1722,17 @@
       </div>
       <p id="admin-ctrl-status" class="text-sm mt-3" aria-live="polite"></p>
     </div>
+
+    <!-- ④ 密钥轮换(2026-07-20 owner 需求)— 与 ③ 同一道三重闸。
+         ⚠️ write-only:输入框永不预填(服务端不回传 key),提交后立即清空。 -->
+    <div class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-6">
+      <h2 class="font-bold mb-1" data-i18n="admin_sec_keys">④ 密钥轮换</h2>
+      <p class="text-sm text-gray-500 mb-3" data-i18n="admin_keys_sub">
+        替换 API 密钥并写入 .env(旧值自动备份)。密钥只写不读:面板永远不会显示完整值。</p>
+      <div id="admin-keys-gate" class="text-sm mb-3"></div>
+      <div id="admin-keys-rows" class="space-y-3"></div>
+      <p id="admin-keys-status" class="text-sm mt-3" aria-live="polite"></p>
+    </div>
   </div>
 
 
@@ -2266,6 +2277,18 @@ const I18N = {
     admin_lbl_data:      '数据新鲜度',
     admin_lbl_expiry:    '套餐到期',
     admin_expiry_warn:   '⚠️ 即将到期 — 记得续费',
+    admin_sec_keys:      '④ 密钥轮换',
+    admin_keys_sub:      '替换 API 密钥并写入 .env(旧值自动备份)。密钥只写不读:面板永远不会显示完整值。',
+    admin_key_localonly: '🔒 密钥轮换仅限本机浏览器(http://127.0.0.1:8080)—— 手机/远程访问已停用此功能',
+    admin_key_current:   '当前',
+    admin_key_absent:    '未设置',
+    admin_key_ph:        '粘贴新密钥',
+    admin_key_save:      '保存',
+    admin_key_empty:     '请先粘贴新密钥',
+    admin_key_confirm:   '确认替换密钥?旧值会备份到 .env.bak-<时间戳>,替换后需重启 API 服务生效。',
+    admin_key_saving:    '写入中…',
+    admin_key_ok:        '✓ 已写入 .env',
+    admin_key_restart:   '点上方「♻️ 重启 API 服务」后生效',
     admin_sec_ctrl:      '③ 控制',
     admin_ctrl_sub:      '重启会中断正在进行的请求几秒钟。',
     admin_restart_api:   '♻️ 重启 API 服务',
@@ -2734,6 +2757,18 @@ const I18N = {
     admin_lbl_data:      'Data freshness',
     admin_lbl_expiry:    'Plan expiry',
     admin_expiry_warn:   '⚠️ expiring soon — renew',
+    admin_sec_keys:      '④ Key rotation',
+    admin_keys_sub:      'Replace an API key and write it to .env (old value backed up). Write-only — the panel never shows a full key.',
+    admin_key_localonly: '🔒 Key rotation is local-browser only (http://127.0.0.1:8080) — disabled over tailnet/phone',
+    admin_key_current:   'current',
+    admin_key_absent:    'not set',
+    admin_key_ph:        'paste new key',
+    admin_key_save:      'Save',
+    admin_key_empty:     'Paste the new key first',
+    admin_key_confirm:   'Replace this key? The old value is backed up to .env.bak-<ts>; a restart is required to take effect.',
+    admin_key_saving:    'writing…',
+    admin_key_ok:        '✓ written to .env',
+    admin_key_restart:   'click ♻️ Restart API above to take effect',
     admin_sec_ctrl:      '③ Controls',
     admin_ctrl_sub:      'Restarting interrupts in-flight requests for a few seconds.',
     admin_restart_api:   '♻️ Restart API service',
@@ -7306,6 +7341,7 @@ async function loadAdminStatus() {
     renderAdminApiKeys(j.api_keys || {});
     renderAdminRunStatus(j);
     renderAdminCtrlGate();
+    renderAdminKeyRotation(j.api_keys || {});
     setStatus('#admin-status', 'success', t('admin_loaded'));
   } catch (err) {
     setStatus('#admin-status', 'error', err.message);
@@ -7367,6 +7403,73 @@ function renderAdminRunStatus(j) {
     <ul class="mt-1 ml-1 space-y-0.5 text-xs">${dataRows || '<li>—</li>'}</ul>
   </div>`);
   $('#admin-run-status').innerHTML = rows.join('');
+}
+
+// ── ④ 密钥轮换(2026-07-20 owner 需求)─────────────────────────────────
+// ⚠️ write-only:输入框**永不预填**(服务端 /status 只回 last4,拿不到完整 key),
+// 提交成功后立刻清空 value —— 密钥不在 DOM 里留驻。与重启按钮同一道三重闸,
+// 面板侧只是省掉一次注定 403 的 POST;真闸在服务端。
+const _ADM_KEYS = [
+  { which: 'api_football', label: 'API-Football', env: 'NUTMEG_API_FOOTBALL_KEY' },
+  { which: 'odds_api',     label: 'The Odds API', env: 'NUTMEG_ODDS_API_KEY' },
+];
+function renderAdminKeyRotation(keys) {
+  const gate = $('#admin-keys-gate');
+  const rows = $('#admin-keys-rows');
+  if (!gate || !rows) return;
+  // 2026-07-20 — 密钥轮换仅限**本机浏览器**:手机走 tailscale serve(ts.net 域名)
+  // 时服务端会以 Host/代理头判定并 403,这里提前灰掉并说明原因,不做无用往返。
+  const localHost = ['127.0.0.1', 'localhost', '::1'].includes(location.hostname);
+  const canRotate = _admEnabled && localHost;
+  gate.innerHTML = !localHost
+    ? `<div class="px-2 py-1 rounded text-xs" style="background:#fef3c7;color:#92400e">${t('admin_key_localonly')}</div>`
+    : (_admEnabled
+        ? `<span class="text-pos">${t('admin_ctrl_enabled')}</span>`
+        : `<div class="px-2 py-1 rounded text-xs" style="background:#f3f4f6;color:#4b5563">${t('admin_ctrl_disabled')}</div>`);
+  rows.innerHTML = _ADM_KEYS.map(k => {
+    const cur = keys[k.which] || {};
+    const state = cur.present
+      ? `<span class="text-muted">${t('admin_key_current')} ····${cur.last4} (${cur.length})</span>`
+      : `<span style="color:#d97706">${t('admin_key_absent')}</span>`;
+    return `<div class="flex flex-wrap items-center gap-2 text-sm">
+      <span class="font-medium" style="min-width:8rem">${k.label}</span>
+      ${state}
+      <input id="adm-key-${k.which}" type="password" autocomplete="off"
+             spellcheck="false" placeholder="${t('admin_key_ph')}"
+             class="px-2 py-1 border rounded text-sm flex-1" style="min-width:12rem"
+             aria-label="${k.label} key" ${canRotate ? '' : 'disabled'}>
+      <button onclick="_admRotateKey('${k.which}')" class="px-3 py-1 rounded text-sm border"
+              ${canRotate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}>${t('admin_key_save')}</button>
+    </div>`;
+  }).join('');
+}
+async function _admRotateKey(which) {
+  if (!_admEnabled) return;
+  if (!['127.0.0.1', 'localhost', '::1'].includes(location.hostname)) return;   // 手机/远程
+  const inp = document.getElementById(`adm-key-${which}`);
+  const val = inp ? inp.value.trim() : '';
+  if (!val) { setStatus('#admin-keys-status', 'error', t('admin_key_empty')); return; }
+  if (!window.confirm(t('admin_key_confirm'))) return;
+  setStatus('#admin-keys-status', 'loading', t('admin_key_saving'));
+  try {
+    const r = await fetch(API + '/admin/rotate-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Nutmeg-Admin': '1' },
+      body: JSON.stringify({ which, key: val }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      setStatus('#admin-keys-status', 'error', (j.detail || `HTTP ${r.status}`));
+      return;   // 失败也清空:密钥不该在框里过夜
+    }
+    setStatus('#admin-keys-status', 'success',
+              `${t('admin_key_ok')} ····${(j.masked || {}).last4 || ''} — ${t('admin_key_restart')}`);
+    loadAdminStatus();          // 刷新掩码显示
+  } catch (err) {
+    setStatus('#admin-keys-status', 'error', err.message);
+  } finally {
+    if (inp) inp.value = '';    // 无论成败都清空
+  }
 }
 
 function renderAdminCtrlGate() {
