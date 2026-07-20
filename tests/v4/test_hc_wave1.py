@@ -339,11 +339,15 @@ class TestCountersPresent:
 
 
 class TestOpsScripts:
-    def test_teardown_excludes_trickle(self):
+    def test_teardown_keeps_campaign_exclusion_mechanism(self):
+        """2026-07-20 更新:trickle 已退休(209/209 全扫 + 56 轮零新增 = 8,163 场
+        覆盖齐),排除表随之清空 —— 但**机制**必须留着:下个 campaign job
+        (手工装、游离于 setup 体系)误删 = setup 装不回、回填永久中断(F-TRICKLE)。
+        锁机制而非锁那个具体名字,否则退休一个 job 就得改一次断言。"""
         sh = Path("scripts/teardown_local_pipeline.sh").read_text()
-        assert "TEARDOWN_EXCLUDE" in sh
-        assert "com.nutmeg.jingcai_history_trickle" in sh, (
-            "campaign job 误删 = setup 装不回、回填永久中断(F-TRICKLE)"
+        assert "TEARDOWN_EXCLUDE=(" in sh
+        assert 'for _ex in "${TEARDOWN_EXCLUDE[@]}"' in sh, (
+            "排除表机制被拆 = 下个 campaign job 会被 teardown 误删(F-TRICKLE)"
         )
 
     def test_setup_refuses_when_jobs_disabled(self):

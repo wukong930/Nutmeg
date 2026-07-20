@@ -17,7 +17,11 @@ PLIST_DIR="$HOME/Library/LaunchAgents"
 #
 # 排除表:游离于 setup/teardown 体系的 job。teardown 删了它们 setup 装不回
 # (= 回填永久中断);campaign 抓完自会 bootout。往这里加名字,别改 glob。
-TEARDOWN_EXCLUDE=("com.nutmeg.jingcai_history_trickle")
+# 2026-07-20 — jingcai_history_trickle **已退休**(第一轮 209/209 全扫完成,
+# 第二轮 56 轮零新增 = 枚举出的每场都已入库 8,163 场;plist 移到
+# LaunchAgents/retired/ 防重启复活)。排除表清空但保留机制 —— 下个 campaign
+# job 往这里加名字即可。
+TEARDOWN_EXCLUDE=()
 JOBS=()
 for _plist in "$PLIST_DIR"/com.nutmeg.*.plist; do
   [[ -e "$_plist" ]] || continue
