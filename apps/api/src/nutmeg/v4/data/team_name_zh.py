@@ -777,6 +777,10 @@ _V12_W7_CUP_AND_VARIANTS = {
     "HJK Helsinki": "赫尔辛基HJK", "Kairat Almaty": "阿拉木图凯拉特",
     "FC Astana": "阿斯塔纳", "Sheriff Tiraspol": "蒂拉斯波尔治安官",
     "Shamrock Rovers": "三叶草流浪者", "The New Saints": "新圣徒",
+    # 2026-07-21 UCL Q2:整队缺席本字典 → 既显示英文名(owner 实报「队名没有完全
+    # 翻译」)、又因 _ZH_TO_EN 是本字典的反转而 join 不上 Pinnacle(整场丢弃)。
+    # 补在这里一处修两处;竞彩写法即 ZH 值,反转后自然可解。
+    "Omonia Nicosia": "奥莫尼亚",
 }
 TEAM_NAME_ZH.update(_V12_W7_CUP_AND_VARIANTS)
 

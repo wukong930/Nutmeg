@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from nutmeg.v4.data.sources import sporttery
+from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
 
 
 def _payload():
@@ -110,15 +111,19 @@ def test_uel_qualifier_zh_override():
     assert sporttery.zh_to_canonical("斯普利特海杜克") == "HNK Hajduk Split"
 
 
-def test_ucl_q2_omonia_zh_override():
-    """欧冠资格赛 UCL Q2 (2026-07-21) — 面板 unmapped 卡自报 1/11。
+def test_ucl_q2_omonia_in_display_dict():
+    """欧冠资格赛 UCL Q2 (2026-07-21) — Omonia Nicosia 整队缺席 TEAM_NAME_ZH。
 
-    「半坏」的最小样本:客队 阿拉木图凯拉特 早已映射,只差主队 奥莫尼亚 一个键,
-    整场就 join 不了 Pinnacle → 算不了 EV。丢的是一场**有全线**的真盘
-    (fixture 1591936,1.65/3.87/4.71 + O/U 2.5 + 完整让球网格,开球 07-22 17:00Z)。
-    EN 值 = odds_snapshots 里这场自己的拼写,不是查来的通名。
+    一个缺口两处症状:(a) 面板 unmapped 卡自报 1/11,整场 join 不了 Pinnacle →
+    算不了 EV;(b) 补完 join 后卡片仍显示英文队名(owner 实报「队名没有完全翻译」)。
+    丢的是有全线的真盘(fixture 1591936,1.65/3.87/4.71 + O/U 2.5 + 完整让球网格)。
+
+    ⚠️ 修的层次很重要:第一版补进 sporttery._ZH_OVERRIDES,只治了 join、没治显示。
+    正解是补 TEAM_NAME_ZH —— _ZH_TO_EN 是它的反转,一处修两处。_ZH_OVERRIDES 只该
+    收「TEAM_NAME_ZH 已有该队、但竞彩另用一种中文写法」的情况,别拿它兜整队缺席。
     """
-    assert sporttery.zh_to_canonical("奥莫尼亚") == "Omonia Nicosia"
+    assert TEAM_NAME_ZH.get("Omonia Nicosia") == "奥莫尼亚"      # 显示侧
+    assert sporttery.zh_to_canonical("奥莫尼亚") == "Omonia Nicosia"   # join 侧(反转推论)
     assert sporttery.zh_to_canonical("阿拉木图凯拉特") == "Kairat Almaty"
 
 
