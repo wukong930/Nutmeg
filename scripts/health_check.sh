@@ -305,6 +305,28 @@ else
 fi
 
 
+# ===== 12. 新队三件套 (队名翻译 + 队徽) =====
+# 一支新队要显示对,得同时命中三套互不相干的机制:① join 映射(_ZH_TO_EN)② 队名翻译
+# (TEAM_NAME_ZH)③ 队徽(team_logos/<slug>.png)。2026-07-21 欧冠 Q2 奥莫尼亚一场把
+# 三套全踩了一遍,花三次往返才补齐 —— 因为它们各自静默失败、且只有 ① 有哨兵。
+# 本节补 ②③ 的空白;① 归第 11 节(那个哨兵早就有且是对的,别再造第二套判据)。
+# 分工:第 11 节是**反应式**(竞彩已上架、场已被丢才报),本节是**预测式**(读未来赛程,
+# 在竞彩上架前点名)。②③ 都不影响 EV,故只 warn 不 fail。纯离线,零 API 配额。
+# 手动:  nutmeg-team-assets [--days N]
+section "12. 新队三件套 (队名翻译 + 队徽)"
+ASSETS="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.team_assets_check \
+           --days 7 --limit 6 2>/dev/null)"
+if [[ -z "$ASSETS" ]]; then
+  note "team-assets 无输出(包未装?)— 手动: nutmeg-team-assets"
+elif grep -q '⚠' <<< "$ASSETS"; then
+  warn "$(head -1 <<< "$ASSETS")"
+  grep -E '⚠|补法:' <<< "$ASSETS" | while read -r l; do note "$l"; done
+  grep -E '^\s+\[' <<< "$ASSETS" | head -8 | while read -r l; do note "$l"; done
+else
+  ok "$(head -1 <<< "$ASSETS") — ②③ 全覆盖"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
