@@ -110,6 +110,18 @@ def test_uel_qualifier_zh_override():
     assert sporttery.zh_to_canonical("斯普利特海杜克") == "HNK Hajduk Split"
 
 
+def test_ucl_q2_omonia_zh_override():
+    """欧冠资格赛 UCL Q2 (2026-07-21) — 面板 unmapped 卡自报 1/11。
+
+    「半坏」的最小样本:客队 阿拉木图凯拉特 早已映射,只差主队 奥莫尼亚 一个键,
+    整场就 join 不了 Pinnacle → 算不了 EV。丢的是一场**有全线**的真盘
+    (fixture 1591936,1.65/3.87/4.71 + O/U 2.5 + 完整让球网格,开球 07-22 17:00Z)。
+    EN 值 = odds_snapshots 里这场自己的拼写,不是查来的通名。
+    """
+    assert sporttery.zh_to_canonical("奥莫尼亚") == "Omonia Nicosia"
+    assert sporttery.zh_to_canonical("阿拉木图凯拉特") == "Kairat Almaty"
+
+
 def test_nor_eliteserien_zh_override():
     """挪超 NOR_ELITESERIEN (2026-07-11) — 竞彩用传统译名,TEAM_NAME_ZH 用音译 →
     4/8 在售挪超场整对静默丢弃(owner 实报「腓特烈 vs 利勒斯特 20:00 不在可投注列表」)。

@@ -160,6 +160,11 @@ _ZH_OVERRIDES: dict[str, str] = {
     "比森阿泰尔": "Atert Bissen",
     "雷克雅未克维京人": "Vikingur Reykjavik",
     "杰尔": "Gyori ETO FC",
+    # UCL Q2 2026-07-21 — 面板 unmapped 卡自报 1/11(奥莫尼亚 vs 阿拉木图凯拉特)。
+    # 典型「半坏」:客队 阿拉木图凯拉特 早已映射,只差主队一个键就整场丢。EN 值 =
+    # odds_snapshots 里这场自己的拼写(fixture 1591936,predict_log + cup_market
+    # 两个 source 同名,live 2026-07-21),不是查来的通名。
+    "奥莫尼亚": "Omonia Nicosia",
     # 欧联资格赛 UEL Q1 2026-07-09 — 竞彩上架 2 场,主队中文名≠字典键 → 整场静默丢弃
     # (客队 德里城/日利纳 已映射):🎯 刷新 unmapped=2,jingcai_sp 只剩数小时前的
     # market_mode 旧行,面板 SP 与官网对不上(owner 实报)。EN 值 = 库内 AF gather 名
