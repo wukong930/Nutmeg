@@ -98,6 +98,16 @@ install_job() {
   local out_log="$LOG_DIR/$label.out.log"
   local err_log="$LOG_DIR/$label.err.log"
 
+  # ⚠️ 命令串里的 `&&` 必须转义成 `&amp;&amp;`,否则写出的是**无效 XML**。
+  # 危害不是「立刻不跑」,而是**只在下次 bootstrap 时才炸**:launchd 对已加载的
+  # job 很宽容(内存里那份来自某个有效版本,照跑不误),但 `launchctl bootstrap`
+  # 要解析磁盘文件 → 直接 `5: Input/output error`,job 再也装不回来。
+  # 2026-07-21 恢复 3 个 odds cron 时实测撞上:23 个 plist 里 21 个无效,其中
+  # 17 个还「活着」纯属侥幸。同一个坑 2026-06-23 在 sporttery_ingest 上踩过,
+  # 当时只修了那一个文件、没修这个生成器 → 复发。这次修共享生成器,不逐个补文件
+  # (`记忆 health-check-guardrails` 的 Altitude 条:修共享 sink,别逐生产者打补丁)。
+  local script_xml="${script//&/&amp;}"
+
   local calendar_xml
   if [[ -n "$extra_times" ]]; then
     calendar_xml="<key>StartCalendarInterval</key>
@@ -137,7 +147,7 @@ install_job() {
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>$script</string>
+        <string>$script_xml</string>
     </array>
     $calendar_xml
     <key>StandardOutPath</key>
@@ -186,6 +196,7 @@ install_daemon() {
   local plist="$PLIST_DIR/$label.plist"
   local out_log="$LOG_DIR/$label.out.log"
   local err_log="$LOG_DIR/$label.err.log"
+  local cmd_xml="${cmd//&/&amp;}"   # 同 install_job:`&&` 不转义 = 无效 XML
 
   cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -200,7 +211,7 @@ install_daemon() {
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>$cmd</string>
+        <string>$cmd_xml</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -473,6 +484,9 @@ install_job "com.nutmeg.polymarket_gaps" \
 # (~7/19), and flat-fetching all 20+ keys 48×/day would burn Odds-API credits.
 # Quiet hours = 0 credits; match windows ≈ a handful of sports per tick.
 CLOSING_PLIST="$PLIST_DIR/com.nutmeg.closing_odds.plist"
+# 同 install_job:命令串含 `&&`,必须转义后再插进 XML(这块是独立 heredoc,
+# 不走 install_job,所以要单独转一次 —— 2026-07-21 它正是三个坏文件之一)。
+CLOSING_CMD_XML="${ENV_PREFIX//&/&amp;} &amp;&amp; $VENV_PY -m nutmeg.v4.cli.closing_odds --db $DB_PATH --sports auto || true"
 cat > "$CLOSING_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -483,7 +497,7 @@ cat > "$CLOSING_PLIST" <<EOF
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string><string>-c</string>
-        <string>$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.closing_odds --db $DB_PATH --sports auto || true</string>
+        <string>$CLOSING_CMD_XML</string>
     </array>
     <key>StartInterval</key><integer>1800</integer>
     <key>StandardOutPath</key><string>$LOG_DIR/com.nutmeg.closing_odds.out.log</string>
