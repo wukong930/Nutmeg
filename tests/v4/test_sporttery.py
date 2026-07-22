@@ -127,6 +127,21 @@ def test_ucl_q2_omonia_in_display_dict():
     assert sporttery.zh_to_canonical("阿拉木图凯拉特") == "Kairat Almaty"
 
 
+def test_mls_bra_variant_overrides_2026_07_21():
+    """兑现「上架当天照抄」:MLS/巴甲两支客队,竞彩写法≠字典既有键 → 整对丢(半坏)。
+
+    与 Omonia 不同层:这两队**已在** TEAM_NAME_ZH(Real Salt Lake→盐湖城皇家、
+    Remo→雷莫),只是竞彩另用一种中文写法 → 正解补 _ZH_OVERRIDES,不是改显示字典。
+      · 皇家盐湖城:词序颠倒(竞彩 皇家盐湖城 vs 字典 盐湖城皇家)
+      · 里莫:音译一字差(里≠雷),同「布拉干蒂诺 干 vs 甘」型
+    EN 值 = odds_snapshots 铁证(LAFC vs Real Salt Lake 07-23、Corinthians vs Remo 07-23)。
+    """
+    assert sporttery.zh_to_canonical("皇家盐湖城") == "Real Salt Lake"
+    assert sporttery.zh_to_canonical("里莫") == "Remo"
+    # 别把既有的 雷莫→Remo 弄坏(两条中文写法都该指向同一 EN)
+    assert sporttery.zh_to_canonical("雷莫") == "Remo"
+
+
 def test_nor_eliteserien_zh_override():
     """挪超 NOR_ELITESERIEN (2026-07-11) — 竞彩用传统译名,TEAM_NAME_ZH 用音译 →
     4/8 在售挪超场整对静默丢弃(owner 实报「腓特烈 vs 利勒斯特 20:00 不在可投注列表」)。
