@@ -68,7 +68,22 @@ CREATE TABLE IF NOT EXISTS jingcai_sp (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     captured_at  TEXT NOT NULL,          -- when WE logged the 竞彩 SP (UTC ISO)
     source       TEXT NOT NULL,          -- market_mode | manual | ...
+    -- ⚠️ fixture_id 目前**实际全空**(2026-07-22 实测 467/467 NULL)。不是 bug:
+    -- 身份键是下面的 UNIQUE(不含它),而写绝大多数行的 cron 路径
+    -- (cli/ingest_sporttery.py)输入是竞彩官方数据 —— 中文队名+赔率+日期,
+    -- 里面根本没有 API-Football 的 fixture_id。只有面板手填路径(api/routes.py)
+    -- 会传。**别拿这一列当 join 键**:join 上去只会静默得到空集(我踩过一次)。
+    -- 要关联 odds_snapshots 请用 (home_team, away_team, 日期±1),两侧队名都已过
+    -- zh_to_canonical / gather 的同一套 canonical EN。
     fixture_id   INTEGER,
+    -- ⚠️ league 是**双轨口径**,同一批比赛可能出现两种标签:
+    --   · cron 路径写竞彩中文名        —— '芬超'
+    --   · 面板路径写我们的联赛代码     —— 'FIN_VEIKKAUSLIIGA'
+    -- 后果:**按 league 分组统计会把同一联赛拆成两行**(实测芬超 33 + 11),
+    -- 任何按联赛聚合的分析(如秋季 §1-⑦ per-league CLV 协变量)必须先归一,
+    -- 否则每个联赛的 N 都被低估。不影响 EV(EV 只走队名 join + 赔率)。
+    -- 未统一是因为改口径要连带决定存量行怎么迁移 —— 等真有下游要 per-league
+    -- 聚合时一并定,别在没有消费者的时候改。
     league       TEXT,
     match_date   TEXT NOT NULL,
     home_team    TEXT NOT NULL,
