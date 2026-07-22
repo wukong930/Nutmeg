@@ -1,9 +1,20 @@
-"""B2 — variance-adjusted EV threshold: threshold(P) = base + z·σ_P·lf·SP."""
+"""B2 — variance-adjusted EV threshold: threshold(P) = base + z·σ_P·lf·SP.
+
+A-3 影子模式(2026-07-23)加了 σ_P(h) = A·h^B —— 下半部分锁它。"""
 from __future__ import annotations
+
+import re
+from pathlib import Path
 
 import pytest
 
-from nutmeg.v4.model.ev_threshold import BASE_THRESHOLD
+from nutmeg.v4.model.ev_threshold import (
+    BASE_THRESHOLD,
+    FREEZE_SIGMA_COEF,
+    MIN_HOURS,
+    SIGMA_P,
+    sigma_p_at,
+)
 from nutmeg.v4.model.ev_threshold import variance_adjusted_threshold as vt
 
 
@@ -43,3 +54,68 @@ def test_zero_sigma_recovers_flat_bar():
     # σ_P=0 (no estimation error) → the flat base at every P
     for p in (0.05, 0.4, 0.9):
         assert vt(p, sigma_p=0.0) == BASE_THRESHOLD
+
+
+# ── A-3 影子模式:σ_P(h) = A·h^B ──────────────────────────────────────────────
+
+def test_no_hours_keeps_the_old_constant():
+    """拿不到开球时刻的老调用点必须**逐位**回落到改动前的行为。"""
+    assert sigma_p_at(None) == SIGMA_P
+    assert vt(0.40) == pytest.approx(0.08)          # 与本文件顶部那条同值
+
+
+@pytest.mark.parametrize("bad", ["", "abc", float("nan"), float("inf"), float("-inf")])
+def test_unparseable_hours_falls_back_not_crashes(bad):
+    """脏输入不该炸,也不该悄悄变成 σ=0(那等于把门槛降成平 5%)。"""
+    assert sigma_p_at(bad) == SIGMA_P
+
+
+def test_sigma_grows_with_the_freeze_gap():
+    for leg in FREEZE_SIGMA_COEF:
+        assert sigma_p_at(1, leg) < sigma_p_at(6, leg) < sigma_p_at(24, leg)
+
+
+def test_hours_floor_stops_sigma_collapsing_to_zero():
+    """h→0 时 A·h^B→0,但去vig 误差不会消失 —— 必须被 MIN_HOURS 托住。"""
+    at_floor = sigma_p_at(MIN_HOURS, "H")
+    assert sigma_p_at(0.0, "H") == at_floor
+    assert sigma_p_at(1e-9, "H") == at_floor
+    assert sigma_p_at(-3, "H") == at_floor          # 已开球也托住,不返回 0
+    assert at_floor > 0
+
+
+def test_draw_leg_drifts_least():
+    """A-1:平局腿的漂移幅度最小 —— 系数别被抄串行。"""
+    for h in (1, 6, 24):
+        assert sigma_p_at(h, "D") < sigma_p_at(h, "A")
+        assert sigma_p_at(h, "D") < sigma_p_at(h, "H")
+
+
+def test_unknown_leg_falls_back_to_home_curve():
+    # 让球腿('hcH' 等)没有自己的曲线 → 落到最宽的主胜曲线(保守)
+    assert sigma_p_at(6, "hcH") == sigma_p_at(6, "H")
+    assert sigma_p_at(6, "h") == sigma_p_at(6, "H")   # 大小写不敏感
+
+
+def test_threshold_widens_for_overnight_gaps():
+    """同一注,凌晨场(缺口大)的门槛必须高于临开球。这是 A-3 的全部意义。"""
+    near = vt(0.40, 2.5, hours_to_kickoff=0.5, leg="H")
+    far = vt(0.40, 2.5, hours_to_kickoff=24, leg="H")
+    assert far > near > BASE_THRESHOLD
+
+
+def test_explicit_sigma_wins_over_the_curve():
+    """调用方自己算好的 σ 优先级最高 —— 否则前端传下来的值会被悄悄改写。"""
+    assert vt(0.40, 2.5, sigma_p=0.02, hours_to_kickoff=24) == pytest.approx(0.05 + 0.02 * 2.5)
+
+
+def test_frontend_mirrors_the_same_coefficients():
+    """dashboard.html 的 _FRZ_COEF / Math.max(h, 0.5) 必须与本模块同值 ——
+    两处漂开 = 同一场比赛的 ± 带与门槛各算各的 σ,而这正是 A-3 要消灭的东西。"""
+    html = (Path(__file__).resolve().parents[2] / "apps/api/src/nutmeg/v4/api/static"
+            / "dashboard.html").read_text(encoding="utf-8")
+    m = re.search(r"const _FRZ_COEF = \{([^}]*)\}", html)
+    assert m, "dashboard.html 里找不到 _FRZ_COEF —— 前端镜像被改名或删了"
+    for leg, (a, b) in FREEZE_SIGMA_COEF.items():
+        assert re.search(rf"{leg}:\s*\[{a},\s*{b}\]", m.group(1)), f"{leg} 系数不一致"
+    assert f"Math.max(h, {MIN_HOURS})" in html, "前端 h 下界与 MIN_HOURS 不一致"

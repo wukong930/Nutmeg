@@ -1864,14 +1864,18 @@ function _evRelTier(p) {
   return 'edge';                                // 0.15–0.25 or 0.67–0.77: moderate SP variance
 }
 // B2 — variance-adjusted EV bar (MIRRORS model/ev_threshold.py — keep in sync).
-// threshold(P) = base + z·σ_P·lf·SP. σ_P≈1.2pp at 竞彩's freeze gap (measured,
-// docs/ev_threshold_variance_2026-06-26.md) so the bar rises for longshots.
-// DISPLAY-ONLY: shown beside the flat +5%, does NOT gate any recommendation.
-function _evVarThreshold(p, base = 0.05, sigmaP = 0.012, z = 1.0, lf = 1.0) {
+// threshold(P) = base + z·σ_EV,σ_EV = σ_P·SP,所以冷腿的门槛自然抬高。
+// A-3 影子模式(2026-07-23):σ_P 原本是钉死的 1.2pp(≈h 4h 的水平),现在改成
+// **调用方给的 σ_EV**(``sigmaEv`` = σ_P(h)·SP,由 _frzHalfEv/2 得来)——
+// 于是同一行显示的 ± 带与门槛出自**同一个 σ**,不可能各说各话。拿不到开球时刻
+// 的老调用点传 null → 回落 1.2pp × 公允 SP,与改动前逐字节一致。
+// ⭐仍是 DISPLAY-ONLY:并排显示在 +5% 旁,**不判闸、不选注、不进 Kelly**。
+function _evVarThreshold(p, sigmaEv = null, base = 0.05, z = 1.0, lf = 1.0) {
   if (!(p > 0 && p < 1)) return base;
-  return base + z * sigmaP * lf * (1 / p);
+  const sig = sigmaEv > 0 ? sigmaEv : 0.012 * (1 / p);
+  return base + z * lf * sig;
 }
-function _evRelTag(p, flip) {
+function _evRelTag(p, flip, sigmaEv) {
   // V14 — sharp-flip guard (market mode only): when Pinnacle's favourite
   // disagrees with Betfair+SBOBET in the same envelope, its de-vig P is
   // empirically unreliable → ⚠️ override the tier (this EV is built on a
@@ -1884,7 +1888,7 @@ function _evRelTag(p, flip) {
   const badge = { sweet: '🟢', edge: '🟡', cold: '⚠️', chalk: '⚠️' }[tier];
   const color = { sweet: '#059669', edge: '#b45309', cold: '#e11d48', chalk: '#e11d48' }[tier];
   // B2 side-by-side: show the variance-adjusted bar next to the flat 5% (display-only).
-  const vthr = Math.round(_evVarThreshold(p) * 100);
+  const vthr = Math.round(_evVarThreshold(p, sigmaEv) * 100);
   const thr = `<span onclick="showEvHelp(event)" title="${t('rel_var_thr_vs')} — 点看说明" style="color:var(--text-muted);font-weight:400;cursor:pointer"> ·${t('rel_var_thr_short')}~${vthr}%ⓘ</span>`;
   const title = `${t('rel_' + tier + '_hint')} · ${t('rel_var_thr')} ≈${vthr}% (${t('rel_var_thr_vs')})`;
   return `<span class="ev-rel" title="${title}" style="font-size:11px;font-weight:500;color:${color};white-space:nowrap">${badge} ${t('rel_' + tier)}${thr}</span>`;
@@ -1988,9 +1992,9 @@ const I18N = {
     rel_chalk_hint:   '超短热门(赔率<1.3):EV 空间极薄,赔率一动就没,意义有限',
     rel_var_thr:       '方差校正门槛(σ_EV∝SP)',
     rel_var_thr_short: '门槛',
-    rel_var_thr_vs:    'vs 平 5%;σ_EV=σ_P·SP,冷门腿放大;仅显示、不拦截',
+    rel_var_thr_vs:    'vs 平 5%;σ_EV=σ_P(h)·SP,冷门腿放大、离开球越远越宽;仅显示、不拦截',
     evhelp_title:      'EV 可靠性 & 门槛 — 怎么看',
-    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b>(P = Pinnacle 去 vig 公允概率)。<b>门槛</b>不是 EV,是"这注因为有多冷,EV 至少要达到多少才算可信"。</p><p style="margin-top:8px"><b>怎么读 EV 旁那个门槛:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ 门槛</b> → ✅ 可信的 +EV</li><li><b>5% ≤ EV &lt; 门槛</b> → ⚠️ 冷门陷阱:过了老的平 5% 线,但 EV 不够盖住冷门腿的估计噪声,多半假信号</li><li><b>EV &lt; 5%</b> → 空仓</li></ul><p style="margin-top:8px"><b>为什么冷门门槛高:</b>EV 的误差 = SP × P 的误差。冷门 SP 大 → 同样的 P 噪声放大成大得多的 EV 噪声,所以冷门的 EV 要求更高才算数。</p><p style="margin-top:8px"><b>四档(同一件事的颜色版):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>甜区</b>(P 25–67%,赔率 1.5–4):SP 最小,+EV 最可信,门槛最低(~6–8%)</li><li>🟡 <b>边缘</b>(P 15–25% 或 67–77%):方差略大,略谨慎</li><li>⚠️ <b>冷门</b>(P&lt;15%,赔率&gt;6.7):SP 大,EV 估计最晃,门槛最高(~17%+)</li><li>⚠️ <b>超短</b>(P&gt;77%,赔率&lt;1.3):不是方差问题,而是 EV 空间极薄、赔率一动就没</li></ul><p style="margin-top:8px;color:var(--text-muted)">注:门槛<b>只显示、不拦截</b>(真正 gate 仍是平 5%)。旧「高估区」档已退役 —— 那是 n=323 小样本噪声,2.8 万场实测显示该区间其实已校准。</p>',
+    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b>(P = Pinnacle 去 vig 公允概率)。<b>门槛</b>不是 EV,是"这注因为有多冷,EV 至少要达到多少才算可信"。</p><p style="margin-top:8px"><b>怎么读 EV 旁那个门槛:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ 门槛</b> → ✅ 可信的 +EV</li><li><b>5% ≤ EV &lt; 门槛</b> → ⚠️ 冷门陷阱:过了老的平 5% 线,但 EV 不够盖住冷门腿的估计噪声,多半假信号</li><li><b>EV &lt; 5%</b> → 空仓</li></ul><p style="margin-top:8px"><b>为什么冷门门槛高:</b>EV 的误差 = SP × P 的误差。冷门 SP 大 → 同样的 P 噪声放大成大得多的 EV 噪声,所以冷门的 EV 要求更高才算数。</p><p style="margin-top:8px"><b>四档(同一件事的颜色版):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>甜区</b>(P 25–67%,赔率 1.5–4):SP 最小,+EV 最可信,门槛最低(~6–8%)</li><li>🟡 <b>边缘</b>(P 15–25% 或 67–77%):方差略大,略谨慎</li><li>⚠️ <b>冷门</b>(P&lt;15%,赔率&gt;6.7):SP 大,EV 估计最晃,门槛最高(~17%+)</li><li>⚠️ <b>超短</b>(P&gt;77%,赔率&lt;1.3):不是方差问题,而是 EV 空间极薄、赔率一动就没</li></ul><p style="margin-top:8px"><b>门槛还随「距开球时长」动:</b>竞彩停售后市场继续走(41% 凌晨场的停售→开球缺口中位 6h),σ_P 随缺口拉大 —— 同一注,离开球越远门槛越高。这与行内 ±X% 带出自<b>同一个 σ</b>,所以两个数字永远自洽。</p><p style="margin-top:8px;color:var(--text-muted)">注:门槛<b>只显示、不拦截</b>(真正 gate 仍是平 5%)。旧「高估区」档已退役 —— 那是 n=323 小样本噪声,2.8 万场实测显示该区间其实已校准。</p>',
     rel_flip:         'sharp 分歧',
     rel_flip_hint:    'Pinnacle 与其它 sharp 盘(Betfair/SBOBET)对热门判断相反 → Pinnacle 线可能陈旧/有误,这个 EV 建在可疑的公允价上,慎下',
     mb_toggle:        '净胜球分组(读法·选号辅助)',
@@ -2470,9 +2474,9 @@ const I18N = {
     rel_chalk_hint:   'Super-short favourite (odds <1.3): razor-thin EV that dies on any line move — limited meaning',
     rel_var_thr:       'variance-adjusted bar (σ_EV∝SP)',
     rel_var_thr_short: 'bar',
-    rel_var_thr_vs:    'vs the flat 5%; σ_EV=σ_P·SP amplifies longshots; shown, not gated',
+    rel_var_thr_vs:    'vs the flat 5%; σ_EV=σ_P(h)·SP — amplified by longshots and by time-to-kickoff; shown, not gated',
     evhelp_title:      'EV reliability & bar — how to read it',
-    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b> (P = Pinnacle de-vig fair prob). The <b>bar</b> is not the EV — it is "how high the EV must be for this pick to count as a reliable +EV".</p><p style="margin-top:8px"><b>Reading the bar next to an EV:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ bar</b> → ✅ a trustworthy +EV</li><li><b>5% ≤ EV &lt; bar</b> → ⚠️ longshot trap: clears the old flat 5% but the EV is not enough to cover the estimate noise — likely a mirage</li><li><b>EV &lt; 5%</b> → pass</li></ul><p style="margin-top:8px"><b>Why longshots need a higher bar:</b> the EV error = SP × the P error. A longshot has a big SP, so the same P noise blows up into far larger EV noise — its EV must be higher to count.</p><p style="margin-top:8px"><b>The four tiers (same thing, colour-coded):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>sweet</b> (P 25–67%, odds 1.5–4): smallest SP, most trustworthy +EV, lowest bar (~6–8%)</li><li>🟡 <b>edge</b> (P 15–25% or 67–77%): a bit more variance, mild caution</li><li>⚠️ <b>longshot</b> (P&lt;15%, odds&gt;6.7): big SP, shakiest EV, highest bar (~17%+)</li><li>⚠️ <b>heavy fav</b> (P&gt;77%, odds&lt;1.3): not a variance issue — razor-thin EV that dies on any line move</li></ul><p style="margin-top:8px;color:var(--text-muted)">Note: the bar is <b>shown, not gating</b> (the real gate is still flat 5%). The old "overpriced" tier was retired — it was n=323 noise; a 28k-match recheck shows that band is actually calibrated.</p>',
+    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b> (P = Pinnacle de-vig fair prob). The <b>bar</b> is not the EV — it is "how high the EV must be for this pick to count as a reliable +EV".</p><p style="margin-top:8px"><b>Reading the bar next to an EV:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ bar</b> → ✅ a trustworthy +EV</li><li><b>5% ≤ EV &lt; bar</b> → ⚠️ longshot trap: clears the old flat 5% but the EV is not enough to cover the estimate noise — likely a mirage</li><li><b>EV &lt; 5%</b> → pass</li></ul><p style="margin-top:8px"><b>Why longshots need a higher bar:</b> the EV error = SP × the P error. A longshot has a big SP, so the same P noise blows up into far larger EV noise — its EV must be higher to count.</p><p style="margin-top:8px"><b>The four tiers (same thing, colour-coded):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>sweet</b> (P 25–67%, odds 1.5–4): smallest SP, most trustworthy +EV, lowest bar (~6–8%)</li><li>🟡 <b>edge</b> (P 15–25% or 67–77%): a bit more variance, mild caution</li><li>⚠️ <b>longshot</b> (P&lt;15%, odds&gt;6.7): big SP, shakiest EV, highest bar (~17%+)</li><li>⚠️ <b>heavy fav</b> (P&gt;77%, odds&lt;1.3): not a variance issue — razor-thin EV that dies on any line move</li></ul><p style="margin-top:8px"><b>The bar also moves with time-to-kickoff:</b> 竞彩 freezes while the market keeps moving (41% of overnight matches have a median 6h freeze→kickoff gap), and σ_P widens with that gap — so the same pick carries a higher bar the further out it is. It shares <b>one σ</b> with the ±X% band on the same row, so the two numbers can never disagree.</p><p style="margin-top:8px;color:var(--text-muted)">Note: the bar is <b>shown, not gating</b> (the real gate is still flat 5%). The old "overpriced" tier was retired — it was n=323 noise; a 28k-match recheck shows that band is actually calibrated.</p>',
     rel_flip:         'sharp split',
     rel_flip_hint:    'Pinnacle disagrees with the other sharps (Betfair/SBOBET) on the favourite → its line may be stale/wrong, so this EV rests on a suspect fair price — be cautious',
     mb_toggle:        'Goal-margin bands (read / selection aid)',
@@ -3078,7 +3082,9 @@ function _kickoffMs(pr) {
 // 预测)但方差真实:σ_P(h) = A·h^B,A-1 实测(75 条自家线史轨迹拟合,25,886 场
 // football-data 在 36h 处交叉验证,偏差 ~15%)。带宽用「当下距开球小时数」——
 // 晚场随等待自然收窄,凌晨场显示的就是不可压缩的底线。
-// ⭐只进**显示**(± 平方和合成、⏳徽章),不进判闸/选注/Kelly —— 进闸=A-3,须预注册。
+// ⭐只进**显示**(± 平方和合成、⏳徽章、A-3 影子门槛),不进判闸/选注/Kelly ——
+// 进闸=A-3 正式版,须预注册。系数与 model/ev_threshold.py 的 FREEZE_SIGMA_COEF
+// 同值,test_ev_threshold.py 会读本文件断言,改一处两处都得改。
 const _FRZ_COEF = { H: [0.0079, 0.31], D: [0.0042, 0.23], A: [0.0077, 0.27] };
 function _frzHours(pr) {
   const ms = _kickoffMs(pr);
@@ -5143,7 +5149,8 @@ function _spcalcRecalc(idx) {
     const ev = P[o] * sp - 1.0;
     const pass = ev >= minEv;
     const jcImplied = (100 / sp).toFixed(0);
-    evSpan.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%${_frzBandHtml(pr, o, sp)} ${_evRelTag(P[o])} · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(P[o] * 100).toFixed(0)}%`;
+    // A-3 影子:门槛与 ± 带共用 σ_P(h)·SP( = 半宽/2,半宽是 2σ)。
+    evSpan.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%${_frzBandHtml(pr, o, sp)} ${_evRelTag(P[o], false, _frzHalfEv(pr, o, sp) / 2)} · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(P[o] * 100).toFixed(0)}%`;
     evSpan.className = 'flex-1 text-xs';
     evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
     evSpan.style.fontWeight = pass ? '600' : '';
@@ -5292,7 +5299,9 @@ function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf) {
   const half = Math.hypot(dHalf, frzHalf || 0);
   const band = half > 1e-9
     ? ` <span class="text-muted" style="font-size:0.9em">±${(half * 100).toFixed(1)}%</span>` : '';
-  return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip)}`;
+  // A-3 影子:门槛也吃 σ_P(h)(frzHalf=2σ_EV) —— 与上面的 ± 带同源。δ 不进门槛,
+  // 它是让球重构的**校准**误差,已由 evLo 下界判闸,再进门槛就重复计一次。
+  return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip, (frzHalf || 0) / 2)}`;
 }
 function _spcalcHcRecalc(idx) {
   const PB = _spcalcHcPB(idx);
@@ -5761,7 +5770,8 @@ function _cupRecalc(idx) {
       const ev = P[o] * sp - 1;
       const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
       evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '%'
-        + _frzBandHtml(pr, o, sp) + ' ' + _evRelTag(P[o], pr && pr.sharp_flip);
+        + _frzBandHtml(pr, o, sp) + ' '
+        + _evRelTag(P[o], pr && pr.sharp_flip, _frzHalfEv(pr, o, sp) / 2);   // A-3 影子:同一个 σ
       evEl.className = 'cupev flex-1 text-xs font-medium';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';

@@ -972,10 +972,14 @@ class TestEvReliability:
         assert "function _evRelTier(" in html
         assert "function _evRelTag(" in html
         # B2 — variance-adjusted bar mirrors model/ev_threshold.py (keep in sync):
-        # threshold = base + z·σ_P·lf·SP. Display-only (shown beside flat 5%, not gating).
+        # threshold = base + z·σ_EV·lf. Display-only (shown beside flat 5%, not gating).
+        # A-3 影子(2026-07-23):σ_EV 由调用方给(= _frzHalfEv/2,吃 σ_P(h));
+        # 给不出时**必须**回落钉死 1.2pp × 公允 SP —— 少了这条回落,拿不到开球时刻的
+        # 老调用点会静默变成 σ=0,门槛塌回平 5%。两条都锁。
         assert "function _evVarThreshold(" in html
-        assert "base + z * sigmaP * lf * (1 / p)" in html
-        assert "_evVarThreshold(p)" in html   # wired into the reliability tag
+        assert "base + z * lf * sig" in html
+        assert "0.012 * (1 / p)" in html          # 回落分支还在
+        assert "_evVarThreshold(p, sigmaEv)" in html   # wired into the reliability tag
 
     def test_ev_help_modal(self, html):
         # The ⓘ next to each 门槛 opens a shared explainer modal (showEvHelp).
@@ -1014,7 +1018,9 @@ class TestEvReliability:
         # 「让球面也必须分级」这条不变量。
         assert html.count("_evRelTag(P[o]") >= 2          # 两个 1X2 面
         assert html.count("_hcEvHtml(ev, evLo, evHi, P[o]") >= 2   # 两个让球面
-        assert "return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip)}`" in html
+        # A-3 影子:让球面的门槛也吃 σ_P(h)(frzHalf=2σ_EV),但**只吃冻结那半** ——
+        # δ 已由 evLo 下界判过闸,再进门槛就重复计一次。
+        assert "${_evRelTag(p, sharpFlip, (frzHalf || 0) / 2)}`" in html
         # A′ 排版(owner 选型 2026-07-18):区间构造性对称(evHi = 2·点估 − evLo)
         # → ±半宽与 [lo,hi] 信息完全等价、字符省一半。方括号别回来。
         assert "±${(half * 100).toFixed(1)}%" in html
@@ -1088,14 +1094,15 @@ class TestSharpFlipGuard:
     tag downgrades to ⚠️ sharp 分歧 (the de-vig prior is suspect there)."""
 
     def test_evreltag_has_flip_branch(self, html):
-        assert "function _evRelTag(p, flip)" in html
+        # A-3 影子(2026-07-23)起第 3 参 sigmaEv;flip 仍是第 2 参,别被挤位。
+        assert "function _evRelTag(p, flip, sigmaEv)" in html
         assert "if (flip) {" in html
         assert "t('rel_flip')" in html
 
     def test_flip_threaded_into_market_mode_handlers(self, html):
         # 市场模式 lean card + 近期赛事 1X2 + 让球 all pass the per-fixture flag
         assert "_evRelTag(pBest, pr && pr.sharp_flip)" in html
-        assert "_evRelTag(P[o], pr && pr.sharp_flip)" in html
+        assert "_evRelTag(P[o], pr && pr.sharp_flip, _frzHalfEv(pr, o, sp) / 2)" in html
         # 近期赛事**让球**:A′(2026-07-17)起经 `_hcEvHtml` 出 HTML,flag 由它转发
         # (`_evRelTag(p, sharpFlip)`)。转发那一跳单独锁在 TestEvReliability，
         # 这里只认「_cupHcRecalc 确实把 flag 传下去了」。
