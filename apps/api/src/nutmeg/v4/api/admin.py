@@ -39,7 +39,13 @@ settings = get_settings()  # singleton; env (incl. NUTMEG_ADMIN_ENABLED) read at
 
 admin_router = APIRouter(prefix="/v4/admin", tags=["admin"])
 
-_EXPECTED_JOBS = 21  # 18 base + sporttery_vote + polymarket_gaps + closing_odds (07-01)
+# NB 期望值**自动推导** = 落盘的 plist 数(setup_local_pipeline.sh 恰好写这些),
+# 不再硬编码。旧版 `_EXPECTED_JOBS = 21`(07-01 定)在 07-19 加 sporttery_open、
+# 07-20 加 sporttery_evening 后就漂了 → 面板永久显示「23/21 有任务缺失」的**假警告**,
+# 而 missing_labels 明明是空的。加 cron 要记得同步改常量 = 注定会忘的人肉契约
+# (这已是第二次漂),所以直接让它跟着磁盘走。
+# ⚠️ 这不是循环论证:真正的健康判据是下面的 `missing = persisted_labels -
+# loaded_labels`(W3-4 的 label 集比对),`expected` 只是给人看的分母。
 log = logging.getLogger(__name__)
 _LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
 _PROBE_TTL_SECONDS = 600  # cache live API probes 10 min → repeated tab loads don't burn quota
@@ -114,7 +120,7 @@ def _cron_status() -> dict:
         missing = sorted(persisted_labels - loaded_labels)
         return {
             "loaded": len(jobs),
-            "expected": _EXPECTED_JOBS,
+            "expected": len(persisted_labels),   # 自动推导,见文件头注释
             "persisted_plists": len(persisted_labels),
             "missing_labels": missing,
             "healthy": bool(persisted_labels) and not missing and not bad,
@@ -122,7 +128,9 @@ def _cron_status() -> dict:
             "jobs": sorted(jobs, key=lambda j: j["label"]),
         }
     except Exception as e:  # noqa: BLE001
-        return {"loaded": 0, "expected": _EXPECTED_JOBS, "error": str(e)}
+        # 读不到 launchctl/plist 时 expected 也未知 —— 报 0 而不是编个数字,
+        # 免得「0/21」看着像「21 个全丢了」(实际是探测本身失败,见 error 字段)。
+        return {"loaded": 0, "expected": 0, "error": str(e)}
 
 
 def _data_freshness() -> list[dict]:

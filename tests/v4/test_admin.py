@@ -89,3 +89,34 @@ def test_cron_running_job_not_flagged_after_kill(monkeypatch):
     assert "api_server" not in c["bad_exits"]    # running ⇒ not bad despite -9
     assert "daily_predict" in c["bad_exits"]      # failed one-shot ⇒ flagged
     assert "daily_backup" not in c["bad_exits"]
+
+
+def test_expected_tracks_persisted_plists_not_hardcoded(monkeypatch, tmp_path):
+    """`expected` 必须**跟着磁盘 plist 走**,不是硬编码计数。
+
+    回归:旧版 `_EXPECTED_JOBS = 21`(07-01 定)在 07-19 加 sporttery_open、
+    07-20 加 sporttery_evening 后就漂了 → 面板永久显示「23/21 有任务缺失」的
+    假警告,而 missing_labels 明明是空的。「加 cron 记得同步改常量」是注定
+    会忘的人肉契约(已漂两次),故让它自动推导。
+    """
+    plist_dir = tmp_path / "Library" / "LaunchAgents"
+    plist_dir.mkdir(parents=True)
+    for label in ("alpha", "beta", "gamma"):        # 3 个落盘 plist
+        (plist_dir / f"com.nutmeg.{label}.plist").touch()
+    fake = ("PID\tStatus\tLabel\n"
+            "-\t0\tcom.nutmeg.alpha\n"
+            "-\t0\tcom.nutmeg.beta\n"
+            "-\t0\tcom.nutmeg.gamma\n")
+
+    class _R:
+        stdout = fake
+        returncode = 0
+
+    monkeypatch.setattr(admin.subprocess, "run", lambda *a, **k: _R())
+    monkeypatch.setattr(admin.Path, "home", staticmethod(lambda: tmp_path))
+
+    c = admin._cron_status()
+    assert c["expected"] == c["persisted_plists"], "expected 必须 = 落盘 plist 数"
+    assert c["expected"] == 3                      # 不是任何硬编码的 21
+    assert c["missing_labels"] == []
+    assert c["healthy"] is True                    # 3 装 3 ⇒ 绿
