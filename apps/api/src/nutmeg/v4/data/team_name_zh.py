@@ -781,6 +781,10 @@ _V12_W7_CUP_AND_VARIANTS = {
     # 翻译」)、又因 _ZH_TO_EN 是本字典的反转而 join 不上 Pinnacle(整场丢弃)。
     # 补在这里一处修两处;竞彩写法即 ZH 值,反转后自然可解。
     "Omonia Nicosia": "奥莫尼亚",
+    # 2026-07-23 UEL Q2 同病:整队缺席 → 显示英文 + 整场丢弃。英文键取自
+    # odds_snapshots 里**已存在的那条 Pinnacle 线**(`HNK Hajduk Split vs Pafos`,
+    # cup_market 从 07-20 起一直在跟)—— 即 join 目标本身的拼写,不是照译音猜的。
+    "Pafos": "帕福斯",
 }
 TEAM_NAME_ZH.update(_V12_W7_CUP_AND_VARIANTS)
 
