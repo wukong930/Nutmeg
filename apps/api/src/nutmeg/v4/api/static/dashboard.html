@@ -1875,7 +1875,26 @@ function _evVarThreshold(p, sigmaEv = null, base = 0.05, z = 1.0, lf = 1.0) {
   const sig = sigmaEv > 0 ? sigmaEv : 0.012 * (1 / p);
   return base + z * lf * sig;
 }
-function _evRelTag(p, flip, sigmaEv) {
+// 水位闸(2026-07-23,MIRRORS model/devig.py — 阈值改一处必须改两处)。
+// 去vig 照单全收:喂它软盘,它就吐出一个伪装成 sharp 先验的公允概率,EV 再把这个
+// 错误放大成假 +EV(哈马比 vs 安德莱赫特实测:显示 +9.4% 绿灯,真实 −16%)。
+// 8% 实测定的:OA 覆盖联赛观测最大 7.3%,UCL/UEL/UECL 中位 7.9/8.5/10.6%。
+const WIDE_BOOK_VIG = 0.08;
+function _bookVig(h, d, a) {
+  // → 抽水小数(0.145=14.5%);任一腿不可用 → null(算不出,不装懂)
+  if (!(h > 1 && d > 1 && a > 1)) return null;
+  return 1 / h + 1 / d + 1 / a - 1;
+}
+function _isWideBook(pr) {
+  const v = pr && _bookVig(pr.psc_home, pr.psc_draw, pr.psc_away);
+  return v != null && v > WIDE_BOOK_VIG;
+}
+function _evRelTag(p, flip, sigmaEv, wide) {
+  // 水位闸优先于 sharp-flip:flip 说的是「这条线可能陈旧/有误」,wide 说的是
+  // 「这条线根本不该叫 Pinnacle」—— 后者更根本,先报它。
+  if (wide) {
+    return `<span class="ev-rel" title="${t('rel_wide_hint')}" style="font-size:11px;font-weight:600;color:#dc2626;white-space:nowrap">⚠️ ${t('rel_wide')}</span>`;
+  }
   // V14 — sharp-flip guard (market mode only): when Pinnacle's favourite
   // disagrees with Betfair+SBOBET in the same envelope, its de-vig P is
   // empirically unreliable → ⚠️ override the tier (this EV is built on a
@@ -1995,6 +2014,8 @@ const I18N = {
     rel_var_thr_vs:    'vs 平 5%;σ_EV=σ_P(h)·SP,冷门腿放大、离开球越远越宽;仅显示、不拦截',
     evhelp_title:      'EV 可靠性 & 门槛 — 怎么看',
     evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b>(P = Pinnacle 去 vig 公允概率)。<b>门槛</b>不是 EV,是"这注因为有多冷,EV 至少要达到多少才算可信"。</p><p style="margin-top:8px"><b>怎么读 EV 旁那个门槛:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ 门槛</b> → ✅ 可信的 +EV</li><li><b>5% ≤ EV &lt; 门槛</b> → ⚠️ 冷门陷阱:过了老的平 5% 线,但 EV 不够盖住冷门腿的估计噪声,多半假信号</li><li><b>EV &lt; 5%</b> → 空仓</li></ul><p style="margin-top:8px"><b>为什么冷门门槛高:</b>EV 的误差 = SP × P 的误差。冷门 SP 大 → 同样的 P 噪声放大成大得多的 EV 噪声,所以冷门的 EV 要求更高才算数。</p><p style="margin-top:8px"><b>四档(同一件事的颜色版):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>甜区</b>(P 25–67%,赔率 1.5–4):SP 最小,+EV 最可信,门槛最低(~6–8%)</li><li>🟡 <b>边缘</b>(P 15–25% 或 67–77%):方差略大,略谨慎</li><li>⚠️ <b>冷门</b>(P&lt;15%,赔率&gt;6.7):SP 大,EV 估计最晃,门槛最高(~17%+)</li><li>⚠️ <b>超短</b>(P&gt;77%,赔率&lt;1.3):不是方差问题,而是 EV 空间极薄、赔率一动就没</li></ul><p style="margin-top:8px"><b>门槛还随「距开球时长」动:</b>竞彩停售后市场继续走(41% 凌晨场的停售→开球缺口中位 6h),σ_P 随缺口拉大 —— 同一注,离开球越远门槛越高。这与行内 ±X% 带出自<b>同一个 σ</b>,所以两个数字永远自洽。</p><p style="margin-top:8px;color:var(--text-muted)">注:门槛<b>只显示、不拦截</b>(真正 gate 仍是平 5%)。旧「高估区」档已退役 —— 那是 n=323 小样本噪声,2.8 万场实测显示该区间其实已校准。</p>',
+    rel_wide:         '盘口存疑',
+    rel_wide_hint:    '这条「Pinnacle」线的三腿水位 >8%(真 Pinnacle 通常 3-4%,有 OA 覆盖的联赛实测最大 7.3%)→ 多半不是 Pinnacle,而是 AF 镜像里的软盘。去vig 会照单全收,把它变成一个伪装成 sharp 先验的公允概率,EV 随之失真(实测过一次:面板 +9.4% 绿灯,换正常水位的线是 −16%)。请手填真实 Pinnacle 盘口后再看 EV。',
     rel_flip:         'sharp 分歧',
     rel_flip_hint:    'Pinnacle 与其它 sharp 盘(Betfair/SBOBET)对热门判断相反 → Pinnacle 线可能陈旧/有误,这个 EV 建在可疑的公允价上,慎下',
     mb_toggle:        '净胜球分组(读法·选号辅助)',
@@ -2009,6 +2030,8 @@ const I18N = {
     mb_hint:          '读法/选号辅助:从一簇相干比分里选,不是 +EV 信号(让球进拟合实测加 0 信息)。要算 EV 仍需竞彩比分 SP。',
     rec_record_failed: '⚠️ 记录失败 — 本注未入库,请重试',
     pin_raw_lbl:      'Pinnacle 原盘',
+    pin_wide:         '水位',
+    pin_wide_hint:    '三腿水位过宽 → 这条线多半不是 Pinnacle,EV 不可信。手填真实盘口后再看。',
     pin_raw_ou:       '大小',
     pin_raw_over:     '大',
     pin_raw_under:    '小',
@@ -2477,6 +2500,8 @@ const I18N = {
     rel_var_thr_vs:    'vs the flat 5%; σ_EV=σ_P(h)·SP — amplified by longshots and by time-to-kickoff; shown, not gated',
     evhelp_title:      'EV reliability & bar — how to read it',
     evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b> (P = Pinnacle de-vig fair prob). The <b>bar</b> is not the EV — it is "how high the EV must be for this pick to count as a reliable +EV".</p><p style="margin-top:8px"><b>Reading the bar next to an EV:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ bar</b> → ✅ a trustworthy +EV</li><li><b>5% ≤ EV &lt; bar</b> → ⚠️ longshot trap: clears the old flat 5% but the EV is not enough to cover the estimate noise — likely a mirage</li><li><b>EV &lt; 5%</b> → pass</li></ul><p style="margin-top:8px"><b>Why longshots need a higher bar:</b> the EV error = SP × the P error. A longshot has a big SP, so the same P noise blows up into far larger EV noise — its EV must be higher to count.</p><p style="margin-top:8px"><b>The four tiers (same thing, colour-coded):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>sweet</b> (P 25–67%, odds 1.5–4): smallest SP, most trustworthy +EV, lowest bar (~6–8%)</li><li>🟡 <b>edge</b> (P 15–25% or 67–77%): a bit more variance, mild caution</li><li>⚠️ <b>longshot</b> (P&lt;15%, odds&gt;6.7): big SP, shakiest EV, highest bar (~17%+)</li><li>⚠️ <b>heavy fav</b> (P&gt;77%, odds&lt;1.3): not a variance issue — razor-thin EV that dies on any line move</li></ul><p style="margin-top:8px"><b>The bar also moves with time-to-kickoff:</b> 竞彩 freezes while the market keeps moving (41% of overnight matches have a median 6h freeze→kickoff gap), and σ_P widens with that gap — so the same pick carries a higher bar the further out it is. It shares <b>one σ</b> with the ±X% band on the same row, so the two numbers can never disagree.</p><p style="margin-top:8px;color:var(--text-muted)">Note: the bar is <b>shown, not gating</b> (the real gate is still flat 5%). The old "overpriced" tier was retired — it was n=323 noise; a 28k-match recheck shows that band is actually calibrated.</p>',
+    rel_wide:         'suspect book',
+    rel_wide_hint:    'This "Pinnacle" line carries >8% 1X2 overround (real Pinnacle is usually 3-4%; the widest observed in an OA-covered league is 7.3%) → it is most likely NOT Pinnacle but a soft book from the AF mirror. De-vigging takes whatever it is given, turning it into a fair probability that merely poses as a sharp prior, and the EV inherits the error (measured once: the card showed +9.4% green, a normal-width line gave -16%). Enter the real Pinnacle odds by hand before trusting this EV.',
     rel_flip:         'sharp split',
     rel_flip_hint:    'Pinnacle disagrees with the other sharps (Betfair/SBOBET) on the favourite → its line may be stale/wrong, so this EV rests on a suspect fair price — be cautious',
     mb_toggle:        'Goal-margin bands (read / selection aid)',
@@ -2491,6 +2516,8 @@ const I18N = {
     mb_hint:          'Reading / selection aid — pick from a coherent score cluster, NOT a +EV signal (handicap-into-fit measured ~0 info). EV still needs the 竞彩 score SP.',
     rec_record_failed: '⚠️ record FAILED — bet NOT saved, retry',
     pin_raw_lbl:      'Pinnacle raw',
+    pin_wide:         'overround',
+    pin_wide_hint:    'Overround too wide → this is probably not Pinnacle; the EV is unreliable. Enter the real odds by hand.',
     pin_raw_ou:       'O/U',
     pin_raw_over:     'O',
     pin_raw_under:    'U',
@@ -5150,7 +5177,7 @@ function _spcalcRecalc(idx) {
     const pass = ev >= minEv;
     const jcImplied = (100 / sp).toFixed(0);
     // A-3 影子:门槛与 ± 带共用 σ_P(h)·SP( = 半宽/2,半宽是 2σ)。
-    evSpan.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%${_frzBandHtml(pr, o, sp)} ${_evRelTag(P[o], false, _frzHalfEv(pr, o, sp) / 2)} · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(P[o] * 100).toFixed(0)}%`;
+    evSpan.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%${_frzBandHtml(pr, o, sp)} ${_evRelTag(P[o], false, _frzHalfEv(pr, o, sp) / 2, _isWideBook(pr))} · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(P[o] * 100).toFixed(0)}%`;
     evSpan.className = 'flex-1 text-xs';
     evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
     evSpan.style.fontWeight = pass ? '600' : '';
@@ -5293,7 +5320,7 @@ function _spcalcHcLine(idx) {
 // 两个让球面必须共用本函数 —— 各写各的等于给「区间」留了个只修一半的机会。
 // A-2 — ``frzHalf``(冻结带半宽,_frzHalfEv)与 δ 带独立(一个是让球重构校准误差,
 // 一个是停售→开球的市场漂移)→ 平方和合成显示;判闸仍只看 δ 下界(evLo),不动。
-function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf) {
+function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide) {
   const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
   const dHalf = evLo != null ? (evHi - evLo) / 2 : 0;
   const half = Math.hypot(dHalf, frzHalf || 0);
@@ -5301,7 +5328,7 @@ function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf) {
     ? ` <span class="text-muted" style="font-size:0.9em">±${(half * 100).toFixed(1)}%</span>` : '';
   // A-3 影子:门槛也吃 σ_P(h)(frzHalf=2σ_EV) —— 与上面的 ± 带同源。δ 不进门槛,
   // 它是让球重构的**校准**误差,已由 evLo 下界判闸,再进门槛就重复计一次。
-  return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip, (frzHalf || 0) / 2)}`;
+  return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip, (frzHalf || 0) / 2, wide)}`;
 }
 function _spcalcHcRecalc(idx) {
   const PB = _spcalcHcPB(idx);
@@ -5318,7 +5345,7 @@ function _spcalcHcRecalc(idx) {
     const evHi = ev + (ev - evLo);          // 带宽对称(δ ± k·SE)
     const pass = evLo >= minEv;             // ⭐ 判闸用下界,不是点估
     evSpan.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o], undefined,
-      _frzHalfEv(_SPCALC.preds[idx], 'hc' + o, sp));
+      _frzHalfEv(_SPCALC.preds[idx], 'hc' + o, sp), _isWideBook(_SPCALC.preds[idx]));
     evSpan.className = 'flex-1 text-xs';
     evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
     evSpan.style.fontWeight = pass ? '600' : '';
@@ -5635,8 +5662,14 @@ function _pinRawHtml(pr) {
     ou = ` · ${t('pin_raw_ou')} ${f(pr.ou_line || 2.5)} `
        + `${t('pin_raw_over')}${f(pr.psc_over25)}/${t('pin_raw_under')}${f(pr.psc_under25)}`;
   }
+  // 水位闸:标签自称「Pinnacle 原盘」,若水位宽到不像 Pinnacle,就把真实水位摊开
+  // 摆在这行 —— 假声明本身就在这里发出,警告也该贴在这里。
+  const _vig = _bookVig(pr.psc_home, pr.psc_draw, pr.psc_away);
+  const wideTag = (_vig != null && _vig > WIDE_BOOK_VIG)
+    ? ` <span style="color:#dc2626;font-weight:600" title="${t('pin_wide_hint')}">`
+      + `⚠️ ${t('pin_wide')} ${(_vig * 100).toFixed(1)}%</span>` : '';
   return `<div class="text-xs text-muted mb-1" style="font-size:11px">`
-    + `${IC('target')} ${t('pin_raw_lbl')} 1X2: ${f(pr.psc_home)}/${f(pr.psc_draw)}/${f(pr.psc_away)}${ou}</div>`;
+    + `${IC('target')} ${t('pin_raw_lbl')} 1X2: ${f(pr.psc_home)}/${f(pr.psc_draw)}/${f(pr.psc_away)}${ou}${wideTag}</div>`;
 }
 // V14 fix — remember which folds (让球 / 净胜球) the user opened so a re-render
 // doesn't snap them shut. Both 手填 apply and 🔄 刷新 rebuild the card via
@@ -5771,7 +5804,8 @@ function _cupRecalc(idx) {
       const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
       evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '%'
         + _frzBandHtml(pr, o, sp) + ' '
-        + _evRelTag(P[o], pr && pr.sharp_flip, _frzHalfEv(pr, o, sp) / 2);   // A-3 影子:同一个 σ
+        + _evRelTag(P[o], pr && pr.sharp_flip, _frzHalfEv(pr, o, sp) / 2,
+                       _isWideBook(pr));   // A-3 影子:同一个 σ;水位闸同源
       evEl.className = 'cupev flex-1 text-xs font-medium';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';
@@ -5825,7 +5859,7 @@ function _cupHcRecalc(idx) {
       // F3 — green only at ≥+5% (竞彩 rule), not ≥0;A′ — 且判的是**下界**
       const pass = evLo >= _TODAY_REC_GATE;
       evEl.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip,
-        _frzHalfEv(_CUPMKT.preds[idx], 'hc' + o, sp));
+        _frzHalfEv(_CUPMKT.preds[idx], 'hc' + o, sp), _isWideBook(_CUPMKT.preds[idx]));
       evEl.className = 'cuphcev flex-1 text-xs font-medium';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';
@@ -6130,7 +6164,7 @@ function _mktRecCalc(i) {
   if (!sp || sp <= 1.0) { evEl.textContent = ''; evEl.removeAttribute('style'); btn.disabled = true; btn.style.cssText = _TODAY_REC_BTN_OFF; return; }
   const ev = pBest * sp - 1.0;
   const pass = ev >= _MKT_REC_GATE;
-  evEl.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}% ${_evRelTag(pBest, pr && pr.sharp_flip)}`;
+  evEl.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}% ${_evRelTag(pBest, pr && pr.sharp_flip, null, _isWideBook(pr))}`;
   evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '#b45309');
   evEl.style.fontWeight = pass ? '600' : '';
   btn.disabled = !pass; btn.style.cssText = pass ? _TODAY_REC_BTN_ON : _TODAY_REC_BTN_OFF;

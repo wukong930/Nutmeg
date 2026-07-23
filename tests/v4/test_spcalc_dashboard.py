@@ -1020,7 +1020,7 @@ class TestEvReliability:
         assert html.count("_hcEvHtml(ev, evLo, evHi, P[o]") >= 2   # 两个让球面
         # A-3 影子:让球面的门槛也吃 σ_P(h)(frzHalf=2σ_EV),但**只吃冻结那半** ——
         # δ 已由 evLo 下界判过闸,再进门槛就重复计一次。
-        assert "${_evRelTag(p, sharpFlip, (frzHalf || 0) / 2)}`" in html
+        assert "${_evRelTag(p, sharpFlip, (frzHalf || 0) / 2, wide)}`" in html
         # A′ 排版(owner 选型 2026-07-18):区间构造性对称(evHi = 2·点估 − evLo)
         # → ±半宽与 [lo,hi] 信息完全等价、字符省一半。方括号别回来。
         assert "±${(half * 100).toFixed(1)}%" in html
@@ -1095,20 +1095,26 @@ class TestSharpFlipGuard:
 
     def test_evreltag_has_flip_branch(self, html):
         # A-3 影子(2026-07-23)起第 3 参 sigmaEv;flip 仍是第 2 参,别被挤位。
-        assert "function _evRelTag(p, flip, sigmaEv)" in html
+        # 水位闸(2026-07-23)加第 4 参 wide;flip 仍是第 2 参,别被挤位。
+        assert "function _evRelTag(p, flip, sigmaEv, wide)" in html
+        # 水位优先于 flip:flip 说这条线可能陈旧/有误,wide 说它根本不该叫
+        # Pinnacle —— 后者更根本,分支顺序不能反。
+        assert html.index("if (wide) {") < html.index("if (flip) {")
         assert "if (flip) {" in html
         assert "t('rel_flip')" in html
 
     def test_flip_threaded_into_market_mode_handlers(self, html):
         # 市场模式 lean card + 近期赛事 1X2 + 让球 all pass the per-fixture flag
-        assert "_evRelTag(pBest, pr && pr.sharp_flip)" in html
-        assert "_evRelTag(P[o], pr && pr.sharp_flip, _frzHalfEv(pr, o, sp) / 2)" in html
+        assert "_evRelTag(pBest, pr && pr.sharp_flip, null, _isWideBook(pr))" in html
+        # 水位闸接线时这行拆成了两行 —— 分两段断言,仍锁「flag 确实传下去」。
+        assert "_evRelTag(P[o], pr && pr.sharp_flip, _frzHalfEv(pr, o, sp) / 2," in html
+        assert "_isWideBook(pr));" in html
         # 近期赛事**让球**:A′(2026-07-17)起经 `_hcEvHtml` 出 HTML,flag 由它转发
         # (`_evRelTag(p, sharpFlip)`)。转发那一跳单独锁在 TestEvReliability，
         # 这里只认「_cupHcRecalc 确实把 flag 传下去了」。
         # (A-2 起第 6 参传冻结带半宽,flag 位置不变)
         assert "_hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip," in html
-        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf)" in html
+        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide)" in html
 
     def test_i18n_keys_both_locales(self, html):
         for k in ("rel_flip", "rel_flip_hint"):
@@ -1247,7 +1253,7 @@ class TestFreezeGapBand:
 
     def test_hc_rows_combine_delta_and_freeze_in_quadrature(self, html):
         # 让球行:δ 带 ⊕ 冻结带平方和;两个让球面都传 frzHalf(共用 _hcEvHtml)
-        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf)" in html
+        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide)" in html
         assert "const half = Math.hypot(dHalf, frzHalf || 0);" in html
         assert "_frzHalfEv(_SPCALC.preds[idx], 'hc' + o, sp)" in html
         assert "_frzHalfEv(_CUPMKT.preds[idx], 'hc' + o, sp)" in html
