@@ -249,6 +249,9 @@ if [[ -f "$DB" ]]; then
         OK)    ok   "$tab — 最后 $last (${days}d), 共 $rows 行 · $note" ;;
         OLD)   warn "$tab 偏旧 — 最后 $last (${days}d) · $note(季节性, 非致命)" ;;
         STALE) fail "$tab 停长! 最后 $last (${days}d) · $note — 捕获 cron 可能静默死了" ;;
+        # GAP 行的字段含义不同: rows=起始日 last=结束日 days=天数 (见 data_freshness
+        # 的 porcelain 分支)。没有这个 case 会掉进 *) 把日期错位印出来。
+        GAP)   warn "$tab 内部空洞 $rows → $last (${days} 天) — 「最后 0d」是绿的但这几天永久缺,采集补不回来" ;;
         *)     note "$tab: $st $last" ;;
       esac
     done <<< "$FRESH"

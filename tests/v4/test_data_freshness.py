@@ -239,3 +239,78 @@ def test_epoch_timestamp_handled(tmp_path):
     assert by["odds_snapshots"].last_day == "2026-06-17"
     assert not by["odds_snapshots"].stale
     assert by["odds_snapshots[closing]"].last_day == "2026-06-17"
+
+
+# ── 内部空洞检测(2026-07-23)──────────────────────────────────────────────
+# 病史:Odds API 配额 07-13 耗尽 → closing 子流断 9 天 → 07-22 换 key 当天补上
+# → 哨兵立刻绿(最后 0d),9 天的洞永远没人看见。recency 只答「现在断没断」。
+
+def test_interior_gap_found_behind_a_green_light(tmp_path):
+    """核心回归:最后一天有数据(不 stale),但中间的洞必须被看见。"""
+    rows = _all_today()
+    rows["odds_snapshots[closing]"] = [
+        "2026-06-05", "2026-06-06",                       # 洞之前
+        # 06-07 … 06-15 缺 9 天(复刻真实剧本)
+        "2026-06-16", "2026-06-17",                       # 洞之后 + 今天
+    ]
+    db = _mk_db(tmp_path, rows)
+    by = {s.table: s for s in check_freshness(db, today=TODAY)}
+    s = by["odds_snapshots[closing]"]
+    assert not s.stale, "最后一天有数据 → recency 该是绿的(这正是它看不见洞的原因)"
+    assert s.gaps == [("2026-06-07", "2026-06-15", 9)]
+
+
+def test_interior_gap_does_not_gate(tmp_path):
+    """洞里的数据已永久丢失,补不回来 —— 天天红灯只会训练出忽视。只报不拦。"""
+    rows = _all_today()
+    rows["odds_snapshots[closing]"] = ["2026-06-05", "2026-06-16", "2026-06-17"]
+    db = _mk_db(tmp_path, rows)
+    assert main(["--db", str(db), "--today", "2026-06-17",
+                 "--no-quota", "--no-supply"]) == 0
+
+
+def test_short_gaps_below_threshold_stay_quiet(tmp_path):
+    """1-2 天空档是良性的(那天没球/cron 错峰)。实测:阈值放到 1 天会命中 6 处,
+    其中 5 处是这种噪声 —— 所以 MIN_GAP_DAYS=3。"""
+    rows = _all_today()
+    rows["odds_snapshots[closing]"] = [
+        "2026-06-10", "2026-06-12",   # 缺 06-11(1 天)
+        "2026-06-15", "2026-06-17",   # 缺 06-13/14(2 天)
+    ]
+    db = _mk_db(tmp_path, rows)
+    by = {s.table: s for s in check_freshness(db, today=TODAY)}
+    assert by["odds_snapshots[closing]"].gaps == []
+
+
+def test_seasonal_streams_are_not_gap_checked(tmp_path):
+    """非 critical = 季节性(夏歇/仅赛会期),不写数据是设计如此不是故障。
+    2026-07-23 实测:没有这条豁免,wc_predictions 当场报两个假洞。"""
+    rows = _all_today()
+    rows["wc_predictions"] = ["2026-06-01", "2026-06-17"]   # 中间空 15 天
+    db = _mk_db(tmp_path, rows)
+    by = {s.table: s for s in check_freshness(db, today=TODAY)}
+    assert by["wc_predictions"].gaps == []
+
+
+def test_stream_prehistory_is_not_a_gap(tmp_path):
+    """刚开张的流:它出生之前的那段不是洞,扫描起点必须取该流首日。"""
+    rows = _all_today()
+    rows["jingcai_vote"] = ["2026-06-16", "2026-06-17"]     # 只有两天历史
+    db = _mk_db(tmp_path, rows)
+    by = {s.table: s for s in check_freshness(db, today=TODAY)}
+    assert by["jingcai_vote"].gaps == []
+
+
+def test_gap_emitted_in_porcelain(tmp_path, capsys):
+    """health_check.sh 靠 GAP 前缀渲染;字段顺序是 GAP<tab>名<tab>起<tab>止<tab>天数。"""
+    rows = _all_today()
+    rows["odds_snapshots[closing]"] = ["2026-06-05", "2026-06-16", "2026-06-17"]
+    db = _mk_db(tmp_path, rows)
+    main(["--db", str(db), "--today", "2026-06-17", "--porcelain",
+          "--no-quota", "--no-supply"])
+    gap_lines = [ln for ln in capsys.readouterr().out.splitlines()
+                 if ln.startswith("GAP\t")]
+    # 子流的行与整表的行都会出现:_mk_db 把 closing 行写进同一张 odds_snapshots,
+    # 所以这个夹具里整表确实也有同一个洞 —— 两条都对,按名字取 closing 那条。
+    by_name = {ln.split("\t")[1]: ln.split("\t")[2:] for ln in gap_lines}
+    assert by_name["odds_snapshots[closing]"] == ["2026-06-06", "2026-06-15", "10"]

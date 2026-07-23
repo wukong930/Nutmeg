@@ -108,12 +108,18 @@ def record_row_snapshot(
     envelope: dict | None = None,
     bookmaker_id: int | None = None,
     source: str = "gather",
+    captured_at: str | None = None,
 ) -> bool:
     """Append one line-state snapshot from an ingest_odds-style row dict.
 
     ``row`` is the ``fixture_envelope_to_csv_row`` output (psc_*, ou_line,
     psc_over25/psc_under25, odds_update, kickoff_utc, date/league/teams).
     ``envelope`` (optional) additionally captures the Asian-Handicap board.
+
+    ``captured_at`` — ISO 时刻,**只给历史回填用**(2026-07-23)。默认 None = 此刻,
+    实时 cron 一律走默认。回填历史快照时必须显式传该快照的真实时刻:否则补回来的
+    行全戳成"今天",在时间轴上落错位置 —— 空洞照旧显示为空洞(数据明明已找回),
+    而 CLV / 线史分析会看到几十行挤在同一秒。
 
     Returns True iff a NEW state row was inserted; False on skip (待开盘 row,
     unchanged state) or on ANY internal failure (logged, never raised).
@@ -177,7 +183,8 @@ def record_row_snapshot(
                 "asian_handicap, odds_update) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+                    captured_at
+                    or dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
                     source, fixture_id,
                     row.get("league"), row.get("date"),
                     row.get("home_team"), row.get("away_team"),

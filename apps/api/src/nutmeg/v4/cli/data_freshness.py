@@ -38,8 +38,8 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 # (table, ts_col, max_stale_days, critical, 说明, where, 显示名)
@@ -75,6 +75,18 @@ SISTER_CAPTURE_TABLES: list[tuple[str, str, str, int, bool, str]] = [
 
 HEARTBEAT_FILENAME = ".data_freshness_heartbeat"
 
+# 体检 2026-07-23 — 内部空洞:上面那套只问「最后一次写入距今几天」,对**中间**的
+# 洞结构性失明。真实剧本:Odds API 配额 07-13 耗尽,closing 子流断 9 天,07-22 换 key
+# 后当天补上 → 哨兵立刻转绿(最后 0d),而身后 9 天的洞永远没人看见。
+# 采集是 point-in-time 的,洞不会自己长回来,只会在 CLV/训练锚的样本里静默少一截。
+#
+# 阈值 3 天是**实测**的,不是拍的(2026-07-23 在 8 条流的近 30 天历史上跑):
+#   ≥1 天 → 命中 6 处,其中 5 处是良性 1-2 天空档(那天真没球/cron 错峰)= 噪声
+#   ≥3 天 → 命中 1 处,正是那次真实断供,零误报
+# 连续 3 天全世界一场可采的球都没有,不合理 —— 所以 3 天以上必是故障。
+GAP_LOOKBACK_DAYS = 30   # 只看近 30 天:愈合的旧疤该滚出视野,留着就成了长明红灯
+MIN_GAP_DAYS = 3
+
 # Reported for context only — never gated (user-activity driven).
 USER_TABLES: list[tuple[str, str]] = [
     ("recommendation_sessions", "created_at"),
@@ -93,6 +105,10 @@ class TableStatus:
     max_days: int
     critical: bool
     note: str
+    # 内部空洞 [(起, 止, 天数), …] — 近 GAP_LOOKBACK_DAYS 天内 ≥MIN_GAP_DAYS 的断档。
+    # **不进 stale**:洞里的数据已经永久丢了,补不回来,天天红灯只会训练出忽视。
+    # 它的职责是「别让洞藏在绿灯背后」,不是拦门。
+    gaps: list[tuple[str, str, int]] = field(default_factory=list)
 
     @property
     def stale(self) -> bool:
@@ -138,6 +154,46 @@ def _days_stale(last_day: str | None, today: date) -> int | None:
         return None
 
 
+def _interior_gaps(
+    conn: sqlite3.Connection, table: str, col: str, where: str | None, today: date,
+    *, lookback: int = GAP_LOOKBACK_DAYS, min_gap: int = MIN_GAP_DAYS,
+) -> list[tuple[str, str, int]]:
+    """近 ``lookback`` 天内 ≥``min_gap`` 天的连续断档 → [(起, 止, 天数), …]。
+
+    只看**内部**空洞:扫描起点取 max(该流首日, today−lookback),所以一条刚开张的流
+    不会把「它还没出生的那段」报成洞。末尾未结束的断档也算(那是「现在正断着」,
+    与 days_stale 说的是同一件事,但这里给出它断了多久)。"""
+    cond = f"{col} IS NOT NULL" + (f" AND ({where})" if where else "")
+    try:
+        rows = conn.execute(
+            f"SELECT DISTINCT substr(CAST({col} AS TEXT),1,10) FROM {table} WHERE {cond}"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    days: set[date] = set()
+    for (v,) in rows:
+        try:
+            days.add(date.fromisoformat(str(v)[:10]))
+        except (TypeError, ValueError):
+            continue          # epoch 整数列或脏值 → 跳过,不装懂
+    if not days:
+        return []
+    cur = max(min(days), today - timedelta(days=lookback))
+    gaps: list[tuple[str, str, int]] = []
+    run: list[date] = []
+    while cur <= today:
+        if cur in days:
+            if len(run) >= min_gap:
+                gaps.append((run[0].isoformat(), run[-1].isoformat(), len(run)))
+            run = []
+        else:
+            run.append(cur)
+        cur += timedelta(days=1)
+    if len(run) >= min_gap:
+        gaps.append((run[0].isoformat(), run[-1].isoformat(), len(run)))
+    return gaps
+
+
 def _probe(
     conn: sqlite3.Connection, name: str, table: str, col: str,
     maxd: int, crit: bool, note: str, where: str | None, today: date,
@@ -146,7 +202,11 @@ def _probe(
     if n is None:  # table missing entirely
         return TableStatus(name, 0, None, None, maxd, crit, note)
     last = _last_day(conn, table, col, where) if n else None
-    return TableStatus(name, n, last, _days_stale(last, today), maxd, crit, note)
+    # 只对 CRITICAL 流查空洞。非 critical 的那两条(league_predictions / wc_predictions)
+    # 本就是**季节性**的 —— 夏歇、非赛会期不写数据是设计如此,不是故障。
+    # (2026-07-23 实测:不加这条限制,wc_predictions 立刻报两个假洞。)
+    gaps = _interior_gaps(conn, table, col, where, today) if (n and crit) else []
+    return TableStatus(name, n, last, _days_stale(last, today), maxd, crit, note, gaps)
 
 
 def check_freshness(
@@ -333,6 +393,7 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date) -> str
     lines = [f"# 捕获表新鲜度哨兵 (today={today})", ""]
     bad = [s for s in statuses if s.stale and s.critical]
     warn = [s for s in statuses if s.stale and not s.critical]
+    holed = [s for s in statuses if s.gaps]
     for s in statuses:
         mark = "✓" if not s.stale else ("✗" if s.critical else "⚠")
         age = "空/缺表" if s.days_stale is None else f"{s.days_stale}d"
@@ -342,6 +403,10 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date) -> str
             f"  {mark} {s.table:<24} {s.rows:>6} 行 · 最后 {s.last_day or '—':<10} "
             f"· {age:>7} {within} [{tag}] {s.note}"
         )
+        # 洞挂在它自己那行下面 —— 「最后 0d」的绿灯与「身后有个 9 天洞」必须同屏,
+        # 分开放两处 = 又给了只看一处的机会。
+        for g0, g1, n in s.gaps:
+            lines.append(f"      ⚠ 内部空洞 {g0} → {g1}({n} 天,采集是 point-in-time,补不回来)")
     lines += ["", "  — 用户行为表(空仓即僵,不门控)—"]
     for table, n, last, ds in _user_rows(db_path, today):
         age = "—" if ds is None else f"{ds}d 前"
@@ -356,6 +421,11 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date) -> str
         lines.append(f"判定: ⚠ 季节性捕获表偏旧(不致命): {', '.join(s.table for s in warn)}")
     else:
         lines.append("判定: ✓ 所有捕获流都在按节奏入库,无漏。")
+    if holed:
+        lines.append(
+            f"  ⚠ 但近 {GAP_LOOKBACK_DAYS} 天有内部空洞: "
+            f"{', '.join(s.table for s in holed)} —— 「最后 0d」只说明**现在**没断,"
+            "洞里那几天的线已经永久没了。用它的数据做 CLV/训练锚时记得样本少了一截。")
     return "\n".join(lines)
 
 
@@ -399,6 +469,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"{'-' if s.days_stale is None else s.days_stale}\t"
                 f"{int(s.critical)}\t{s.note}"
             )
+            # 独立 GAP 行 —— health_check.sh 只认前缀,不必改它的 OK/STALE 解析。
+            for g0, g1, n in s.gaps:
+                print(f"GAP\t{s.table}\t{g0}\t{g1}\t{n}")
         for q in quota_alarms:
             print(f"QUOTA\t{q}")
         for q in probe_fails:

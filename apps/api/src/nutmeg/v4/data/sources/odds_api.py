@@ -13,8 +13,8 @@ Two endpoints used:
 
   /v4/sports/<sport_key>/odds/                   — current upcoming odds
   /v4/historical/sports/<sport_key>/odds/        — historical snapshots
-                                                   (each call costs 10
-                                                   quota units)
+                                                   (10 × markets × regions;
+                                                    实测见下)
 
 Sport keys for our needs:
   soccer_uefa_champs_league                — UCL
@@ -26,6 +26,16 @@ data/external/odds_api/<endpoint>/<params-hash>.json so repeated runs
 don't burn quota. `refresh=True` bypasses cache.
 
 Quota math (Starter tier 20K/month):
+  ⚠️ **实测更正(2026-07-23)**:下面这行「10 quota each」是**基础倍率**,不是单价。
+  真实计价 = 10 × markets × regions。我们的收盘锚口径 markets="h2h,totals"(2)×
+  regions="eu"(1) ⇒ **20 额度/次**,是本节旧估算的 2 倍。
+  测法(不额外花钱):免费端点 /v4/sports 的响应头带 x-requests-remaining,
+  在一次历史调用前后各读一次,差值即真实单价。
+  ⚠️ 另一坑:请求一个该 sport_key **没有赛事**的时刻(如 7 月问 UCL,当季 5 月已完
+  赛、资格赛不在该 key 下),API 不报错,而是返回**最近可得的快照**——2026-07-23
+  实测拿回 5 月 30 日的决赛。消费方必须按 commence_time 二次过滤,否则会把上赛季
+  的线当成本场收盘价写进去(scripts/backfill_closing_gap.py 的窗口判定即为此)。
+
   Historical call = 10 quota each
   UCL: ~20 matchday-snapshots × 4 seasons = ~80 calls × 10 = 800 quota
   UEL: ~25 matchday-snapshots × 4 seasons = ~100 calls × 10 = 1,000 quota

@@ -182,3 +182,26 @@ class TestGatherRowsHook:
             bookmaker_id=PINNACLE_BOOKMAKER_ID,
             refresh_fixtures=False, refresh_odds=False)
         assert not (tmp_path / "obs.db").exists()
+
+
+def test_captured_at_defaults_to_now(tmp_path):
+    """实时 cron 不传该参 —— 默认路径必须还是「此刻」,不能被回填功能带偏。"""
+    import datetime as dt
+    db = tmp_path / "o.db"
+    assert record_row_snapshot(db, _row(), source="closing")
+    with sqlite3.connect(db) as conn:
+        got = conn.execute("SELECT captured_at FROM odds_snapshots").fetchone()[0]
+    delta = abs((dt.datetime.now(dt.UTC)
+                 - dt.datetime.fromisoformat(got)).total_seconds())
+    assert delta < 60, f"默认 captured_at 应≈现在,实得 {got}"
+
+
+def test_explicit_captured_at_is_used_for_backfill(tmp_path):
+    """历史回填必须能把行落在**它真正存在的时刻**。否则补回来的数据全戳成今天:
+    空洞照旧显示为空洞,线史分析看到几十行挤在同一秒(2026-07-23 真踩过)。"""
+    db = tmp_path / "o.db"
+    assert record_row_snapshot(db, _row(), source="closing",
+                               captured_at="2026-07-18T13:55:00+00:00")
+    with sqlite3.connect(db) as conn:
+        got = conn.execute("SELECT captured_at FROM odds_snapshots").fetchone()[0]
+    assert got == "2026-07-18T13:55:00+00:00"
