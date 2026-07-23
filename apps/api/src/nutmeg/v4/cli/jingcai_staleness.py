@@ -58,7 +58,7 @@ def _pinn_close(conn: sqlite3.Connection, row: dict) -> tuple | None:
         (row["match_date"], row["home_team"], row["away_team"])).fetchone()
     if r:
         return r
-    return _alias_close(conn, row, cols)
+    return _alias_close(conn, row, cols) or _club_core_close(conn, row, cols)
 
 
 def _alias_close(conn: sqlite3.Connection, row: dict, cols: str) -> tuple | None:
@@ -85,6 +85,38 @@ def _alias_close(conn: sqlite3.Connection, row: dict, cols: str) -> tuple | None
     if not hits or len({(r[6], r[7]) for r in hits}) != 1:
         return None  # no alias match, or ambiguous (≥2 distinct fixtures) → don't guess
     return tuple(hits[0][i] for i in range(6))  # the cols, dropping the trailing names
+
+
+def _club_core_close(conn: sqlite3.Connection, row: dict, cols: str) -> tuple | None:
+    """俱乐部别名兜底 —— 上面那个 _alias_close 只认国家队,注释里写着俱乐部
+    「autumn-gated」;这就是当初推迟的那件事(2026-07-23 补上)。
+
+    病史:owner 实报「迈阿密国际 vs 芝加哥」不在可投注列表,查下来是我们**自己库里
+    同一支队有两种拼写** —— 竞彩侧解析成 `Inter Miami`,而那场的 Pinnacle 行写的是
+    `Inter Miami CF`(closing 走 OA、cup_market 走 AF 镜像,两个写入者规范不同),
+    精确 join 直接落空。
+
+    不是个案:全库 374 个队名里有 **24 组**同一 club-core 却多种拼写 ——
+    后缀(Viking/Viking FK)、变音符(Orgryte/Örgryte)、前缀(Sirius/IK Sirius)、
+    大小写(GAIS/Gais)。所以修在**共享 sink**(本函数,clv_ledger 与 staleness
+    共用),不逐个补别名、更不逐生产者打补丁。
+
+    安全纪律照抄 _alias_close:两侧 club-core 都相等,且**只在唯一解时接受** ——
+    ≥2 场共享同一 core 对就放弃,绝不猜。错 join 是静默污染,比缺 join 更坏。"""
+    from nutmeg.v4.data.sources.odds_api import _club_core
+    hk, ak = _club_core(row["home_team"]), _club_core(row["away_team"])
+    if not hk or not ak:
+        return None
+    rows = conn.execute(
+        f"SELECT {cols}, home_team, away_team FROM odds_snapshots "
+        "WHERE match_date=? AND (kickoff_utc IS NULL OR captured_at < kickoff_utc) "
+        "ORDER BY captured_at DESC, id DESC",   # 体检 B2 — pre-kickoff only
+        (row["match_date"],)).fetchall()
+    hits = [r for r in rows
+            if _club_core(r[6]) == hk and _club_core(r[7]) == ak]
+    if not hits or len({(r[6], r[7]) for r in hits}) != 1:
+        return None  # 无匹配,或 ≥2 场共享 core 对(歧义)→ 不猜
+    return tuple(hits[0][i] for i in range(6))
 
 
 def _hhad_pinn_and_outcome(close: tuple, row: dict) -> tuple | None:

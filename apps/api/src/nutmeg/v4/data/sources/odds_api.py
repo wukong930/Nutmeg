@@ -500,7 +500,16 @@ def _norm_team(name: str | None) -> str:
 # collision is poisoned to None (see fetch_pinnacle_lookup) so a wrong-team
 # patch is structurally impossible; pure-abbreviation names (AIK, GAIS) keep
 # their exact key untouched.
-_CLUB_TOKENS = frozenset({"if", "ik", "bk", "ff", "sk", "fk", "aif", "fc", "afc"})
+# 俱乐部法人形式后缀 —— 折叠 core key 时剔除。原为北欧口径;2026-07-23 补 cf/sc
+# (美洲用法:Club de Fútbol / Sporting Club),因为 owner 实报「迈阿密国际 vs 芝加哥」
+# 没进盘面,根因是 `Inter Miami`(竞彩侧)≠ `Inter Miami CF`(Pinnacle 行)——
+# `cf` 不在表里,core 没折叠成同一个,join 落空。
+# **加 token 前实测过误并**(374 个队名跑全表):+cf 只多 1 组(正是迈阿密),
+# +cf,sc 多 4 组(Chapecoense/Columbus Crew/Inter Miami/St. Louis City)——
+# 四组**全是同一支队,零误并**。ac/cd/ud 再加不产生任何新折叠 = 纯投机,不加。
+# 改这张表前请重跑那个误并测量:core 变宽会同时影响实盘 overlay 的二级键。
+_CLUB_TOKENS = frozenset({"if", "ik", "bk", "ff", "sk", "fk", "aif", "fc", "afc",
+                          "cf", "sc"})
 
 
 def _club_core(name: str | None) -> str | None:

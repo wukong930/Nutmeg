@@ -140,3 +140,90 @@ def test_pinn_close_national_team_alias_fallback(tmp_path):
         # not a national team → no elo code → must not guess a join
         assert _pinn_close(c, {"fixture_id": None, "match_date": "2026-06-25",
                                "home_team": "Some Club", "away_team": "Mexico"}) is None
+
+
+# ── 俱乐部别名兜底(2026-07-23)────────────────────────────────────────────
+# 病史:owner 实报「迈阿密国际 vs 芝加哥」不在可投注列表。根因**不在竞彩词典**,
+# 而在我们自己库里同一支队有两种拼写:竞彩侧解析成 `Inter Miami`,那场的 Pinnacle
+# 行写的是 `Inter Miami CF`(closing 走 OA、cup_market 走 AF 镜像,规范不同),
+# 精确 (date, home, away) join 直接落空 → CLV 台账报「无收盘线」。
+#
+# 两层一起才修好,缺一不可:
+#   ① _CLUB_TOKENS 原是北欧口径,没有 `cf`/`sc` → core 折不到一起
+#   ② _pinn_close 原本只有 国家队 别名兜底(注释写着俱乐部「autumn-gated」)
+
+class TestClubCoreCloseFallback:
+    def test_club_tokens_fold_the_americas_suffixes(self):
+        """加 cf/sc 前实测过误并(374 个队名跑全表):+cf 只多 1 组=迈阿密;
+        +cf,sc 多 4 组且**全是同一支队**;ac/cd/ud 不产生新折叠 = 投机,没加。
+        改这张表请重跑那个测量 —— core 变宽会同时影响实盘 overlay 的二级键。"""
+        from nutmeg.v4.data.sources.odds_api import _club_core
+        assert _club_core("Inter Miami CF") == _club_core("Inter Miami")
+        assert _club_core("Columbus Crew SC") == _club_core("Columbus Crew")
+        # 原有北欧口径不能被破坏
+        assert _club_core("IK Sirius") == _club_core("Sirius")
+
+    def test_close_found_across_the_spelling_split(self, tmp_path):
+        """竞彩 `Inter Miami` ↔ Pinnacle `Inter Miami CF` —— 精确 join 落空后,
+        club-core 兜底必须把这条收盘线找回来。"""
+        import sqlite3
+
+        from nutmeg.v4.cli.jingcai_staleness import _pinn_close
+        db = tmp_path / "o.db"
+        record_row_snapshot(db, {
+            "date": "2026-07-22", "league": "USA_MLS",
+            "home_team": "Inter Miami CF", "away_team": "Chicago Fire",
+            "psc_home": 1.8, "psc_draw": 3.9, "psc_away": 4.2,
+            "ou_line": 3.5, "psc_over25": 1.9, "psc_under25": 1.9,
+            "kickoff_utc": "2026-07-22T23:30:00+00:00",
+        }, source="closing", captured_at="2026-07-22T23:00:00+00:00")
+        with sqlite3.connect(db) as conn:
+            conn.row_factory = sqlite3.Row
+            got = _pinn_close(conn, {"match_date": "2026-07-22",
+                                     "home_team": "Inter Miami",
+                                     "away_team": "Chicago Fire"})
+        assert got is not None, "club-core 兜底没接上"
+        assert got[0] == 1.8
+
+    def test_ambiguous_core_never_guesses(self, tmp_path):
+        """同日两场不同赛事共享同一 core 对 → 放弃,不猜。
+        错 join 是静默污染,比缺 join 更坏(缺了至少哨兵会响)。"""
+        import sqlite3
+
+        from nutmeg.v4.cli.jingcai_staleness import _pinn_close
+        db = tmp_path / "o.db"
+        for home, away, ph in (("Inter Miami CF", "Chicago Fire", 1.8),
+                               ("Inter Miami", "Chicago Fire FC", 2.4)):
+            record_row_snapshot(db, {
+                "date": "2026-07-22", "league": "USA_MLS",
+                "home_team": home, "away_team": away,
+                "psc_home": ph, "psc_draw": 3.9, "psc_away": 4.2,
+                "ou_line": 3.5, "psc_over25": 1.9, "psc_under25": 1.9,
+                "kickoff_utc": "2026-07-22T23:30:00+00:00",
+            }, source="closing", captured_at="2026-07-22T23:00:00+00:00")
+        with sqlite3.connect(db) as conn:
+            conn.row_factory = sqlite3.Row
+            got = _pinn_close(conn, {"match_date": "2026-07-22",
+                                     "home_team": "Inter Miami",
+                                     "away_team": "Chicago Fire"})
+        assert got is None, "歧义时必须放弃,绝不猜"
+
+    def test_in_play_row_still_excluded(self, tmp_path):
+        """体检 B2 的开球后守卫在兜底层同样生效 —— 别从别名这条路把 LIVE 线放进来。"""
+        import sqlite3
+
+        from nutmeg.v4.cli.jingcai_staleness import _pinn_close
+        db = tmp_path / "o.db"
+        record_row_snapshot(db, {
+            "date": "2026-07-22", "league": "USA_MLS",
+            "home_team": "Inter Miami CF", "away_team": "Chicago Fire",
+            "psc_home": 1.06, "psc_draw": 15.0, "psc_away": 53.96,   # 典型滚球退化线
+            "ou_line": 3.5, "psc_over25": 1.9, "psc_under25": 1.9,
+            "kickoff_utc": "2026-07-22T23:30:00+00:00",
+        }, source="closing", captured_at="2026-07-23T00:10:00+00:00")  # 开球之后
+        with sqlite3.connect(db) as conn:
+            conn.row_factory = sqlite3.Row
+            got = _pinn_close(conn, {"match_date": "2026-07-22",
+                                     "home_team": "Inter Miami",
+                                     "away_team": "Chicago Fire"})
+        assert got is None, "开球后的 LIVE 线不许经别名兜底混进收盘价"
