@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS odds_snapshots (
     psc_over       REAL,
     psc_under      REAL,
     asian_handicap TEXT,                    -- JSON {line: {home, away}} when quoted
-    odds_update    TEXT                     -- the BOOKMAKER's own line timestamp
+    odds_update    TEXT,                    -- the BOOKMAKER's own line timestamp
+    odds_source    TEXT                     -- 'odds_api' | 'api_football' — 这条价来自哪个源
 );
 CREATE INDEX IF NOT EXISTS idx_odds_snapshots_fixture
     ON odds_snapshots (fixture_id, captured_at);
@@ -89,9 +90,20 @@ _STATE_COLS = (
 )
 
 
+# 老库补列(2026-07-23)。DDL 是 CREATE TABLE IF NOT EXISTS,对已存在的表加不了列,
+# 所以照 crown_close_history 的幂等写法走 ALTER。老行留 NULL = 「不知道来自哪个源」,
+# **不猜**:这批历史行确实无从追溯,伪造一个值比留空更坏。
+_ADDED_COLUMNS = (("odds_source", "TEXT"),)
+
+
 def ensure_odds_snapshots(conn: sqlite3.Connection) -> None:
-    """Idempotent DDL — safe to call on every write."""
+    """Idempotent DDL + 列迁移 — safe to call on every write."""
     conn.executescript(_DDL)
+    have = {r[1] for r in conn.execute("PRAGMA table_info(odds_snapshots)")}
+    for col, decl in _ADDED_COLUMNS:
+        if col not in have:
+            conn.execute(f"ALTER TABLE odds_snapshots ADD COLUMN {col} {decl}")
+            log.info("odds_snapshots: 迁移新增列 %s", col)
 
 
 def _opt_float(v) -> float | None:
@@ -180,8 +192,8 @@ def record_row_snapshot(
                 "INSERT INTO odds_snapshots (captured_at, source, fixture_id, "
                 "league, match_date, home_team, away_team, kickoff_utc, "
                 "psc_home, psc_draw, psc_away, ou_line, psc_over, psc_under, "
-                "asian_handicap, odds_update) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "asian_handicap, odds_update, odds_source) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     captured_at
                     or dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
@@ -190,6 +202,8 @@ def record_row_snapshot(
                     row.get("home_team"), row.get("away_team"),
                     row.get("kickoff_utc") or None,
                     *state,
+                    # _apply_odds_api_overlay 打的标;没打过 = 走的 AF 镜像。
+                    row.get("odds_source") or "api_football",
                 ))
         return True
     except Exception:  # noqa: BLE001 — a lost snapshot must never break a cron

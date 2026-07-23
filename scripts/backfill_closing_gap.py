@@ -136,6 +136,7 @@ def harvest(sport_key: str, snap_iso: str, *, db: Path, dry: bool) -> tuple[int,
             "psc_home": ph, "psc_draw": h2h["draw"], "psc_away": pa,
             "ou_line": tot[0], "psc_over25": tot[1], "psc_under25": tot[2],
             "odds_update": pin.get("last_update"), "kickoff_utc": ct,
+            "odds_source": "odds_api",      # 历史端点也是 OA
         }
         if dry:
             written += 1

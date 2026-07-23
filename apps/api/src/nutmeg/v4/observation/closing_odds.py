@@ -165,6 +165,9 @@ def capture_closing_pinnacle(
                 "psc_under25": e.get("psc_under"),
                 "odds_update": e.get("last_update"),
                 "kickoff_utc": e.get("commence_time"),
+                # 本路径 OA 独用(Pinnacle-STRICT,无 AF 兜底)→ 显式标源,
+                # 否则 record_row_snapshot 的默认会把它记成 api_football。
+                "odds_source": "odds_api",
             }
             if not (row["date"] and row["home_team"] and row["away_team"]):
                 continue

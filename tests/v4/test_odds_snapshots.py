@@ -205,3 +205,51 @@ def test_explicit_captured_at_is_used_for_backfill(tmp_path):
     with sqlite3.connect(db) as conn:
         got = conn.execute("SELECT captured_at FROM odds_snapshots").fetchone()[0]
     assert got == "2026-07-18T13:55:00+00:00"
+
+
+# ── odds_source 列(2026-07-23)────────────────────────────────────────────
+# 起因:owner 问「OA 到底值不值那 20000 额度」——答不上来,因为这行价来自 OA
+# 还是 AF 镜像只活在内存里,从不落库。加列后可回溯统计。
+
+def test_odds_source_defaults_to_api_football(tmp_path):
+    """没被 _apply_odds_api_overlay 打过标 = 走的 AF 镜像(gather 的默认底座)。"""
+    db = tmp_path / "o.db"
+    assert record_row_snapshot(db, _row(), source="cup_market")
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT odds_source FROM odds_snapshots").fetchone()[0] \
+            == "api_football"
+
+
+def test_odds_source_records_the_overlay(tmp_path):
+    """overlay 打了标就必须原样落库 —— 这一列存在的全部意义。"""
+    db = tmp_path / "o.db"
+    assert record_row_snapshot(db, _row(odds_source="odds_api"), source="cup_market")
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT odds_source FROM odds_snapshots").fetchone()[0] \
+            == "odds_api"
+
+
+def test_migration_is_idempotent_and_spares_old_rows(tmp_path):
+    """老库补列:重复调用只是几次 PRAGMA;已有行留 NULL —— 那批行确实无从追溯,
+    伪造一个来源比留空更坏(留空至少诚实,统计时能排除)。"""
+    from nutmeg.v4.observation.odds_snapshots import ensure_odds_snapshots
+    db = tmp_path / "o.db"
+    # 造一张「加列之前」的老表
+    with sqlite3.connect(db) as conn:
+        conn.execute("""CREATE TABLE odds_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, captured_at TEXT NOT NULL,
+            source TEXT NOT NULL, fixture_id INTEGER, league TEXT NOT NULL,
+            match_date TEXT NOT NULL, home_team TEXT NOT NULL, away_team TEXT NOT NULL,
+            kickoff_utc TEXT, psc_home REAL NOT NULL, psc_draw REAL NOT NULL,
+            psc_away REAL NOT NULL, ou_line REAL, psc_over REAL, psc_under REAL,
+            asian_handicap TEXT, odds_update TEXT)""")
+        conn.execute("INSERT INTO odds_snapshots (captured_at, source, league, "
+                     "match_date, home_team, away_team, psc_home, psc_draw, psc_away) "
+                     "VALUES ('2026-06-01T00:00:00+00:00','cup_market','WC','2026-06-01',"
+                     "'A','B',2.0,3.0,4.0)")
+    with sqlite3.connect(db) as conn:
+        ensure_odds_snapshots(conn)
+        ensure_odds_snapshots(conn)          # 幂等:复跑不炸
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(odds_snapshots)")}
+        assert "odds_source" in cols
+        assert conn.execute("SELECT odds_source FROM odds_snapshots").fetchone()[0] is None
