@@ -200,6 +200,40 @@ class TestMarketHandicapEndpoint:
                         json=self._payload(handicap_home=9))
         assert r.status_code == 422
 
+    def test_manual_pinnacle_is_recorded_as_manual(self, client, tmp_path, monkeypatch):
+        """手填的 Pinnacle 必须在台账里留下 'manual' 标(2026-07-23)。
+
+        owner 在 OA 没覆盖的赛事上手打 Pinnacle,📌 记一笔会把手打值原样落账 ——
+        此前**没有任何字段**能把它和抓来的价区分开。手填若是陈旧价或手滑打错,
+        记下的就是虚构价,事后谁也查不出来。这条锁住整条链:
+        前端设 pr.odds_source='manual' → 请求体 → store._request_odds_source。
+        """
+        db = tmp_path / "obs.db"
+        init_db(db)
+        monkeypatch.setenv("NUTMEG_V4_OBSERVATION_DB", str(db))
+        r = client.post("/api/v4/recommend/market-handicap",
+                        json=self._payload(record_session=True, odds_source="manual"))
+        assert r.status_code == 200, r.text
+        assert r.json()["recorded"] is True
+        with sqlite3.connect(db) as conn:
+            got = conn.execute(
+                "SELECT odds_source FROM recommendation_sessions").fetchone()[0]
+        assert got == "manual"
+
+    def test_unmarked_request_records_null_not_a_guess(self, client, tmp_path, monkeypatch):
+        """老客户端(没 bump 到 v112)不带该字段 → NULL。
+        **绝不**默认成 'api_football':那等于把「没告诉我」伪装成「我查过了」。"""
+        db = tmp_path / "obs.db"
+        init_db(db)
+        monkeypatch.setenv("NUTMEG_V4_OBSERVATION_DB", str(db))
+        r = client.post("/api/v4/recommend/market-handicap",
+                        json=self._payload(record_session=True))
+        assert r.status_code == 200, r.text
+        with sqlite3.connect(db) as conn:
+            got = conn.execute(
+                "SELECT odds_source FROM recommendation_sessions").fetchone()[0]
+        assert got is None
+
     def test_records_when_gate_on(self, client, tmp_path, monkeypatch):
         db = tmp_path / "obs.db"
         init_db(db)

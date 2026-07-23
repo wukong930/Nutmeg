@@ -5919,6 +5919,7 @@ async function _cupHcRecord(idx) {
         league: pr.league, date: pr.date,
         home_team: pr.home_team, away_team: pr.away_team,
         psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
+        odds_source: pr.odds_source ?? null,   // 溯源:手填 = 'manual'
         psc_over25: pr.psc_over25, psc_under25: pr.psc_under25,
         ou_line: pr.ou_line ?? 2.5,   // 体检 Wave1 — anchor the record refit to the real line
         handicap_home: line,
@@ -5975,12 +5976,15 @@ async function _cupManualReprice(idx) {
       handicap_lines: pr.handicap_lines, psc_home: pr.psc_home, psc_draw: pr.psc_draw,
       psc_away: pr.psc_away, psc_over25: pr.psc_over25, psc_under25: pr.psc_under25,
       ou_line: pr.ou_line, odds_update: pr.odds_update,
+      // ↩︎ 复原要把出处一并还原;漏了 = 撤销手填后台账仍记 'manual'
+      odds_source: pr.odds_source ?? null,
     };
     pr.p_home_1x2 = data.p_home_1x2; pr.p_draw_1x2 = data.p_draw_1x2; pr.p_away_1x2 = data.p_away_1x2;
     pr.handicap_lines = data.handicap_lines;
     pr.psc_home = h; pr.psc_draw = d; pr.psc_away = a;
     pr.psc_over25 = (o && u) ? o : null; pr.psc_under25 = (o && u) ? u : null; pr.ou_line = line;
     pr._manual = true; pr.odds_update = null; pr._manualTs = Date.now();
+    pr.odds_source = 'manual';   // 溯源:记账时随请求送回
     // 2026-07-07 — 持久化手填盘口(输入 + 派生 P/让球线),跨 tab/刷新/重开都活。
     // ts = 用户**应用**的时刻(badge 报真实年龄用);后台重算派生数据时保留不动。
     _cupManSave(pr, { h, d, a, line, o, u, ts: pr._manualTs,
@@ -6038,6 +6042,8 @@ function _cupApplyStoredManual(preds) {
       handicap_lines: pr.handicap_lines, psc_home: pr.psc_home, psc_draw: pr.psc_draw,
       psc_away: pr.psc_away, psc_over25: pr.psc_over25, psc_under25: pr.psc_under25,
       ou_line: pr.ou_line, odds_update: pr.odds_update,
+      // ↩︎ 复原要把出处一并还原;漏了 = 撤销手填后台账仍记 'manual'
+      odds_source: pr.odds_source ?? null,
     };
     pr.p_home_1x2 = m.P[0]; pr.p_draw_1x2 = m.P[1]; pr.p_away_1x2 = m.P[2];
     if (m.hc) pr.handicap_lines = m.hc;
@@ -6046,6 +6052,8 @@ function _cupApplyStoredManual(preds) {
     pr.psc_under25 = (m.o && m.u) ? m.u : null;
     pr.ou_line = m.line;
     pr._manual = true; pr.odds_update = null; pr._manualTs = m.ts || null;
+    pr.odds_source = 'manual';   // ⚠️ 这处不能漏:刷新后贴回的仍是手填价,
+    // 少了它,页面一刷新手填值就会顶着服务端的来源标被记成 api_football。
     restored.push([pr, m]);
   });
   // 洞修 2026-07-18:上面贴回的 P/hc 是**应用当时**的服务端 schema —— A′ 上线那晚,
@@ -6203,6 +6211,7 @@ async function _mktRecRecord(i) {
     const fx = {
       date: pr.date, league: pr.league, home_team: pr.home_team, away_team: pr.away_team,
       psc_home: pr.psc_home, psc_draw: pr.psc_draw, psc_away: pr.psc_away,
+      odds_source: pr.odds_source ?? null,   // 溯源:手填 = 'manual'
       odds_1x2_H: 1.01, odds_1x2_D: 1.01, odds_1x2_A: 1.01,
     };
     fx['odds_1x2_' + best] = sp;

@@ -61,6 +61,10 @@ class FixtureOddsInput(BaseModel):
     # SinglePrediction / SingleTicketResponse so the 今日推荐 ticket shows the
     # same odds-age badge the 市场模式 card already has.
     odds_update: str | None = None
+    # 2026-07-23 — 这些 psc_* 的出处('odds_api'/'api_football'/'manual')。
+    # **不是模型特征**,纯溯源:record_session 时 store._request_odds_source 读它,
+    # 落到 recommendation_sessions.odds_source。None = 不知道,**不猜**。
+    odds_source: str | None = None
 
 
 class RecommendRequest(BaseModel):
@@ -195,6 +199,10 @@ class SinglePrediction(BaseModel):
     # 市场模式 card shows the age so a stale de-vig prior isn't trusted near
     # kickoff (API-Football mirrors Pinnacle only every few hours).
     odds_update: str | None = None
+    # 2026-07-23 — 这条 Pinnacle 价的**出处**:'odds_api'(OA 直连)/
+    # 'api_football'(AF 镜像)/'manual'(owner 手填)。回显给前端,前端记账时原样
+    # 送回 ⇒ 台账能分清「抓来的」和「手打的」。见 store._request_odds_source。
+    odds_source: str | None = None
     # Optional handicap probs (present only when handicap_home was provided)
     handicap_home: Optional[int] = None
     p_home_handicap: Optional[float] = None
@@ -694,6 +702,9 @@ class MarketHandicapRequest(BaseModel):
     psc_home: float
     psc_draw: float
     psc_away: float
+    # 2026-07-23 — 这三个 psc_* 的出处。手填 Pinnacle 的场景就走这个端点,所以这
+    # 一条是整条溯源链最要紧的一环:没有它,手打的价和抓来的价在台账里长得一模一样。
+    odds_source: str | None = None
     psc_over25: float | None = None
     psc_under25: float | None = None
     # Asian total line the over/under prices are quoted AT. Pinnacle's main J1

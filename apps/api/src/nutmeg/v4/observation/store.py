@@ -70,7 +70,14 @@ CREATE TABLE IF NOT EXISTS recommendation_sessions (
     -- "closing" — the migration backfills NULLs to that.
     snapshot_phase TEXT DEFAULT 'closing',
     -- Which model backend produced these recommendations (W7)
-    model_type    TEXT DEFAULT 'lightgbm'
+    model_type    TEXT DEFAULT 'lightgbm',
+    -- 2026-07-23 — 本次下注所依据的 Pinnacle 价**出处**:
+    --   'odds_api' | 'api_football' | 'manual' | 'mixed' | NULL(不知道)
+    -- 为什么要:owner 在 OA 没覆盖的赛事上手填 Pinnacle(欧战资格战等),手填值
+    -- 会随 📌 记一笔原样落账,而此前**没有任何字段能把它和抓来的价区分开** ——
+    -- 手填若是陈旧价或手滑打错,台账会静默记下一个虚构价,事后谁也查不出来。
+    -- NULL 一律留 NULL(老行、以及请求里没带该字段的),**不回填猜测值**。
+    odds_source   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS single_predictions (
@@ -183,6 +190,12 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             "UPDATE recommendation_sessions SET model_type = 'lightgbm' "
             "WHERE model_type IS NULL"
         )
+    # 2026-07-23 — 盘口来源溯源。⚠️ 与上面两条不同:**不做任何 UPDATE 回填**。
+    # snapshot_phase/model_type 有可推断的历史默认值('closing'/'lightgbm'),
+    # odds_source 没有 —— 已记的注确实无从追溯,给它填个 'api_football' 就是
+    # 在造假。老行永远留 NULL = 诚实地说「不知道」。
+    if "odds_source" not in cols:
+        conn.execute("ALTER TABLE recommendation_sessions ADD COLUMN odds_source TEXT")
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('version', ?)",
         (str(SCHEMA_VERSION),),
@@ -196,6 +209,37 @@ def init_db(path: str | Path) -> None:
 
 
 # --- Write helpers --------------------------------------------------------
+
+def _request_odds_source(request: dict) -> Optional[str]:
+    """从请求里读出这次下注所依据的 Pinnacle 价的出处。
+
+    在**共享 sink** 里做,而不是让五个 recorder 各自传参 —— 加新 recorder 时会自动
+    带上,不会漏(旧教训:逐生产者打补丁的东西迟早有人忘)。
+
+    两种请求形状都认:
+      · fixtures 列表(/recommend、/recommend/single)—— 每场各带各的 odds_source
+      · 扁平字段(/recommend/market-handicap)—— 手填 Pinnacle 走的就是这条
+
+    返回 'manual' / 'odds_api' / 'api_football' / 'mixed' / None。
+    ⚠️ 全部缺失 → None(不知道),**绝不默认成 'api_football'** —— 那等于把
+    「没告诉我」伪装成「我查过了」,正是这一整列想防的事。
+    """
+    if not isinstance(request, dict):
+        return None
+    srcs: set[str] = set()
+    fx = request.get("fixtures")
+    if isinstance(fx, list):
+        for f in fx:
+            if isinstance(f, dict) and f.get("odds_source"):
+                srcs.add(str(f["odds_source"]))
+    elif request.get("odds_source"):
+        srcs.add(str(request["odds_source"]))
+    if not srcs:
+        return None
+    # 一次 session 里混了多个源(批量 gather:OA 覆盖的场次叠了 overlay、其余留 AF)
+    # → 'mixed'。硬挑一个当代表会让后续切片悄悄算错。
+    return srcs.pop() if len(srcs) == 1 else "mixed"
+
 
 def insert_session(
     conn: sqlite3.Connection,
@@ -219,8 +263,8 @@ def insert_session(
         INSERT INTO recommendation_sessions
             (created_at, bankroll, model_cutoff, model_trained_at,
              n_fixtures, n_recommendations, request_json, metadata_json,
-             snapshot_phase, model_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             snapshot_phase, model_type, odds_source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -228,7 +272,7 @@ def insert_session(
             n_fixtures, n_recommendations,
             json.dumps(request, ensure_ascii=False, default=str),
             json.dumps(metadata or {}, ensure_ascii=False, default=str),
-            snapshot_phase, model_type,
+            snapshot_phase, model_type, _request_odds_source(request),
         ),
     )
     return int(cur.lastrowid)

@@ -385,7 +385,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v111-fe-manual-stale-warn"
+_FE_VERSION = "nutmeg-v112-fe-odds-provenance"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2249,6 +2249,9 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         handicap_lines=_market_handicap_lines(fair, r),
         asian_handicap_lines=_market_asian_handicap_lines(fair, r),
         odds_update=r.get("odds_update"),
+        # 2026-07-23 — 出处回显。_apply_odds_api_overlay 打过标的是 'odds_api',
+        # 没打过 = 走 AF 镜像。前端记账时原样送回(手填会改成 'manual')。
+        odds_source=r.get("odds_source") or "api_football",
         market_mode=True,
         sharp_flip=bool(r.get("sharp_flip", False)),
         margin_bands=_market_margin_bands(fair, r),
