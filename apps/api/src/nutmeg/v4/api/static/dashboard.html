@@ -5991,8 +5991,9 @@ function _cupManualRevert(idx) {
 // 2026-07-07 — 手填实时 Pinnacle 盘口持久化(跨 tab 切换 / 整页刷新 / 关标签重开)。
 // 旧坑:手填盘口只在内存 _CUPMKT.preds[idx] 上;switchTab('upcoming') 每次重
 // loadCupMarket → 换掉 preds → 手填被冲掉(竞彩 SP 有 _entered 保留、手填盘口没有)。
-// 现按比赛身份(home|away|date)存 localStorage:被动加载(切 tab/整页刷新/重开)贴回;
-// ↩︎ 复原 / 显式 🔄 刷新清掉;prune 比赛日 < 今日的条目防无限增长。
+// 现按比赛身份(home|away|date)存 localStorage:**任何**加载(切 tab/整页刷新/重开/
+// 🔄/🎯)都贴回;**只有 ↩︎ 复原**清掉(2026-07-23:原来 🔄 也清,见 loadCupMarket
+// 那段注释);prune 比赛日 < 今日的条目防无限增长。
 const _LS_CUPMAN = 'nutmeg.cupmkt.manual';
 function _cupManKey(pr) { return (pr.home_team || '') + '|' + (pr.away_team || '') + '|' + (pr.date || ''); }
 function _cupManStore() { try { return JSON.parse(localStorage.getItem(_LS_CUPMAN) || '{}'); } catch (_) { return {}; } }
@@ -6005,7 +6006,6 @@ function _cupManWrite(store) {
 }
 function _cupManSave(pr, m) { const s = _cupManStore(); s[_cupManKey(pr)] = m; _cupManWrite(s); }
 function _cupManForget(pr) { const s = _cupManStore(); delete s[_cupManKey(pr)]; _cupManWrite(s); }
-function _cupManForgetPreds(preds) { const s = _cupManStore(); (preds || []).forEach((pr) => delete s[_cupManKey(pr)]); _cupManWrite(s); }
 function _cupApplyStoredManual(preds) {
   const s = _cupManStore();
   const restored = [];
@@ -6546,10 +6546,18 @@ async function loadCupMarket(opts = {}) {
     const body = await r.json();
     // 手动刷新(opts.manual:🔄/🎯/加载)→ 新数据为主:renderCupMarket 据此丢掉会话手填。
     _CUPMKT._freshWins = !!opts.manual;
-    // 2026-07-07 — 手填盘口持久化:被动加载(切 tab/整页刷新/关标签重开)贴回 localStorage
-    // 里的手填;显式 🔄 刷新(opts.manual)= 用户要鲜价 → 清掉这些场的手填(与上句语义一致)。
-    if (opts.manual) _cupManForgetPreds(body.predictions);
-    else _cupApplyStoredManual(body.predictions);
+    // 2026-07-07 — 手填盘口持久化:任何加载都把 localStorage 里的手填贴回来。
+    // 2026-07-23 修:原来「显式 🔄/🎯 = 用户要鲜价 → 清掉手填」,而且是**从
+    // localStorage 永久删除**。这条假设与真实用法冲突 —— owner 手填 Pinnacle 正是
+    // 因为该联赛的自动线不可信(欧战资格赛吃 AF 镜像、水位 14.5%),然后想刷一下
+    // 竞彩价,结果手填被抹掉;🎯 只刷竞彩 SP 更没理由动 Pinnacle 那侧。
+    // 而「不要我的覆盖了」本来就有专门的按钮(↩︎ 复原),🔄 再悄悄做一遍等于
+    // **没有任何办法在保留覆盖的前提下刷新**。现在:🔄/🎯 只换数据,覆盖照旧贴回;
+    // 要回自动线点 ↩︎。_cupApplyStoredManual 会把 FRESH 线存进 _apiSnapshot,
+    // 所以 ↩︎ 复原到的是**刚拉回来的**自动盘口,不是手填当时那条陈旧的。
+    // ⚠️ 代价:手填会一直压着自动线,直到你点 ↩︎。卡片上「手填 N 分钟前」是唯一
+    // 提示 —— 可见且一键可撤,好过静默丢掉用户刚做的工作。
+    _cupApplyStoredManual(body.predictions);
     renderCupMarket(body.predictions, body.pending_fixtures);   // full board (近期赛事)
     renderMarketPred(body.predictions);                         // lean mirror (今日推荐)
     // 竞彩可投注刷新过滤:a default 🔄 with nothing 竞彩-bettable spent no quota — say so.

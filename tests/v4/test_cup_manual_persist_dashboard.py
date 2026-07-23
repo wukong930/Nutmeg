@@ -3,9 +3,15 @@
 Bug: the 市场模式 手填盘口 (`_cupManualReprice` → pr._manual) lived ONLY in-memory
 on _CUPMKT.preds[idx]; switchTab('upcoming') re-runs loadCupMarket every time →
 replaces preds → the hand-typed line was wiped (while 竞彩 SP survived via _entered).
-Fix: persist it to localStorage keyed by match identity, re-apply on passive load
-(tab switch / full reload / reopen), drop it on ↩︎ 复原 or explicit 🔄 refresh.
+Fix: persist it to localStorage keyed by match identity, re-apply on EVERY load
+(tab switch / full reload / reopen / 🔄 / 🎯); only ↩︎ 复原 drops it.
 These substring guards keep a future refactor from silently unwiring it.
+
+2026-07-23 — 语义修正:原设计「显式 🔄 刷新 = 用户要鲜价 → 清掉手填」(而且是从
+localStorage 永久删)。owner 实报该行为有害:手填 Pinnacle 正是因为自动线不可信
+(欧战资格赛吃 AF 镜像、水位 14.5%),刷一下竞彩价就把手填抹了;🎯 只刷竞彩 SP
+更没理由动 Pinnacle 侧。且「不要覆盖了」本有专门按钮(↩︎),🔄 再做一遍等于
+**没有任何办法在保留覆盖的前提下刷新**。
 """
 from __future__ import annotations
 
@@ -26,7 +32,7 @@ class TestCupManualPersist:
     def test_localstorage_helpers_defined(self, html: str) -> None:
         assert "const _LS_CUPMAN = 'nutmeg.cupmkt.manual';" in html
         for fn in ("_cupManKey", "_cupManStore", "_cupManWrite", "_cupManSave",
-                   "_cupManForget", "_cupManForgetPreds", "_cupApplyStoredManual"):
+                   "_cupManForget", "_cupApplyStoredManual"):
             assert f"function {fn}(" in html, fn
 
     def test_key_is_match_identity(self, html: str) -> None:
@@ -39,10 +45,17 @@ class TestCupManualPersist:
     def test_revert_forgets(self, html: str) -> None:
         assert "_cupManForget(pr);" in html
 
-    def test_load_restores_passively_and_drops_on_manual_refresh(self, html: str) -> None:
-        # passive load (tab switch / reload / reopen) re-applies; explicit 🔄 drops it.
-        assert "if (opts.manual) _cupManForgetPreds(body.predictions);" in html
-        assert "else _cupApplyStoredManual(body.predictions);" in html
+    def test_every_load_restores_manual_including_explicit_refresh(self, html: str) -> None:
+        """🔄/🎯 只换数据,手填照旧贴回 —— 想回自动线走 ↩︎。
+        无分支 = 没有任何一条加载路径会绕过恢复。"""
+        assert "_cupApplyStoredManual(body.predictions);" in html
+        assert "if (opts.manual) _cupManForgetPreds" not in html
+
+    def test_batch_forget_is_gone(self, html: str) -> None:
+        """批量遗忘函数已删:它只被刷新路径用,而刷新不该毁手填。留着 = 死代码 +
+        下一个人照着接回去的邀请。单条遗忘(_cupManForget,↩︎ 用)必须还在。"""
+        assert "_cupManForgetPreds" not in html
+        assert "function _cupManForget(pr)" in html
 
     def test_apply_backs_up_fresh_api_line_for_revert(self, html: str) -> None:
         # restore stamps _apiSnapshot from the FRESH pred so ↩︎ 复原 goes to the
