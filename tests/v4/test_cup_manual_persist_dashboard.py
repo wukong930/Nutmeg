@@ -100,3 +100,31 @@ class TestManualRestoreHealsDerived:
         assert "(Date.now() - pr._manualTs) / 60000" in html
         for k in ("cupman_just_now",):
             assert html.count(k + ":") >= 2, f"i18n key {k!r} missing from a locale"
+
+
+class TestManualStaleWarning:
+    """2026-07-23 — 手填超时提醒。
+
+    同日改掉「🔄 刷新抹掉手填」之后,手填会一直压着自动线直到点 ↩︎ ——
+    所以「压了多久」必须自己会喊,否则一个上午填的快照能安静地喂一整天 EV。
+    """
+
+    def test_uses_the_two_existing_thresholds_not_a_third(self, html: str) -> None:
+        """① 复用自动线的 _ODDS_STALE_MIN(120);② 复用竞彩价年龄标那条
+        「>60min 且距开球<3h」的复合规则。发明第三个阈值 = 用户要记三个数。"""
+        assert "stale = mins > _ODDS_STALE_MIN || (mins > 60 && hrsToKo < 3);" in html
+        assert "const _ODDS_STALE_MIN = 120;" in html
+
+    def test_warns_amber_with_a_tip_not_silently(self, html: str) -> None:
+        # 变黄 + 给出下一步(重新核对 / ↩︎ 复原),而不是只变个颜色。
+        assert "cupman_stale_tip" in html
+        assert html.count("cupman_stale_tip:") == 2, "中英各一条文案"
+
+    def test_fresh_manual_stays_green(self, html: str) -> None:
+        # 没超时仍是绿色 ✏️ —— 提醒只在该响的时候响,否则就成了背景噪音。
+        assert 'style="color:#059669">✏️ ${t(\'cupman_badge\')}${age}</div>' in html
+
+    def test_no_kickoff_time_never_triggers_the_compound_rule(self, html: str) -> None:
+        """拿不到开球时刻 → hrsToKo=Infinity → 复合条件恒假,只剩 120min 那根线。
+        不装懂:不知道什么时候开球,就别按「临场」判。"""
+        assert "const hrsToKo = isNaN(ko) ? Infinity : (ko - Date.now()) / 3600000;" in html

@@ -2134,6 +2134,7 @@ const I18N = {
     odds_stale_note:  '临场请核对',
     odds_manual_link: '手动反推填实时盘口 →',
     today_odds_age_tip: 'Pinnacle 快照刷新时间 — 市场同意徽与 📌 记录用的就是这份盘口,临场请核对最新价',
+    cupman_stale_tip: '这条手填已压着自动线一段时间 — 临场请重新核对 Pinnacle,或点 ↩︎ 复原回自动盘口',
     cupman_toggle:    '✏️ 手填实时 Pinnacle',
     cupman_toggle_on: '✏️ 已手填实时盘口(点开可改)',
     cupman_hint:      '从 Pinnacle.com 读实时 1X2 + 大小球填入 → 就地重算。预填为当前 API 值,只改动的即可。',
@@ -2620,6 +2621,7 @@ const I18N = {
     odds_stale_note:  'verify near kickoff',
     odds_manual_link: 'enter live odds manually →',
     today_odds_age_tip: 'When the Pinnacle snapshot was refreshed — the market-agree chip and 📌 record use these odds; verify near kickoff',
+    cupman_stale_tip: 'this hand-entered line has been overriding the auto odds for a while — re-check Pinnacle before kickoff, or hit ↩︎ to go back to the auto line',
     cupman_toggle:    '✏️ Type live Pinnacle',
     cupman_toggle_on: '✏️ Using manual live odds (tap to edit)',
     cupman_hint:      'Read live 1X2 + O/U from Pinnacle.com → re-price here. Pre-filled with current API values; change only what moved.',
@@ -5590,11 +5592,29 @@ function _oddsFreshnessHtml(pr) {
     // 2026-07-18 — 「刚刚」曾是写死文案:localStorage 贴回三天前的手填也说刚刚,
     // 用户无从发现快照已过时。现在报真实的**应用**时间;旧存量无 ts → 不标(不撒谎)。
     let age = '';
+    let stale = false;
     if (pr._manualTs) {
       const mins = Math.max(0, Math.round((Date.now() - pr._manualTs) / 60000));
       age = ' · ' + (mins < 1 ? t('cupman_just_now')
                    : mins < 60 ? `${mins} ${t('odds_min_ago')}`
                    : `${(mins / 60).toFixed(1)} ${t('odds_hr_ago')}`);
+      // 2026-07-23 — 手填超时提醒。同日改掉「🔄 刷新会抹掉手填」之后,手填会
+      // **一直压着自动线直到点 ↩︎** —— 所以「压了多久」必须自己会喊,否则一个
+      // 上午填的快照能安静地喂一整天 EV。
+      // 两个阈值都**复用现成的**,不另发明第三个:
+      //   ① mins > _ODDS_STALE_MIN(120)—— 自动线判「陈旧」的同一根线,
+      //      用户只需记一个数;
+      //   ② mins > 60 且 距开球 < 3h —— 竞彩价年龄标那条复合规则,同源理由:
+      //      临停售/临开球是调价最凶的窗口。A-1 的 σ_P(h)=A·h^B 正好佐证 ——
+      //      每小时变化率 A·B·h^(B−1) 随 h 减小而**增大**(B<1),即越近开球线
+      //      动得越快,手填快照也就烂得越快。
+      const ko = pr.kickoff_utc ? Date.parse(pr.kickoff_utc) : NaN;
+      const hrsToKo = isNaN(ko) ? Infinity : (ko - Date.now()) / 3600000;
+      stale = mins > _ODDS_STALE_MIN || (mins > 60 && hrsToKo < 3);
+    }
+    if (stale) {
+      return `<div class="text-xs mb-1" style="color:#d97706">⚠️ ${t('cupman_badge')}${age}`
+        + ` · ${t('cupman_stale_tip')}</div>`;
     }
     return `<div class="text-xs mb-1" style="color:#059669">✏️ ${t('cupman_badge')}${age}</div>`;
   }
