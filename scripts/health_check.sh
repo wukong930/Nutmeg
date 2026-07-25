@@ -330,6 +330,35 @@ else
 fi
 
 
+# ===== 13. 配对 EV 测量 (Phase 1 — 只读研究,永不 gate) =====
+# 竞彩只有 17% 的场次开单关(韩职 29%/瑞超 21%/挪超 13%;欧罗巴·芬超·欧冠·巴甲·
+# 美职 0/59 全零)—— 其余 83% 必须串关,而逐腿判闸判的是一个你买不到的对象。
+# 串关 EV 是乘的:两条 +3% 的腿合成 +6.09% 过闸,逐腿闸看不见。
+# ⚠️ 本节**只报 N 的进度**,不是结论:预注册要求 N≥30 个投注日才看主结局
+# (docs/pair_ev_prereg_2026-07-25.md §5)。它**永远不影响退出码** —— 这是研究
+# 测量不是运行健康,红了也不该拦发布。手动:  nutmeg-pair-ev-ledger
+section "13. 配对 EV 测量 (Phase 1 · 研究)"
+PAIR="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.pair_ev_ledger \
+         2>/dev/null)"
+if [[ -z "$PAIR" ]]; then
+  note "pair-ev 无输出(包未装?)— 手动: nutmeg-pair-ev-ledger"
+else
+  grep -E '^候选腿' <<< "$PAIR" | while read -r l; do note "$l"; done
+  grep -E '【对照组】|【选中对】' <<< "$PAIR" | sed 's/^[[:space:]]*//' \
+    | while read -r l; do note "$l"; done
+  # ⚠️ 按**行首**匹配:对照组那行里也含「平均 pair_CLV」,用词匹配会把它打两遍。
+  grep -E '^  (平均 pair_CLV|选中日的|两腿 CLV)' <<< "$PAIR" | sed 's/^[[:space:]]*//' \
+    | while read -r l; do note "$l"; done
+  # N 进度:够 30 天才提示可以读结论,否则明说还在攒
+  NSEL="$(grep -oE 'N=[0-9]+ 个投注日' <<< "$PAIR" | grep -oE '[0-9]+' | head -1)"
+  if [[ -n "$NSEL" && "$NSEL" -ge 30 ]]; then
+    note "N=${NSEL} ≥ 30 → 可以读主结局了 (预注册 §4);确认仍需 N≥200"
+  else
+    note "N=${NSEL:-0}/30 投注日 — 还在攒数据,**别读结论**"
+  fi
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
