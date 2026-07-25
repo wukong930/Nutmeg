@@ -40,6 +40,16 @@ _EN_TO_CN: dict[str, str] = {
     "FIN_VEIKKAUSLIIGA": "芬超",
     "SWE_ALLSVENSKAN": "瑞超",
     "KOR_K_LEAGUE_1": "韩职",   # sporttery 缩写 = 韩职 (体检 2026-07-03)
+    # 2026-07-25 — 表落后于现实的 5 对。前 3 对在 jingcai_sp 里**实测撞上了**
+    # (两种标签同时存在 = 同一联赛被劈成两组,正是本模块开头描述的那个病):
+    "NOR_ELITESERIEN": "挪超",   # 挪超 Tromso/KFUM/Rosenborg ∪ NOR_… Molde/Viking
+    "UCL": "欧冠",               # 欧冠 KI Klaksvik/Omonia ∪ UCL Kairat/The New Saints
+    "UEL": "欧罗巴",             # ⭐ 最硬证据:两边**同一批队**(Vojvodina、CSKA Sofia)
+    # 后 2 对是**防御性**补:BRA_SERIE_A / USA_MLS 目前在 jingcai_sp 里尚未出现
+    # (这两个联赛还没被手填过),但 market_mode 一写就是 EN 代码 —— 队伍池已核实
+    # (巴甲 Botafogo/Vitoria/Bahia;美职 Chicago Fire/St. Louis City/Seattle)。
+    "BRA_SERIE_A": "巴甲",
+    "USA_MLS": "美职",
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.
