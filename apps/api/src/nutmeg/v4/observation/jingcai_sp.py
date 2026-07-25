@@ -206,6 +206,22 @@ def record_jingcai_sp(
                     home_team, away_team, market, jc_home, jc_draw, jc_away,
                     kickoff_utc or (ex[1] if ex else None))
                 return False
+            # ── 线史快照(2026-07-25)——「13 次抓、1 次留」的修复 ────────────
+            # 挂在两道闸**之后**(脏值走不到这里),但在 protect_manual 分支
+            # **之前**:你手填过的场次,cron 依然观测到了竞彩的真实报价 —— 那正是
+            # 冻结缺口要的移动数据,不该因为「不覆盖你的手填」就连观测一起丢。
+            # append-only + 线态去重,所以加密采样不会让表爆炸。失败不影响本次 upsert。
+            from nutmeg.v4.observation.jingcai_sp_snapshots import (
+                record_jingcai_sp_snapshot,
+            )
+            record_jingcai_sp_snapshot(
+                db_path, match_date=match_date, home_team=home_team,
+                away_team=away_team, market=market,
+                jc_home=float(jc_home), jc_draw=float(jc_draw),
+                jc_away=float(jc_away), league=league,
+                kickoff_utc=kickoff_utc or (ex[1] if ex else None),
+                handicap_home=handicap_home, booksum=booksum, source=source)
+
             if protect_manual and ex and ex[0] == "market_mode":
                 # 体检 Wave3 (P2) — the manual-line protection used to ALSO
                 # swallow the 初盘 stamp: if the user hand-priced a match

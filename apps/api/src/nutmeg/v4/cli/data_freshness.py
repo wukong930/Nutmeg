@@ -56,6 +56,11 @@ CAPTURE_TABLES: list[tuple[str, str, int, bool, str, str | None, str | None]] = 
     ("jingcai_sp", "opened_at", 2, True,
      "竞彩 初盘 SP (jc_open 子流, 开→收位移)",
      "opened_at IS NOT NULL", "jingcai_sp[open]"),
+    # 2026-07-25 — 竞彩线史 (append-only)。jingcai_sp 是 UPSERT 只留最新,
+    # 这条流才是冻结缺口/临停售调价的前向地基。它死了 = 我们又回到「13 次抓、
+    # 1 次留」,而且**没有任何别的表能发现** (jingcai_sp 照常绿)。
+    ("jingcai_sp_snapshots", "captured_at", 2, True,
+     "竞彩 SP 线史 (append-only; 冻结缺口地基)", None, None),
     ("jingcai_exotic_sp", "captured_at", 2, True,
      "竞彩 比分/总进球 SP (秋季测量地基)", None, None),
     ("jingcai_vote", "captured_at", 2, True, "竞彩 散户支持比例 (软水)", None, None),
