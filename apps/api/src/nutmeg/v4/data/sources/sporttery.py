@@ -128,6 +128,20 @@ _ZH_OVERRIDES: dict[str, str] = {
     "首尔FC": "FC Seoul",
     "光州FC": "Gwangju FC",
     "济州SK": "Jeju United FC",
+    # 巴甲 + 美职(2026-07-25 owner 实报,哨兵同时点名 2/31)。三个都**不是**「整队
+    # 不在字典」,而是竞彩换了写法 —— 字典里分别是 国际 / 圣地亚哥FC / 达拉斯,
+    # 竞彩写 巴西国际(加国别前缀,大概为了和 国际米兰 区分)/ 圣迭戈FC(译名不同)/
+    # 达拉斯FC(加 FC 后缀)。所以修在这里,不动 team_name_zh.py。
+    # EN 值全部照抄 odds_snapshots 里已有的那条线(join 目标本身),按「同日 + 已确认
+    # 对手当锚」验过:2026-07-25 Atletico Paranaense vs Internacional(KO 21:30Z)、
+    # 2026-07-26 San Diego vs FC Dallas(KO 01:30Z)。半角 FC(U+0046 U+0043),
+    # 非全角 —— 已查码点,没踩 刚果(金) 那个双宽坑。
+    # ⚠️ San Diego 在库里有两种拼写:gather 侧 `San Diego`、closing/OA 侧
+    # `San Diego FC`。这里取 gather 名(卡片和主 join 走它);closing 那条线靠
+    # _club_core 兜底(fc 是 token,两边都折成 sandiego)—— 2026-07-23 加的。
+    "巴西国际": "Internacional",
+    "圣迭戈FC": "San Diego",
+    "达拉斯FC": "FC Dallas",
     # 瑞超 Allsvenskan — 竞彩 2026-07-04 上架 7 场,6 场因竞彩中文拼法≠字典键而
     # 整对静默丢弃(哈尔姆斯塔德≠哈尔姆斯塔、AIK索尔纳≠索尔纳AIK 词序、IFK哥德堡
     # ≠哥德堡、哥德堡盖斯≠哥德堡GAIS,余者缺竞彩写法)。半联赛丢失不触发整联赛
