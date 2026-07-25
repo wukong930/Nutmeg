@@ -195,6 +195,12 @@ class SinglePrediction(BaseModel):
     # EV = P(t₁)×SP(t₂),Pinnacle 有 odds_update 年龄,竞彩侧此前不可见 —— 旧价
     # 会静默美化/隐藏 EV(埃尔夫斯堡 +8pp / 库奥皮奥藏绿灯 两案)。
     jc_captured_at: str | None = None
+    # 2026-07-25 — 竞彩单关可投标记。⚠️ **PER-MARKET**(见 jingcai_sp DDL):竞彩
+    # 可以给胜平负开单关而让球不开,所以两个玩法各一列,别合并。
+    # 实测只有 17% 场次可单关且高度集中(韩职 29%/瑞超 21%/挪超 13%,
+    # 欧罗巴·芬超·欧冠·巴甲·美职 0/59)。None=未知 → 前端不渲染徽章,不猜。
+    jc_single_available: int | None = None
+    jc_hc_single_available: int | None = None
     # V14 — when API-Football last refreshed this Pinnacle snapshot (ISO). The
     # 市场模式 card shows the age so a stale de-vig prior isn't trusted near
     # kickoff (API-Football mirrors Pinnacle only every few hours).

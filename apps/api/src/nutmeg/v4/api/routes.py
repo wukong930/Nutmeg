@@ -257,6 +257,15 @@ def _attach_jingcai_sp(preds: list) -> None:
         stamps = [x[5] for x in (r, h) if x and len(x) > 5 and x[5]]
         if stamps:
             p.jc_captured_at = min(stamps)
+        # 单关可得性(2026-07-25)—— 抓了很久却一直没人消费。
+        # ⚠️ 它是 **PER-MARKET(玩法级)**,不是场次级(见 jingcai_sp DDL 该列注释):
+        # 竞彩可以给胜平负开单关、让球不开。所以两个玩法各带各的,别合并成一个 ——
+        # 合并会让你以为让球腿能单关。None = 未知 → 前端不渲染徽章,**不猜**:
+        # 把未知画成「只能串」会让人错过真能单关的场。
+        if r and len(r) > 6 and r[6] is not None:
+            p.jc_single_available = int(r[6])
+        if h and len(h) > 6 and h[6] is not None:
+            p.jc_hc_single_available = int(h[6])
 
 
 def get_artifact() -> Optional[V4Artifact]:
@@ -385,7 +394,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v112-fe-odds-provenance"
+_FE_VERSION = "nutmeg-v113-fe-single-availability"
 
 
 @router.get("/sw.js", include_in_schema=False)

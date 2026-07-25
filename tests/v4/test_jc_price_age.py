@@ -30,7 +30,10 @@ class TestServerSide:
             db, match_date="2026-07-19", home_team="IF Elfsborg", away_team="Sirius",
             jc_home=3.45, jc_draw=3.65, jc_away=1.77)   # booksum 带内(真实终盘)
         row = fetch_sp_lookup(db, market="had")[("2026-07-19", "IF Elfsborg", "Sirius")]
-        assert len(row) == 6 and isinstance(row[5], str) and row[5]  # captured_at ISO
+        # 长度是**故意钉死**的:元组按位取用,悄悄重排会静默错位。加列时更新这里
+        # 就是那道「你确实想改形状」的确认。6 → 7(2026-07-25 尾部加
+        # single_available);captured_at 仍在 [5],位置没动。
+        assert len(row) == 7 and isinstance(row[5], str) and row[5]  # captured_at ISO
 
     def test_attach_uses_older_of_had_hhad(self):
         # 保守报龄:had/hhad 若分叉,取较旧的捕获时刻(风险在旧的那侧)

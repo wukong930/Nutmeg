@@ -2149,6 +2149,10 @@ const I18N = {
     cupman_badge:     '手填实时盘口',
     cupman_just_now:  '刚刚',
     sw_board_hdr:     '甜区 EV 榜',
+    sw_single_yes:    '单关',
+    sw_single_no:     '需串',
+    sw_single_yes_hint: '竞彩给这场这个玩法开了单关 —— 可以单独买,不必凑串',
+    sw_single_no_hint:  '这个玩法只能过关:要下注就必须再配一条腿(实测仅 17% 场次可单关)',
     sw_board_note:    '标准+市场两模式可投注场次合并成一张全局榜;只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽)。',
     frz_badge_tip:    '距开球时长 — 现在下单,到收盘 Pinnacle 预计还漂 ±2σ(已并入 EV 的 ± 区间);凌晨场停售早、缺口不可压缩(A-1 实测:41% 凌晨场中位缺口 6h)',
     jc_price_age:     '竞彩价',
@@ -2636,6 +2640,10 @@ const I18N = {
     cupman_badge:     'live odds (manual)',
     cupman_just_now:  'just now',
     sw_board_hdr:     'sweet-zone EV board',
+    sw_single_yes:    'single',
+    sw_single_no:     'parlay-only',
+    sw_single_yes_hint: '竞彩 offers a SINGLE on this pool — bettable on its own',
+    sw_single_no_hint:  'parlay-only: you must pair it with another leg (only 17% of matches allow singles)',
     sw_board_note:    'one global board merging bettable matches from both modes; sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff).',
     frz_badge_tip:    'Hours to kickoff — commit now and Pinnacle keeps drifting until close (±2σ, folded into the EV ± band); overnight matches freeze early with an incompressible gap (A-1 measured: 41% of matches, median 6h)',
     jc_price_age:     '竞彩 price',
@@ -4709,6 +4717,21 @@ function _sweetBoardRefresh() {
     }));
   box.innerHTML = _sweetBoardHtml(items);
 }
+// 2026-07-25 — 单关可投徽章。竞彩只给 17% 的场次开单关(韩职 29%/瑞超 21%/
+// 挪超 13%;欧罗巴·芬超·欧冠·巴甲·美职 0/59 全零),其余必须串关。这个标记
+// 抓了很久却没接进面板 —— 结果甜区榜可能把一条你**物理上买不了**的腿排第一。
+// ⚠️ PER-MARKET:1X2 与让球各有各的标记,别共用一个。
+// null/undefined = 未知 → **不渲染**(不猜:画成「只能串」会让人错过真能单关的场)。
+// 腿是不是让球盘 —— _sweetLegs 里 1X2 push 'H'/'D'/'A',让球 push 'hcH'/'hcD'/'hcA'。
+// 腿对象**没有** market 字段:我第一版写 leg.market==='hhad',恒 false,会给让球腿
+// 贴上 1X2 的单关标记 = 静默错标(而单关标记是 PER-MARKET 的)。按前缀判才对。
+function _legIsHc(leg) { return !!(leg && typeof leg.o === 'string' && leg.o.startsWith('hc')); }
+function _singleBadge(v) {
+  if (v === null || v === undefined) return '';
+  return v
+    ? `<span class="ml-1" style="color:#059669" title="${t('sw_single_yes_hint')}">${t('sw_single_yes')}</span>`
+    : `<span class="ml-1 text-muted" title="${t('sw_single_no_hint')}">${t('sw_single_no')}</span>`;
+}
 function _sweetBoardHtml(items) {
   const rows = [];
   (items || []).forEach(({ pr, idx, mode }) => {
@@ -4730,7 +4753,9 @@ function _sweetBoardHtml(items) {
       <div class="text-xs">
         <span class="text-muted">${i + 1}.</span>
         <span class="font-medium">${zhTeam(r.pr.home_team)} vs ${zhTeam(r.pr.away_team)}</span>
-        <span class="text-muted"> · ${zhLeague(r.pr.league)} · ${ko(r.pr)}</span>${_frzBadgeHtml(r.pr)}
+        <span class="text-muted"> · ${zhLeague(r.pr.league)} · ${ko(r.pr)}</span>${_frzBadgeHtml(r.pr)}${
+          _singleBadge(_legIsHc(r.best)
+            ? r.pr.jc_hc_single_available : r.pr.jc_single_available)}
       </div>
       <div class="text-xs pl-4">${_sweetLegHtml(r.best)}${r.second
         ? `<span class="text-muted"> ｜ ${t('sw_second')}: </span>${_sweetLegHtml(r.second)}` : ''}

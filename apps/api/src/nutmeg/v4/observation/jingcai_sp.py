@@ -324,12 +324,19 @@ def fetch_sp_lookup(
     db_path: str | Path, *, market: str = "had"
 ) -> dict[tuple[str, str, str], tuple]:
     """``{(match_date, home_team, away_team): (jc_home, jc_draw, jc_away, source,
-    handicap_home, captured_at)}`` for one market — lets the dashboard cards PRE-FILL
+    handicap_home, captured_at, single_available)}`` for one market — lets the dashboard cards PRE-FILL
     their 竞彩 SP boxes from the line on file (your market_mode hand-price, else the
     sporttery auto-harvest). ``handicap_home`` is the 让球 line (None for the 1X2 'had'
     market). ``captured_at`` = 该行最后一次捕获时刻(upsert-latest)——2026-07-20 起
     穿到前端做竞彩价年龄标:EV = P(t₁)×SP(t₂),竞彩侧的 t₂ 必须可见,否则旧价会
     静默美化/隐藏 EV(埃尔夫斯堡/库奥皮奥两案)。
+
+    ``single_available`` = 竞彩给不给这场开**单关**(2026-07-25 接前端)。抓了很久
+    却一直没人消费:实测**只有 17% 的场次可单关**,且高度集中 —— 韩职 29% / 瑞超
+    21% / 挪超 13%,而 欧罗巴·芬超·欧冠·巴甲·美职 **0/59 全零**。不显示它,
+    甜区榜就可能把一条你**物理上买不了**的腿排在第一。
+    1=可单关,0=只能串,None=未知(前端不渲染徽章,**不猜**)。
+
     Best-effort: returns ``{}`` on any failure so a card render never breaks."""
     out: dict[tuple[str, str, str], tuple] = {}
     try:
@@ -337,11 +344,11 @@ def fetch_sp_lookup(
             ensure_jingcai_sp_table(conn)
             rows = conn.execute(
                 "SELECT match_date, home_team, away_team, jc_home, jc_draw, jc_away, "
-                "source, handicap_home, captured_at FROM jingcai_sp WHERE market=?",
+                "source, handicap_home, captured_at, single_available FROM jingcai_sp WHERE market=?",
                 (market,),
             ).fetchall()
         for r in rows:
-            out[(r[0], r[1], r[2])] = (r[3], r[4], r[5], r[6], r[7], r[8])
+            out[(r[0], r[1], r[2])] = (r[3], r[4], r[5], r[6], r[7], r[8], r[9])
     except sqlite3.Error:
         logging.getLogger(__name__).warning("fetch_sp_lookup failed", exc_info=True)
     return out
