@@ -63,6 +63,52 @@ def _past_kickoff(kickoff_utc: str | None, *, grace_s: int = _POST_KICKOFF_GRACE
         ko = ko.replace(tzinfo=dt.UTC)
     return dt.datetime.now(dt.UTC) > ko + dt.timedelta(seconds=grace_s)
 
+
+# ── 捕获时 Pinnacle 补录(2026-07-27)────────────────────────────────────────
+# 病情:写本表 86% 行的 cron(cli/ingest_sporttery)读的是竞彩自己的源,手里
+# 根本没有 Pinnacle ⇒ 那些行 psc_* 全空,永远进不了 CLV 账本的**选中腿**计数
+# (选中腿要用捕获时 EV 挑)。实测填充率:竞彩 cron 32/469 = 7%,面板 68/68 = 100%。
+# 而这条线一直躺在 odds_snapshots 里。修在 **sink** 而不是逐生产者打补丁,
+# 以后新增的捕获路径自动带上(体检 altitude 惯例)。
+_PINN_AT_CAPTURE_COLS = ("psc_home", "psc_draw", "psc_away",
+                         "ou_line", "psc_over", "psc_under")
+
+
+def _pinnacle_at_capture(
+    conn: sqlite3.Connection,
+    *,
+    match_date: str,
+    home_team: str,
+    away_team: str,
+    as_of: str,
+) -> tuple | None:
+    """Pinnacle 在 ``as_of``(竞彩捕获那一刻)的线,按 _PINN_AT_CAPTURE_COLS 顺序返回。
+
+    两道闸都是**承重**的:
+
+    1. ``captured_at <= as_of`` —— **绝不取更晚的快照**。账本的选中腿之所以用
+       捕获时 EV 来挑,就是为了让「选择」不含未来信息;把今晚的 Pinnacle 钉到
+       今早的竞彩捕获上,选择就看见了收盘线已经包含的信息,selected-CLV 会从
+       「测量」退化成**循环论证**。这一闸实测只掉 2/433 行,几乎不要钱。
+    2. 非盘中 —— 领先方的滚球线(1.06/…/53.96)曾经污染过姊妹表一次
+       (Mexico-Ecuador,体检 B1)。kickoff_utc 为空(2026-07 前的旧行)无从判断,
+       按 fail-open 保留。
+
+    join 键用 (home, away, 日期±1),**不是 fixture_id**(cron 路径该列全空,见
+    上方 DDL 注释);两侧队名都已过同一套 canonical EN,实测命中 99%。
+    """
+    d0 = str(match_date)[:10]
+    return conn.execute(
+        f"SELECT {', '.join(_PINN_AT_CAPTURE_COLS)} FROM odds_snapshots "
+        "WHERE home_team = ? AND away_team = ? "
+        "AND psc_home > 1 AND psc_draw > 1 AND psc_away > 1 "
+        "AND substr(match_date, 1, 10) BETWEEN date(?, '-1 day') AND date(?, '+1 day') "
+        "AND captured_at <= ? "
+        "AND (kickoff_utc IS NULL OR captured_at < kickoff_utc) "
+        "ORDER BY captured_at DESC LIMIT 1",
+        (home_team, away_team, d0, d0, as_of)).fetchone()
+
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS jingcai_sp (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -243,6 +289,28 @@ def record_jingcai_sp(
                     )
                     return True
                 return False  # user's hand-priced line is canonical; don't clobber
+            # ── 捕获时 Pinnacle 补录(见 _pinnacle_at_capture)────────────────
+            # 三组**各自独立**补:调用方给了的一律不动 —— 面板传来的 psc_* 正是
+            # 用户定价时看着的那条线,比事后查表更权威。只填空缺。
+            # (补上的 O/U 与调用方给的 1X2 可能来自不同时刻,但比旧行 hhad 反推
+            #  退化用「默认总进球」准得多 —— 那是当前 82% 让球行的处境。)
+            # 整段 fail-soft:odds_snapshots 不存在/异常都只跳过补录,绝不让一次
+            # 竞彩捕获因此丢失(本模块契约:NEVER raises out of the capture path)。
+            if psc_home is None or ou_line is None or psc_over is None:
+                try:
+                    _co = _pinnacle_at_capture(
+                        conn, match_date=match_date, home_team=home_team,
+                        away_team=away_team, as_of=now)
+                except sqlite3.Error:
+                    _co = None
+                    log.debug("capture-time Pinnacle co-record skipped", exc_info=True)
+                if _co:
+                    if psc_home is None:
+                        psc_home, psc_draw, psc_away = _co[0], _co[1], _co[2]
+                    if ou_line is None:
+                        ou_line = _co[3]
+                    if psc_over is None:
+                        psc_over, psc_under = _co[4], _co[5]
             conn.execute(
                 "INSERT INTO jingcai_sp (captured_at, source, fixture_id, league, "
                 "match_date, home_team, away_team, kickoff_utc, market, handicap_home, "
@@ -295,6 +363,44 @@ def record_jingcai_sp(
         log.warning("jingcai_sp capture failed for %s vs %s (db=%s)",
                     home_team, away_team, db_path, exc_info=True)
         return False
+
+
+def backfill_jingcai_sp_pinnacle(db_path: str | Path) -> int:
+    """给 sink 补录上线**之前**写下的行补捕获时 Pinnacle,返回补上的行数。
+
+    关键:每一行都用**它自己的 captured_at** 去查 ``_pinnacle_at_capture``,不是
+    用最新快照 —— 所以回填出来的行与「当时就带着补录写下的行」在口径上完全等价,
+    同样不含未来信息。混口径会让账本的选中腿一半干净一半带 look-ahead,那比不补
+    更坏(说不清哪些数能用)。
+
+    幂等:只写 NULL 列(SQL 侧 COALESCE + 只捞有空缺的行),重复跑不改已有值。
+    Fail-soft:任何异常都只记日志返回已补数,绝不抛。
+    """
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.execute("PRAGMA busy_timeout = 3000")
+            ensure_jingcai_sp_table(conn)
+            rows = conn.execute(
+                "SELECT id, match_date, home_team, away_team, captured_at "
+                "FROM jingcai_sp WHERE psc_home IS NULL OR ou_line IS NULL "
+                "OR psc_over IS NULL").fetchall()
+            filled = 0
+            for rid, mdate, home, away, cap_at in rows:
+                co = _pinnacle_at_capture(
+                    conn, match_date=mdate, home_team=home,
+                    away_team=away, as_of=cap_at or "")
+                if not co:
+                    continue
+                conn.execute(
+                    "UPDATE jingcai_sp SET "
+                    + ", ".join(f"{c}=COALESCE({c}, ?)" for c in _PINN_AT_CAPTURE_COLS)
+                    + " WHERE id = ?",
+                    (*co, rid))
+                filled += 1
+            return filled
+    except Exception:  # noqa: BLE001 — 补录是 best-effort,不该让调用方挂掉
+        log.warning("backfill_jingcai_sp_pinnacle failed (db=%s)", db_path, exc_info=True)
+        return 0
 
 
 def _f(v) -> float | None:

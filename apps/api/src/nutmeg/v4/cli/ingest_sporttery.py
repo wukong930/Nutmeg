@@ -195,8 +195,19 @@ def main(argv: list[str] | None = None) -> int:
                     help="也捕获 比分(crs)+总进球(ttg) → jingcai_exotic_sp(长格式)")
     ap.add_argument("--jitter-seconds", type=int, default=0,
                     help="启动前随机等待 0..N 秒(晚间高频窗用:打散固定周期指纹)")
+    ap.add_argument("--backfill-pinnacle", action="store_true",
+                    help="只补历史行的捕获时 Pinnacle(psc_*/O-U)后退出,不抓取")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    # 补录模式:2026-07-27 之前 cron 写的行没带捕获时 Pinnacle(它读竞彩源,
+    # 手里没有 Pinnacle)⇒ 进不了 CLV 账本的选中腿计数。逐行按**该行自己的**
+    # captured_at 回查,口径与新行一致(不含未来信息)。幂等,可重复跑。
+    if args.backfill_pinnacle:
+        from nutmeg.v4.observation.jingcai_sp import backfill_jingcai_sp_pinnacle
+        filled = backfill_jingcai_sp_pinnacle(args.db)
+        print(f"捕获时 Pinnacle 补录: {filled} 行")
+        return 0
 
     # 2026-07-20 — 晚间高频窗(17:00-23:30 每 30 分)的礼貌措施:launchd 的
     # StartCalendarInterval 是**秒级精确**的,24h×N 个完美整点打点是最像机器人的
