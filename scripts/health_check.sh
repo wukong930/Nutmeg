@@ -359,6 +359,33 @@ else
 fi
 
 
+# ===== 14. EV 排序力 (只读研究,永不 gate) =====
+# 「EV 是排序器,还是只是排除器?」按**场**累积(每场结算的比赛都算,不管下没下注)
+# ⇒ 比 ROI 尺子快一个量级:前向已 531 场 / 1,593 腿 vs 实盘 34 注。
+# 主统计量 = 分档 ROI 表(model-free)。⚠️ 千万别把它拟合成一条斜率:1X2 那批实测
+# 是**倒 U**(0–5% 最好、≥5% 最差),直线会把它平均成约零、报「无信号」。
+# ⚠️ 它测**信息**不测**钱**:排序正确 + 12.9% vig,和「每注都亏」可以同时成立。
+# 与 §13 同规矩:**永不影响退出码**。手动:  nutmeg-ev-ranking [--historical]
+section "14. EV 排序力 (只读研究)"
+# 不传 --out ⇒ 用默认路径写全表。本节引用了那个文件,让它总是存在;
+# 只读分析写进 logs/,不碰任何库(§8 那种「cron 写、体检读」的分工在这里不适用 ——
+# 接 cron 要「授权改 cron」,而这份报告本来就该随体检刷新)。
+EVR="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.ev_ranking \
+        --db "$DB" 2>/dev/null)"
+if [[ -z "$EVR" ]]; then
+  note "ev-ranking 无输出(包未装?)— 手动: nutmeg-ev-ranking"
+else
+  # 只取「全部玩法」那一段:每玩法一张表会把体检刷屏,细节留给 logs/ 的报告
+  BLOCK="$(sed -n '/^### 全部玩法/,/^### 1X2/p' <<< "$EVR")"
+  grep -E '^### 全部玩法' <<< "$BLOCK" | sed 's/^### //' | while read -r l; do note "$l"; done
+  grep -E '^\| (全部腿|EV )' <<< "$BLOCK" | sed 's/|/ /g;s/  */ /g;s/^ //' \
+    | while read -r l; do note "$l"; done
+  grep -E '^- \*\*场内对比' <<< "$BLOCK" | sed 's/^- //;s/\*\*//g' \
+    | while read -r l; do note "$l"; done
+  note "⚠️ 测信息不测钱;分档表别拟合斜率(1X2 是倒 U)。全表: logs/ev_ranking_latest.md"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
