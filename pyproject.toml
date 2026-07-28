@@ -92,6 +92,7 @@ nutmeg-predict-report = "nutmeg.v4.cli.predict_report:main"
 nutmeg-jingcai-staleness = "nutmeg.v4.cli.jingcai_staleness:main"
 nutmeg-clv-ledger = "nutmeg.v4.cli.clv_ledger:main"
 nutmeg-ev-ranking = "nutmeg.v4.cli.ev_ranking:main"
+nutmeg-delta-calibration = "nutmeg.v4.cli.delta_calibration:main"
 # Phase 1 测量(只读,不改判闸)—— docs/pair_ev_prereg_2026-07-25.md
 nutmeg-pair-ev-ledger = "nutmeg.v4.cli.pair_ev_ledger:main"
 nutmeg-data-freshness = "nutmeg.v4.cli.data_freshness:main"

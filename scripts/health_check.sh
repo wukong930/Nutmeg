@@ -386,6 +386,31 @@ else
 fi
 
 
+# ===== 15. 让球 δ 校准 (只读研究,永不 gate) =====
+# 起因(2026-07-28):δ₋₁/δ₊₁ 上线 11 天,**没有任何东西在看着它们**,直到 owner
+# 随口一问才测出 δ₊₁ 在自己的拟合人口上 log-loss 变差 −0.0111、两条被修的腿都被
+# 推向错误方向。——「不被问就不会发现」正是它该变成常设仪表的理由。
+# 两块:① 前向校准(裸网格 vs C1 vs 实际,按俱乐部/大赛分)② 功效(δ>2SE 需多少 N)。
+# ⚠️ 与 §13/§14 同规矩:**永不影响退出码**;它也**不改任何 δ**(改预注册常数要
+# owner 口令 + prereg 修订)。手动:  nutmeg-delta-calibration
+section "15. 让球 δ 校准 (只读研究)"
+DCAL="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.delta_calibration \
+         --db "$DB" 2>/dev/null)"
+if [[ -z "$DCAL" ]]; then
+  note "delta-calibration 无输出(包未装?)— 手动: nutmeg-delta-calibration"
+else
+  # log-loss 那行是「修对了吗」的一句话答案。⚠️ 配对前先剔掉「样本太小」的表头 ——
+  # 它们没有 log-loss 行,留着会让 paste 把两个表头错配成一行(实测踩过)。
+  grep -E '^### 让球线|^- 3-way log-loss' <<< "$DCAL" | grep -v '样本太小' \
+    | sed 's/^### //;s/^- //' | paste - - 2>/dev/null | while read -r l; do note "$l"; done
+  grep -E '样本太小' <<< "$DCAL" | sed 's/^### //' | while read -r l; do note "$l"; done
+  # 功效表里「从未确立」的行 —— 这是要 owner 决策的清单
+  grep -E '从未确立' <<< "$DCAL" | sed 's/|/ /g;s/  */ /g;s/^ //' \
+    | while read -r l; do note "⚠️ $l"; done
+  note "全表: logs/delta_calibration_latest.md · 本节只报不判,改 δ 须 owner + prereg"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
