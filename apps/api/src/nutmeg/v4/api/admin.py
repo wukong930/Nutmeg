@@ -178,6 +178,18 @@ _FRESHNESS_ROWS: tuple[tuple[str, str, str], ...] = (
     ("recommendation_sessions", "created_at", "推荐会话 (每日/晨间)"),
 )
 
+#: 「同 cron 的姊妹表」—— 只并进主行的计数说明,**不单独占一行**。
+#: key 是 (主表, 主列) 而不是光主表:wc_predictions 出现两次,只按表名会撞。
+#:
+#: ⚠️ 为什么是 note 不是新行:jingcai_exotic_sp 与 jingcai_sp 由**同一个 cron**
+#: 写、captured_at 逐秒相同 ⇒ 停了会一起停,单独一行零告警价值、只是噪声。
+#: 但不显示它,面板就把这个 cron 的捕获量**低报 13 倍**(551 vs 551+6,981)。
+#: 所以:计数并进来,行数不增。
+_FRESHNESS_COMPANIONS: dict[tuple[str, str], tuple[str, str, str]] = {
+    # 主表/主列          → (姊妹表,             姊妹列,        后缀词)
+    ("jingcai_sp", "captured_at"): ("jingcai_exotic_sp", "captured_at", "异型"),
+}
+
 
 def _data_freshness() -> list[dict]:
     db = os.environ.get("NUTMEG_V4_OBSERVATION_DB", settings.v4_observation_db)
@@ -197,7 +209,19 @@ def _data_freshness() -> list[dict]:
                     # (实测 12 行全部 COUNT(*)==COUNT(col)),只在将来有空值时才分岔。
                     n, last = c.execute(
                         f"SELECT COUNT({col}), MAX({col}) FROM {table}").fetchone()
-                    rows.append({"table": table, "label": label, "rows": n, "last": last})
+                    row = {"table": table, "label": label, "rows": n, "last": last}
+                    comp = _FRESHNESS_COMPANIONS.get((table, col))
+                    if comp:
+                        ct, ccol, word = comp
+                        try:
+                            cn = c.execute(f"SELECT COUNT({ccol}) FROM {ct}").fetchone()[0]
+                            # 姊妹表为 0 行时**不加 note** —— 「+ 0 异型」比不写更糟,
+                            # 它把「这个市场今天没上架」渲染成一个看着像故障的零。
+                            if cn:
+                                row["note"] = f"+ {cn:,} {word}"
+                        except Exception:  # noqa: BLE001 — 姊妹表可能还不存在
+                            pass
+                    rows.append(row)
                 except Exception:  # noqa: BLE001 — table/col may not exist on a fresh DB
                     rows.append({"table": table, "label": label, "rows": None, "last": None})
     except Exception as e:  # noqa: BLE001

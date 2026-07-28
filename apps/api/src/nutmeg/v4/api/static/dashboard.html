@@ -7512,7 +7512,11 @@ function renderAdminRunStatus(j) {
     if (row.error) return `<li class="text-neg">${_admEsc(row.error)}</li>`;
     const n = row.rows == null ? '—' : row.rows;
     const last = row.last ? _admEsc(String(row.last).slice(0, 16).replace('T', ' ')) : '—';
-    return `<li><span class="text-gray-500">${_admEsc(row.label || row.table)}:</span> ${n} ${t('admin_rows_unit')} · ${last}</li>`;
+    // `note` = 同 cron 姊妹表的计数(如竞彩 SP 的「+ 6,981 异型」)。并进主行而不是
+    // 单开一行:同一个 cron 停了会一起停 ⇒ 独立行零告警价值;但不显示就把该 cron 的
+    // 捕获量低报 13 倍。后端只在姊妹表非空时才给 note(见 _FRESHNESS_COMPANIONS)。
+    const note = row.note ? ` <span class="text-gray-400">${_admEsc(row.note)}</span>` : '';
+    return `<li><span class="text-gray-500">${_admEsc(row.label || row.table)}:</span> ${n} ${t('admin_rows_unit')}${note} · ${last}</li>`;
   }).join('');
   rows.push(`<div>
     <span class="text-gray-500">${t('admin_lbl_data')}:</span>
