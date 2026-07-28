@@ -56,16 +56,23 @@ def test_established_flag_is_exactly_delta_gt_2se():
         assert r["lower"] == pytest.approx(r["delta"] - 2 * r["se"])
 
 
-def test_delta_p1_is_currently_flagged_as_not_established():
-    """现状留痕:δ₊₁ 是在 t=1.19、下界为负的情况下上线的。
+def test_delta_p1_established_after_v1_9_partial_pooling():
+    """现状留痕(v1.9 后)。**这条测试上一版红过一次,而那是它该做的事。**
 
-    ⚠️ 这条**不是**在断言「δ₊₁ 永远该是 0.016」—— 若 owner 走 prereg 改了它,
-    这条测试会红,那正是提示「现状记录要更新」,不是提示代码坏了。
+    v1.8 时它叫 `test_delta_p1_is_currently_flagged_as_not_established`,断言
+    δ₊₁ 未确立(t=1.19、下界为负),docstring 写着「若 owner 走 prereg 改了它,
+    这条会红,那正是提示现状记录要更新」。2026-07-28 owner 授权部分合并后它如期
+    变红 —— 绊线按设计工作,故随现状更新而非删除。
+
+    ⚠️ 「已确立」在这里指 **δ > 2·SE(判闸下界为正)**,它**借用了可交换性假设**
+    (同源性检验只有 26% 功效)。别把这条测试读成「+1 的偏差已被独立证实」。
     """
     row = next(r for r in power_table() if r["leg"] == "+1 让负")
-    assert not row["established"], (
-        "δ₊₁ 变成「已确立」了 —— 若是 owner 经 prereg 调整了 δ/SE,更新本测试的注记")
-    assert row["t"] < 2.0
+    assert row["established"], "v1.9 收缩后 δ₊₁ 的判闸下界应转正;若又变负,查 prereg v1.9"
+    assert row["t"] > 2.0
+    # −1 一直是确立的,收缩后仍必须是 —— 收缩不该把好的那条弄坏
+    m1 = next(r for r in power_table() if r["leg"] == "−1 让胜")
+    assert m1["established"] and m1["t"] > 2.0
 
 
 def test_small_slices_are_skipped_not_interpreted():
