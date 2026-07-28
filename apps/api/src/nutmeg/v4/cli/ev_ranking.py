@@ -217,6 +217,20 @@ def render(matches: list[dict], *, title: str, caveat: str = "") -> str:
         label = "全部玩法" if mk is None else {"had": "1X2", "hhad": "让球"}[mk]
         out.append(f"### {label} — {len(sub)} 场 / {len(sub) * 3} 腿")
         out.append("")
+        if mk == "hhad":
+            # 两个玩法的 P 不是同一种东西,合读会出错:
+            #  · 1X2  = Pinnacle 三元组直接 WPO 去vig(一步)
+            #  · 让球 = 从 1X2 + O/U 反推比分网格再切让球线(_hhad_cover_p,多一层建模误差)
+            # 且本仪表按既有惯例走 **raw**(implied_handicap_lines 的 c1=False
+            # ——「serving path 用 c1=True;eval/measurement keeps raw」)。
+            # 尺子里不该烘焙进一个拟合出来的修正,否则是拿被评估对象评估自己。
+            # 代价必须说清:面板把 δ₋₁=0.046 从让胜移到让平(−1 线占让球盘 59%),
+            # 所以**本表的让胜 EV 比面板高、让平 EV 比面板低**,SP≈2.5 时量级 ~±11pp。
+            out.append("> ⚠️ 让球的 P 是从 1X2+O/U **反推**的(比 1X2 多一层建模误差),")
+            out.append("> 且按测量惯例走 **raw、不含 δ 校准**(面板走 `c1=True`)。")
+            out.append("> ⇒ 本表让胜 EV 比面板**高**、让平 EV 比面板**低**(δ₋₁=0.046,")
+            out.append("> −1 线占让球盘 59%,SP≈2.5 时约 ±11pp)。**别和面板的数直接对**。")
+            out.append("")
         out.append("| EV 档 | N | 实际 ROI | ±2SE |")
         out.append("|---|---:|---:|---:|")
         for name, n, roi, se in bands_table(sub):
