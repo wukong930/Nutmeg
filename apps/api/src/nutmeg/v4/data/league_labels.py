@@ -66,6 +66,66 @@ TRAINED_LEAGUES_CN: frozenset[str] = frozenset({
     "意甲", "意乙", "法甲", "法乙", "荷甲", "葡超", "日职",
 })
 
+# ── 「国内俱乐部联赛」谓词(prereg v1.8 §2 P3,2026-07-27)────────────────────
+# 为什么要在这里加:δ₋₂ 的 P3 检验必须**只用俱乐部联赛计数** —— δ 是在国内联赛
+# (football-data 各国 CSV + 皇冠)上拟合的,大赛不在那个人口里。实测教训:
+# 2026-07 捕到的 15 场 −2 里 **10 场是世界杯**,而世界杯小组赛的实力悬殊场次
+# 血洗率异常(5-0/5-0/4-0),拿它们验 δ₋₂ 等于在另一个人口上验。
+#
+# ⚠️ **不能裸用 `competitions.competition_type_of`** —— 它只认 EN code。本表的
+# league 列是**双轨**的(cron 写中文占 86%),中文标签进去会对**所有东西**返回
+# "league",世界杯/欧冠/欧罗巴全部被静默算成联赛。我差点就这么写了。
+#
+# 设计:**allowlist + fail-CLOSED**。分组用的 `canonical_league` 是 fail-open
+# (不丢组),但**计数一个预注册人口时 fail-open 是错的** —— 一个没见过的标签
+# 宁可不计,也不能默认当联赛混进去。新联赛出现时它会掉出计数,这是**响亮的
+# 少数**(N 涨得比预期慢),不是静默污染。
+_NON_DOMESTIC_CN: frozenset[str] = frozenset({
+    "世界杯", "欧洲杯", "美洲杯", "亚洲杯", "非洲杯", "世预赛", "欧国联",  # 国家队
+    "欧冠", "欧罗巴", "欧协联",                                           # 洲际俱乐部杯
+})
+
+#: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。
+DOMESTIC_LEAGUES_CN: frozenset[str] = frozenset(
+    set(_EN_TO_CN.values()) | set(_CN_SYNONYM.values())
+) - _NON_DOMESTIC_CN
+
+
+def classify_league(label: str | None) -> str:
+    """``'domestic'`` | ``'excluded'`` | ``'unknown'`` —— P3 计数的三态判定。
+
+    **三态而非布尔**,因为两种「不计入」的后果完全不同:
+      · ``excluded`` = 已知的大赛/洲际杯 → 本来就该排除,静默即可
+      · ``unknown``  = 没见过的标签 → **必须被报出来**。丹超(DNK_SUPERLIGA)
+        就是活例:它是国内联赛、竞彩也上架,但 ``_EN_TO_CN`` 没收录中文缩写
+        ⇒ cron 写的中文行会掉出计数。悄悄少算 N 和悄悄混入错人口一样坏。
+
+    双轨:EN code 走 V4 竞赛注册表(``CUP_COMPETITIONS`` 列全了杯赛/国家队);
+    中文走 allowlist —— ⚠️ **中文绝不能裸用 `competition_type_of`**,它只认 EN,
+    中文进去会对**所有东西**返回 ``"league"``,世界杯/欧冠会被算成联赛(实测)。
+    """
+    from nutmeg.v4.data.competitions import CUP_COMPETITIONS, competition_type_of
+
+    s = str(label or "").strip()
+    if not s:
+        return "unknown"
+    if s.isascii() and s.isupper():                 # EN code 轨
+        if s in CUP_COMPETITIONS:
+            return "excluded"
+        return "domestic" if competition_type_of(s) == "league" else "excluded"
+    cn = canonical_league(s)                        # 中文轨
+    if cn in _NON_DOMESTIC_CN:
+        return "excluded"
+    return "domestic" if cn in DOMESTIC_LEAGUES_CN else "unknown"
+
+
+def is_domestic_club_league(label: str | None) -> bool:
+    """P3 计数是否计入该标签。``unknown`` 一律**不计入**(fail-closed)——
+    与 `canonical_league` 的 fail-open **故意相反**:那个给分组用(丢组比多组坏),
+    这个给**预注册计数**用(混入错人口比少算坏)。用 `classify_league` 看清原因。
+    """
+    return classify_league(label) == "domestic"
+
 
 def canonical_league(label: str | None) -> str:
     """RAW league label (any writer's vocabulary) → canonical CN abbrev.
