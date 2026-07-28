@@ -133,6 +133,52 @@ def _cron_status() -> dict:
         return {"loaded": 0, "expected": 0, "error": str(e)}
 
 
+# ⚠️ 选表的判据是「**这个 cron 停了,面板会不会红**」,不是「这张表大不大」。
+# 2026-07-29 审计:23 个 cron、面板只覆盖 7 张表 —— 下面 6 行是补上的
+# **静默失速盲区**,每一行对应一个此前无人代表的 cron。
+#
+# ⛔ 有意**不**加的:
+#   · jingcai_exotic_sp(6,981 行,量最大)—— 与 jingcai_sp **同一个 cron**、
+#     captured_at 逐秒相同,停了会一起停 ⇒ 零额外告警价值,不占一行。
+#     ⚠️ **但它留下一个未修的口径问题**:面板「竞彩 SP 捕获 551 条」而同一批
+#     实际还落了 6,981 条异型盘(比分/总进球/半全场)= **捕获量低报 13×**。
+#     修法(把两数并进同一行)是显示改动,owner 定,尚未做。
+#   · pinnacle_close_history / crown_close_history —— 由 scripts/backfill_*.py
+#     写、**没有 cron**。静态档案,进「新鲜度」= 永久假红。
+#   · settlements / single_predictions / parlay_recommendations —— 实盘台账,
+#     陈旧是**因为空仓**不是故障。混进本节会被读成告警。
+#   · data/external/* 的 parquet(clubelo_national / cup_* 停在 05-25)——
+#     要加必须先带「预期更新频率」,否则休赛期全变红、人就学会忽略本节
+#     (`clubelo-selfdestruct-and-authoritative-endpoint`:休赛期不动≠陈旧)。
+_FRESHNESS_ROWS: tuple[tuple[str, str, str], ...] = (
+    ("odds_snapshots", "captured_at", "Pinnacle 线史 (CLV 地基)"),
+    ("jingcai_sp", "captured_at", "竞彩 SP 捕获 (软水)"),
+    ("jingcai_vote", "captured_at", "竞彩 散户支持比例 (软水)"),
+    ("league_predictions", "recorded_at", "模型盘预测日志"),
+    ("wc_predictions", "recorded_at", "WC 模型预测"),
+    ("polymarket_gaps", "recorded_at", "Polymarket 错价缺口 (只读测量)"),
+    # ── P0:停了下游全部静默中毒 ──────────────────────────────
+    # match_outcomes 是**唯一的赛果入口**(daily_settle)。它停了,上面所有
+    # 捕获行照常绿,但 CLV 账本 / EV 排序 / δ 校准 / 抽水分解全部冻在旧结果
+    # 上 —— 而且**不报错,只是 N 不涨**。与 score_ev_flags 同一种失效形状。
+    ("match_outcomes", "recorded_at", "赛果结算 (下游所有测量的地基)"),
+    # ⚠️ 同表第二行、**不同列**:daily_wc_settle 此前完全没有代表 ——
+    # recorded_at 只在「有新预测」时动,WC 停办后它必然陈旧,于是结算 cron
+    # 是死是活看不出来。实测 settled_at=今天 而 recorded_at=07-19。
+    ("wc_predictions", "settled_at", "WC 结算 (daily_wc_settle)"),
+    # ── P1:独立 cron,主表遮不住 ─────────────────────────────
+    # 晚间跟盘窗(17:00-23:00,sporttery_evening)与晨批是**两个 cron**。
+    # 实测 jingcai_sp=15:15 而 jingcai_sp_snapshots=14:02 —— 晚间窗停了,
+    # 上面「竞彩 SP 捕获」照样今天。而那个窗存在的理由是
+    # 「临停售调价才是 EV 杀手」(`jingcai-batch-opening-morning-release`)。
+    ("jingcai_sp_snapshots", "captured_at", "竞彩 SP 晚间跟盘 (freeze-gap)"),
+    ("jingcai_vote_snapshots", "captured_at", "竞彩 支持率晚间跟盘"),
+    # 周任务、量小(9 行),但它是 **artifact 校正路径的唯一心跳**。
+    ("calibration_journal", "recorded_at", "周度校准日志 (artifact 校正)"),
+    ("recommendation_sessions", "created_at", "推荐会话 (每日/晨间)"),
+)
+
+
 def _data_freshness() -> list[dict]:
     db = os.environ.get("NUTMEG_V4_OBSERVATION_DB", settings.v4_observation_db)
     rows = []
@@ -142,16 +188,15 @@ def _data_freshness() -> list[dict]:
         # "DB fine but 0 rows" (masked misconfig). mode=ro raises instead —
         # same posture as the score_ev_forward probe below.
         with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as c:
-            for table, col, label in [
-                ("odds_snapshots", "captured_at", "Pinnacle 线史 (CLV 地基)"),
-                ("jingcai_sp", "captured_at", "竞彩 SP 捕获 (软水)"),
-                ("jingcai_vote", "captured_at", "竞彩 散户支持比例 (软水)"),
-                ("league_predictions", "recorded_at", "模型盘预测日志"),
-                ("wc_predictions", "recorded_at", "WC 模型预测"),
-                ("polymarket_gaps", "recorded_at", "Polymarket 错价缺口 (只读测量)"),
-            ]:
+            for table, col, label in _FRESHNESS_ROWS:
                 try:
-                    n, last = c.execute(f"SELECT COUNT(*), MAX({col}) FROM {table}").fetchone()
+                    # ⚠️ `COUNT(col)` 不是 `COUNT(*)` —— 数的是**该列非空**的行。
+                    # 对 wc_predictions/settled_at 这种「同表不同列」的行是承重的:
+                    # COUNT(*) 会把**未结算**的比赛也算进「WC 结算」,虚报进度。
+                    # 现有各表的时间列都在 insert 时写入 ⇒ 换了之后**当下零变化**
+                    # (实测 12 行全部 COUNT(*)==COUNT(col)),只在将来有空值时才分岔。
+                    n, last = c.execute(
+                        f"SELECT COUNT({col}), MAX({col}) FROM {table}").fetchone()
                     rows.append({"table": table, "label": label, "rows": n, "last": last})
                 except Exception:  # noqa: BLE001 — table/col may not exist on a fresh DB
                     rows.append({"table": table, "label": label, "rows": None, "last": None})
