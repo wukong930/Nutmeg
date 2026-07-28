@@ -10,15 +10,31 @@ probability range, the bar must rise for low P (high SP):
     threshold(P) = base + z · σ_P · league_factor · SP      (SP defaults to 1/P)
 
 Measured calibration (28k Pinnacle 1X2 open→close + odds_snapshots line history):
-  - σ_P ≈ 1.2pp at 竞彩's 12–24h freeze gap (range 0.4pp near-close … 2.5pp open).
   - league_factor spread only 1.39× (soft/lower leagues noisier, ~2.3pp vs ~1.7pp).
   - ⇒ sweet (SP~2.5) bar ~8%, deep longshot (SP~12.5) bar ~20% at z=1.
 
-A-3 影子模式(2026-07-23,docs/a3_shadow_mode_2026-07-23.md)把上面那个「σ_P ≈ 常数」
+A-3 影子模式(2026-07-23,docs/a3_shadow_mode_2026-07-23.md)把原来的「σ_P ≈ 常数」
 换成了 A-1 实测的**曲线** σ_P(h)=A·h^B —— 见 ``sigma_p_at``。
-⚠️ **两次测量在 12-24h 处对不上**:本文件原注(06-26)说该缺口 σ_P≈1.2pp,而 A-1
-(07-18,直接拟合 75 条线史轨迹)的曲线在 12-24h 给 1.7-2.1pp,1.2pp 其实落在 h≈4h。
-按新压旧取 A-1,但**这个分歧没有被调查过** —— 别把两处数字当同一次测量引用。
+
+⭐ σ_P 溯源(2026-07-28 **已调查并更正**,docs/sigma_p_reconciliation_2026-07-28.md)
+
+本文件曾挂着一条警告:06-26 说竞彩封盘缺口 σ_P≈1.2pp,A-1 曲线在 12-24h 给
+1.7-2.1pp,而该分歧当时未查。**现在查完了 —— 两次测量并不冲突**:
+
+  ① **参照点不同,不是结论不同。** 06-26 的参考线在开赛前 ~9.5h(其文档自己标为
+     「vs 真收盘的**下界**」),A-1 要求近收盘锚 ≤1.5h。同一个 σ_P(h) 符号,一个
+     量 [9.5h→h] 的漂移、一个量 [1.5h→h] 的漂移。对账
+     σ_06-26(h)² ≈ σ_A1(h)² − σ_A1(9.5h)² 在 12.5h / 19.5h 给比值 0.87× / 1.17×
+     (夹住 1.0)⇒ 那个 1.42× 被参照点解释掉了。
+  ② **「竞彩 12-24h 封盘」这个前提本身是错的。** A-1 §C 实测缺口分布:
+     **中位 3.0h / p75 6.5h / p90 8.7h**,16-30h 桶只占 0.7%。06-26 读错了自己的行。
+  ③ **三个错互相抵消**:下界曲线(低估 ~1.5×)× 读错行(高估 ~1.6×)× 文档说要加的
+     0.8pp 参考线残差从没进代码。净结果 —— 下面的 SIGMA_P **数值站得住,但原来那套
+     推导每一步都是错的**。溯源见 ``SIGMA_P`` 行注。
+
+⚠️ 通用教训:原警告里写着「1.2pp 其实落在 h≈4h」——**它把答案写出来了却读成了问题**。
+h≈4h 不是异常,那就是真实的封盘缺口。**发现两个数对不上,先问它们量的是不是同一个
+东西,再问谁错了。**
 
 STATUS: 仍是 DISPLAY-ONLY — NOT wired into the live +EV gate (that is a deliberate
 betting-rule change). The dashboard shows this side-by-side with the flat 5% so
@@ -28,11 +44,22 @@ from __future__ import annotations
 
 # Measured defaults — see the doc above. Override per call as data sharpens.
 BASE_THRESHOLD = 0.05      # the legacy flat +5% bar
-SIGMA_P = 0.012            # σ of the de-vig fair-P estimate at 竞彩 freeze (~1.2pp)
+# SIGMA_P —— 拿不到开球时刻时的回落常数。
+# ⭐ **溯源已于 2026-07-28 更正**:它**不是**「06-26 测出的 12-24h 封盘 σ_P」——
+# 那个缺口不存在(A-1 §C 实测中位 3.0h / p75 6.5h,16-30h 桶仅 0.7%)。
+# ⚠️ **而且这个值已知偏低,只是还没到改的时候。** 同日 held-out 验证(187 条 07-19
+# 起累积的轨迹,方法对齐 A-1)显示 A-1 曲线在 **h<4h 低估 1.5-2.5×** —— 而短端
+# 正是竞彩的人口重心。在实测中位缺口 3.0h 处:
+#     A-1 曲线 1.11pp · **本常数 1.20pp** · 我们全样本 1.41pp · held-out 1.73pp
+# ⇒ **偏低约 1.2-1.4×,方向 fail-open(门槛显示得比该有的松)。**
+# 根因是曲线形状:纯幂律无地板项,近端被硬拉向 0。正确形状 √(floor²+drift(h)²)。
+# **修法 = 重拟合带地板的曲线,须走预注册**(docs/sigma_p_reconciliation_2026-07-28.md
+# §5b/§8)。在那之前**不要**单独动这个数 —— 它和 sigma_p_at 必须同源。
+SIGMA_P = 0.012
 Z_CONFIDENCE = 1.0         # one-sided multiplier (1.0≈84%, 1.65≈95%) for true-EV>0
 
 # ── A-3 影子模式:σ_P 随「距开球还有多久」变化 ───────────────────────────────
-# 上面那个 SIGMA_P=1.2pp 是**单点**常数(≈h 4h 的水平)。A-1 实测(2026-07-18,
+# 上面那个 SIGMA_P 是**单点**常数(≈ 曲线在 h≈4h 处的值)。A-1 实测(2026-07-18,
 # docs/freeze_gap_measurement_2026-07-18.md)给出的是曲线:σ_P(h) = A·h^B。
 # 固定值的代价:凌晨场(缺口 6h+,占 41%)被低估、临近开球被高估。
 #   同前端 dashboard.html 的 _FRZ_COEF —— 改一处必须改两处(见 test_ev_threshold)。

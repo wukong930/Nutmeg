@@ -1865,10 +1865,20 @@ function _evRelTier(p) {
 }
 // B2 — variance-adjusted EV bar (MIRRORS model/ev_threshold.py — keep in sync).
 // threshold(P) = base + z·σ_EV,σ_EV = σ_P·SP,所以冷腿的门槛自然抬高。
-// A-3 影子模式(2026-07-23):σ_P 原本是钉死的 1.2pp(≈h 4h 的水平),现在改成
-// **调用方给的 σ_EV**(``sigmaEv`` = σ_P(h)·SP,由 _frzHalfEv/2 得来)——
-// 于是同一行显示的 ± 带与门槛出自**同一个 σ**,不可能各说各话。拿不到开球时刻
-// 的老调用点传 null → 回落 1.2pp × 公允 SP,与改动前逐字节一致。
+// A-3 影子模式(2026-07-23):σ_P 原本是钉死的 1.2pp,现在改成**调用方给的 σ_EV**
+// (``sigmaEv`` = σ_P(h)·SP,由 _frzHalfEv/2 得来)—— 于是同一行显示的 ± 带与门槛
+// 出自**同一个 σ**。拿不到开球时刻的调用点 → 回落 1.2pp × 公允 SP。
+// ⭐ 1.2pp 的溯源已于 2026-07-28 更正(docs/sigma_p_reconciliation_2026-07-28.md):
+// 它不是「12-24h 封盘缺口的 σ_P」(那个缺口不存在,实测中位 3.0h),站得住的读法是
+// **A-1 曲线在实测中位缺口附近的值**(0.012 反解 → h≈3.9h)。
+// ⚠️ 同日 held-out(187 条 07-19 起轨迹)显示 A-1 曲线在 **h<4h 低估 1.5-2.5×**,
+// 而短端正是竞彩人口重心(缺口中位 3.0h)⇒ **1.2pp 偏低约 1.2-1.4×,fail-open**。
+// 根因是纯幂律没有地板项;修法=重拟合 √(floor²+drift²),须预注册。别单独动这个数。
+// ⚠️ **上面那句「同一个 σ」在回落路径上不成立**:_frzHalfEv 拿不到开球时刻(或已
+// 开球)时返回 0 ⇒ _frzBandHtml 因 frz=0 **不渲染 ± 带**,而这里照样用 1.2pp 算门槛
+// —— 带说「没有不确定性」、门槛说「有 1.2pp」,正是这句注释声称不会发生的事。
+// 触发面小(近 30 天 odds_snapshots 缺 kickoff 2.6%、jingcai_sp 0%),但是真的。
+// 修法(h 缺失 vs 已开球分开处理、两者共用同一个 σ)= 行为变更,须 owner 口令。
 // ⭐仍是 DISPLAY-ONLY:并排显示在 +5% 旁,**不判闸、不选注、不进 Kelly**。
 function _evVarThreshold(p, sigmaEv = null, base = 0.05, z = 1.0, lf = 1.0) {
   if (!(p > 0 && p < 1)) return base;

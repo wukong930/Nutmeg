@@ -119,3 +119,51 @@ def test_frontend_mirrors_the_same_coefficients():
     for leg, (a, b) in FREEZE_SIGMA_COEF.items():
         assert re.search(rf"{leg}:\s*\[{a},\s*{b}\]", m.group(1)), f"{leg} 系数不一致"
     assert f"Math.max(h, {MIN_HOURS})" in html, "前端 h 下界与 MIN_HOURS 不一致"
+
+
+# ── σ_P 溯源(2026-07-28 调查后钉死)────────────────────────────────────────
+#: A-1 §C 实测的竞彩停售→开球缺口分布(涓流史 8,139 场 × football-data,
+#: 比分硬闸,窗口内 N=3,461)。⚠️ **不是** 06-26 假设的 12–24h —— 那个桶只占 0.7%。
+_MEASURED_FREEZE_GAP_H = {"median": 3.0, "p75": 6.5, "p90": 8.7, "overnight_median": 6.0}
+
+
+def test_sigma_p_constant_matches_the_measured_freeze_gap_not_the_12_24h_myth():
+    """⭐ `SIGMA_P` 的**溯源**锁 —— 数值不锁死,锁的是它必须落在实测缺口的量级上。
+
+    2026-07-28 调查(docs/sigma_p_reconciliation_2026-07-28.md)推翻了旧溯源:
+    06-26 把 1.2pp 归给「竞彩 12–24h 封盘」,但 A-1 §C 实测中位缺口只有 **3.0h**,
+    16–30h 桶占 0.7% —— 那个前提不存在,06-26 是从自己表里读错了行。
+
+    站得住的读法:`SIGMA_P` ≈ **A-1 曲线在实测封盘缺口区间内**的值。本测试断言它
+    落在 [中位 3.0h, p90 8.7h] 对应的 σ 区间里 —— 谁把它改回「12–24h 的 1.7–2.1pp」
+    就会红,谁把它调到实测缺口之外也会红。
+    """
+    lo = sigma_p_at(_MEASURED_FREEZE_GAP_H["median"], "H")
+    hi = sigma_p_at(_MEASURED_FREEZE_GAP_H["p90"], "H")
+    assert lo < hi, "测试前提:σ 随缺口单调增"
+    assert lo <= SIGMA_P <= hi, (
+        f"SIGMA_P={SIGMA_P} 落到了实测封盘缺口 [3.0h,8.7h] → [{lo:.5f},{hi:.5f}] 之外。"
+        "改它须走预注册,见 docs/sigma_p_reconciliation_2026-07-28.md §8")
+
+
+def test_the_12_24h_gap_would_give_a_visibly_larger_sigma():
+    """反向锁:证明「12–24h」确实是个**不同**的答案,不是同一个数的另一种说法。
+
+    若哪天有人「统一口径」把常数改成 12–24h 档,这条会红并指回调查文档 ——
+    那不是统一,那是把已经证伪的前提又装回去。
+    """
+    myth = sigma_p_at(12.0, "H")
+    assert myth > SIGMA_P * 1.3, "12h 处的 σ 应显著大于回落常数(实测约 1.71pp vs 1.2pp)"
+    assert sigma_p_at(24.0, "H") > myth
+
+
+def test_provenance_note_is_present_in_the_module_docstring():
+    """溯源写在代码里,不只写在文档里 —— 文档会被绕过,docstring 不会。
+
+    ⚠️ 这条钉的是「更正过的溯源仍在」,不是措辞。旧的「这个分歧没有被调查过」
+    必须已经消失,否则下一个人还会照着错的溯源改数。
+    """
+    import nutmeg.v4.model.ev_threshold as M
+    doc = M.__doc__ or ""
+    assert "sigma_p_reconciliation_2026-07-28" in doc, "更正后的调查文档链接丢了"
+    assert "这个分歧没有被调查过" not in doc, "旧的未调查警告又回来了"
