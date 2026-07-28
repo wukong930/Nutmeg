@@ -51,12 +51,22 @@ def test_c1_shifts_line_plus1_mirror_conserving():
 
 
 def test_c1_leaves_other_lines_and_default_untouched():
+    """C1 只碰**已校准**的线:±1(v1.7 A′)+ −2(v1.8 δ₋₂,owner 口令 2026-07-27)。
+
+    ⚠️ 本测试原先断言「只 ±1 变」。2026-07-27 owner 授权部署 δ₋₂ 后 −2 也在被
+    校正之列 —— 这是**有意的行为变更**,不是放松断言。+2 依然不动(两锚量级差
+    一倍、N≈40 钉不住,prereg v1.8 §0 明写「+2:不部署数字」),下面单独钉死。
+    """
     args = (0.55, 0.25, 0.20)
     raw = _by_line(implied_handicap_lines(*args))
     c1 = _by_line(implied_handicap_lines(*args, c1=True))
+    calibrated = (-1, 1, -2)
     for ln in raw:
-        if ln not in (-1, 1):                          # 只 ±1 变(−1 让胜 / +1 让负)
-            assert c1[ln] == pytest.approx(raw[ln])
+        if ln not in calibrated:
+            assert c1[ln] == pytest.approx(raw[ln]), f"线 {ln} 未校准,不该被碰"
+    for ln in calibrated:
+        if ln in raw:
+            assert c1[ln] != pytest.approx(raw[ln]), f"线 {ln} 已校准,应当被碰"
     assert _by_line(implied_handicap_lines(*args)) == raw  # 默认 c1=False = raw(不动 eval)
 
 
@@ -95,10 +105,21 @@ def test_lower_bounds_shift_only_the_two_corrected_legs():
     assert lo1[2] == pytest.approx(0.28 - dp)
 
 
-def test_lower_bounds_identity_off_the_pm1_lines():
-    # C1 不碰的线 → 没有 δ,下界 = 点估(前端 `?? 点估` 也依赖这个语义)
-    for ln in (-3, -2, 0, 2, 3):
-        assert c1_leg_lower_bounds(ln, 0.4, 0.3, 0.3) == pytest.approx((0.4, 0.3, 0.3))
+def test_lower_bounds_identity_only_on_the_zero_line():
+    """⚠️ 2026-07-27 **有意的行为变更**(prereg v1.8 §3),不是放松断言。
+
+    本测试原先断言「C1 不碰的线 → 下界 = 点估」。那个语义是个**符号反了的 bug**:
+    `se=0` 不只是「不修正」,它同时把 ① 前端 ± 带 `hypot(dHalf=0, frz)` 拉**窄**、
+    ② 判闸 `evLo>=minEv` 变成直接拿点估过闸 —— **越不可信的线越容易变绿**。
+
+    现在:0 线(无让球切分偏差可言)才是恒等;±1/−2 用各自实测 SE;其余未校准线
+    吃地板 SE(借 +2 实测 ±7.82pp),下界一律严格低于点估。
+    """
+    assert c1_leg_lower_bounds(0, 0.4, 0.3, 0.3) == pytest.approx((0.4, 0.3, 0.3))
+    for ln in (-3, -2, 2, 3):
+        lo = c1_leg_lower_bounds(ln, 0.4, 0.3, 0.3)
+        assert all(x < y for x, y in zip(lo, (0.4, 0.3, 0.3), strict=True)), (
+            f"线 {ln} 的下界又等于点估了 —— 那个反转回来了")
 
 
 def test_lower_bounds_are_not_a_distribution():

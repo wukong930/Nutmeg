@@ -198,6 +198,33 @@ _C1_DELTA_SE = 0.010       # SE(δ₋₁),N=1,882
 _C1_DELTA_P1_SE = 0.0135   # SE(δ₊₁),N=1,044
 _C1_SE_K = 2.0             # 判闸用的保守倍数(≈95% 单侧)
 
+# ── δ₋₂(−2 线)—— prereg v1.8 / owner 口令 2026-07-27 ─────────────────────
+# 测量:docs/handicap_delta2_measurement_2026-07-20.md(N=340,fd+皇冠双锚同向,
+# 时代切片同向 2021-23 +3.5 / 2024+ +7.5,SE 内)。
+#   让胜(净胜 3+ 深尾)实测 **+6.4±2.5pp 高估** → 校正 −0.064
+#   让负                 实测 −4.3±2.7pp 低估 → 校正 +0.043
+#   让平                 守恒残差 +0.021 —— 而这**恰好等于**它自己的点估
+#                        (实测 −2.1±2.3,自身跨零故文档写「不动」;但三腿必须
+#                         守恒,残差总得落地,两条独立理由指向同一个数)。
+# 守恒:−0.064 + 0.043 + 0.021 = 0.000 ⇒ 仍是合法概率三元组,可用于展示。
+# 危险度:该腿 P̄≈39%(**甜区**)、中位 SP 2.43 ⇒ 幻影 EV +12~20%,而 ±1 深尾
+# (P 15-20%)有冷门门槛拦 —— 这条腿此前**任何护栏都不覆盖**。
+_C2_DELTA_H = 0.064        # −2 让胜:P − δ
+_C2_DELTA_A = 0.043        # −2 让负:P + δ
+_C2_DELTA_D = 0.021        # −2 让平:P + δ(守恒残差,= 自身点估)
+_C2_SE_H, _C2_SE_A, _C2_SE_D = 0.025, 0.027, 0.023
+
+# ── 未校准线的**下界地板**(+2 / ±3 / 更深)—— prereg v1.8 §3 ─────────────
+# ⚠️ **+2 不出点估校正**:fd 让胜 −14.80±7.82 vs 皇冠 −2.93±7.77 —— 方向同、
+# 量级差一倍、N≈40,测量文档明写「+2:不部署数字」。编一个常数比缺常数更坏。
+# 但 se=0 的老写法有个**符号反了**的副作用(prereg §3):下界=点估 ⇒ ① 前端
+# ± 带 hypot(dHalf=0, frz) 反而**变窄**,② 判闸 `evLo>=minEv` 直接拿点估过 ——
+# **越不可信的线越容易变绿**。所以:不猜点估,但下界按地板 SE 拉宽。
+# 0.078 = +2 两锚实测 SE 的较大者(fd ±7.82),是**实测量级不是猜测**;用在
+# ±3+ 上是**借来的**(±3+ 从未测过),家族病灶随深度只会更大 ⇒ 借用属保守方向。
+# ⚠️ 秋季 P1 回填后必须重测,不许当永久常数。
+_UNCAL_SE = 0.078
+
 
 def c1_leg_lower_bounds(
     line: int, p_home: float, p_draw: float, p_away: float, *, k: float = _C1_SE_K,
@@ -212,13 +239,23 @@ def c1_leg_lower_bounds(
     ⚠️ **返回值不是概率分布**(和 < 1)—— 它是三个独立的单腿下界,**只用于判闸**,
     绝不可用于展示/归一化/喂模型。展示请用点估(``implied_handicap_lines(c1=True)``)。
     """
-    se = _C1_DELTA_SE if int(line) == -1 else (_C1_DELTA_P1_SE if int(line) == 1 else 0.0)
-    if se == 0.0:
-        return float(p_home), float(p_draw), float(p_away)
-    d = k * se
-    if int(line) == -1:      # C1 碰了 让胜 + 让平
+    ln = int(line)
+    if ln == -1:             # C1 碰了 让胜 + 让平;让负是锚,无 δ 误差
+        d = k * _C1_DELTA_SE
         return max(p_home - d, 0.0), max(p_draw - d, 0.0), float(p_away)
-    return float(p_home), max(p_draw - d, 0.0), max(p_away - d, 0.0)   # +1:让平 + 让负
+    if ln == 1:              # 镜像:让平 + 让负
+        d = k * _C1_DELTA_P1_SE
+        return float(p_home), max(p_draw - d, 0.0), max(p_away - d, 0.0)
+    if ln == -2:             # δ₋₂(prereg v1.8)—— 三腿全被碰,逐腿用**自己的** SE
+        return (max(p_home - k * _C2_SE_H, 0.0),
+                max(p_draw - k * _C2_SE_D, 0.0),
+                max(p_away - k * _C2_SE_A, 0.0))
+    if abs(ln) >= 2:         # 未校准线(+2 / ±3 / 更深)—— 不猜点估,但拉宽下界
+        # 老写法在这里返回点估(se=0),等于「没测过校准」被当成「没有不确定性」:
+        # 前端 ± 带反而变窄、判闸门槛反而更低。见 prereg v1.8 §3。
+        d = k * _UNCAL_SE
+        return (max(p_home - d, 0.0), max(p_draw - d, 0.0), max(p_away - d, 0.0))
+    return float(p_home), float(p_draw), float(p_away)   # 0 线:无让球偏差可言
 
 
 def implied_handicap_lines(
@@ -259,6 +296,16 @@ def implied_handicap_lines(
         elif c1 and int(line) == 1:           # 热门在客:让负(DC 高估)→ 让平(镜像)
             shift = min(_C1_DELTA_P1, pa)
             pa, pd_ = pa - shift, pd_ + shift
+        elif c1 and int(line) == -2:          # δ₋₂(prereg v1.8):让胜 → 让平 + 让负
+            # 守恒:−0.064 + 0.021 + 0.043 = 0。让胜不够扣时按比例缩,保持和为 1
+            # 且不越界(ph 罕见 < δ 的深线上,直接扣会出负概率)。
+            shift = min(_C2_DELTA_H, ph)
+            r = shift / _C2_DELTA_H if _C2_DELTA_H > 0 else 0.0
+            ph = ph - shift
+            pd_ = pd_ + _C2_DELTA_D * r
+            pa = pa + _C2_DELTA_A * r
+        # ⚠️ +2 / ±3+ **故意不出点估校正**(prereg v1.8 §0):+2 两锚量级差一倍、
+        # N≈40 钉不住,编常数比缺常数更坏。它们只在 c1_leg_lower_bounds 里吃地板 SE。
         out.append((int(line), float(ph), float(pd_), float(pa)))
     return out
 
