@@ -441,6 +441,41 @@ else
 fi
 
 
+# ===== 17. σ_P 分层拟合 (只读研究,永不 gate) =====
+# 预注册 v2.1(docs/sigma_p_stratified_prereg_v2.1_2026-07-29.md)§7。
+# ⭐ 起因:σ_P 依赖人口 —— 国内联赛 1.26pp·h^0.206 vs 杯赛 0.76pp·h^0.246,σ@3h 差
+# 1.6×(杯赛/国际赛是流动性最高的盘,线最锐动得最少)。**一条池化曲线对哪层都不对**;
+# 而 A-1 现行系数几乎就是杯赛层的拟合 ⇒ 它对杯赛是对的、对联赛是偏的。
+# ⚠️ 秋季 13 训练联赛还没开赛,那一层现在 N=0 —— 本节最重要的一行就是那个进度条:
+# **没有它,秋季数据攒够了也不会有人知道**(v2.1 §7 记的悬空项就是这个)。
+# ⚠️ 防 optional stopping:本节按周跑,「哪次看到显著就哪次改」= 反复检验必然见显著。
+# 到评估点(13 联赛 N≥300 且 ≥5 合格桶)前**只报进度不做判定**。
+# 与 §13/§14/§15/§16 同规矩:**永不影响退出码**。手动:  nutmeg-sigma-p-fit
+section "17. σ_P 分层拟合 (只读研究)"
+SPF="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.sigma_p_fit \
+        --db "$DB" --boot 200 2>/dev/null)"
+if [[ -z "$SPF" ]]; then
+  note "sigma-p-fit 无输出(包未装?)— 手动: nutmeg-sigma-p-fit"
+else
+  # 评估点进度 + 状态 —— 本节存在的全部理由,永远先报
+  grep -E '^- \*\*13 训练联赛|^- 状态:' <<< "$SPF" | sed 's/^- //;s/\*\*//g' \
+    | while read -r l; do note "$l"; done
+  # 分层表:只报「线上值在不在区间内」这一列的结论,细节留给 logs/
+  for S in "国内俱乐部联赛" "杯赛/国际赛"; do
+    ROWS="$(grep "^| $S " <<< "$SPF" || true)"
+    [[ -z "$ROWS" ]] && continue
+    # ⚠️ 数**格子**不是数**行** —— 每行两格(A 和 B)。第一版用 grep -c 数行,
+    # 三行全 ❌外 却报成「3/6」,系统性低报一半。用 grep -o 逐格数。
+    OUT="$(grep -o '❌外' <<< "$ROWS" | wc -l | tr -d ' ')"
+    TOT="$(( $(wc -l <<< "$ROWS" | tr -d ' ') * 2 ))"
+    note "$S: 线上系数落在自举区间外的格子 $OUT/$TOT"
+  done
+  grep -E '^- \*\*z = ' <<< "$SPF" | sed 's/^- //;s/\*\*//g' \
+    | while read -r l; do note "同源性 $l"; done
+  note "⚠️ 未到评估点前不据此改常数(反复检验)。全表: logs/sigma_p_fit_latest.md"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
