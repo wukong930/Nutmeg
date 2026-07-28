@@ -411,6 +411,36 @@ else
 fi
 
 
+# ===== 16. 抽水分配 (只读研究,永不 gate) =====
+# 起因(2026-07-28):竞彩的 12.9% 总抽水**不是均摊的** —— 热门腿吃掉约 60%
+# (+7.8pp),居中/冷门各约 20%(+2.6pp)。买热门的成本是买冷门的 3 倍。
+# ⭐ 实测各联赛 booksum 恒在 1.1290–1.1294(总 margin = 行政常数),变的只有**分配**
+# (热门占比 48%–73%)⇒ 本节测的是**再分配**,不是「哪个联赛便宜」。
+# ⚠️ 它**不创造 edge**:EV = P×SP−1 已完整反映 SP,水重的腿本来就显示为差 EV。
+# 它说明的是**结构** + **下一步该挖哪个联赛**。⚠️ 抽水低 ≠ 软(可能只是定得更紧)。
+# ⚠️ 只测 1X2:让球的 P 要反推比分网格,那条路上的「抽水」会混进我们自己的网格误差。
+# 与 §13/§14/§15 同规矩:**永不影响退出码**。手动:  nutmeg-vig-split
+section "16. 抽水分配 (只读研究)"
+VIG="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.vig_split \
+        --db "$DB" 2>/dev/null)"
+if [[ -z "$VIG" ]]; then
+  note "vig-split 无输出(包未装?)— 手动: nutmeg-vig-split"
+else
+  grep -E '^N = ' <<< "$VIG" | sed 's/\*\*//g' | while read -r l; do note "$l"; done
+  # ① 逐腿抽水表:只取三行数据行(表头/分隔行不含 % 号,天然被滤掉)
+  grep -E '^\| (热门|居中|冷门) \|' <<< "$VIG" | sed 's/|/ /g;s/\*\*//g;s/  */ /g;s/^ //' \
+    | while read -r l; do note "$l"; done
+  # ③ 只报过 FDR 的联赛 —— 没过就是没结论,不许把最极端那行当发现
+  FDR="$(grep -E '✅ 更便宜' <<< "$VIG" | sed 's/|/ /g;s/\*\*//g;s/  */ /g;s/^ //')"
+  if [[ -n "$FDR" ]]; then
+    while read -r l; do note "可投腿更便宜(过FDR): $l"; done <<< "$FDR"
+  else
+    note "无联赛的可投腿抽水显著低于全局(过 BHY-FDR)"
+  fi
+  note "⚠️ 不创造 edge;抽水低≠软。全表: logs/vig_split_latest.md"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
