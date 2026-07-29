@@ -56,7 +56,7 @@ def test_established_flag_is_exactly_delta_gt_2se():
         assert r["lower"] == pytest.approx(r["delta"] - 2 * r["se"])
 
 
-def test_delta_p1_established_after_v1_9_partial_pooling():
+def test_delta_p1_established_independently_after_v2_0():
     """现状留痕(v1.9 后)。**这条测试上一版红过一次,而那是它该做的事。**
 
     v1.8 时它叫 `test_delta_p1_is_currently_flagged_as_not_established`,断言
@@ -64,8 +64,11 @@ def test_delta_p1_established_after_v1_9_partial_pooling():
     这条会红,那正是提示现状记录要更新」。2026-07-28 owner 授权部分合并后它如期
     变红 —— 绊线按设计工作,故随现状更新而非删除。
 
-    ⚠️ 「已确立」在这里指 **δ > 2·SE(判闸下界为正)**,它**借用了可交换性假设**
-    (同源性检验只有 26% 功效)。别把这条测试读成「+1 的偏差已被独立证实」。
+    ⭐⭐ **v2.0(2026-07-29)后它是真正独立确立的了** —— 不再借可交换性:
+    join 补上别名层后样本 3,038→4,934,δ₊₁ 自己就是 t=3.16、下界 +0.0118。
+    v1.9 那句「借用了可交换性假设」的警告**到此作废**。
+    ⚠️ 若这条又变红,**先查 join 命中率再查常数** —— 上一次「测不出」的根因是
+    脚本裸用 normalize_name 丢了 59% 样本,不是样本真的不够。
     """
     row = next(r for r in power_table() if r["leg"] == "+1 让负")
     assert row["established"], "v1.9 收缩后 δ₊₁ 的判闸下界应转正;若又变负,查 prereg v1.9"
