@@ -407,6 +407,10 @@ else
   # 功效表里「从未确立」的行 —— 这是要 owner 决策的清单
   grep -E '从未确立' <<< "$DCAL" | sed 's/|/ /g;s/  */ /g;s/^ //' \
     | while read -r l; do note "⚠️ $l"; done
+  # ⭐ 秋季重测进度(owner 指示 2026-07-29:「现在是最优解,秋天攒够回来重测」)。
+  # 没有这行,那句指示就只是一份文档 —— 与 §17 的评估点进度条同一条纪律。
+  grep -E '^- \*\*\+1 线\*\*|^- 状态:' <<< "$DCAL" | sed 's/^- //;s/\*\*//g' \
+    | while read -r l; do note "秋季重测 $l"; done
   note "全表: logs/delta_calibration_latest.md · 本节只报不判,改 δ 须 owner + prereg"
 fi
 
