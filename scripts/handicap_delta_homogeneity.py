@@ -40,8 +40,19 @@ import statistics as st
 import pandas as pd
 
 from nutmeg.utils.team_canonical import normalize_name as nn
+from nutmeg.utils.team_canonical import to_v4_canonical
 from nutmeg.v4.cli.clv_ledger import _devig3
+from nutmeg.v4.data.league_labels import _EN_TO_CN, canonical_league
 from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+
+#: 中文联赛名 → TEAM_ALIASES 的联赛码(别名表按联赛分桶)。
+_CN_TO_CODE = {v: k for k, v in _EN_TO_CN.items()}
+
+#: ⚠️ **模糊匹配关闭**(阈值 1.0 = 只有完全相同才算)。
+#: to_v4_canonical 默认 0.86,但它自己的注释就警告「Real Madrid vs Real Sociedad
+#: 比值 ~0.79」—— 实测开模糊只多捞 64 场(+1%),不值得把**猜**放进 δ 的地基。
+#: 与「绝不瞎猜 team-name mappings」同一条红线。
+_FUZZY_OFF = 1.0
 
 _FD_GLOB = "data/historical_sources/football_data_co_uk/**/*.csv"
 _NEED = {"PSCH", "PSCD", "PSCA", "HomeTeam", "AwayTeam", "Date", "FTHG", "FTAG"}
@@ -57,9 +68,17 @@ def _parse_date(s: str):
     return None
 
 
-def load_football_data() -> dict:
-    """{(norm_home, norm_away, date): (psc3, over, under, fthg, ftag)}"""
+def load_football_data() -> tuple[dict, list[str]]:
+    """→ ({(norm_home, norm_away, date): (psc3, over, under, fthg, ftag)}, 原始队名池)
+
+    ⚠️ **两个返回值都是承重的。** 索引的 key 是归一化名(join 用),但
+    ``to_v4_canonical`` 要的 ``v4_team_pool`` 必须是 football-data 的**原始写法**
+    —— 它内部会自己归一化,传归一化池进去会让别名层**静默零命中**
+    (别名值 ``"Man United"`` 不在 ``{"man united", …}`` 里)。我第一版就这么传的,
+    表面上「命中率没变」,实际是整条别名链没被走到。
+    """
     out: dict = {}
+    raw_names: set[str] = set()
     for f in glob.glob(_FD_GLOB, recursive=True):
         try:
             d = pd.read_csv(f, low_memory=False)
@@ -79,15 +98,31 @@ def load_football_data() -> dict:
                 continue
             ov = r.get(oc) if oc else None
             un = r.get(uc) if uc else None
+            raw_names.add(str(r["HomeTeam"]))
+            raw_names.add(str(r["AwayTeam"]))
             out[(nn(str(r["HomeTeam"])), nn(str(r["AwayTeam"])), date)] = (
                 (r["PSCH"], r["PSCD"], r["PSCA"]),
                 None if (ov is None or pd.isna(ov)) else float(ov),
                 None if (un is None or pd.isna(un)) else float(un),
                 int(r["FTHG"]), int(r["FTAG"]))
-    return out
+    return out, sorted(raw_names)
 
 
-def build_sample(db: str, fd: dict) -> tuple[list[dict], dict]:
+def resolve_team(raw: str, league_cn: str, pool: list[str]) -> str:
+    """竞彩队名 → football-data 归一化名。**必经解析器,不许裸 normalize_name。**
+
+    ⚠️ 这是本次(2026-07-29)修掉的根因:原版两侧都只做 ``normalize_name``,
+    把 ``to_v4_canonical`` 的**别名层整个跳过**了 —— 「Manchester United」永远
+    对不上「Man United」。join 命中率因此卡在 41%;走解析器后 **67%**(+1,900 场),
+    而 ``TEAM_ALIASES`` 一条新别名都没加(需要的早就在表里)。
+    与记忆「跨源 join 别裸 normalize_name」是同一条规则。
+    """
+    code = _CN_TO_CODE.get(canonical_league(league_cn) or "", "")
+    r = to_v4_canonical(raw or "", code, pool, fuzzy_threshold=_FUZZY_OFF)
+    return nn(r.canonical) if r.canonical else nn(raw or "")
+
+
+def build_sample(db: str, fd: dict, pool: list[str]) -> tuple[list[dict], dict]:
     """真实竞彩让球线 × Pinnacle 锚,比分硬闸门。返回 (样本, 诊断计数)。"""
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
@@ -105,7 +140,8 @@ def build_sample(db: str, fd: dict) -> tuple[list[dict], dict]:
         ln = int(m["goal_line"])
         if abs(ln) != 1:                              # 本检验只关心 ±1
             continue
-        h, a = nn(m["home_team"]), nn(m["away_team"])
+        h = resolve_team(m["home_team"], m["league_cn"], pool)
+        a = resolve_team(m["away_team"], m["league_cn"], pool)
         d0 = dt.date.fromisoformat(m["close_date"][:10])
         got = next((fd[(h, a, d0 + dt.timedelta(days=o))]
                     for o in (0, -1, 1) if (h, a, d0 + dt.timedelta(days=o)) in fd), None)
@@ -162,9 +198,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", default="data/v4_jingcai_history.db")
     args = ap.parse_args(argv)
 
-    fd = load_football_data()
-    print(f"football-data Pinnacle 索引: {len(fd)} 场")
-    sample, diag = build_sample(args.db, fd)
+    fd, pool = load_football_data()
+    print(f"football-data Pinnacle 索引: {len(fd)} 场 · 原始队名池 {len(pool)} 个")
+    sample, diag = build_sample(args.db, fd, pool)
     print("join 诊断:", " · ".join(f"{k} {v}" for k, v in diag.items()))
     rej = diag["比分闸门拒"]
     tot = rej + len(sample) + diag["缺 Pinnacle O/U"]
