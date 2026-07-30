@@ -190,6 +190,23 @@ _FRESHNESS_COMPANIONS: dict[tuple[str, str], tuple[str, str, str]] = {
     ("jingcai_sp", "captured_at"): ("jingcai_exotic_sp", "captured_at", "异型"),
 }
 
+#: 「长得像连接键、实际可能恒 NULL」的列 —— 100% 空时**必须喊出来**。
+#:
+#: ⚠️ 病史(2026-07-30):按 `jingcai_sp.fixture_id` 连 `polymarket_gaps`,得到
+#: 「0 场重叠」,差点写成「Polymarket 和竞彩完全不重合」的结论。真相是该列
+#: **0/576 非空**,而且**填不了、不是忘了填**:
+#:   · 主力写入方 sporttery(502 行 = 87%)源头就没有 API-Football id;
+#:   · 服务路径整条没有这个字段(FixtureOddsInput / SinglePrediction 都按
+#:     (date, league, home_team, away_team) 走)。
+#: ⇒ 恒 NULL 的连接键会把任何经过它的 join **静默清零**,长得和「真的没数据」
+#: 一模一样 —— 与「404 伪装成空结果」「别名层漏掉丢 59%」同一族失败。
+#: 这里**不造数据**(硬填一个猜来的 id 比 NULL 坏得多,见「绝不瞎猜队名」红线),
+#: 只让「空」在面板上可见,并把正典键写在旁边。
+_JOIN_KEY_COLUMNS: dict[str, tuple[str, str]] = {
+    # 表          → (可疑连接列,   该表真正的正典键 = 它自己的 UNIQUE)
+    "jingcai_sp": ("fixture_id", "match_date+home_team+away_team+market"),
+}
+
 
 def _data_freshness() -> list[dict]:
     db = os.environ.get("NUTMEG_V4_OBSERVATION_DB", settings.v4_observation_db)
@@ -220,6 +237,21 @@ def _data_freshness() -> list[dict]:
                             if cn:
                                 row["note"] = f"+ {cn:,} {word}"
                         except Exception:  # noqa: BLE001 — 姊妹表可能还不存在
+                            pass
+                    jk = _JOIN_KEY_COLUMNS.get(table)
+                    if jk:
+                        kcol, canon = jk
+                        try:
+                            total, filled = c.execute(
+                                f"SELECT COUNT(*), COUNT({kcol}) FROM {table}").fetchone()
+                            # 只在**表非空且该列全空**时喊 —— 空表的 0/0 不是发现,
+                            # 和「+ 0 异型」同一条戒律:别把非故障渲染成故障。
+                            if total and not filled:
+                                warn = (f"⚠️ {kcol} 恒 NULL({total:,} 行 0 非空)"
+                                        f" — 别拿它连表,正典键 = {canon}")
+                                row["note"] = (f"{row['note']} · {warn}"
+                                               if row.get("note") else warn)
+                        except Exception:  # noqa: BLE001 — 列/表可能不存在
                             pass
                     rows.append(row)
                 except Exception:  # noqa: BLE001 — table/col may not exist on a fresh DB

@@ -127,3 +127,75 @@ def test_frontend_renders_the_note():
     html = (Path(__file__).resolve().parents[2] / "apps/api/src/nutmeg/v4/api/static"
             / "dashboard.html").read_text(encoding="utf-8")
     assert "row.note" in html, "前端没渲染 note —— 后端的姊妹计数到不了屏幕上"
+
+
+# ── 恒 NULL 连接键守卫(2026-07-30)────────────────────────────────────────
+
+def test_join_key_columns_point_at_real_probed_tables():
+    """守卫只对**已被探针覆盖**的表生效 —— 挂在没有 _FRESHNESS_ROWS 行的表上
+    等于永不执行,是个看着装了、其实没装的守卫。"""
+    from nutmeg.v4.api.admin import _JOIN_KEY_COLUMNS
+    probed = {t for t, _, _ in _FRESHNESS_ROWS}
+    for table in _JOIN_KEY_COLUMNS:
+        assert table in probed, f"{table} 没有探针行,守卫不会跑"
+
+
+def test_join_key_columns_exist_on_the_live_schema(tmp_path):
+    """列名写错 ⇒ 那条 SELECT 抛异常被吞 ⇒ 守卫静默失效(与哨兵自盲同族)。"""
+    import os
+
+    from nutmeg.config import get_settings
+    from nutmeg.v4.api.admin import _JOIN_KEY_COLUMNS
+    db = os.environ.get("NUTMEG_V4_OBSERVATION_DB", get_settings().v4_observation_db)
+    if not os.path.exists(db):
+        pytest.skip(f"观测库不可读({db})")
+    with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as c:
+        for table, (kcol, _canon) in _JOIN_KEY_COLUMNS.items():
+            cols = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+            assert kcol in cols, f"{table}.{kcol} 不存在 —— 守卫会被静默吞掉"
+
+
+def test_all_null_join_key_is_reported_and_empty_table_is_not(tmp_path):
+    """⭐ 核心不变式:**表非空且该列全空**才喊;空表的 0/0 不喊。
+
+    病史(2026-07-30):我按 `jingcai_sp.fixture_id` 连 polymarket_gaps,拿到
+    「0 场重叠」,差点写成「Polymarket 和竞彩完全不重合」。真相是那列 0/576
+    非空 —— 而且**填不了**(sporttery 源无 id、服务路径整条无此字段)。
+    恒 NULL 的连接键会把 join 静默清零,长得和「真的没数据」一模一样。
+
+    「空表不喊」和「+ 0 异型不写」是同一条戒律:别把非故障渲染成故障。
+    """
+    import os
+
+    from nutmeg.v4.api import admin as A
+    db = tmp_path / "obs.db"
+    with sqlite3.connect(db) as c:
+        c.execute("CREATE TABLE t (captured_at TEXT, fixture_id INTEGER)")
+    monkey = {"NUTMEG_V4_OBSERVATION_DB": str(db)}
+    old = {k: os.environ.get(k) for k in monkey}
+    os.environ.update(monkey)
+    try:
+        probes, joins = A._FRESHNESS_ROWS, A._JOIN_KEY_COLUMNS
+        A._FRESHNESS_ROWS = (("t", "captured_at", "测试表"),)
+        A._JOIN_KEY_COLUMNS = {"t": ("fixture_id", "a+b")}
+        # ① 空表 → 不喊
+        r = next(x for x in A._data_freshness() if x.get("table") == "t")
+        assert "恒 NULL" not in (r.get("note") or ""), "空表被渲染成故障了"
+        # ② 有行但该列全空 → 喊,且带上正典键
+        with sqlite3.connect(db) as c:
+            c.execute("INSERT INTO t VALUES ('2026-07-30T00:00:00Z', NULL)")
+        r = next(x for x in A._data_freshness() if x.get("table") == "t")
+        assert "恒 NULL" in (r.get("note") or ""), "全空的连接键没被喊出来"
+        assert "a+b" in r["note"], "没告诉读者正典键是什么 —— 喊了等于没喊"
+        # ③ 该列有值 → 不喊
+        with sqlite3.connect(db) as c:
+            c.execute("INSERT INTO t VALUES ('2026-07-30T00:00:01Z', 42)")
+        r = next(x for x in A._data_freshness() if x.get("table") == "t")
+        assert "恒 NULL" not in (r.get("note") or ""), "有值了还在喊"
+    finally:
+        A._FRESHNESS_ROWS, A._JOIN_KEY_COLUMNS = probes, joins
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
