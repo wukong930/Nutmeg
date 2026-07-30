@@ -249,3 +249,38 @@ class TestDashboardLinksToPWA:
         assert "serviceWorker.register('/api/v4/sw.js'" in html
         # Scoped to /api/v4/ (not entire origin)
         assert "scope: '/api/v4/'" in html
+
+
+# ============ title 属性注入卫生(2026-07-30)========================
+
+class TestTooltipStringsSurviveTheAttribute:
+    """⚠️ i18n 串是**裸插**进 `title="..."` 的,没有转义。
+
+    病史:英文 ``rel_wide_hint`` 写成 ``'This "Pinnacle" line carries…'`` ⇒
+    渲染出 ``title="This "Pinnacle" line…"``,属性在第二个引号处提前闭合,
+    英文用户看到的整条提示只剩 ``This``。中文串用「」所以从没露出来 ——
+    **一个只在非默认 locale 下发作、且不报任何错的静默截断。**
+
+    这条钉的是不变式而不是那一个串:任何进 title 属性的 key,值里都不许有 ``"``。
+    """
+
+    def _title_keys(self, html: str) -> set[str]:
+        return set(re.findall(r"""title="\$\{t\('([a-z_0-9]+)'\)""", html))
+
+    def test_the_scan_actually_finds_the_tooltips(self, html):
+        # 自盲闸:正则若因模板写法变化而失配,下面那条会「零个 key 全过」
+        keys = self._title_keys(html)
+        assert len(keys) >= 10, f"只扫到 {len(keys)} 个 title key —— 正则大概率失配了"
+        assert "rel_wide_hint" in keys and "pin_wide_hint" in keys
+
+    def test_no_title_string_contains_a_raw_double_quote(self, html):
+        keys = self._title_keys(html)
+        offenders = []
+        for key in sorted(keys):
+            # 每个 locale 各一行:`    key: '…',`
+            for line in re.findall(rf"^ +{re.escape(key)}: +'(.*)',$", html, re.M):
+                if '"' in line:
+                    offenders.append((key, line[:70]))
+        assert not offenders, (
+            "这些提示串会把 title 属性提前截断(用「」或不用引号):\n"
+            + "\n".join(f"  {k}: {v}…" for k, v in offenders))
