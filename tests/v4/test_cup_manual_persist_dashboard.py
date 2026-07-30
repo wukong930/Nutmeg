@@ -75,10 +75,17 @@ class TestManualRestoreHealsDerived:
     结果 restore 后一律用输入重算(market-reprice 纯计算、零额度)。"""
 
     def test_restore_triggers_background_reprice(self, html: str) -> None:
-        assert "async function _cupManRefreshDerived(" in html
-        assert "if (restored.length) _cupManRefreshDerived(restored);" in html
+        """⚠️ 2026-07-30 本断言按设计变红过一次:`_cupManRefreshDerived` 加了
+        `rerender` 参数(手填要贴到「近期赛事」上下两块板,重算完得重渲**调用方**
+        那块)。这里**加强**而非放松 —— 除了原来的「restore 会触发后台重算」,
+        再钉死重算结果必须回到调用方的板子上,别退回硬编码 renderCupMarket。
+        """
+        assert "async function _cupManRefreshDerived(pairs, rerender)" in html
+        assert "if (restored.length) _cupManRefreshDerived(restored, rerender);" in html
         # 重算用的是存的输入(m.h/m.d/m.a),不是贴回的派生值
         assert "psc_home: m.h, psc_draw: m.d, psc_away: m.a," in html
+        # ⭐ 新增:重算完必须重渲调用方那块板(否则那块板永远显示旧 schema 派生值)
+        assert "if (rerender) rerender();" in html
 
     def test_refresh_respects_user_revert_race(self, html: str) -> None:
         # 重算返回前用户点了 ↩︎ 复原或 🔄 → 不把手填盖回去
@@ -128,3 +135,53 @@ class TestManualStaleWarning:
         """拿不到开球时刻 → hrsToKo=Infinity → 复合条件恒假,只剩 120min 那根线。
         不装懂:不知道什么时候开球,就别按「临场」判。"""
         assert "const hrsToKo = isNaN(ko) ? Infinity : (ko - Date.now()) / 3600000;" in html
+
+
+class TestManualAppliesToBothBoardsOnTheSameTab:
+    """2026-07-30 —— 手填**跨板**贴回。
+
+    Bug: `_cupApplyStoredManual` 只在 `loadCupMarket` 里调,而「近期赛事」tab 上
+    **上下叠着两块板** —— SP 计算器(`#today-spcalc-section`,`/predictions/sp-calc`,
+    3 天窗)和市场模式(`#cupmkt-section`,`/predictions/cup-market`,7 天窗)。
+    ⇒ 同一场比赛,上面用 AF 镜像线、下面用手填的真 Pinnacle 线,**两个 EV 摆在
+    一屏上**,而 ⚠️「盘口存疑」徽章在上面那块照亮不误(它读 `pr.psc_*`)。
+    """
+
+    def test_spcalc_loader_applies_the_stored_manual_fill(self, html: str) -> None:
+        assert "_cupApplyStoredManual(body.predictions, _spRerender)" in html, (
+            "loadSpCalc 又不贴手填了 —— 同一 tab 两块板会各算各的 EV")
+
+    def test_spcalc_card_shows_the_manual_badge(self, html: str) -> None:
+        """⚠️ 贴数据必须同时给标记 —— 只贴不标 = 静默覆盖,比不贴更坏。
+
+        `_oddsFreshnessHtml` 的 `_manual` 分支就是 ✏️ 徽章 + 真实年龄 + 陈旧告警。
+        """
+        assert "${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}" in html
+        # 两块板都要有:cup 卡(原有)+ spcalc 卡(本次新增)
+        assert html.count("${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}") == 2, (
+            "少了一块板 —— 手填在那块板上就是没有标记的静默覆盖")
+
+    def test_refresh_derived_rerenders_the_calling_board_not_always_cup(self, html: str) -> None:
+        """派生数据后台重算完,要重渲**调用方**那块板。
+
+        原来尾部硬编码 `renderCupMarket`。SP 计算器板接上来之后若不改,那块板会
+        一直显示 localStorage 里那份**可能是旧 schema** 的派生值 —— 正是
+        2026-07-18 「贴回的旧 board 没有 p_*_lo,让球 EV 区间静默消失」那个洞。
+        """
+        assert "async function _cupManRefreshDerived(pairs, rerender)" in html
+        assert "if (rerender) rerender();" in html
+        assert "else renderCupMarket(_CUPMKT.preds, _CUPMKT.pending || []);" in html
+
+    @pytest.mark.parametrize("fn", ["_spcalcRecord", "_spcalcHcRecord"])
+    def test_spcalc_record_paths_forward_provenance(self, html: str, fn: str) -> None:
+        """⭐ 手填一旦能到这块板,记账就**必须**带 `odds_source`。
+
+        `store._request_odds_source` 从 `fixtures[].odds_source` 读它落进
+        `recommendation_sessions.odds_source`。漏掉 ⇒ 手打的价按自动源入账,
+        而 store.py 明写「绝不默认成 api_football —— 那等于把『没告诉我』伪装成
+        『我查过了』」。改这条之前本板不可能有手填,所以漏了不说谎;现在会。
+        """
+        start = html.index(f"function {fn}(")
+        body = html[start:start + 2600]
+        assert "odds_source: pr.odds_source ?? null" in body, (
+            f"{fn} 记账漏了溯源 —— 手填价会被记成自动抓取的")
