@@ -15,29 +15,57 @@ import os
 from pathlib import Path
 
 # 中国站:清代理(净 launchd 环境或本机代理都够不着/会干扰)。同 sporttery 其它 cron。
-for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+# 2026-07-31 — 补上 ALL_PROXY/all_proxy:curl/requests 都认它们,只清 4 个在
+# **本机开了全局代理**时仍会绕道。此前没炸是因为 launchd 环境本来就干净。
+for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy",
+           "ALL_PROXY", "all_proxy"):
     os.environ.pop(_k, None)
 
 from nutmeg.v4.cli.ingest_jingcai_history import backfill  # noqa: E402
-from nutmeg.v4.data.league_labels import TRAINED_LEAGUES_CN  # noqa: E402
 
 DB = "data/v4_jingcai_history.db"
+# ⚠️ 2026-07-31 —— `None` = **全部联赛**,不是 `TRAINED_LEAGUES_CN`。
+#
+# 原来只抓 13 受训联赛(那是 prereg §H 的口径:δ 校准要 football-data 对得上)。
+# 但这个档案还有第二个用途 —— 回答「某场当时什么价 / EV 多少」,而**我们买的是
+# 竞彩卖的,不是我们训练的**。实测一个 7 天窗口:
+#   · 2026-06-11→17(夏)  trained **0** 场 · all 31 场  ← 欧洲休赛,只抓 13 个 = 什么都没有
+#   · 2026-03-01→07(赛季中) trained 70 场 · all 106 场  ← 只多 1.5×,每次多约 1 分钟
+# ⇒ 维持 13 联赛会让洞从「时间形」变成「联赛形」:夏天照样空,而夏天正是竞彩
+# 卖北欧/韩职/巴甲/MLS 的时候。代价小、缺口大,取全部。
+# (2026-07-31 的缺口回填就是按 all 补的 50 个联赛 —— 涓流不跟上就等于当场重新裂开。)
+LEAGUES = None
 CURSOR = Path("data/jingcai_history_cursor.txt")
-BEGIN, END = dt.date(2021, 8, 1), dt.date(2025, 7, 31)
+BEGIN = dt.date(2021, 8, 1)
+# ⚠️ 2026-07-31 —— END **必须跟着今天走,不能是常量**。
+#
+# 病史:这里原本硬编码 `dt.date(2025, 7, 31)`(预注册 §H 的窗口)。涓流扫完那天
+# 就再也不往前走,而观测库 `jingcai_sp` 从 2026-06-11 才开始 ⇒ 中间 **10.5 个月**
+# 两边都没有,而且**没有任何东西会喊** —— 游标照常绕回起点 re-sweep,日志天天绿。
+# 直到 owner 问「2026-05-30 神户那场当时 EV 多少」才发现(2,600 场 × 13 联赛全丢)。
+#
+# 教训:**一个"扫完历史"的任务,它的终点一旦写成常量,就在给未来挖一个静默的洞。**
+# 现在 END = 今天 − LAG_DAYS(留结算时间),窗口自己长,洞不会再裂开。
+LAG_DAYS = 2
 WINDOW_DAYS = 7
 
 
+def _end_date() -> dt.date:
+    return dt.date.today() - dt.timedelta(days=LAG_DAYS)
+
+
 def main() -> int:
+    end = _end_date()
     try:
         cur = dt.date.fromisoformat(CURSOR.read_text().strip())
     except (OSError, ValueError):
         cur = BEGIN
-    if cur > END:  # 绕回起点 → re-sweep 补缺口(skip_existing = 已入库跳过,便宜)
+    if cur > end:  # 绕回起点 → re-sweep 补缺口(skip_existing = 已入库跳过,便宜)
         cur = BEGIN
-    w_end = min(cur + dt.timedelta(days=WINDOW_DAYS - 1), END)
+    w_end = min(cur + dt.timedelta(days=WINDOW_DAYS - 1), end)
     stamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"[trickle {stamp}] 窗口 {cur}→{w_end}")
-    stat = backfill(DB, cur.isoformat(), w_end.isoformat(), leagues=TRAINED_LEAGUES_CN,
+    stat = backfill(DB, cur.isoformat(), w_end.isoformat(), leagues=LEAGUES,
                     sleep=2.0, limit=0, dry_run=False, skip_existing=True, chunk_days=7)
     print(f"[trickle {stamp}] {stat}")
     CURSOR.write_text((cur + dt.timedelta(days=WINDOW_DAYS)).isoformat())

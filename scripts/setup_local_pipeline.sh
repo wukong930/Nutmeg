@@ -470,6 +470,26 @@ install_job "com.nutmeg.polymarket_gaps" \
   "$ENV_PREFIX && HTTP_PROXY=http://127.0.0.1:1082 HTTPS_PROXY=http://127.0.0.1:1082 NO_PROXY=localhost,127.0.0.1,::1 $VENV_PY -m nutmeg.v4.cli.polymarket_gaps --db $DB_PATH --days 3 || true" \
   "10:0 16:0"
 
+# 2026-07-31 — 竞彩历史走势涓流 (getFixedBonusV1 → jingcai_odds_history)。
+#
+# ⚠️ **这个 job 曾经存在、被"扫完了"退休、然后静默丢了 10.5 个月数据。** 复盘:
+#   · 它原本是**手装的 hourly campaign job**(StartInterval 3600),不在 setup 体系里;
+#   · `jingcai_history_trickle.py` 的 END 硬编码 `dt.date(2025,7,31)` ⇒ 游标扫到那天
+#     就绕回起点,**"第二轮 56 轮零新增"是必然的,不是"覆盖齐了"**;
+#   · 那个假信号说服我们 2026-07-20 退休它,plist 还被移进 retired/「防重启复活」;
+#   · 结果 2025-07-28→2026-06-10 的 4,751 场竞彩变盘史两边都没有,**没有任何东西会喊**
+#     (日志天天绿),直到 owner 问一场具体比赛的历史 EV 才暴露。已于 2026-07-31 回填。
+#
+# 两处防复发:① 脚本里 END 改成 `_end_date()=今天−2`,并有测试**钉源码**禁止写回常量;
+# ② 该 job 进 setup 体系(不再手装)⇒ teardown 排除表不必再收留它,setup 重跑装得回来。
+#
+# 从 hourly 降到**每日 2 窗**:缺口补完后它只需跟上每周新增的 7 天,而窗口就是 7 天/次
+# ⇒ 一天一次即可持平,两窗是给睡眠错过留余量。中国站,ENV_PREFIX 后脚本自己清 6 个代理变量。
+install_job "com.nutmeg.jingcai_history_trickle" \
+  9 40 "" \
+  "$ENV_PREFIX && $VENV_PY scripts/jingcai_history_trickle.py || true" \
+  "21:40"
+
 # 体检(2026-07-01)— Pinnacle 收盘锚捕获 (StartInterval 每 30 分 — 非日历,故不用 install_job).
 # ③ measured the gather-side anchor was median ~5h stale (竞彩 KO in 北京深夜/凌晨);
 # user now keeps the laptop 24/7-awake, so a frequent run snapshots each match's
