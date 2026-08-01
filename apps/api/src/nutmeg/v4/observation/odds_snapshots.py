@@ -27,6 +27,8 @@ import math
 import sqlite3
 from pathlib import Path
 
+from nutmeg.v4.data.odds_source_aliases import canonical_league, canonical_team
+
 log = logging.getLogger(__name__)
 
 # A decimal odd must exceed the stake (>1.0); the ceiling is generous — even a
@@ -137,6 +139,24 @@ def record_row_snapshot(
     unchanged state) or on ANY internal failure (logged, never raised).
     """
     try:
+        # ⭐ 2026-08-01 —— 队名归一,**必须在这里、在任何读取之前**。
+        #
+        # 两个上游对同一支队用不同英文名(API-Football 走 cup_market = 盘面;
+        # Odds API 走 closing),实测 9 联赛 61 个名字只在 closing 侧出现 ⇒
+        # **收盘线静默叠加不上盘面那一行**:join 不通、CLV 少数据,而日志全绿。
+        #
+        # 修在**唯一 sink**,不在两个生产者里各打一遍补丁(`记忆 health-check-
+        # guardrails` 的 Altitude 条:修共享 sink)。表里没有的名字**原样通过**,
+        # 由 `scripts/derive_odds_name_aliases.py` 探测器报出来,绝不在这里猜。
+        # ⚠️ league 自己也有两套词汇(closing_odds 的 `SPORT_KEYS.get(sk, sk)`
+        # 宽进写法会把原始 sport_key 落库)。**先归一联赛再查队名表**,否则
+        # (联赛, 队名) 查表整个落空 —— 归一变成 no-op 而日志照样全绿。
+        row = dict(row)          # 不改调用方的 dict(它还要写 CSV / 喂别的消费者)
+        _lg = canonical_league(row.get("league"))
+        row["league"] = _lg
+        row["home_team"] = canonical_team(_lg, row.get("home_team"))
+        row["away_team"] = canonical_team(_lg, row.get("away_team"))
+
         psc_home = row.get("psc_home")
         psc_draw = row.get("psc_draw")
         psc_away = row.get("psc_away")

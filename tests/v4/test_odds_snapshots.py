@@ -253,3 +253,107 @@ def test_migration_is_idempotent_and_spares_old_rows(tmp_path):
         cols = {r[1] for r in conn.execute("PRAGMA table_info(odds_snapshots)")}
         assert "odds_source" in cols
         assert conn.execute("SELECT odds_source FROM odds_snapshots").fetchone()[0] is None
+
+
+# ── 上游拼法归一(2026-08-01)──────────────────────────────────────────────
+
+class TestUpstreamNameCanonicalisation:
+    """两个上游对同一支队用不同英文名 ⇒ **收盘线静默叠加不上盘面那一行**。
+
+    API-Football 走 `cup_market`(盘面正典)· Odds API 走 `closing`。
+    实测 9 联赛 61 个名字只在 closing 侧出现。join 不通、CLV 少数据,
+    **而且没有任何报错** —— 与本项目反复踩的「沉默的错误答案」同族。
+
+    修在**唯一 sink** `record_row_snapshot`(Altitude:不逐生产者打补丁)。
+    """
+
+    def _row(self, home, away, league="USA_MLS"):
+        return {"date": "2026-08-01", "league": league, "home_team": home,
+                "away_team": away, "kickoff_utc": "2026-08-01T23:30:00Z",
+                "psc_home": 2.0, "psc_draw": 3.4, "psc_away": 3.8}
+
+    def test_sink_rewrites_closing_spelling_to_the_gather_one(self, tmp_path):
+        from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
+        db = tmp_path / "o.db"
+        assert record_row_snapshot(db, self._row("Charlotte FC", "LA Galaxy"))
+        got = sqlite3.connect(db).execute(
+            "SELECT home_team, away_team FROM odds_snapshots").fetchone()
+        # ⭐ LA Galaxy 是**反例**:10 组双拼法里 9 组「短名是正典」,它恰好相反。
+        assert got == ("Charlotte", "Los Angeles Galaxy")
+
+    def test_unknown_names_pass_through_untouched(self, tmp_path):
+        """⛔ 表里没有的名字**原样通过,绝不猜** —— 猜错是静默污染,比缺映射更坏。
+
+        新分裂由 `scripts/derive_odds_name_aliases.py` 探测器报出来,不在写入路径上推断。
+        """
+        from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
+        db = tmp_path / "o.db"
+        assert record_row_snapshot(db, self._row("Brand New FC", "Another New SC"))
+        got = sqlite3.connect(db).execute(
+            "SELECT home_team, away_team FROM odds_snapshots").fetchone()
+        assert got == ("Brand New FC", "Another New SC")
+
+    def test_sink_does_not_mutate_the_caller_row(self, tmp_path):
+        """调用方的 dict 还要写 CSV / 喂别的消费者 —— 就地改会波及它们。"""
+        from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
+        row = self._row("Charlotte FC", "LA Galaxy")
+        record_row_snapshot(tmp_path / "o.db", row)
+        assert row["home_team"] == "Charlotte FC", "sink 把调用方的 row 改了"
+
+    def test_alias_table_has_no_self_loops(self):
+        """key == value 说明推导时漏了「同名对照组」的过滤,表会白白变大。"""
+        from nutmeg.v4.data.odds_source_aliases import ODDS_SOURCE_ALIASES
+        loops = {k: v for k, v in ODDS_SOURCE_ALIASES.items() if k[1] == v}
+        assert not loops, f"自环:{loops}"
+
+    def test_alias_is_idempotent(self):
+        """归一后的名字再归一必须不变 —— 否则回填会随重跑次数漂移。"""
+        from nutmeg.v4.data.odds_source_aliases import ODDS_SOURCE_ALIASES, canonical_team
+        for (lg, _old), new in ODDS_SOURCE_ALIASES.items():
+            assert canonical_team(lg, new) == new, f"{lg}/{new} 不是不动点"
+
+    def test_unresolved_list_is_pinned_so_it_cant_grow_silently(self):
+        """⚠️ 7 条共现证据不足、**故意留空**。钉住数量:再多一条就红。
+
+        这条防的正是今天反复出现的形状 —— 缺口悄悄变大而没有任何东西喊。
+        新的分裂要么补进别名表(要有证据),要么显式改这个数字。
+        """
+        from nutmeg.v4.data.odds_source_aliases import UNRESOLVED_SPLITS
+        assert len(UNRESOLVED_SPLITS) == 7, (
+            f"未收敛项从 7 变成 {len(UNRESOLVED_SPLITS)}:{UNRESOLVED_SPLITS}\n"
+            "跑 scripts/derive_odds_name_aliases.py 看新分裂,有证据才补。")
+
+    def test_sport_key_league_is_normalised_to_the_v4_code(self, tmp_path):
+        """⚠️ league 列自己也有两套词汇 —— 队名归一要先过它,否则整个查表落空。
+
+        `closing_odds` 写 `"league": sk`,上一行是 `SPORT_KEYS.get(sk, sk)` 这种
+        「宽进」写法:调用方传原始 sport_key 时它原样落库。实测 47 行(closing 侧
+        2%)是 `soccer_usa_mls`,盘面侧写 `USA_MLS` ⇒ 别名表按 (联赛, 队名) 查,
+        **一条都命不中**,而归一看起来还是「修好了」(日志绿、测试绿)。
+        """
+        from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
+        db = tmp_path / "o.db"
+        assert record_row_snapshot(db, self._row(
+            "Charlotte FC", "LA Galaxy", league="soccer_usa_mls"))
+        assert sqlite3.connect(db).execute(
+            "SELECT league, home_team, away_team FROM odds_snapshots").fetchone() == (
+            "USA_MLS", "Charlotte", "Los Angeles Galaxy")
+
+    def test_unknown_league_passes_through(self, tmp_path):
+        """认不出的 league 原样留着 —— 同「表里没有的队名不猜」一条纪律。"""
+        from nutmeg.v4.data.odds_source_aliases import canonical_league
+        assert canonical_league("soccer_made_up_liga") == "soccer_made_up_liga"
+        assert canonical_league("USA_MLS") == "USA_MLS"
+        assert canonical_league(None) is None
+
+    def test_sport_key_reverse_lookup_is_unambiguous(self):
+        """反查 sport_key→V4 码必须 1:1。一对多就是**猜**,不是解析。
+
+        实测 30 条 0 个一对多;新增 SPORT_KEYS 条目若撞车,这里先红。
+        """
+        import collections
+
+        from nutmeg.v4.data.sources.odds_api import SPORT_KEYS
+        inv = collections.Counter(SPORT_KEYS.values())
+        dup = {k: n for k, n in inv.items() if n > 1}
+        assert not dup, f"sport_key 反查一对多 ⇒ canonical_league 会猜错:{dup}"

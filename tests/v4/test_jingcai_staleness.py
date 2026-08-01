@@ -163,49 +163,70 @@ class TestClubCoreCloseFallback:
         # 原有北欧口径不能被破坏
         assert _club_core("IK Sirius") == _club_core("Sirius")
 
+    # ⚠️ 2026-08-01 —— 下面两条原本用「Inter Miami / Inter Miami CF」构造分裂。
+    # 那天把分裂修到了 ingest 层(`odds_source_aliases`),`Inter Miami CF` 进了
+    # 别名表 ⇒ 写进库时就被归一,精确 join 直接命中,**根本走不到 club-core 兜底**。
+    # 歧义那条当场变红(好),但正例那条**照样绿** —— 它测的东西没了,而它不吭声。
+    # 这才是危险的一半:红测试会喊,失去牙齿的绿测试不会。
+    #
+    # 所以改用**别名表故意没收的**真实撞车对(瑞超,见 UNRESOLVED_SPLITS),
+    # 并在下面用 test_fixture_names_must_stay_unaliased 钉住这个前提:
+    # 将来谁把它们补进别名表,那条会先红,而不是这两条悄悄变哑。
+    _AMBIG = (("Servette FC", "FC St Gallen"), ("Servette", "FC ST. Gallen"))
+
+    def _write(self, db, home, away, ph):
+        return record_row_snapshot(db, {
+            "date": "2026-07-22", "league": "SUI_SUPER_LEAGUE",
+            "home_team": home, "away_team": away,
+            "psc_home": ph, "psc_draw": 3.9, "psc_away": 4.2,
+            "ou_line": 3.5, "psc_over25": 1.9, "psc_under25": 1.9,
+            "kickoff_utc": "2026-07-22T23:30:00+00:00",
+        }, source="closing", captured_at="2026-07-22T23:00:00+00:00")
+
+    def test_fixture_names_must_stay_unaliased(self):
+        """下面两条测试的前提:这些拼法**没有**被 ingest 层归一掉。
+
+        一旦有了共现证据把它们补进 `ODDS_SOURCE_ALIASES`,精确 join 会命中,
+        club-core 兜底就测不到了 —— 那时请换一对仍未收敛的名字,别删断言。
+        """
+        from nutmeg.v4.data.odds_source_aliases import canonical_team
+        for h, a in self._AMBIG:
+            for n in (h, a):
+                assert canonical_team("SUI_SUPER_LEAGUE", n) == n, (
+                    f"{n!r} 已进别名表 ⇒ 本类的 club-core 用例已失去牙齿,换名字")
+
     def test_close_found_across_the_spelling_split(self, tmp_path):
-        """竞彩 `Inter Miami` ↔ Pinnacle `Inter Miami CF` —— 精确 join 落空后,
+        """竞彩 `Servette` ↔ Pinnacle `Servette FC` —— 精确 join 落空后,
         club-core 兜底必须把这条收盘线找回来。"""
         import sqlite3
 
         from nutmeg.v4.cli.jingcai_staleness import _pinn_close
         db = tmp_path / "o.db"
-        record_row_snapshot(db, {
-            "date": "2026-07-22", "league": "USA_MLS",
-            "home_team": "Inter Miami CF", "away_team": "Chicago Fire",
-            "psc_home": 1.8, "psc_draw": 3.9, "psc_away": 4.2,
-            "ou_line": 3.5, "psc_over25": 1.9, "psc_under25": 1.9,
-            "kickoff_utc": "2026-07-22T23:30:00+00:00",
-        }, source="closing", captured_at="2026-07-22T23:00:00+00:00")
+        self._write(db, "Servette FC", "FC St Gallen", 1.8)
         with sqlite3.connect(db) as conn:
             conn.row_factory = sqlite3.Row
             got = _pinn_close(conn, {"match_date": "2026-07-22",
-                                     "home_team": "Inter Miami",
-                                     "away_team": "Chicago Fire"})
+                                     "home_team": "Servette",
+                                     "away_team": "FC ST. Gallen"})
         assert got is not None, "club-core 兜底没接上"
         assert got[0] == 1.8
 
     def test_ambiguous_core_never_guesses(self, tmp_path):
         """同日两场不同赛事共享同一 core 对 → 放弃,不猜。
-        错 join 是静默污染,比缺 join 更坏(缺了至少哨兵会响)。"""
+        错 join 是静默污染,比缺 join 更坏(缺了至少哨兵会响)。
+
+        查询键**两边都不精确命中**任何一行,才逼得走 core 兜底并撞上歧义闸。"""
         import sqlite3
 
         from nutmeg.v4.cli.jingcai_staleness import _pinn_close
         db = tmp_path / "o.db"
-        for home, away, ph in (("Inter Miami CF", "Chicago Fire", 1.8),
-                               ("Inter Miami", "Chicago Fire FC", 2.4)):
-            record_row_snapshot(db, {
-                "date": "2026-07-22", "league": "USA_MLS",
-                "home_team": home, "away_team": away,
-                "psc_home": ph, "psc_draw": 3.9, "psc_away": 4.2,
-                "ou_line": 3.5, "psc_over25": 1.9, "psc_under25": 1.9,
-                "kickoff_utc": "2026-07-22T23:30:00+00:00",
-            }, source="closing", captured_at="2026-07-22T23:00:00+00:00")
+        for (home, away), ph in zip(self._AMBIG, (1.8, 2.4), strict=True):
+            self._write(db, home, away, ph)
         with sqlite3.connect(db) as conn:
             conn.row_factory = sqlite3.Row
             got = _pinn_close(conn, {"match_date": "2026-07-22",
-                                     "home_team": "Inter Miami",
-                                     "away_team": "Chicago Fire"})
+                                     "home_team": "Servette",
+                                     "away_team": "FC St Gallen"})
         assert got is None, "歧义时必须放弃,绝不猜"
 
     def test_in_play_row_still_excluded(self, tmp_path):
