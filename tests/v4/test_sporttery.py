@@ -461,3 +461,64 @@ class TestUnmappedSentinel:
         r = harvest_to_db(db, matches=[])
         assert r["matches"] == 0
         assert report.read_text(encoding="utf-8") == "上次报告\n未映射 2 场\n"
+
+
+# ── 美职短名映射(2026-07-31)────────────────────────────────────────────
+
+#: 逐条用**赛事身份**钉出来的,不是音译。证据见 sporttery.py 该块注释。
+_MLS_PINNED = {
+    "夏洛特FC": "Charlotte", "华盛顿": "DC United",
+    "圣何塞": "San Jose Earthquakes", "波特兰": "Portland Timbers",
+    "西雅图": "Seattle Sounders", "费城": "Philadelphia Union",
+    "迈国际": "Inter Miami",
+}
+
+#: ⚠️ **同一支队两个上游拼法不一致**(API-Football 走 cup_market = 盘面;
+#: Odds API 走 closing)。值必须取 gather 侧,取错了 join 依然不通而**日志全绿**。
+#: 下面是逐组按 source 实测出来的 **closing 侧(= 禁用)** 拼法,不是推的。
+#:
+#: ⭐ 别按模式猜:10 组里 **9 组是「短名 = gather」,LA Galaxy 是反的** ——
+#: `Los Angeles Galaxy` 才是 gather(cup_market:28),`LA Galaxy` 是 closing。
+#: 写这条测试时我就照 9 个案例推了模式、把 LA 那组填反,被这条断言当场抓住。
+#: 「绝不瞎猜队名」同样适用于「绝不瞎猜命名模式」。
+_WRONG_SIDE = {
+    "Charlotte FC", "Seattle Sounders FC", "Inter Miami CF", "D.C. United",
+    "Austin FC", "Columbus Crew SC", "LA Galaxy", "San Diego FC",
+    "St. Louis City SC", "Vancouver Whitecaps FC",
+}
+
+
+def test_mls_short_names_resolve_to_the_pinned_english():
+    from nutmeg.v4.data.sources.sporttery import _ZH_TO_EN
+    for zh, en in _MLS_PINNED.items():
+        assert _ZH_TO_EN.get(zh) == en, f"「{zh}」应映射到 {en},实际 {_ZH_TO_EN.get(zh)}"
+
+
+def test_mls_values_use_the_gather_spelling_not_the_closing_one():
+    """⭐ 取错拼法 = join 照样不通,而且**没有任何报错** —— 和整个项目反复踩的
+    「沉默的错误答案」同族。这条把 10 组已知双拼法的**错误那一侧**钉成禁用。
+    """
+    from nutmeg.v4.data.sources.sporttery import _ZH_TO_EN
+    bad = {zh: en for zh, en in _ZH_TO_EN.items() if en in _WRONG_SIDE}
+    assert not bad, f"这些映射用了 closing 源的拼法,盘面(gather)对不上:{bad}"
+
+
+def test_pinned_values_have_a_display_name_so_cards_dont_show_english():
+    """面板提示原话:「只补 _ZH_OVERRIDES 会变成『join 通了、卡片仍显示英文名』」。"""
+    from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+    miss = {zh: en for zh, en in _MLS_PINNED.items() if en not in TEAM_NAME_ZH}
+    assert not miss, f"这些英文键没有中文显示名,卡片会显示英文:{miss}"
+
+
+def test_display_gap_list_is_pinned_so_new_ones_cant_slip_in_silently():
+    """⚠️ `_ZH_OVERRIDES` 里现有 **12** 条的英文值没有显示中文(历史遗留)。
+
+    这条**不是**在批准它们,而是把数量钉住:再多一条就红 ⇒ 新加映射必须要么带
+    显示名、要么显式改这个数字(有意为之),不能又一次「悄悄多一个」。
+    """
+    from nutmeg.v4.data.sources.sporttery import _ZH_OVERRIDES
+    from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+    gaps = sorted(zh for zh, en in _ZH_OVERRIDES.items() if en not in TEAM_NAME_ZH)
+    assert len(gaps) == 12, (
+        f"缺显示名的 override 从 12 变成 {len(gaps)}:{gaps}\n"
+        "新增的请补 team_name_zh.py;确实无法补再改这个数字。")

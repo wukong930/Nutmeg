@@ -295,6 +295,32 @@ _ZH_OVERRIDES: dict[str, str] = {
     "克拉克斯": "KI Klaksvik",
     "阿拉木图": "Kairat Almaty",
     "乌兹别克": "Uzbekistan",
+    # ── 美职 USA_MLS(2026-07-31)—— 竞彩用**短名**,TEAM_NAME_ZH 存的是全称音译
+    # (竞彩「华盛顿」vs 词典「华盛顿联」)。整队都在词典里 ⇒ 情形①,只补这里,
+    # 不动 team_name_zh.py(卡片仍显示词典的中文,不会退化成英文名)。
+    #
+    # ⚠️ **每一条都是「赛事身份」钉出来的,没有一条是按音译猜的**(红线:错映射是
+    # 静默污染,比缺映射更坏)。两种证据:
+    #   ① 比分硬闸 —— 竞彩档案的 (日期±1 + 主客比分完全一致) 唯一命中 API-Football
+    #      的 MLS fixture,读它的英文名。方法本身用**对照组验证过**:同一把尺子把
+    #      已知的「洛杉矶FC→Los Angeles FC」「蒙特利尔→CF Montreal」原样重现。
+    #   ② 今日赛事 —— 「夏洛特FC」:2026-08-02T00:30 芝加哥火焰(=Chicago Fire,
+    #      词典已有)当天的对手在 odds_snapshots 里唯一 = Charlotte。
+    # 值一律取 **cup_market(gather)侧的拼法** —— 逐条查过 odds_snapshots,各 50–72
+    # 条快照佐证。⚠️ 别用 closing 源的拼法:同一支队两个上游不一致(Charlotte /
+    # Charlotte FC、Seattle Sounders / …FC、Inter Miami / …CF 等 10 组),而盘面走 gather。
+    "夏洛特FC": "Charlotte",
+    "华盛顿": "DC United",
+    "圣何塞": "San Jose Earthquakes",
+    "波特兰": "Portland Timbers",
+    "西雅图": "Seattle Sounders",
+    "费城": "Philadelphia Union",
+    "迈国际": "Inter Miami",
+    # ⛔ 另有 13 个竞彩短名(亚特联/休斯敦/哥伦布/圣路易城/堪萨斯城/奥兰多/奥斯汀FC/
+    # 新英格兰/明尼苏达/洛城银河/温哥华/盐湖城/芝加哥)**故意留空**:本地拿不到
+    # 2025-08→2026-04 的 MLS fixture(缓存只到 2026-05),比分硬闸配不上 ⇒ 无证据。
+    # 它们只出现在**历史档案**里(今日实时 33/34 已能映射),补它们只影响档案可 join 性。
+    # 要补须先拉那段 MLS fixtures(花 API-Football 额度),**不许按音译补**。
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
