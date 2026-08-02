@@ -134,10 +134,36 @@ def test_backtest_constants_match_the_measurement() -> None:
 
 
 def test_note_says_it_will_not_be_positive() -> None:
-    """⛔ 构造器**不会**给正数。这句话必须留在界面上,中英都要。"""
+    """⛔ 「不会给正数」必须留着 —— 长文进了 ⓘ 弹窗,**但一句摘要仍要在卡面上**。
+
+    2026-08-03 owner:「提示类文案看起来很累,用图标代替」。搬进弹窗是对的,
+    但整句搬走就等于默认没人点 ⓘ。所以长版进 `pb_note`(弹窗),
+    卡面留 `pb_note_short` 一行 —— 两边都钉。
+    """
     s = _src()
-    assert "它不会给你正数" in s, "中文提示删掉了「不会给正数」"
-    assert "will NOT hand you a positive number" in s, "英文提示删掉了同一句"
+    assert "它不会给你正数" in s, "弹窗正文删掉了「不会给正数」"
+    assert "will NOT hand you a positive number" in s, "英文弹窗删掉了同一句"
+    assert "⚠️ 不会给正数" in s, "卡面摘要没留「不会给正数」"
+    assert "Never positive" in s, "英文卡面摘要同上"
+
+
+def test_long_notes_moved_into_the_info_modal() -> None:
+    """长文案走**已有的** `showInfo` 弹窗,不另造一套提示机制(Reuse)。"""
+    s = _src()
+    body = _fn("_parlayBuilderHtml")
+    assert "showInfo(t('pb_hdr'), t('pb_note'))" in body, "卡头 ⓘ 没接弹窗"
+    assert "showInfo(t('pb_dup'), t('pb_dup_body'))" in body, "同联赛 ⓘ 没接弹窗"
+    assert "showInfo(t('pb_1x'), t('pb_1x_note'))" in body, "单关注记 ⓘ 没接弹窗"
+    assert "function showInfo(" in s, "复用的 showInfo 不见了"
+
+
+def test_header_info_icon_does_not_toggle_the_fold() -> None:
+    """⚠️ ⓘ 在 `<summary>` 里 —— 不拦事件的话点它会顺手折叠整张卡。"""
+    body = _fn("_parlayBuilderHtml")
+    i = body.index("showInfo(t('pb_hdr')")
+    seg = body[max(0, i - 160):i]
+    assert "preventDefault()" in seg and "stopPropagation()" in seg, (
+        "卡头 ⓘ 没拦 summary 的默认折叠")
 
 
 def test_single_leg_reference_is_rendered_first() -> None:
@@ -155,8 +181,9 @@ def test_single_leg_reference_is_rendered_first() -> None:
 
 def test_both_locales_have_all_new_keys() -> None:
     s = _src()
-    for key in ("pb_hdr", "pb_note", "pb_1x", "pb_1x_note", "pb_2x", "pb_3x",
-                "pb_hist", "pb_rand", "pb_odds", "pb_theo", "pb_dup"):
+    for key in ("pb_hdr", "pb_note", "pb_note_short", "pb_info_tip",
+                "pb_1x", "pb_1x_note", "pb_1x_tag", "pb_2x", "pb_3x", "pb_hist",
+                "pb_rand", "pb_odds", "pb_theo", "pb_dup", "pb_dup_body"):
         assert s.count(f"{key}:") == 2, f"{key} 不是中英各 1 次"
 
 

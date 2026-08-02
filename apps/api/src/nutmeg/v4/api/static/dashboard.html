@@ -2172,6 +2172,10 @@ const I18N = {
     sw_second:        '次优',
     pb_hdr:           '串关构造器',
     pb_note:          '当天<b>每场可投注比赛各出一条最优腿</b>(按判闸下界 evLo;竞彩混合过关禁同场两腿),再枚举组合按 ∏(1+evLo) 排序。<b>⚠️ 它不会给你正数</b> —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。<br>⭐ <b>池故意不设地板</b>:873 个比赛日实测,无地板 2串 −12.5%/3串 −25.2% 是最好的;地板抬到 0% 变成 −42.9%/−100%(n=34),抬到 +5% 全军覆没 —— 筛得越狠,选中的越是被高估的腿(赢家诅咒)。<br>⭐ <b>腿越少越好</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2%。上面那条 1 串参考就是实测最优选项。按「历史实测」定注额,别按「理论 EV」—— 后者在全正腿相乘时会让 3 串看起来比 2 串好,那是反的。',
+    pb_info_tip:      '点击查看说明',
+    pb_note_short:    '⚠️ 不会给正数 · 腿越少越好 · 按「历史实测」定注额',
+    pb_1x_tag:        '实测最优,但让球买不到单关',
+    pb_dup_body:      '<p>这张票里有两条腿来自<b>同一联赛</b>。串关的联合概率算法默认各腿独立,而同联赛同一晚的比赛共享因子(天气、赛程密度、裁判尺度、该联赛当轮的进球环境),<b>真实联合概率低于算出来的</b>。</p><p style="margin-top:8px"><b>实例(2026-08-02 美职联):</b>6 场里 <b>4 场平局</b>,期望只有 1.35 场,<b>+2.59 SD</b>。那一晚一张 6 串 1 的五条输腿里有四条死于同一件事 —— 不是六次独立失败,是<b>一次事件杀了四条腿</b>。</p><p style="margin-top:8px">跨联赛不能消除相关(还有跨联赛的共同因子),但能显著削弱。能换就换。</p>',
     pb_1x:            '单关(参考)',
     pb_1x_note:       '实测最优;但让球腿 0/191 不开单关,看得到买不到',
     pb_2x:            '2 串 1',
@@ -2180,7 +2184,7 @@ const I18N = {
     pb_rand:          '随机腿基线',
     pb_odds:          '赔率积',
     pb_theo:          '理论 EV(下界口径)',
-    pb_dup:           '⚠️ 同联赛 —— 相关腿的真实联合概率低于算出来的(2026-08-02 美职联 6 场 4 平,+2.59 SD,一次事件杀 4 条腿)',
+    pb_dup:           '⚠️ 同联赛',
     sw_off_hdr:       '甜区外 · 已过闸',
     sw_off_note:      '这些腿过了 +5% 闸但不在甜区,默认折叠、不参与上面的排序。实测(13,031 场 / 38,511 腿):全库 178 条过闸腿里 55 条(31%)在甜区外 —— 榜以前把它们整个藏了。甜区内 ROI +8.1%±13.4% vs 甜区外 −33.4%±26.0%,差 41.5pp 但 z=1.42(**没确立**),所以降级展示而不是隐藏。冷门档尤其当心:13 条过闸腿 0/13(但 P≈12% 全空本有 19% 概率,别当铁证)。',
     sw_jump_hint:     '点击跳到这场的卡片',
@@ -2676,6 +2680,10 @@ const I18N = {
     sw_second:        '2nd',
     pb_hdr:           'parlay builder',
     pb_note:          'One best leg per bettable match today (ranked by the gate lower bound evLo; 竞彩 forbids two legs from one match), then combinations ranked by product(1+evLo). <b>It will NOT hand you a positive number</b> — parlay EV = product(1+EVi)-1 is an identity.<br>The pool deliberately has NO floor: measured over 873 matchdays, no-floor is best (2-leg -12.5%, 3-leg -25.2%); a 0% floor collapses to -42.9% / -100% (n=34) and a +5% floor wipes out entirely — the harder you select on EV, the more you pick over-estimated legs (winner curse).<br>Fewer legs is better: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2%. The single-leg reference above is the best measured option. Size off the historical number, not the theoretical EV — with all-positive legs the latter makes a 3-leg look better than a 2-leg, which is backwards.',
+    pb_info_tip:      'tap for the explanation',
+    pb_note_short:    'Never positive · fewer legs is better · size off the historical number',
+    pb_1x_tag:        'best measured, but handicap legs cannot be single-bet',
+    pb_dup_body:      '<p>Two legs in this ticket come from the <b>same league</b>. Parlay math assumes the legs are independent, but matches in one league on one night share factors (weather, fixture congestion, refereeing, that round scoring environment), so the <b>true joint probability is lower than the computed one</b>.</p><p style="margin-top:8px"><b>Worked example (2026-08-02 MLS):</b> 4 draws in 6 matches against an expectation of 1.35 — <b>+2.59 SD</b>. Of the five losing legs on a 6-leg ticket that night, four died to the same event: not six independent failures, but <b>one event killing four legs</b>.</p><p style="margin-top:8px">Crossing leagues does not remove correlation (cross-league factors remain) but it weakens it a lot. Swap when you can.</p>',
     pb_1x:            'single (reference)',
     pb_1x_note:       'best measured; but handicap legs are 0/191 single-bettable — visible, not buyable',
     pb_2x:            '2-leg',
@@ -2684,7 +2692,7 @@ const I18N = {
     pb_rand:          'random-leg baseline',
     pb_odds:          'odds product',
     pb_theo:          'theoretical EV (lower-bound basis)',
-    pb_dup:           'same league — correlated legs make the true joint probability lower than computed (2026-08-02: 4 draws in 6 MLS matches, +2.59 SD, one event killed 4 legs)',
+    pb_dup:           'same league',
     sw_off_hdr:       'outside sweet · clears the gate',
     sw_off_note:      'These legs clear the +5% gate but are not sweet-tier: collapsed by default, not ranked above. Measured (13,031 matches / 38,511 legs): of 178 gate-clearing legs archive-wide, 55 (31%) sit outside sweet — the board used to hide them entirely. Sweet ROI +8.1%±13.4% vs outside −33.4%±26.0%: a 41.5pp gap at z=1.42, i.e. NOT established, so these are demoted rather than hidden. Longshot tier deserves extra care: 13 gate-clearing legs went 0/13 (though at P≈12% a clean sweep has 19% probability on its own — not proof).',
     sw_jump_hint:     'jump to this match card',
@@ -4966,7 +4974,9 @@ function _parlayBuilderHtml(items) {
         <div class="pl-2 text-muted">${t('pb_odds')} <b>${c.odds.toFixed(2)}</b>×
           · ${t('pb_theo')} <span style="color:${c.evLo >= 0 ? '#059669' : '#e11d48'}">${f(c.evLo)}</span>
           · ${t('pb_hist')} <b style="color:#e11d48">${f(_PARLAY_BACKTEST[k])}</b>
-          ${c.dup ? `<span style="color:#b45309"> · ${t('pb_dup')}</span>` : ''}</div>
+          ${c.dup ? ` · <span class="info-i" style="color:#b45309"
+            onclick="showInfo(t('pb_dup'), t('pb_dup_body'))"
+            title="${t('pb_info_tip')}">${t('pb_dup')}ⓘ</span>` : ''}</div>
       </div>`).join('')}</div>`;
   };
   // 1 串参考:**实测里最好的选项**(−5.2% vs 2串 −12.5% vs 3串 −25.2%)。
@@ -4977,7 +4987,9 @@ function _parlayBuilderHtml(items) {
   const solo = !b1 ? '' : `<div class="mt-2"><div class="text-xs font-medium">${t('pb_1x')}
       <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[1])}</b>
       ±${(_PARLAY_BACKTEST_SE[1] * 100).toFixed(1)}pp (n=${_PARLAY_BACKTEST_N[1]})
-      · ${t('pb_rand')} ${f(_PARLAY_RANDOM[1])} · ${t('pb_1x_note')}</span></div>
+      · ${t('pb_rand')} ${f(_PARLAY_RANDOM[1])}
+      · <span class="info-i" onclick="showInfo(t('pb_1x'), t('pb_1x_note'))"
+          title="${t('pb_info_tip')}">${t('pb_1x_tag')}ⓘ</span></span></div>
     <div class="px-2 py-1 text-xs"><div class="pl-2">·
       <span class="font-medium">${zhTeam(b1.pr.home_team)} vs ${zhTeam(b1.pr.away_team)}</span>
       <span class="text-muted">${zhLeague(b1.pr.league)}</span>
@@ -4989,8 +5001,11 @@ function _parlayBuilderHtml(items) {
       style="border-left:4px solid #b45309">
     <summary class="font-bold cursor-pointer">
       <span style="color:#b45309">${IC('ticket')}</span> ${t('pb_hdr')}
-      <span class="text-sm font-normal text-gray-500">· ${pool.length}</span></summary>
-    <div class="text-xs text-muted mt-1 mb-2">${t('pb_note')}</div>
+      <span class="text-sm font-normal text-gray-500">· ${pool.length}</span>
+      <span class="info-i" style="font-size:0.8em;font-weight:400"
+            onclick="event.preventDefault();event.stopPropagation();showInfo(t('pb_hdr'), t('pb_note'))"
+            title="${t('pb_info_tip')}">ⓘ <span data-i18n="info_link">说明</span></span></summary>
+    <div class="text-xs text-muted mt-1 mb-2">${t('pb_note_short')}</div>
     ${solo}${block(2)}${block(3)}</details>`;
 }
 
