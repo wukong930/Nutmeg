@@ -1156,8 +1156,22 @@ class TestSweetEvBoard:
         assert "_SPCALC.preds = [];" in html
 
     def test_sweet_only_filter(self, html):
-        # 需求③:只挑甜区 —— 分级复用 _evRelTier,不另写阈值
-        assert "if (_evRelTier(p) !== 'sweet') return;" in html
+        """需求③:主区只挑甜区 —— 分级复用 `_evRelTier`,不另写阈值。
+
+        ⚠️ 2026-08-01 改写。原断言钉的是 push 里的内联早退
+        `if (_evRelTier(p) !== 'sweet') return;`,那句已被**故意删掉**:它让甜区外
+        的过闸腿在榜上彻底不存在(实测全库 31% 的过闸腿落在甜区外)。现在是
+        `_boardLegs` 出全量带 tier,主区/附区各自 filter。
+
+        钉的**意图没变**:主区仍然只有甜区,且分档仍走 `_evRelTier`、不另立阈值。
+        分区本身的回归在 `test_sweet_board_offtier.py`。
+        """
+        assert "const tier = _evRelTier(p);" in html, "分档没走 _evRelTier"
+        assert ("return _boardLegs(pr, idx, mode).filter(l => l.tier === 'sweet');"
+                in html), "主区不再是「只甜区」"
+        # 不另写阈值:除了 +5% 闸(0.05),榜里不许出现别的裸概率边界常数
+        board = html[html.index("function _boardLegs("):html.index("function _sweetLegHtml(")]
+        assert "0.25" not in board and "0.67" not in board, "榜里硬编码了档位边界"
 
     def test_ranked_by_gate_ev_not_point(self, html):
         # 腿内排序 + 场间排序都用判闸 EV(evLo);A′ 一致性的榜单版

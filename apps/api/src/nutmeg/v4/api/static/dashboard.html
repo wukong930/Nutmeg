@@ -2015,7 +2015,7 @@ const I18N = {
     rel_edge:         '边缘',
     rel_cold:         '冷门',
     rel_chalk:        '超短',
-    rel_sweet_hint:   '赔率约 1.5–4(真实概率 25–67%):SP 放大最小,EV 估计最稳 —— 这里的 +EV 最可信',
+    rel_sweet_hint:   '赔率约 1.5–4(真实概率 25–67%):过闸腿里唯一实测 ROI 为正的档(+8.1%±13.4%,N=123,t=0.60 —— 方向好,但**自身也未确立为 +EV**)。⚠️ 边界是手画的:实测四档边界与 σ_EV 近乎正交(档内 1.44× / 跨界 1.02×),所以「这里方差最小」是**旧说法,已被推翻**',
     rel_edge_hint:    '偏离甜区(赔率约 4–6.7 或 1.3–1.5):28k 实测去 vig 校准良好(残差 ns);风险不在偏差而在 EV 估计方差随 SP 放大,略谨慎',
     rel_cold_hint:    '深冷门(赔率>6.7):WPO 去 vig 校准良好(28k 残差 ns);风险不在系统高估,而在 EV 估计方差随 SP(=1/P)放大 —— 同样的 P 噪声在这里放大成大得多的 EV 不确定',
     rel_chalk_hint:   '超短热门(赔率<1.3):EV 空间极薄,赔率一动就没,意义有限',
@@ -2023,7 +2023,7 @@ const I18N = {
     rel_var_thr_short: '门槛',
     rel_var_thr_vs:    'vs 平 5%;σ_EV=σ_P(h)·SP,冷门腿放大、离开球越远越宽;仅显示、不拦截',
     evhelp_title:      'EV 可靠性 & 门槛 — 怎么看',
-    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b>(P = Pinnacle 去 vig 公允概率)。<b>门槛</b>不是 EV,是"这注因为有多冷,EV 至少要达到多少才算可信"。</p><p style="margin-top:8px"><b>怎么读 EV 旁那个门槛:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ 门槛</b> → ✅ 可信的 +EV</li><li><b>5% ≤ EV &lt; 门槛</b> → ⚠️ 冷门陷阱:过了老的平 5% 线,但 EV 不够盖住冷门腿的估计噪声,多半假信号</li><li><b>EV &lt; 5%</b> → 空仓</li></ul><p style="margin-top:8px"><b>为什么冷门门槛高:</b>EV 的误差 = SP × P 的误差。冷门 SP 大 → 同样的 P 噪声放大成大得多的 EV 噪声,所以冷门的 EV 要求更高才算数。</p><p style="margin-top:8px"><b>四档(同一件事的颜色版):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>甜区</b>(P 25–67%,赔率 1.5–4):SP 最小,+EV 最可信,门槛最低(~6–8%)</li><li>🟡 <b>边缘</b>(P 15–25% 或 67–77%):方差略大,略谨慎</li><li>⚠️ <b>冷门</b>(P&lt;15%,赔率&gt;6.7):SP 大,EV 估计最晃,门槛最高(~17%+)</li><li>⚠️ <b>超短</b>(P&gt;77%,赔率&lt;1.3):不是方差问题,而是 EV 空间极薄、赔率一动就没</li></ul><p style="margin-top:8px"><b>门槛还随「距开球时长」动:</b>竞彩停售后市场继续走(41% 凌晨场的停售→开球缺口中位 6h),σ_P 随缺口拉大 —— 同一注,离开球越远门槛越高。这与行内 ±X% 带出自<b>同一个 σ</b>,所以两个数字永远自洽。</p><p style="margin-top:8px;color:var(--text-muted)">注:门槛<b>只显示、不拦截</b>(真正 gate 仍是平 5%)。旧「高估区」档已退役 —— 那是 n=323 小样本噪声,2.8 万场实测显示该区间其实已校准。</p>',
+    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b>(P = Pinnacle 去 vig 公允概率)。<b>门槛</b>不是 EV,是"这注因为有多冷,EV 至少要达到多少才算可信"。</p><p style="margin-top:8px"><b>怎么读 EV 旁那个门槛:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ 门槛</b> → ✅ 可信的 +EV</li><li><b>5% ≤ EV &lt; 门槛</b> → ⚠️ 冷门陷阱:过了老的平 5% 线,但 EV 不够盖住冷门腿的估计噪声,多半假信号</li><li><b>EV &lt; 5%</b> → 空仓</li></ul><p style="margin-top:8px"><b>为什么冷门门槛高:</b>EV 的误差 = SP × P 的误差。冷门 SP 大 → 同样的 P 噪声放大成大得多的 EV 噪声,所以冷门的 EV 要求更高才算数。</p><p style="margin-top:8px"><b>四档(同一件事的颜色版):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>甜区</b>(P 25–67%,赔率 1.5–4):门槛最低(~6–8%)。实测过闸腿 ROI +8.1%±13.4%(N=123)—— 四档里唯一为正,但 t=0.60,<b>自身也未确立为 +EV</b>。⚠️ 边界手画,与 σ_EV 近乎正交</li><li>🟡 <b>边缘</b>(P 15–25% 或 67–77%):方差略大,略谨慎</li><li>⚠️ <b>冷门</b>(P&lt;15%,赔率&gt;6.7):SP 大,EV 估计最晃,门槛最高(~17%+)</li><li>⚠️ <b>超短</b>(P&gt;77%,赔率&lt;1.3):不是方差问题,而是 EV 空间极薄、赔率一动就没</li></ul><p style="margin-top:8px"><b>门槛还随「距开球时长」动:</b>竞彩停售后市场继续走(41% 凌晨场的停售→开球缺口中位 6h),σ_P 随缺口拉大 —— 同一注,离开球越远门槛越高。这与行内 ±X% 带出自<b>同一个 σ</b>,所以两个数字永远自洽。</p><p style="margin-top:8px;color:var(--text-muted)">注:门槛<b>只显示、不拦截</b>(真正 gate 仍是平 5%)。旧「高估区」档已退役 —— 那是 n=323 小样本噪声,2.8 万场实测显示该区间其实已校准。</p>',
     rel_wide:         '盘口存疑',
     rel_wide_hint:    '这条「Pinnacle」线三腿水位 >8%。⚠️ 它判的只是「这条线配不配当 sharp 锚」,不是这注好不好 —— 单看水位分不出「软盘冒充」还是「真 Pinnacle 在低流动性市场放宽」(资格赛 5–7% 合理)。实测全库 14,452 条:OA 覆盖联赛中位 4.8–6.0%、观测最大 7.3%;UCL/UEL/UECL 中位 7.9/8.5/10.6% ⇒ 欧战亮红是常态,不是异常。真正的代价是:去vig 照单全收,把它变成一个伪装成 sharp 先验的公允概率(实测过一次:面板 +9.4% 绿灯,换正常水位的线是 −16%)⇒ 这个 EV 的实际误差远大于数字本身。想用真盘口重算只有一个入口:「市场模式」卡片里的 ✏️ 手填实时 Pinnacle —— 本页和「今日推荐」没有这个控件;手填只对那张卡生效、只存本机,不同步到本页,也不同步到其它设备。',
     rel_flip:         'sharp 分歧',
@@ -2163,11 +2163,13 @@ const I18N = {
     sw_single_no:     '需串',
     sw_single_yes_hint: '竞彩给这场这个玩法开了单关 —— 可以单独买,不必凑串',
     sw_single_no_hint:  '这个玩法只能过关:要下注就必须再配一条腿(实测仅 17% 场次可单关)',
-    sw_board_note:    '标准+市场两模式可投注场次合并成一张全局榜;只列甜区腿(P 25–67%,EV 最可信);每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽)。',
+    sw_board_note:    '标准+市场两模式可投注场次合并成一张全局榜;主区只列甜区腿(P 25–67%),每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界);**甜区外已过闸的腿在下方「甜区外 · 已过闸」里另列**(2026-08-01:实测全库 31% 的过闸腿落在甜区外,以前整个看不见)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽)。',
     frz_badge_tip:    '距开球时长 — 现在下单,到收盘 Pinnacle 预计还漂 ±2σ(已并入 EV 的 ± 区间);凌晨场停售早、缺口不可压缩(A-1 实测:41% 凌晨场中位缺口 6h)',
     jc_price_age:     '竞彩价',
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
     sw_second:        '次优',
+    sw_off_hdr:       '甜区外 · 已过闸',
+    sw_off_note:      '这些腿过了 +5% 闸但不在甜区,默认折叠、不参与上面的排序。实测(13,031 场 / 38,511 腿):全库 178 条过闸腿里 55 条(31%)在甜区外 —— 榜以前把它们整个藏了。甜区内 ROI +8.1%±13.4% vs 甜区外 −33.4%±26.0%,差 41.5pp 但 z=1.42(**没确立**),所以降级展示而不是隐藏。冷门档尤其当心:13 条过闸腿 0/13(但 P≈12% 全空本有 19% 概率,别当铁证)。',
     sw_jump_hint:     '点击跳到这场的卡片',
     sw_refresh_hint:  '用当前手填 SP + 最新盘口重算排行',
     sw_1x2_h:         '胜',
@@ -2506,7 +2508,7 @@ const I18N = {
     rel_edge:         'edge',
     rel_cold:         'longshot',
     rel_chalk:        'heavy fav',
-    rel_sweet_hint:   'Odds ~1.5–4 (true P 25–67%): smallest SP amplification, most stable EV estimate — a +EV here is the trustworthy kind',
+    rel_sweet_hint:   'Odds ~1.5–4 (true P 25–67%): the only tier whose gate-clearing legs measured a positive ROI (+8.1%±13.4%, N=123, t=0.60 — right direction, but NOT itself established as +EV). Note the boundaries are hand-drawn: they measured nearly orthogonal to sigma_EV (1.44x within a tier vs 1.02x across a boundary), so the old claim that variance is smallest here has been falsified',
     rel_edge_hint:    'Just outside the sweet spot (odds ~4–6.7 or ~1.3–1.5): de-vig is well-calibrated (residual ns on 28k); the risk is EV-estimate variance scaling with SP, not bias — mild caution',
     rel_cold_hint:    'Deep longshot (odds >6.7): WPO de-vig is well-calibrated (residual ns on 28k); the risk is not systematic overpricing but EV-estimate variance scaling with SP (=1/P) — the same P noise blows up into far larger EV uncertainty here',
     rel_chalk_hint:   'Super-short favourite (odds <1.3): razor-thin EV that dies on any line move — limited meaning',
@@ -2514,7 +2516,7 @@ const I18N = {
     rel_var_thr_short: 'bar',
     rel_var_thr_vs:    'vs the flat 5%; σ_EV=σ_P(h)·SP — amplified by longshots and by time-to-kickoff; shown, not gated',
     evhelp_title:      'EV reliability & bar — how to read it',
-    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b> (P = Pinnacle de-vig fair prob). The <b>bar</b> is not the EV — it is "how high the EV must be for this pick to count as a reliable +EV".</p><p style="margin-top:8px"><b>Reading the bar next to an EV:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ bar</b> → ✅ a trustworthy +EV</li><li><b>5% ≤ EV &lt; bar</b> → ⚠️ longshot trap: clears the old flat 5% but the EV is not enough to cover the estimate noise — likely a mirage</li><li><b>EV &lt; 5%</b> → pass</li></ul><p style="margin-top:8px"><b>Why longshots need a higher bar:</b> the EV error = SP × the P error. A longshot has a big SP, so the same P noise blows up into far larger EV noise — its EV must be higher to count.</p><p style="margin-top:8px"><b>The four tiers (same thing, colour-coded):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>sweet</b> (P 25–67%, odds 1.5–4): smallest SP, most trustworthy +EV, lowest bar (~6–8%)</li><li>🟡 <b>edge</b> (P 15–25% or 67–77%): a bit more variance, mild caution</li><li>⚠️ <b>longshot</b> (P&lt;15%, odds&gt;6.7): big SP, shakiest EV, highest bar (~17%+)</li><li>⚠️ <b>heavy fav</b> (P&gt;77%, odds&lt;1.3): not a variance issue — razor-thin EV that dies on any line move</li></ul><p style="margin-top:8px"><b>The bar also moves with time-to-kickoff:</b> 竞彩 freezes while the market keeps moving (41% of overnight matches have a median 6h freeze→kickoff gap), and σ_P widens with that gap — so the same pick carries a higher bar the further out it is. It shares <b>one σ</b> with the ±X% band on the same row, so the two numbers can never disagree.</p><p style="margin-top:8px;color:var(--text-muted)">Note: the bar is <b>shown, not gating</b> (the real gate is still flat 5%). The old "overpriced" tier was retired — it was n=323 noise; a 28k-match recheck shows that band is actually calibrated.</p>',
+    evhelp_body:       '<p><b>EV = P × 竞彩SP − 1</b> (P = Pinnacle de-vig fair prob). The <b>bar</b> is not the EV — it is "how high the EV must be for this pick to count as a reliable +EV".</p><p style="margin-top:8px"><b>Reading the bar next to an EV:</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li><b>EV ≥ bar</b> → ✅ a trustworthy +EV</li><li><b>5% ≤ EV &lt; bar</b> → ⚠️ longshot trap: clears the old flat 5% but the EV is not enough to cover the estimate noise — likely a mirage</li><li><b>EV &lt; 5%</b> → pass</li></ul><p style="margin-top:8px"><b>Why longshots need a higher bar:</b> the EV error = SP × the P error. A longshot has a big SP, so the same P noise blows up into far larger EV noise — its EV must be higher to count.</p><p style="margin-top:8px"><b>The four tiers (same thing, colour-coded):</b></p><ul style="margin:4px 0 4px 18px;list-style:disc"><li>🟢 <b>sweet</b> (P 25-67%, odds 1.5-4): lowest bar (~6-8%). Gate-clearing legs measured ROI +8.1%±13.4% (N=123) — the only positive tier, but t=0.60, so <b>not itself established as +EV</b>. Boundaries are hand-drawn and near-orthogonal to sigma_EV</li><li>🟡 <b>edge</b> (P 15–25% or 67–77%): a bit more variance, mild caution</li><li>⚠️ <b>longshot</b> (P&lt;15%, odds&gt;6.7): big SP, shakiest EV, highest bar (~17%+)</li><li>⚠️ <b>heavy fav</b> (P&gt;77%, odds&lt;1.3): not a variance issue — razor-thin EV that dies on any line move</li></ul><p style="margin-top:8px"><b>The bar also moves with time-to-kickoff:</b> 竞彩 freezes while the market keeps moving (41% of overnight matches have a median 6h freeze→kickoff gap), and σ_P widens with that gap — so the same pick carries a higher bar the further out it is. It shares <b>one σ</b> with the ±X% band on the same row, so the two numbers can never disagree.</p><p style="margin-top:8px;color:var(--text-muted)">Note: the bar is <b>shown, not gating</b> (the real gate is still flat 5%). The old "overpriced" tier was retired — it was n=323 noise; a 28k-match recheck shows that band is actually calibrated.</p>',
     rel_wide:         'suspect book',
     rel_wide_hint:    'This so-called Pinnacle line carries >8% 1X2 overround. ⚠️ It judges only whether the line deserves to be a sharp anchor, not whether the bet is good — overround alone cannot separate a soft book posing as Pinnacle from real Pinnacle widening in a thin market (5-7% is reasonable in qualifiers). Measured across 14,452 lines: OA-covered leagues median 4.8-6.0% and max 7.3%; UCL/UEL/UECL median 7.9/8.5/10.6% → red is the norm for European ties, not an anomaly. The real cost: de-vigging takes whatever it is given and turns it into a fair probability that merely poses as a sharp prior (measured once: the card showed +9.4% green, a normal-width line gave -16%) → the true error on this EV is far larger than the number suggests. Exactly one place can recompute it from a real line: the ✏️ Type live Pinnacle panel on a Market-mode card. This page and the Today board have no such control, and a manual fill applies to that one card, is stored on this device only, and syncs nowhere else.',
     rel_flip:         'sharp split',
@@ -2654,11 +2656,13 @@ const I18N = {
     sw_single_no:     'parlay-only',
     sw_single_yes_hint: '竞彩 offers a SINGLE on this pool — bettable on its own',
     sw_single_no_hint:  'parlay-only: you must pair it with another leg (only 17% of matches allow singles)',
-    sw_board_note:    'one global board merging bettable matches from both modes; sweet-tier legs only (P 25–67%, most reliable EV); best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff).',
+    sw_board_note:    'one global board merging bettable matches from both modes; the main list is sweet-tier only (P 25-67%), best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound); gate-clearing legs OUTSIDE sweet are listed separately below (2026-08-01: 31% of archive-wide gate-clearing legs sit outside sweet and used to be invisible here). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff).',
     frz_badge_tip:    'Hours to kickoff — commit now and Pinnacle keeps drifting until close (±2σ, folded into the EV ± band); overnight matches freeze early with an incompressible gap (A-1 measured: 41% of matches, median 6h)',
     jc_price_age:     '竞彩 price',
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
     sw_second:        '2nd',
+    sw_off_hdr:       'outside sweet · clears the gate',
+    sw_off_note:      'These legs clear the +5% gate but are not sweet-tier: collapsed by default, not ranked above. Measured (13,031 matches / 38,511 legs): of 178 gate-clearing legs archive-wide, 55 (31%) sit outside sweet — the board used to hide them entirely. Sweet ROI +8.1%±13.4% vs outside −33.4%±26.0%: a 41.5pp gap at z=1.42, i.e. NOT established, so these are demoted rather than hidden. Longshot tier deserves extra care: 13 gate-clearing legs went 0/13 (though at P≈12% a clean sweep has 19% probability on its own — not proof).',
     sw_jump_hint:     'jump to this match card',
     sw_refresh_hint:  're-rank with current hand-typed SP + latest lines',
     sw_1x2_h:         'home',
@@ -4645,14 +4649,29 @@ function _sweetEffSp(mode, idx, market, outcome, fallback) {
   const v = el ? parseFloat(el.value) : NaN;
   return v > 1.0 ? v : fallback;
 }
-function _sweetLegs(pr, idx, mode) {
+// 2026-08-01 —— **先筛后排**改成**先排后分区**。
+//
+// 原来 push 里直接 `if (_evRelTier(p) !== 'sweet') return`,于是甜区外的腿在榜上
+// 彻底不存在。实测(13,031 场 / 38,511 腿 / fd Pinnacle 锚):全库 178 条过 +5% 闸,
+// 其中 **55 条(30.9%)在甜区外** —— 榜把接近三分之一的过闸腿藏了。
+//
+// 藏它们的理由本来是「甜区更可信」。但那个差**没确立**:
+//   甜区内 123 条 ROI +8.1%±13.4% · 甜区外 55 条 −33.4%±26.0% · 差 41.5pp,**z=1.42**。
+// 方向支持甜区优先,强度**不支持**把它们变不可见 —— 尤其榜自己写着「下注仍看
+// +5% 闸」,而若榜就是你扫的东西,「仍看闸」等于挨张卡片手翻,那正是榜要替掉的活。
+//
+// 所以:甜区仍是**默认排序**(主区不变),甜区外的过闸腿降级成**可展开**而非消失。
+// ⛔ 判闸、排序键、+5% 闸一律不动 —— 这是显示层改动。
+function _boardLegs(pr, idx, mode) {
   const legs = [];
   const push = (o, label, p, lo, sp) => {
     if (!(sp > 1.0) || !(p > 0)) return;
-    if (_evRelTier(p) !== 'sweet') return;
+    const tier = _evRelTier(p);
+    if (!tier) return;
     const ev = p * sp - 1, evLo = (lo != null ? lo : p) * sp - 1;
     // A-2 — 显示半宽 = A′ δ 带 ⊕ 冻结带(平方和);evLo/排序/绿灯不动(冻结带不判闸)
-    legs.push({ o, label, p, sp, ev, evLo, half: Math.hypot(ev - evLo, _frzHalfEv(pr, o, sp)) });
+    legs.push({ o, label, p, sp, ev, evLo, tier,
+                half: Math.hypot(ev - evLo, _frzHalfEv(pr, o, sp)) });
   };
   push('H', t('sw_1x2_h'), pr.p_home_1x2, null, _sweetEffSp(mode, idx, '1x2', 'H', pr.jc_home));
   push('D', t('sw_1x2_d'), pr.p_draw_1x2, null, _sweetEffSp(mode, idx, '1x2', 'D', pr.jc_draw));
@@ -4671,6 +4690,14 @@ function _sweetLegs(pr, idx, mode) {
     }
   }
   return legs.sort((a, b) => b.evLo - a.evLo);
+}
+//: 主区 —— 只甜区腿(行为与旧 `_sweetLegs` 逐字等价)。
+function _sweetLegs(pr, idx, mode) {
+  return _boardLegs(pr, idx, mode).filter(l => l.tier === 'sweet');
+}
+//: 附区 —— 甜区外**且已过 +5% 闸**的腿。没过闸的不进(榜不是全量清单)。
+function _offSweetPassingLegs(pr, idx, mode) {
+  return _boardLegs(pr, idx, mode).filter(l => l.tier !== 'sweet' && l.evLo >= 0.05);
 }
 function _sweetLegHtml(lg) {
   const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
@@ -4742,15 +4769,25 @@ function _singleBadge(v) {
     ? `<span class="ml-1" style="color:#059669" title="${t('sw_single_yes_hint')}">${t('sw_single_yes')}</span>`
     : `<span class="ml-1 text-muted" title="${t('sw_single_no_hint')}">${t('sw_single_no')}</span>`;
 }
+//: 档位徽章 —— 附区每行必须自报家门,否则读者不知道自己在看非甜区的东西。
+const _TIER_KEY = { edge: 'rel_edge', cold: 'rel_cold', chalk: 'rel_chalk' };
+function _tierChip(tier) {
+  const k = _TIER_KEY[tier];
+  if (!k) return '';
+  return `<span class="ml-1 text-muted" style="font-size:0.9em">[${t(k)}]</span>`;
+}
 function _sweetBoardHtml(items) {
   const rows = [];
+  const offRows = [];
   (items || []).forEach(({ pr, idx, mode }) => {
     const legs = _sweetLegs(pr, idx, mode);
-    if (!legs.length) return;
-    rows.push({ pr, idx, mode, best: legs[0], second: legs[1] || null });
+    if (legs.length) rows.push({ pr, idx, mode, best: legs[0], second: legs[1] || null });
+    // 附区按**腿**列(不是按场取前二):它存在的意义就是「一条都别漏」。
+    _offSweetPassingLegs(pr, idx, mode).forEach(lg => offRows.push({ pr, idx, mode, lg }));
   });
-  if (!rows.length) return '';
+  if (!rows.length && !offRows.length) return '';
   rows.sort((a, b) => b.best.evLo - a.best.evLo);
+  offRows.sort((a, b) => b.lg.evLo - a.lg.evLo);
   const ko = (pr) => {
     const ms = _kickoffMs(pr);
     if (!isFinite(ms)) return '';
@@ -4771,6 +4808,26 @@ function _sweetBoardHtml(items) {
         ? `<span class="text-muted"> ｜ ${t('sw_second')}: </span>${_sweetLegHtml(r.second)}` : ''}
       </div>
     </div>`).join('');
+  // 附区(2026-08-01):甜区外**已过闸**的腿。默认折叠、灰底、每行带档位徽章 ——
+  // 降级展示,不是隐藏。零场时整块不渲染(不占位,与主区同规矩)。
+  const offBody = !offRows.length ? '' : `
+    <details class="mt-3 rounded" style="border-left:3px solid #b45309;background:#b4530910">
+      <summary class="text-xs cursor-pointer px-2 py-1">
+        ${IC('info')} ${t('sw_off_hdr')}
+        <span class="text-muted">· ${offRows.length}</span></summary>
+      <div class="text-xs text-muted px-2 pb-1">${t('sw_off_note')}</div>
+      ${offRows.map(r => `
+      <div class="sw-row px-2 py-1 rounded" style="cursor:pointer"
+           onclick="_sweetJump('${r.mode}',${r.idx})" title="${t('sw_jump_hint')}">
+        <div class="text-xs">
+          <span class="font-medium">${zhTeam(r.pr.home_team)} vs ${zhTeam(r.pr.away_team)}</span>
+          <span class="text-muted"> · ${zhLeague(r.pr.league)} · ${ko(r.pr)}</span>${_tierChip(r.lg.tier)}${
+            _frzBadgeHtml(r.pr)}${_singleBadge(_legIsHc(r.lg)
+              ? r.pr.jc_hc_single_available : r.pr.jc_single_available)}
+        </div>
+        <div class="text-xs pl-4">${_sweetLegHtml(r.lg)}</div>
+      </div>`).join('')}
+    </details>`;
   // 项目卡范式(同 #manual-reverse details):白卡 + 左侧色条 + font-bold summary +
   // 行内 Tabler 图标(ic-candy=甜区绿做身份色,文字用默认色)。
   return `<details${_sweetBoardOpen('global') ? ' open' : ''} class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4"
@@ -4782,7 +4839,7 @@ function _sweetBoardHtml(items) {
       <span onclick="event.preventDefault();event.stopPropagation();_sweetBoardRefresh()"
             title="${t('sw_refresh_hint')}" class="text-muted" style="cursor:pointer;padding:0 8px">${IC('refresh')}</span></summary>
     <div class="text-xs text-muted mt-1 mb-2">${t('sw_board_note')}</div>
-    ${body}</details>`;
+    ${body}${offBody}</details>`;
 }
 
 // 2026-07-19 — 竞彩晨批提示. Root-cause 2026-07-18:owner 08:50 看板,北欧 8 场
