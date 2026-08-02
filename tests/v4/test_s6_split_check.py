@@ -107,13 +107,48 @@ class TestS6Result:
 
 
 class TestWindowFilterOnLiveCache:
-    def test_default_window_yields_no_autumn_data_yet(self):
-        """The frozen ≥2026-08-01 window must return 0 samples today (no autumn
-        data), proving the window filter is wired — independent of cache drift."""
-        from nutmeg.v4.cli.s6_split_check import collect_samples
-        cache = Path("data/external/api_football")
-        if not (cache / "_odds").exists():
-            import pytest
+    """The frozen ≥2026-08-01 window filter is wired — proven without a clock.
+
+    ⚠️ 2026-08-02 重写。原版断言 `samples == []`,理由是「今天还没有秋季数据」。
+    那个证明手法**自带保质期**:2026-08-02 窗口一开、真实数据流进来,它就变红 ——
+    而它红的时候,被测的东西其实**正在按设计工作**。
+
+    与涓流那个「END 写成常量 ⇒ 零新增数学上必然」是同一族错误:
+    **把一个未言明的时间假设焊进检查里**。一个说「永远查不到新的」,
+    一个说「永远查不到任何」,两个都在某个日期之后变成关于日历的断言,
+    而不是关于代码的断言。
+
+    改成三条只讲**过滤器契约**、与日期无关的断言。它们比原来那条更强:
+    原版只能证明「今天是空的」,新版证明「凡返回的都合规、能全排除、窗口单调」。
+    """
+
+    _CACHE = Path("data/external/api_football")
+
+    def _samples(self, since: str):
+        import pytest
+        if not (self._CACHE / "_odds").exists():
             pytest.skip("no odds cache in this checkout")
-        samples = collect_samples(cache, S6_WINDOW_START)
-        assert samples == []   # nothing on/after 2026-08-01 yet
+        from nutmeg.v4.cli.s6_split_check import collect_samples
+        return collect_samples(self._CACHE, since)
+
+    def test_every_returned_sample_is_inside_the_window(self):
+        """过滤器的**契约**:返回的每一条都必须 ≥ 窗口起点。永不过期。"""
+        bad = [s.match_date for s in self._samples(S6_WINDOW_START)
+               if s.match_date < S6_WINDOW_START]
+        assert not bad, f"窗口外的样本漏进来了:{sorted(set(bad))[:5]}"
+
+    def test_a_future_window_excludes_everything(self):
+        """能全排除 —— 证明过滤器真的在过滤,而不是恰好没数据。"""
+        assert self._samples("2099-01-01") == []
+
+    def test_widening_the_window_only_adds(self):
+        """单调性:放宽起点得到的是超集。这条同时证明窗口**确实挡掉了东西** ——
+        不然它就退化成一句关于「缓存里恰好只有窗口内数据」的断言(见类注释)。
+        """
+        wide = self._samples("1970-01-01")
+        narrow = self._samples(S6_WINDOW_START)
+        key = lambda s: (s.fixture_id, s.h)   # noqa: E731 — 局部取键,写成 def 更吵
+        assert {key(s) for s in narrow} <= {key(s) for s in wide}, "窗口内的不是超集的子集"
+        assert len(wide) > len(narrow), (
+            "放宽窗口没多出任何样本 —— 要么缓存里没有窗口前的数据(该检验此刻无意义),"
+            "要么过滤器根本没生效")
