@@ -2171,7 +2171,7 @@ const I18N = {
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
     sw_second:        '次优',
     pb_hdr:           '串关构造器',
-    pb_note:          '当天<b>每场可投注比赛各出一条最优腿</b>(按判闸下界 evLo;竞彩混合过关禁同场两腿),再枚举组合按 ∏(1+evLo) 排序。<b>⚠️ 它不会给你正数</b> —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。<br>⭐ <b>池故意不设地板</b>:873 个比赛日实测,无地板 2串 −12.5%/3串 −25.2% 是最好的;地板抬到 0% 变成 −42.9%/−100%(n=34),抬到 +5% 全军覆没 —— 筛得越狠,选中的越是被高估的腿(赢家诅咒)。<br>⭐ <b>腿越少越好</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2%。上面那条 1 串参考就是实测最优选项。按「历史实测」定注额,别按「理论 EV」—— 后者在全正腿相乘时会让 3 串看起来比 2 串好,那是反的。',
+    pb_note:          '当天<b>每场可投注比赛各出一条最优腿</b>(按判闸下界 evLo;竞彩混合过关禁同场两腿),再枚举组合按 ∏(1+evLo) 排序。<b>⚠️ 它不会给你正数</b> —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。<br>⭐ <b>池故意不设地板</b>:873 个比赛日实测,无地板 2串 −12.5%/3串 −25.2% 是最好的;地板抬到 0% 变成 −42.9%/−100%(n=34),抬到 +5% 全军覆没 —— 筛得越狠,选中的越是被高估的腿(赢家诅咒)。<br>⭐ <b>只串同一天</b>(默认开):竞彩常连列 2–3 天,今天的腿串明天的会拉长暴露窗口。<b>注意「一天」按竞彩的期算,北京 12:00 换日(实测 228 场零例外)</b>,所以周日晚 22 点和周一凌晨 3 点算同一期。<b>⚠️ 这条规则本身有没有用我测不出来</b> —— 档案只有终盘价,没有「D−2 时刻的竞彩价」;按终盘距开球分箱 ROI 也分不出来(&lt;6h −12.3% vs &gt;48h −12.3%),那测的是终盘新鲜度不是提前几天下注。所以它是个**开关**不是结论,代价只是候选变少。<br>⭐ <b>腿越少越好</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2% &lt; 4串 −30.4%(4 串命中率仅 1.1%)。上面那条 1 串参考就是实测最优选项。按「历史实测」定注额,别按「理论 EV」—— 后者在全正腿相乘时会让 3 串看起来比 2 串好,那是反的。',
     pb_info_tip:      '点击查看说明',
     pb_note_short:    '⚠️ 不会给正数 · 腿越少越好 · 按「历史实测」定注额',
     pb_1x_tag:        '实测最优,但让球买不到单关',
@@ -2180,6 +2180,16 @@ const I18N = {
     pb_1x_note:       '实测最优;但让球腿 0/191 不开单关,看得到买不到',
     pb_2x:            '2 串 1',
     pb_3x:            '3 串 1',
+    pb_4x:            '4 串 1',
+    pb_4x_tag:        '100 张中 1 张',
+    pb_4x_note:       '<p>4 串 1 实测 <b>−30.4% ±33.5pp</b>(n=550,2026-08-03 补测)。三件事必须一起看:</p><ul style="margin:8px 0 0 18px"><li><b>命中率 1.1%</b> —— 平均 <b>91 张</b>才中 1 张。中一次的爽感会盖过 90 次没中,这是 4 串最危险的地方。</li><li><b>±33.5pp 意味着那个 −30.4% 自己就很不可靠</b>,别当精确值用。</li><li><b>它仍然是本页最差的一档</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2% &lt; <b>4串 −30.4%</b>。每加一条腿都更差,没有例外。</li></ul><p style="margin-top:8px">它比随机选腿(−38.5%)好 8.1pp,所以选腿这一步确实有用 —— 但「少输」不是「能赢」。加这一档是因为你要看到,不是因为数据支持打它。</p>',
+    pb_sameday:       '只串同一天',
+    pb_sameday_hdr:   '「同一天」= 同一期',
+    pb_sameday_note:  '<p>竞彩的「一天」<b>在北京 12:00 换日,不是午夜</b> —— 所以<b>周日 22:00 那场和周一 03:00 那场是同一期</b>,勾上之后它们会被串在一起,这是对的。</p><p style="margin-top:8px"><b>实测(2026-08-03,228 场零例外)</b>:拿竞彩自己的编号(周一001)对开球时刻 —— 北京 00:00–11:59 开球的一律归<b>前一日</b>那期(123 场),18:00–23:59 归<b>当日</b>(105 场)。按日历天分组会把 54% 的场次劈错边。</p><p style="margin-top:8px"><b>⚠️ 换日点在 12:00–18:00 之间的哪一点没测出来</b>:样本是 7 月世界杯,全是欧美夜场,这个窗口(澳超/日职下午档那种)一场都没有。取 12:00 是因为竞彩晨批实测在 09:24–09:44 —— 当天早上才发布的名单装不下 10 点就开球的场。<b>下午 12–18 点开球的亚洲场将来可能分错边</b>,看到了告诉我,我去把常数量准。</p><p style="margin-top:8px">另外:<b>没有开球时刻的场一律不进同期票</b>(归到「?」单列),宁可少一条也不猜。</p>',
+    pb_sameday_excl:  '已按最近一期过滤',
+    pb_sameday_empty: '⚠️ 最近一期只有 1 场可投注 —— 串不起来。'
+                      + '上面的日分布里还有别的期,想跨期串就取消勾选「只串同一天」。',
+    pb_hit:           '命中率',
     pb_hist:          '历史实测',
     pb_rand:          '随机腿基线',
     pb_odds:          '赔率积',
@@ -2679,7 +2689,7 @@ const I18N = {
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
     sw_second:        '2nd',
     pb_hdr:           'parlay builder',
-    pb_note:          'One best leg per bettable match today (ranked by the gate lower bound evLo; 竞彩 forbids two legs from one match), then combinations ranked by product(1+evLo). <b>It will NOT hand you a positive number</b> — parlay EV = product(1+EVi)-1 is an identity.<br>The pool deliberately has NO floor: measured over 873 matchdays, no-floor is best (2-leg -12.5%, 3-leg -25.2%); a 0% floor collapses to -42.9% / -100% (n=34) and a +5% floor wipes out entirely — the harder you select on EV, the more you pick over-estimated legs (winner curse).<br>Fewer legs is better: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2%. The single-leg reference above is the best measured option. Size off the historical number, not the theoretical EV — with all-positive legs the latter makes a 3-leg look better than a 2-leg, which is backwards.',
+    pb_note:          'One best leg per bettable match today (ranked by the gate lower bound evLo; 竞彩 forbids two legs from one match), then combinations ranked by product(1+evLo). <b>It will NOT hand you a positive number</b> — parlay EV = product(1+EVi)-1 is an identity.<br>The pool deliberately has NO floor: measured over 873 matchdays, no-floor is best (2-leg -12.5%, 3-leg -25.2%); a 0% floor collapses to -42.9% / -100% (n=34) and a +5% floor wipes out entirely — the harder you select on EV, the more you pick over-estimated legs (winner curse).<br>Same-day only (default on): 竞彩 often lists 2-3 days at once, and mixing days stretches the exposure window. Note that "day" means the 竞彩 matchday, which rolls over at 12:00 Beijing (measured, 228 matches, zero exceptions), so Sunday 22:00 and Monday 03:00 are the same day. <b>Whether the rule itself helps is NOT measured</b> — the archive only has closing prices, and binning ROI by time-to-kickoff shows nothing (&lt;6h -12.3% vs &gt;48h -12.3%), which measures closing-price freshness, not how early you bet. So it is a toggle, not a conclusion; the only cost is fewer candidates.<br>Fewer legs is better: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2% &lt; 4-leg -30.4% (4-leg hits only 1.1% of the time). The single-leg reference above is the best measured option. Size off the historical number, not the theoretical EV — with all-positive legs the latter makes a 3-leg look better than a 2-leg, which is backwards.',
     pb_info_tip:      'tap for the explanation',
     pb_note_short:    'Never positive · fewer legs is better · size off the historical number',
     pb_1x_tag:        'best measured, but handicap legs cannot be single-bet',
@@ -2688,6 +2698,16 @@ const I18N = {
     pb_1x_note:       'best measured; but handicap legs are 0/191 single-bettable — visible, not buyable',
     pb_2x:            '2-leg',
     pb_3x:            '3-leg',
+    pb_4x:            '4-leg',
+    pb_4x_tag:        '1 ticket in 100',
+    pb_4x_note:       '<p>4-leg measured <b>-30.4% +/-33.5pp</b> (n=550, added 2026-08-03). Read all three together:</p><ul style="margin:8px 0 0 18px"><li><b>1.1% hit rate</b> — about <b>91 tickets</b> per win. The one win feels bigger than the 90 losses; that is the real danger here.</li><li><b>+/-33.5pp means the -30.4% itself is unreliable</b> — do not use it as a precise number.</li><li><b>It is still the worst tier on this page</b>: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2% &lt; <b>4-leg -30.4%</b>. Every extra leg is worse, no exception.</li></ul><p style="margin-top:8px">It beats random legs (-38.5%) by 8.1pp, so leg selection does work — but losing less is not winning. This tier exists because you asked to see it, not because the data supports playing it.</p>',
+    pb_sameday:       'same-day legs only',
+    pb_sameday_hdr:   '"same day" = same 竞彩 matchday',
+    pb_sameday_note:  '<p>The 竞彩 day <b>rolls over at 12:00 Beijing, not midnight</b> — so a Sunday 22:00 match and a Monday 03:00 match are the <b>same matchday</b>, and this toggle keeps them combinable. That is correct.</p><p style="margin-top:8px"><b>Measured 2026-08-03, 228 matches, zero exceptions</b>: matching 竞彩 own numbering (周一001) against kickoff time, everything kicking off 00:00-11:59 Beijing belongs to the <b>previous</b> matchday (123), and 18:00-23:59 to the <b>same</b> one (105). Grouping by calendar day would put 54% of matches on the wrong side.</p><p style="margin-top:8px"><b>The exact cutoff inside 12:00-18:00 is NOT measured</b>: the sample is the July World Cup, all European/American night games, and that window is empty. 12:00 is chosen because the 竞彩 morning batch publishes at 09:24-09:44 — a list published that morning cannot contain a 10:00 kickoff. <b>Asian afternoon matches kicking off 12-18h may land on the wrong day</b>; tell me if you see one and I will pin the constant.</p><p style="margin-top:8px">Also: matches with no kickoff time never enter a same-day ticket (listed separately under "?"). Fewer candidates beats guessing.</p>',
+    pb_sameday_excl:  'filtered to the nearest matchday',
+    pb_sameday_empty: 'Only 1 bettable match on the nearest matchday — nothing to combine. '
+                      + 'Other matchdays are listed above; untick "same-day legs only" to cross them.',
+    pb_hit:           'hit rate',
     pb_hist:          'historical realized',
     pb_rand:          'random-leg baseline',
     pb_odds:          'odds product',
@@ -4916,27 +4936,95 @@ function _sweetBoardHtml(items) {
 //     +5%       −100%   (n=11)    −100%   (n=2)
 // 这是赢家诅咒在组合层的样子:筛得越狠,选中的越是被高估的那些。
 // 所以「每天从可投注场次里出最优组合」既是 owner 要的,也是实测最好的版本。
-const _PARLAY_POOL_CAP = 12;     // C(12,3)=220,够用且不炸浏览器
+const _PARLAY_POOL_CAP = 12;     // C(12,4)=495,够用且不炸浏览器
 const _PARLAY_SHOW = 5;
-//: 实测锚点 —— 每腿 evLo≥+5% 的历史 ROI 复利到 k 串。**推算不是直接测的**:
-//: 直接测的是每腿 −4.7% ±12.3(N=178);2/3 串是 (1+r)^k−1,假设腿间独立。
-//: 真跑过的串关样本(锚腿+配腿 169 张)是 −24.5% ±14.9 —— 更差但噪声更大。
-//: 两个都不确立,所以 UI 写「≈」并把随机基线并排放着当尺子。
-const _PARLAY_BACKTEST = { 1: -0.052, 2: -0.125, 3: -0.252 };
-const _PARLAY_RANDOM   = { 1: -0.115, 2: -0.216, 3: -0.306 };
+//: ⚠️ 2026-08-03 更正:这几行原来写的是「每腿 evLo≥+5% 的 ROI 复利,**推算不是
+//: 直接测的**」—— 那描述的是 v119 有地板时代的旧常数,和下面这组**对不上**了。
+//: 现在这组是**直接跑出来的**:873 个比赛日,每天每场取自己 evLo 最高的一条腿
+//: (不设地板),按 ∏(1+evLo) 取最优组合,照真实赛果结算。n 逐档递减
+//: (873→750→648→550)是因为凑不满 k 条腿的比赛日出不了那一档的票。
+//: 留着旧注释比没有注释更坏 —— 它会让下一个人以为这些数是外推的、可以随手重算。
+//: 「≈」和随机基线继续保留:误差带很宽,两两之间仍然分不出来。
+const _PARLAY_BACKTEST = { 1: -0.052, 2: -0.125, 3: -0.252, 4: -0.304 };
+const _PARLAY_RANDOM   = { 1: -0.115, 2: -0.216, 3: -0.306, 4: -0.385 };
 //: 样本量与误差(别把上面几个数当精确值):1串 n=873 ±5.1 · 2串 n=750 ±10.6 ·
-//: 3串 n=648 ±17.6。三个都是负的、都好过随机基线,**但两两之间分不出来**。
-const _PARLAY_BACKTEST_SE = { 1: 0.051, 2: 0.106, 3: 0.176 };
-const _PARLAY_BACKTEST_N  = { 1: 873, 2: 750, 3: 648 };
+//: 3串 n=648 ±17.6 · 4串 n=550 ±33.5。全是负的、都好过随机基线,**但两两之间分不出来**。
+//: ⚠️ 4 串是 2026-08-03 **实测**(owner 问「能不能放大到 4 串」时补测的),不是外推 ——
+//: 命中率只有 **1.1%**(100 张中 1 张),±33.5pp 意味着那个 −30.4% 自己也很不可靠。
+const _PARLAY_BACKTEST_SE = { 1: 0.051, 2: 0.106, 3: 0.176, 4: 0.335 };
+const _PARLAY_BACKTEST_N  = { 1: 873, 2: 750, 3: 648, 4: 550 };
+const _PARLAY_HIT = { 1: 0.321, 2: 0.111, 3: 0.039, 4: 0.011 };   // 实测联合命中率
 
 //: 候选池 —— 每场只取它自己 evLo 最高的一条(竞彩混合过关禁止同场两腿)。
+//: ⭐ 竞彩「期」的换日点是北京 **12:00**,不是午夜 —— 2026-08-03 实测,别改回日历天。
+//:
+//:   jingcai_vote 的 match_num(周一001)对开球时刻,228 场**零例外**:
+//:     北京 00:00–11:59 开球 → 期号 = **前一日**   (123 场)
+//:     北京 18:00–23:59 开球 → 期号 = **当日**     (105 场)
+//:
+//:   所以「周日 22:00 那场」和「周一 03:00 那场」是**同一期**;按日历天分组会把
+//:   54% 的场次劈错边。取 UTC+8 再减 12h 后的日期,五个边界点全部复现。
+//:
+//: ⚠️ 换日点落在 **[12:00, 18:00) 之间的哪一点没测出来** —— 样本是 7 月世界杯,
+//:   全是欧美夜场,这个窗口(亚洲下午场:澳超/日职下午档)一场都没有。取 12:00 的
+//:   理由是晨批实测在 09:24–09:44(见 jingcai-batch-opening 记忆):当天 09:30 才
+//:   发布的名单,不可能装 10:00 就开球的场 —— 数据也确实说 10:00–11:59 归前一日。
+//:   14:00 那种场若将来分错边,先来这里把常数量准,别去改分组逻辑。
+//:
+//: ⭐ **权威解法是把 `match_num` 从 sporttery 一路透到前端**(源里第 726 行已经解析
+//:   了,断在 `jingcai_sp` 表没这一列)。那样就不用猜换日点。属于后端改动,没做。
+const _JC_DAY_ROLLOVER_H = 12;
+function _parlayDay(pr) {
+  // 只认真实开球时刻。`_kickoffMs` 对无时刻的场会兜底成「当日 23:59:59 本地」——
+  // 那是个**猜**,不能拿来当分组键(见下方 pool:day 为 null 的腿直接不进同日票)。
+  if (!pr || !pr.kickoff_utc) return null;
+  const ms = _kickoffMs(pr);
+  if (!Number.isFinite(ms)) return null;
+  const d = new Date(ms + (8 - _JC_DAY_ROLLOVER_H) * 3600e3);   // UTC+8 再回拨 12h
+  const p2 = n => String(n).padStart(2, '0');
+  return `${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
+}
+//: ⭐ 2026-08-03 owner:「竞彩连列 2–3 天时,不该拿今天的去串明天的,变数太大」。
+//: ⚠️ **我测不出来**:档案里只有终盘价,没有「D−2 时刻的竞彩价」可回测,
+//: 而按「终盘距开球」分箱 ROI 分不出来(<6h −12.3% vs >48h −12.3%)——
+//: 那测的是**终盘新鲜度**,不是**提前几天下注**,两回事。所以这是**默认开的开关**,
+//: 不是我替 owner 下的结论:直觉合理、没有证据反对,而代价只是候选变少。
+const _LS_PARLAY_SAMEDAY = 'nutmeg.parlay.sameday';
+function _parlaySameDay() {
+  try { return localStorage.getItem(_LS_PARLAY_SAMEDAY) !== '0'; } catch (_) { return true; }
+}
+function _parlaySetSameDay(on) {
+  try { localStorage.setItem(_LS_PARLAY_SAMEDAY, on ? '1' : '0'); } catch (_) {}
+  _sweetBoardRefresh();
+}
 function _parlayPool(items) {
-  const pool = [];
+  let pool = [];
   (items || []).forEach(({ pr, idx, mode }) => {
     const best = _boardLegs(pr, idx, mode)[0];   // 不设地板,理由见上方常量注释
-    if (best) pool.push({ ...best, pr, idx, mode, key: `${mode}:${idx}` });
+    if (best) pool.push({ ...best, pr, idx, mode, day: _parlayDay(pr), key: `${mode}:${idx}` });
   });
-  return pool.sort((a, b) => b.evLo - a.evLo).slice(0, _PARLAY_POOL_CAP);
+  pool.sort((a, b) => b.evLo - a.evLo);
+  if (_parlaySameDay()) {
+    // 最近一期 = 池里最早那个开球时刻所属的竞彩期。取不到开球时刻的腿一律排除
+    // (宁可少一条,也不要把一条「不知道什么时候踢」的腿混进同期票)。
+    const dated = pool.filter(l => l.day);
+    if (dated.length) {
+      const first = dated.reduce((a, b) => (_kickoffMs(a.pr) <= _kickoffMs(b.pr) ? a : b));
+      pool = dated.filter(l => l.day === first.day);
+    }
+  }
+  return pool.slice(0, _PARLAY_POOL_CAP);
+}
+//: 各期可投注场次分布 —— 让「同期开关挡掉了什么」可见,而不是静默少几场。
+//: 无开球时刻的归 '?' 并单列,别混进任何一期。
+function _parlayDayCounts(items) {
+  const c = {};
+  (items || []).forEach(({ pr, idx, mode }) => {
+    if (!_boardLegs(pr, idx, mode)[0]) return;
+    const d = _parlayDay(pr) || '?';
+    c[d] = (c[d] || 0) + 1;
+  });
+  return c;
 }
 //: 枚举 k 腿组合(池已按 evLo 降序,同场已在池里去重)。
 function _parlayCombos(pool, k) {
@@ -4956,14 +5044,24 @@ function _parlayCombos(pool, k) {
 }
 function _parlayBuilderHtml(items) {
   const pool = _parlayPool(items);
-  if (pool.length < 2) return '';
+  // ⚠️ 「腿不够」有两种,别混成一种:真的没腿 ⇒ 不出卡;**同期开关挡掉的** ⇒ 必须
+  // 出卡,否则用户看到的是「构造器没了」,既不知道是开关干的,也不知道下一期
+  // 有几场。静默消失 = 又一个「分不出没有和没去看」的假信号。
+  const rawCount = _parlayDayCounts(items);
+  const rawTotal = Object.values(rawCount).reduce((a, b) => a + b, 0);
+  const blockedBySameDay = pool.length < 2 && rawTotal >= 2;
+  if (pool.length < 2 && !blockedBySameDay) return '';
   const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
   const block = (k) => {
     const combos = _parlayCombos(pool, k);
     if (!combos.length) return '';
-    return `<div class="mt-2"><div class="text-xs font-medium">${t('pb_' + k + 'x')}
+    const warn = k >= 4 ? ` <span class="info-i" style="color:#e11d48"
+        onclick="showInfo(t('pb_4x'), t('pb_4x_note'))"
+        title="${t('pb_info_tip')}">${t('pb_4x_tag')}ⓘ</span>` : '';
+    return `<div class="mt-2"><div class="text-xs font-medium">${t('pb_' + k + 'x')}${warn}
         <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[k])}</b>
         ±${(_PARLAY_BACKTEST_SE[k] * 100).toFixed(1)}pp (n=${_PARLAY_BACKTEST_N[k]})
+        · ${t('pb_hit')} ${(_PARLAY_HIT[k] * 100).toFixed(1)}%
         · ${t('pb_rand')} ${f(_PARLAY_RANDOM[k])}</span></div>
       ${combos.map(c => `<div class="px-2 py-1 text-xs">
         ${c.legs.map(l => `<div class="pl-2">· <span class="font-medium">${zhTeam(l.pr.home_team)} vs ${zhTeam(l.pr.away_team)}</span>
@@ -4979,9 +5077,14 @@ function _parlayBuilderHtml(items) {
             title="${t('pb_info_tip')}">${t('pb_dup')}ⓘ</span>` : ''}</div>
       </div>`).join('')}</div>`;
   };
-  // 1 串参考:**实测里最好的选项**(−5.2% vs 2串 −12.5% vs 3串 −25.2%)。
+  // 日分布提示 —— 同日开关挡掉了什么必须看得见(静默少几场 = 又一个沉默的错误答案)
+  const dc = rawCount;
+  const days = Object.keys(dc).sort();
+  const dayHint = days.map(d => `${d}: ${dc[d]}`).join(' · ')
+    + (_parlaySameDay() && days.length > 1 ? ` — ${t('pb_sameday_excl')}` : '');
+  // 1 串参考:**实测里最好的选项**(−5.2% vs 2串 −12.5% vs 3串 −25.2% vs 4串 −30.4%)。
   // 放在最上面,让「每加一条腿都更差」和组合列表在同一屏上对峙 —— 光靠文字提示
-  // 压不住「3 串理论 EV 更高」那个视觉暗示(v119 已经踩过一次)。
+  // 压不住「串得越多理论 EV 越高」那个视觉暗示(v119 已经踩过一次)。
   // ⚠️ 让球腿 0/191 不开单关,所以这一行对让球腿是**看得到买不到**,已在文案注明。
   const b1 = pool[0];
   const solo = !b1 ? '' : `<div class="mt-2"><div class="text-xs font-medium">${t('pb_1x')}
@@ -5001,12 +5104,21 @@ function _parlayBuilderHtml(items) {
       style="border-left:4px solid #b45309">
     <summary class="font-bold cursor-pointer">
       <span style="color:#b45309">${IC('ticket')}</span> ${t('pb_hdr')}
-      <span class="text-sm font-normal text-gray-500">· ${pool.length}</span>
+      <span class="text-sm font-normal text-gray-500">· ${pool.length}${
+        _parlaySameDay() && rawTotal > pool.length ? `/${rawTotal}` : ''}</span>
       <span class="info-i" style="font-size:0.8em;font-weight:400"
             onclick="event.preventDefault();event.stopPropagation();showInfo(t('pb_hdr'), t('pb_note'))"
             title="${t('pb_info_tip')}">ⓘ <span data-i18n="info_link">说明</span></span></summary>
     <div class="text-xs text-muted mt-1 mb-2">${t('pb_note_short')}</div>
-    ${solo}${block(2)}${block(3)}</details>`;
+    <div class="text-xs mb-2">
+      <label style="cursor:pointer"><input type="checkbox" ${_parlaySameDay() ? 'checked' : ''}
+        onchange="_parlaySetSameDay(this.checked)"> ${t('pb_sameday')}</label>
+      <span class="info-i" onclick="showInfo(t('pb_sameday_hdr'), t('pb_sameday_note'))"
+        title="${t('pb_info_tip')}">ⓘ</span>
+      <span class="text-muted"> · ${dayHint}</span></div>
+    ${blockedBySameDay
+      ? `<div class="text-xs px-2 py-2" style="color:#b45309">${t('pb_sameday_empty')}</div>${solo}`
+      : `${solo}${block(2)}${block(3)}${block(4)}`}</details>`;
 }
 
 // 2026-07-19 — 竞彩晨批提示. Root-cause 2026-07-18:owner 08:50 看板,北欧 8 场

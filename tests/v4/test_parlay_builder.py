@@ -67,11 +67,18 @@ def test_pool_has_no_floor() -> None:
         +5%     −100%   (n=11)      −100%   (n=2)
 
     筛得越狠,选中的越是被高估的腿(赢家诅咒)。**谁想加回地板,先看这张表。**
+
+    ⚠️ 2026-08-03 收窄了断言。原来写的是「源码里不许出现 `filter(`」—— 那是拿
+    「有没有过滤」当「有没有地板」的替身,太粗:加同期过滤(按开球日分组,和 EV
+    无关)时它就误报了。承重的是**不许按 EV/evLo 设阈值**,不是不许过滤。
+    替身式断言的代价不是这次的误报,是下次:一个不停误报的护栏,最后会被人删掉。
     """
     body = _fn("_parlayPool")
-    assert "filter(" not in body, "候选池又加了过滤 —— 地板会让它几乎不出现且实测更差"
     assert "_boardLegs(pr, idx, mode)[0]" in body, "池不是每场取最优一条"
     assert "_PARLAY_MIN_EVLO" not in _src(), "地板常量残留"
+    # 池里任何拿 ev/evLo 和一个数比大小的地方 = 地板
+    floor = re.findall(r"(ev(?:Lo)?\s*[<>]=?\s*[-\d.]|[-\d.]\s*[<>]=?\s*l?\.?ev(?:Lo)?\b)", body)
+    assert not floor, f"候选池按 EV 设了阈值 = 地板:{floor}"
 
 
 def test_ranking_uses_lower_bound_not_point_estimate() -> None:
@@ -121,15 +128,26 @@ def test_backtest_constants_match_the_measurement() -> None:
     旧常数(−4.7/−9.2/−13.4,在 evLo≥+5% 人口上测)不能再用 ——
     那正是「统计量必须在会下注的人口上算」那条红线。新数来自
     「每场最优腿 → 最优组合」873 个比赛日:−5.2 / −12.5 / −25.2。
+
+    ⚠️ 同日二次收窄:原来的正则把「恰好三档」焊死在字面量里,加 4 串时整条测试
+    崩在「结构变了」,而真正该守的 1/2/3 三个数**一个都没被检查到** —— 一条把
+    格式和内容绑死的断言,在格式合法变化时不是变严,是变瞎。
+    改成按档取值:加档不该弄红它,**改数**才该。4 串另钉在
+    `test_parlay_4leg_sameday.py`。
     """
     s = _src()
-    m = re.search(r"const _PARLAY_BACKTEST = \{ 1: (-[\d.]+), 2: (-[\d.]+), 3: (-[\d.]+) \}", s)
-    assert m, "_PARLAY_BACKTEST 结构变了"
-    assert [float(x) for x in m.groups()] == [-0.052, -0.125, -0.252]
-    n = re.search(r"const _PARLAY_BACKTEST_N  = \{ 1: (\d+), 2: (\d+), 3: (\d+) \}", s)
-    assert n and [int(x) for x in n.groups()] == [873, 750, 648], "样本量没跟着换"
-    r = re.search(r"const _PARLAY_RANDOM   = \{ 1: (-[\d.]+), 2: (-[\d.]+), 3: (-[\d.]+) \}", s)
-    assert r and [float(x) for x in r.groups()] == [-0.115, -0.216, -0.306], (
+
+    def tier(name: str) -> dict:
+        m = re.search(rf"const {name} *= *\{{([^}}]*)\}}", s)
+        assert m, f"{name} 不见了"
+        return {int(k): float(v) for k, v in re.findall(r"(\d+): *(-?[\d.]+)", m.group(1))}
+
+    b = tier("_PARLAY_BACKTEST")
+    assert [b[k] for k in (1, 2, 3)] == [-0.052, -0.125, -0.252]
+    n = tier("_PARLAY_BACKTEST_N")
+    assert [int(n[k]) for k in (1, 2, 3)] == [873, 750, 648], "样本量没跟着换"
+    r = tier("_PARLAY_RANDOM")
+    assert [r[k] for k in (1, 2, 3)] == [-0.115, -0.216, -0.306], (
         "随机腿基线变了 —— 它是纯抽水 (1/1.1294)^k−1,是那把尺子")
 
 
