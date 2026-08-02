@@ -978,6 +978,8 @@
     <!-- 🍬 全局甜区 EV 榜(2026-07-18 owner:两模式合并、独立排版、置于标准模式上方)。
          内容由 _sweetBoardRefresh() 从 _SPCALC.preds + _CUPMKT.preds 合并渲染;空则不占位。 -->
     <div id="sweet-board-global"></div>
+    <!-- 🎫 串关构造器(2026-08-02 owner:「怎么串」)。空则不占位。 -->
+    <div id="parlay-builder-global"></div>
     <div id="today-spcalc-section" class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4" style="border-left:4px solid #2563eb">
       <h3 class="font-bold mb-2"><span data-i18n="h_spcalc">📊 标准模式</span>
         <span id="today-spcalc-count" class="text-sm font-normal text-gray-500"></span>
@@ -2168,6 +2170,15 @@ const I18N = {
     jc_price_age:     '竞彩价',
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
     sw_second:        '次优',
+    pb_hdr:           '串关构造器',
+    pb_note:          '⚠️ 它<b>不会</b>给你正数 —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。终点约 −9.2%(2串)/ −13.4%(3串),价值是相对随机腿省 12–17pp。只收<b>判闸下界 evLo ≥ +5%</b> 的腿(每场取最优一条;竞彩混合过关禁同场两腿)——  2026-08-02 实测赢家诅咒:按点估筛,门槛越高越差(EV≥+10% 实测 −27.9%),按下界筛最好(−4.7%)。按「历史实测」那个数定注额,别按「理论」。',
+    pb_2x:            '2 串 1',
+    pb_3x:            '3 串 1',
+    pb_hist:          '历史实测',
+    pb_rand:          '随机腿基线',
+    pb_odds:          '赔率积',
+    pb_theo:          '理论 EV(下界口径)',
+    pb_dup:           '⚠️ 同联赛 —— 相关腿的真实联合概率低于算出来的(2026-08-02 美职联 6 场 4 平,+2.59 SD,一次事件杀 4 条腿)',
     sw_off_hdr:       '甜区外 · 已过闸',
     sw_off_note:      '这些腿过了 +5% 闸但不在甜区,默认折叠、不参与上面的排序。实测(13,031 场 / 38,511 腿):全库 178 条过闸腿里 55 条(31%)在甜区外 —— 榜以前把它们整个藏了。甜区内 ROI +8.1%±13.4% vs 甜区外 −33.4%±26.0%,差 41.5pp 但 z=1.42(**没确立**),所以降级展示而不是隐藏。冷门档尤其当心:13 条过闸腿 0/13(但 P≈12% 全空本有 19% 概率,别当铁证)。',
     sw_jump_hint:     '点击跳到这场的卡片',
@@ -2661,6 +2672,15 @@ const I18N = {
     jc_price_age:     '竞彩 price',
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
     sw_second:        '2nd',
+    pb_hdr:           'parlay builder',
+    pb_note:          'It will NOT hand you a positive number — parlay EV = product(1+EVi)-1 is an identity; combining non-+EV legs just compounds the loss. The floor is about -9.2% (2-leg) / -13.4% (3-leg); the value is 12-17pp saved versus random legs. Only legs with a <b>gate lower bound evLo >= +5%</b> enter (best one per match; 竞彩 forbids two legs from one match). Measured 2026-08-02 winner-curse: selecting on the point estimate gets WORSE as the bar rises (EV>=+10% realized -27.9%), selecting on the lower bound is best (-4.7%). Size your stake off the historical number, not the theoretical one.',
+    pb_2x:            '2-leg',
+    pb_3x:            '3-leg',
+    pb_hist:          'historical realized',
+    pb_rand:          'random-leg baseline',
+    pb_odds:          'odds product',
+    pb_theo:          'theoretical EV (lower-bound basis)',
+    pb_dup:           'same league — correlated legs make the true joint probability lower than computed (2026-08-02: 4 draws in 6 MLS matches, +2.59 SD, one event killed 4 legs)',
     sw_off_hdr:       'outside sweet · clears the gate',
     sw_off_note:      'These legs clear the +5% gate but are not sweet-tier: collapsed by default, not ranked above. Measured (13,031 matches / 38,511 legs): of 178 gate-clearing legs archive-wide, 55 (31%) sit outside sweet — the board used to hide them entirely. Sweet ROI +8.1%±13.4% vs outside −33.4%±26.0%: a 41.5pp gap at z=1.42, i.e. NOT established, so these are demoted rather than hidden. Longshot tier deserves extra care: 13 gate-clearing legs went 0/13 (though at P≈12% a clean sweep has 19% probability on its own — not proof).',
     sw_jump_hint:     'jump to this match card',
@@ -4753,6 +4773,8 @@ function _sweetBoardRefresh() {
       if (_isJcBettable(pr)) items.push({ pr, idx, mode });
     }));
   box.innerHTML = _sweetBoardHtml(items);
+  const pb = document.getElementById('parlay-builder-global');
+  if (pb) pb.innerHTML = _parlayBuilderHtml(items);
 }
 // 2026-07-25 — 单关可投徽章。竞彩只给 17% 的场次开单关(韩职 29%/瑞超 21%/
 // 挪超 13%;欧罗巴·芬超·欧冠·巴甲·美职 0/59 全零),其余必须串关。这个标记
@@ -4840,6 +4862,103 @@ function _sweetBoardHtml(items) {
             title="${t('sw_refresh_hint')}" class="text-muted" style="cursor:pointer;padding:0 8px">${IC('refresh')}</span></summary>
     <div class="text-xs text-muted mt-1 mb-2">${t('sw_board_note')}</div>
     ${body}${offBody}</details>`;
+}
+
+// ── 🎫 串关构造器(2026-08-02 owner:「怎么串一直困扰我」)───────────────────
+//
+// ## 为什么它长这样
+//
+// 串关 EV 是**恒等式**:`EV_串 = ∏(1+EVᵢ) − 1`。没有别的公式 —— 任何「怎么串」
+// 的巧思只能改变往乘积里塞什么,改不了乘积本身。所以本构造器**只做两件事**:
+// 选腿、乘起来。它不发明策略。
+//
+// ## 三条设计取自实测,不是品味
+//
+// ① **只收 `evLo`(下界)≥ 阈值的腿,不收点估 EV。**
+//    2026-08-02 审计(13,031 场 / 38,511 腿 / fd Pinnacle 锚)测到**赢家诅咒**:
+//      全部腿不筛 → 校准 **+0.00pp**(P 是准的)
+//      筛点估 EV≥0   → −2.58pp(t=−2.11 ✅ 显著),实测 ROI −6.3%
+//      筛点估 EV≥+5% → −3.31pp,显示均值 +9.1% **兑现成 −7.6%**
+//      筛点估 EV≥+10% → −8.13pp,实测 **−27.9%**  ← 门槛越高越差
+//      筛下界 evLo≥+5% → 实测 **−4.7%** ← 全场最好
+//    按估计值挑,挑中的就是估计偏高的那些;下界是收缩估计量,天然扣掉一部分。
+//    **点估门槛越高越差、下界最好** —— 这就是只认 evLo 的全部理由。
+//
+// ② **腿数越少越好。** 每加一条腿乘一次 (1+EVᵢ)<1。见下表的 −4.7 → −9.2 → −13.4。
+//
+// ③ **同联赛组合要警告。** 2026-08-02 那 6 场美职联 4 场平局(+2.59 SD),一次
+//    事件杀了 4 条腿 —— 串关的联合概率算法默认独立,相关腿的真实概率更低。
+//
+// ## ⚠️ 它**不会**给你正数
+//
+// 终点是 −9.2%(2串)/ −13.4%(3串),不是 +EV。乘法不创造 —— 腿不 +EV,串起来
+// 只是把负 EV 指数放大。它的价值是相对随机腿省 12–17pp,不是把亏变成赚。
+// 面板上必须**同时显示理论 EV 和历史实测**,免得只看见乐观的那个。
+const _PARLAY_MIN_EVLO = 0.05;   // 与 +5% 闸同口径(闸没动,这里只是取腿标准)
+const _PARLAY_POOL_CAP = 12;     // C(12,3)=220,够用且不炸浏览器
+const _PARLAY_SHOW = 5;
+//: 实测锚点 —— 每腿 evLo≥+5% 的历史 ROI 复利到 k 串。**推算不是直接测的**:
+//: 直接测的是每腿 −4.7% ±12.3(N=178);2/3 串是 (1+r)^k−1,假设腿间独立。
+//: 真跑过的串关样本(锚腿+配腿 169 张)是 −24.5% ±14.9 —— 更差但噪声更大。
+//: 两个都不确立,所以 UI 写「≈」并把随机基线并排放着当尺子。
+const _PARLAY_BACKTEST = { 1: -0.047, 2: -0.092, 3: -0.134 };
+const _PARLAY_RANDOM   = { 1: -0.115, 2: -0.216, 3: -0.306 };
+
+//: 候选池 —— 每场只取它自己 evLo 最高的一条(竞彩混合过关禁止同场两腿)。
+function _parlayPool(items) {
+  const pool = [];
+  (items || []).forEach(({ pr, idx, mode }) => {
+    const best = _boardLegs(pr, idx, mode)
+      .filter(l => l.evLo >= _PARLAY_MIN_EVLO)[0];
+    if (best) pool.push({ ...best, pr, idx, mode, key: `${mode}:${idx}` });
+  });
+  return pool.sort((a, b) => b.evLo - a.evLo).slice(0, _PARLAY_POOL_CAP);
+}
+//: 枚举 k 腿组合(池已按 evLo 降序,同场已在池里去重)。
+function _parlayCombos(pool, k) {
+  const out = [];
+  const walk = (start, cur) => {
+    if (cur.length === k) { out.push(cur.slice()); return; }
+    for (let i = start; i < pool.length; i++) { cur.push(pool[i]); walk(i + 1, cur); cur.pop(); }
+  };
+  walk(0, []);
+  return out.map(legs => {
+    const odds = legs.reduce((a, l) => a * l.sp, 1);
+    const evLo = legs.reduce((a, l) => a * (1 + l.evLo), 1) - 1;   // 判闸口径
+    const ev = legs.reduce((a, l) => a * (1 + l.ev), 1) - 1;       // 点估(仅显示)
+    const lg = legs.map(l => l.pr.league);
+    return { legs, odds, evLo, ev, dup: new Set(lg).size < lg.length };
+  }).sort((a, b) => b.evLo - a.evLo).slice(0, _PARLAY_SHOW);
+}
+function _parlayBuilderHtml(items) {
+  const pool = _parlayPool(items);
+  if (pool.length < 2) return '';
+  const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
+  const block = (k) => {
+    const combos = _parlayCombos(pool, k);
+    if (!combos.length) return '';
+    return `<div class="mt-2"><div class="text-xs font-medium">${t('pb_' + k + 'x')}
+        <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[k])}</b>
+        · ${t('pb_rand')} ${f(_PARLAY_RANDOM[k])}</span></div>
+      ${combos.map(c => `<div class="px-2 py-1 text-xs">
+        ${c.legs.map(l => `<div class="pl-2">· <span class="font-medium">${zhTeam(l.pr.home_team)} vs ${zhTeam(l.pr.away_team)}</span>
+            <span class="text-muted">${zhLeague(l.pr.league)}</span>
+            <span class="font-medium">${l.label}</span>
+            <span class="text-muted">@${l.sp.toFixed(2)}</span>
+            <span style="color:#059669">${f(l.evLo)}</span></div>`).join('')}
+        <div class="pl-2 text-muted">${t('pb_odds')} <b>${c.odds.toFixed(2)}</b>×
+          · ${t('pb_theo')} <span style="color:${c.evLo >= 0 ? '#059669' : '#e11d48'}">${f(c.evLo)}</span>
+          · ${t('pb_hist')} <b style="color:#e11d48">${f(_PARLAY_BACKTEST[k])}</b>
+          ${c.dup ? `<span style="color:#b45309"> · ${t('pb_dup')}</span>` : ''}</div>
+      </div>`).join('')}</div>`;
+  };
+  return `<details class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4"
+      style="border-left:4px solid #b45309">
+    <summary class="font-bold cursor-pointer">
+      <span style="color:#b45309">${IC('ticket')}</span> ${t('pb_hdr')}
+      <span class="text-sm font-normal text-gray-500">· ${pool.length}</span></summary>
+    <div class="text-xs text-muted mt-1 mb-2">${t('pb_note')}</div>
+    ${block(2)}${block(3)}</details>`;
 }
 
 // 2026-07-19 — 竞彩晨批提示. Root-cause 2026-07-18:owner 08:50 看板,北欧 8 场

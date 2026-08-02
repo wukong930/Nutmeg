@@ -116,8 +116,18 @@ def test_gate_and_ranking_key_untouched() -> None:
     assert "rows.sort((a, b) => b.best.evLo - a.best.evLo)" in src, "主区排序被改了"
 
 
-def test_fe_version_bumped() -> None:
-    """前端改动必须 bump,否则 service worker 端老页面不换。"""
+def test_fe_version_is_well_formed() -> None:
+    """前端改动要 bump `_FE_VERSION`(service worker 靠它清旧缓存)。
+
+    ⚠️ 2026-08-02 改写。原版**钉死字面量**(`== "nutmeg-v118-…"`),结果下一次
+    前端改动 bump 到 v119 时,它就以一个和自己毫无关系的理由变红 —— 我还在新写的
+    v119 测试里把同样的错抄了一遍。**版本号是全局递增量,任何按功能分文件的测试
+    都不该钉它的字面值。**
+
+    静态测试根本无法验证「这次提交 bump 了没有」(它看不见上一次的值)。能验证的
+    只有格式合法,于是就只验证格式;「记得 bump」属于评审纪律,不属于单测。
+    """
     routes = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text(encoding="utf-8")
     m = re.search(r'_FE_VERSION = "([^"]+)"', routes)
-    assert m and m.group(1) == "nutmeg-v118-fe-sweetboard-offtier", m and m.group(1)
+    assert m, "_FE_VERSION 不见了"
+    assert re.fullmatch(r"nutmeg-v\d+-fe-[a-z0-9-]+", m.group(1)), m.group(1)
