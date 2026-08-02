@@ -2171,7 +2171,9 @@ const I18N = {
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
     sw_second:        '次优',
     pb_hdr:           '串关构造器',
-    pb_note:          '⚠️ 它<b>不会</b>给你正数 —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。终点约 −9.2%(2串)/ −13.4%(3串),价值是相对随机腿省 12–17pp。只收<b>判闸下界 evLo ≥ +5%</b> 的腿(每场取最优一条;竞彩混合过关禁同场两腿)——  2026-08-02 实测赢家诅咒:按点估筛,门槛越高越差(EV≥+10% 实测 −27.9%),按下界筛最好(−4.7%)。按「历史实测」那个数定注额,别按「理论」。',
+    pb_note:          '当天<b>每场可投注比赛各出一条最优腿</b>(按判闸下界 evLo;竞彩混合过关禁同场两腿),再枚举组合按 ∏(1+evLo) 排序。<b>⚠️ 它不会给你正数</b> —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。<br>⭐ <b>池故意不设地板</b>:873 个比赛日实测,无地板 2串 −12.5%/3串 −25.2% 是最好的;地板抬到 0% 变成 −42.9%/−100%(n=34),抬到 +5% 全军覆没 —— 筛得越狠,选中的越是被高估的腿(赢家诅咒)。<br>⭐ <b>腿越少越好</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2%。上面那条 1 串参考就是实测最优选项。按「历史实测」定注额,别按「理论 EV」—— 后者在全正腿相乘时会让 3 串看起来比 2 串好,那是反的。',
+    pb_1x:            '单关(参考)',
+    pb_1x_note:       '实测最优;但让球腿 0/191 不开单关,看得到买不到',
     pb_2x:            '2 串 1',
     pb_3x:            '3 串 1',
     pb_hist:          '历史实测',
@@ -2673,7 +2675,9 @@ const I18N = {
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
     sw_second:        '2nd',
     pb_hdr:           'parlay builder',
-    pb_note:          'It will NOT hand you a positive number — parlay EV = product(1+EVi)-1 is an identity; combining non-+EV legs just compounds the loss. The floor is about -9.2% (2-leg) / -13.4% (3-leg); the value is 12-17pp saved versus random legs. Only legs with a <b>gate lower bound evLo >= +5%</b> enter (best one per match; 竞彩 forbids two legs from one match). Measured 2026-08-02 winner-curse: selecting on the point estimate gets WORSE as the bar rises (EV>=+10% realized -27.9%), selecting on the lower bound is best (-4.7%). Size your stake off the historical number, not the theoretical one.',
+    pb_note:          'One best leg per bettable match today (ranked by the gate lower bound evLo; 竞彩 forbids two legs from one match), then combinations ranked by product(1+evLo). <b>It will NOT hand you a positive number</b> — parlay EV = product(1+EVi)-1 is an identity.<br>The pool deliberately has NO floor: measured over 873 matchdays, no-floor is best (2-leg -12.5%, 3-leg -25.2%); a 0% floor collapses to -42.9% / -100% (n=34) and a +5% floor wipes out entirely — the harder you select on EV, the more you pick over-estimated legs (winner curse).<br>Fewer legs is better: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2%. The single-leg reference above is the best measured option. Size off the historical number, not the theoretical EV — with all-positive legs the latter makes a 3-leg look better than a 2-leg, which is backwards.',
+    pb_1x:            'single (reference)',
+    pb_1x_note:       'best measured; but handicap legs are 0/191 single-bettable — visible, not buyable',
     pb_2x:            '2-leg',
     pb_3x:            '3-leg',
     pb_hist:          'historical realized',
@@ -4894,22 +4898,34 @@ function _sweetBoardHtml(items) {
 // 终点是 −9.2%(2串)/ −13.4%(3串),不是 +EV。乘法不创造 —— 腿不 +EV,串起来
 // 只是把负 EV 指数放大。它的价值是相对随机腿省 12–17pp,不是把亏变成赚。
 // 面板上必须**同时显示理论 EV 和历史实测**,免得只看见乐观的那个。
-const _PARLAY_MIN_EVLO = 0.05;   // 与 +5% 闸同口径(闸没动,这里只是取腿标准)
+// ⭐ 2026-08-03 —— **池不设地板**。v119 曾闸在 evLo≥+5%,结果 873 个比赛日里
+// 只有 11 天(1.3%)凑得出 2 串、2 天(0.2%)凑得出 3 串 —— 等于没有。
+// 而且实测**加地板会变差**,不是变好(每场最优腿 → ∏(1+evLo) 最大组合):
+//     地板      2串 ROI          3串 ROI
+//     无        **−12.5%**±10.6  **−25.2%**±17.6   ← 最好
+//     −5%         −10.4%±15.2      −43.8%±23.5
+//      0%         −42.9%±25.2     −100%   (n=34)
+//     +5%       −100%   (n=11)    −100%   (n=2)
+// 这是赢家诅咒在组合层的样子:筛得越狠,选中的越是被高估的那些。
+// 所以「每天从可投注场次里出最优组合」既是 owner 要的,也是实测最好的版本。
 const _PARLAY_POOL_CAP = 12;     // C(12,3)=220,够用且不炸浏览器
 const _PARLAY_SHOW = 5;
 //: 实测锚点 —— 每腿 evLo≥+5% 的历史 ROI 复利到 k 串。**推算不是直接测的**:
 //: 直接测的是每腿 −4.7% ±12.3(N=178);2/3 串是 (1+r)^k−1,假设腿间独立。
 //: 真跑过的串关样本(锚腿+配腿 169 张)是 −24.5% ±14.9 —— 更差但噪声更大。
 //: 两个都不确立,所以 UI 写「≈」并把随机基线并排放着当尺子。
-const _PARLAY_BACKTEST = { 1: -0.047, 2: -0.092, 3: -0.134 };
+const _PARLAY_BACKTEST = { 1: -0.052, 2: -0.125, 3: -0.252 };
 const _PARLAY_RANDOM   = { 1: -0.115, 2: -0.216, 3: -0.306 };
+//: 样本量与误差(别把上面几个数当精确值):1串 n=873 ±5.1 · 2串 n=750 ±10.6 ·
+//: 3串 n=648 ±17.6。三个都是负的、都好过随机基线,**但两两之间分不出来**。
+const _PARLAY_BACKTEST_SE = { 1: 0.051, 2: 0.106, 3: 0.176 };
+const _PARLAY_BACKTEST_N  = { 1: 873, 2: 750, 3: 648 };
 
 //: 候选池 —— 每场只取它自己 evLo 最高的一条(竞彩混合过关禁止同场两腿)。
 function _parlayPool(items) {
   const pool = [];
   (items || []).forEach(({ pr, idx, mode }) => {
-    const best = _boardLegs(pr, idx, mode)
-      .filter(l => l.evLo >= _PARLAY_MIN_EVLO)[0];
+    const best = _boardLegs(pr, idx, mode)[0];   // 不设地板,理由见上方常量注释
     if (best) pool.push({ ...best, pr, idx, mode, key: `${mode}:${idx}` });
   });
   return pool.sort((a, b) => b.evLo - a.evLo).slice(0, _PARLAY_POOL_CAP);
@@ -4939,6 +4955,7 @@ function _parlayBuilderHtml(items) {
     if (!combos.length) return '';
     return `<div class="mt-2"><div class="text-xs font-medium">${t('pb_' + k + 'x')}
         <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[k])}</b>
+        ±${(_PARLAY_BACKTEST_SE[k] * 100).toFixed(1)}pp (n=${_PARLAY_BACKTEST_N[k]})
         · ${t('pb_rand')} ${f(_PARLAY_RANDOM[k])}</span></div>
       ${combos.map(c => `<div class="px-2 py-1 text-xs">
         ${c.legs.map(l => `<div class="pl-2">· <span class="font-medium">${zhTeam(l.pr.home_team)} vs ${zhTeam(l.pr.away_team)}</span>
@@ -4952,13 +4969,29 @@ function _parlayBuilderHtml(items) {
           ${c.dup ? `<span style="color:#b45309"> · ${t('pb_dup')}</span>` : ''}</div>
       </div>`).join('')}</div>`;
   };
+  // 1 串参考:**实测里最好的选项**(−5.2% vs 2串 −12.5% vs 3串 −25.2%)。
+  // 放在最上面,让「每加一条腿都更差」和组合列表在同一屏上对峙 —— 光靠文字提示
+  // 压不住「3 串理论 EV 更高」那个视觉暗示(v119 已经踩过一次)。
+  // ⚠️ 让球腿 0/191 不开单关,所以这一行对让球腿是**看得到买不到**,已在文案注明。
+  const b1 = pool[0];
+  const solo = !b1 ? '' : `<div class="mt-2"><div class="text-xs font-medium">${t('pb_1x')}
+      <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[1])}</b>
+      ±${(_PARLAY_BACKTEST_SE[1] * 100).toFixed(1)}pp (n=${_PARLAY_BACKTEST_N[1]})
+      · ${t('pb_rand')} ${f(_PARLAY_RANDOM[1])} · ${t('pb_1x_note')}</span></div>
+    <div class="px-2 py-1 text-xs"><div class="pl-2">·
+      <span class="font-medium">${zhTeam(b1.pr.home_team)} vs ${zhTeam(b1.pr.away_team)}</span>
+      <span class="text-muted">${zhLeague(b1.pr.league)}</span>
+      <span class="font-medium">${b1.label}</span>
+      <span class="text-muted">@${b1.sp.toFixed(2)}</span>
+      <span style="color:#059669">${f(b1.evLo)}</span>${_singleBadge(
+        _legIsHc(b1) ? b1.pr.jc_hc_single_available : b1.pr.jc_single_available)}</div></div></div>`;
   return `<details class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4"
       style="border-left:4px solid #b45309">
     <summary class="font-bold cursor-pointer">
       <span style="color:#b45309">${IC('ticket')}</span> ${t('pb_hdr')}
       <span class="text-sm font-normal text-gray-500">· ${pool.length}</span></summary>
     <div class="text-xs text-muted mt-1 mb-2">${t('pb_note')}</div>
-    ${block(2)}${block(3)}</details>`;
+    ${solo}${block(2)}${block(3)}</details>`;
 }
 
 // 2026-07-19 — 竞彩晨批提示. Root-cause 2026-07-18:owner 08:50 看板,北欧 8 场

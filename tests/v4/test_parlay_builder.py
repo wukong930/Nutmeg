@@ -54,15 +54,30 @@ def _fn(name: str) -> str:
     raise AssertionError(f"{name} 没配平")
 
 
-def test_pool_selects_on_lower_bound_not_point_estimate() -> None:
-    """⭐ 承重断言:候选池筛的必须是 `evLo`,**不是** `ev`。
+def test_pool_has_no_floor() -> None:
+    """⭐ 承重断言:池**不许**设 EV 地板 —— owner 要的是「今天这几场里的最优组合」。
 
-    点估门槛越高实测越差(EV≥+10% → −27.9%),下界最好(−4.7%)。这一行写错
-    方向,构造器就从「抗赢家诅咒」变成「专挑被高估的腿」,而界面看起来一模一样。
+    v119 曾闸在 evLo≥+5%,结果 873 个比赛日只有 11 天(1.3%)凑得出 2 串 = 等于没有。
+    而且实测**加地板会变差**(每场最优腿 → ∏(1+evLo) 最大组合):
+
+        地板    2串 ROI            3串 ROI
+        无      **−12.5%**±10.6    **−25.2%**±17.6   ← 最好
+        −5%       −10.4%±15.2        −43.8%±23.5
+         0%       −42.9%±25.2       −100%   (n=34)
+        +5%     −100%   (n=11)      −100%   (n=2)
+
+    筛得越狠,选中的越是被高估的腿(赢家诅咒)。**谁想加回地板,先看这张表。**
     """
     body = _fn("_parlayPool")
-    assert "l.evLo >= _PARLAY_MIN_EVLO" in body, "候选池没按下界筛"
-    assert "l.ev >=" not in body and "l.ev>" not in body, "候选池混进了点估筛选"
+    assert "filter(" not in body, "候选池又加了过滤 —— 地板会让它几乎不出现且实测更差"
+    assert "_boardLegs(pr, idx, mode)[0]" in body, "池不是每场取最优一条"
+    assert "_PARLAY_MIN_EVLO" not in _src(), "地板常量残留"
+
+
+def test_ranking_uses_lower_bound_not_point_estimate() -> None:
+    """排序仍必须走 `evLo`(收缩估计量),不是点估 —— 这条没变。"""
+    body = _fn("_parlayCombos")
+    assert "a * (1 + l.evLo)" in body and "sort((a, b) => b.evLo - a.evLo)" in body
 
 
 def test_one_leg_per_match() -> None:
@@ -102,11 +117,17 @@ def test_historical_realized_appears_on_every_combo_row() -> None:
 
 
 def test_backtest_constants_match_the_measurement() -> None:
-    """这些数来自 2026-08-02 审计,不是拍的。改动必须同步改测量出处。"""
+    """⚠️ 2026-08-03 换过一次:去掉地板后**选法变了,人口也就变了**,
+    旧常数(−4.7/−9.2/−13.4,在 evLo≥+5% 人口上测)不能再用 ——
+    那正是「统计量必须在会下注的人口上算」那条红线。新数来自
+    「每场最优腿 → 最优组合」873 个比赛日:−5.2 / −12.5 / −25.2。
+    """
     s = _src()
     m = re.search(r"const _PARLAY_BACKTEST = \{ 1: (-[\d.]+), 2: (-[\d.]+), 3: (-[\d.]+) \}", s)
     assert m, "_PARLAY_BACKTEST 结构变了"
-    assert [float(x) for x in m.groups()] == [-0.047, -0.092, -0.134]
+    assert [float(x) for x in m.groups()] == [-0.052, -0.125, -0.252]
+    n = re.search(r"const _PARLAY_BACKTEST_N  = \{ 1: (\d+), 2: (\d+), 3: (\d+) \}", s)
+    assert n and [int(x) for x in n.groups()] == [873, 750, 648], "样本量没跟着换"
     r = re.search(r"const _PARLAY_RANDOM   = \{ 1: (-[\d.]+), 2: (-[\d.]+), 3: (-[\d.]+) \}", s)
     assert r and [float(x) for x in r.groups()] == [-0.115, -0.216, -0.306], (
         "随机腿基线变了 —— 它是纯抽水 (1/1.1294)^k−1,是那把尺子")
@@ -115,14 +136,27 @@ def test_backtest_constants_match_the_measurement() -> None:
 def test_note_says_it_will_not_be_positive() -> None:
     """⛔ 构造器**不会**给正数。这句话必须留在界面上,中英都要。"""
     s = _src()
-    assert "它<b>不会</b>给你正数" in s, "中文提示删掉了「不会给正数」"
+    assert "它不会给你正数" in s, "中文提示删掉了「不会给正数」"
     assert "will NOT hand you a positive number" in s, "英文提示删掉了同一句"
+
+
+def test_single_leg_reference_is_rendered_first() -> None:
+    """⭐ 单关 −5.2% 是实测最优,必须**排在组合上面**。
+
+    光靠文字压不住「3 串理论 EV 更高」的视觉暗示(v119 踩过一次):全正腿相乘时
+    理论值单调上升,而实测单调下降。把最好的那个选项摆在第一行,让两种排序在
+    同一屏上对峙。
+    """
+    body = _fn("_parlayBuilderHtml")
+    assert "const solo" in body and "${solo}${block(2)}${block(3)}" in body, (
+        "1 串参考没有排在 2/3 串前面")
+    assert "pb_1x_note" in body or "pb_1x_note" in _src(), "没说明让球腿买不到单关"
 
 
 def test_both_locales_have_all_new_keys() -> None:
     s = _src()
-    for key in ("pb_hdr", "pb_note", "pb_2x", "pb_3x", "pb_hist",
-                "pb_rand", "pb_odds", "pb_theo", "pb_dup"):
+    for key in ("pb_hdr", "pb_note", "pb_1x", "pb_1x_note", "pb_2x", "pb_3x",
+                "pb_hist", "pb_rand", "pb_odds", "pb_theo", "pb_dup"):
         assert s.count(f"{key}:") == 2, f"{key} 不是中英各 1 次"
 
 
