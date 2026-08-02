@@ -39,6 +39,9 @@ N=1,803、t=3.16 —— **需 N 从 ~3,700 掉到 920,当场就够了**(N ∝ 1/
 from __future__ import annotations
 
 import argparse
+import contextlib
+import datetime as dt
+import json
 import math
 import sqlite3
 import statistics as st
@@ -152,8 +155,41 @@ def _logloss(rows, idx: int) -> float:
     return st.fmean(-math.log(max(x[idx][x[2]], 1e-9)) for x in rows)
 
 
-def render(buckets: dict, *, min_n: int = 10) -> str:
+def slice_key(ln: int, pop: str) -> str:
+    """机读键 —— 存档 JSON 与跨次比对都用它。"""
+    return f"{ln:+d}·{pop}"
+
+
+def slice_stats(buckets: dict, *, min_n: int = 10) -> dict:
+    """→ {切片: {n, raw_ll, c1_ll}} —— 只收 N ≥ min_n 的,和报告口径一致。"""
+    out = {}
+    for (ln, pop), rows in buckets.items():
+        if len(rows) < min_n:
+            continue
+        out[slice_key(ln, pop)] = {
+            "n": len(rows),
+            "raw_ll": _logloss(rows, 0),
+            "c1_ll": _logloss(rows, 1),
+        }
+    return out
+
+
+def render(buckets: dict, *, min_n: int = 10, prev: dict | None = None) -> str:
+    """``prev`` = 上一次存档的 `slice_stats`(含 `_date`)。
+
+    ⭐ 2026-08-03 加。prereg v2.0 §5.1 的回滚条件是「log-loss 比裸网格更差,
+    **且连续两周如此**」—— 但本仪表原来只写 `_latest.md` **每次覆盖、不留历史**,
+    于是那个条件在产物上**根本无法判定**。这和涓流「END 写成常量 ⇒ 零新增必然」、
+    s6「用今天为空证明过滤器接通」是同一族:**检查和它的前提不匹配**。
+    现在存档 + 自比,让报告自己回答「连续两周了吗」,不靠人记得手动 diff。
+    """
     out = ["## ① 前向校准 —— 裸网格 vs C1 修正后 vs 实际", ""]
+    prev_date = (prev or {}).get("_date")
+    if prev_date:
+        out += [f"> 对比基准:上次存档 **{prev_date}**"
+                f"(间隔 {(prev or {}).get('_gap_days', '?')} 天)", ""]
+    else:
+        out += ["> ⚠️ **没有上次存档** —— 本次是基线,「连续两周」这一条要下次才判得了。", ""]
     if not buckets:
         out.append("  (无已结算的让球行)")
         return "\n".join(out) + "\n"
@@ -179,9 +215,23 @@ def render(buckets: dict, *, min_n: int = 10) -> str:
                 who = "= (δ 未碰)"
             out.append(f"| {_LEGS[i]} | {pr:.1%} | {pc:.1%} | **{act:.1%}** | {who} |")
         lr, lc = _logloss(rows, 0), _logloss(rows, 1)
-        verdict = "✅ 改善" if lc < lr else "⚠️ **变差**"
+        worse = lc > lr
+        verdict = "⚠️ **变差**" if worse else "✅ 改善"
         out.append("")
         out.append(f"- 3-way log-loss:裸 {lr:.4f} → C1 {lc:.4f} — {verdict} {lr - lc:+.4f}")
+        pv = (prev or {}).get(slice_key(ln, pop))
+        if pv:
+            was = pv["c1_ll"] > pv["raw_ll"]
+            out.append(f"- 上次({prev_date}, N={pv['n']}):"
+                       f"{pv['raw_ll'] - pv['c1_ll']:+.4f} {'⚠️ 变差' if was else '✅ 改善'}")
+            if worse and was and abs(ln) == 1:
+                gap = (prev or {}).get("_gap_days") or 0
+                near = (f"  ⚠️ 但两次间隔仅 {gap} 天,**不足一周** —— "
+                        "「连续两周」不该由同周两跑凑" if gap < 5 else "")
+                out.append(f"- ⛔ **连续两次变差** ⇒ prereg v2.0 §5.1 的回滚条件成立"
+                           f"(±1 线,回滚到 v1.9:`_C1_DELTA_P1` → 0.03220)。{near}")
+        elif prev_date:
+            out.append(f"- 上次({prev_date}):该切片当时 N 不足,无可比读数")
         out.append("")
     return "\n".join(out)
 
@@ -235,17 +285,44 @@ def render_power() -> str:
     return "\n".join(out)
 
 
+def load_prev(hist_dir: Path, today: str) -> dict | None:
+    """读**今天之前**最近的一份存档(JSON)。
+
+    ⚠️ 必须排除今天 —— 同一天重跑时,今天的档案会先被覆盖,若不排除就会拿自己
+    当基准,「连续两次变差」永远成立。这是自比工具的经典自噬。
+    """
+    if not hist_dir.exists():
+        return None
+    cands = sorted(f for f in hist_dir.glob("*.json") if f.stem < today)
+    if not cands:
+        return None
+    prev = json.loads(cands[-1].read_text(encoding="utf-8"))
+    prev["_date"] = cands[-1].stem
+    with contextlib.suppress(ValueError):
+        prev["_gap_days"] = (dt.date.fromisoformat(today)
+                             - dt.date.fromisoformat(cands[-1].stem)).days
+    return prev
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="让球 δ 校准常设仪表(只读,永不 gate)")
     ap.add_argument("--db", default="data/v4_observation.db")
     ap.add_argument("--min-n", type=int, default=10, help="低于该 N 的切片只报不解读")
     ap.add_argument("--out", default="logs/delta_calibration_latest.md",
                     help="写到哪(空串=只打 stdout)")
+    ap.add_argument("--no-archive", action="store_true",
+                    help="不写带日期的存档(默认写;存档是「连续两周」判定的唯一依据)")
     args = ap.parse_args(argv)
+
+    buckets = load_lines(args.db)
+    stats = slice_stats(buckets, min_n=args.min_n)
+    today = dt.datetime.now(dt.UTC).date().isoformat()
+    hist = (Path(args.out).parent / "delta_calibration_history") if args.out else None
+    prev = load_prev(hist, today) if hist else None
 
     text = "\n".join([
         "# 让球 δ 校准(只读研究 · 永不 gate)", "",
-        render(load_lines(args.db), min_n=args.min_n),
+        render(buckets, min_n=args.min_n, prev=prev),
         render_power(),
         "> ⚠️ 本仪表**不改任何 δ**。改一个已部署的预注册常数需要 owner 口令 +",
         "> prereg 修订(δ₋₂ 走的就是这条路)。它的职责是让「该不该改」一直可见。",
@@ -256,6 +333,15 @@ def main(argv: list[str] | None = None) -> int:
         p = Path(args.out)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding="utf-8")
+        # ⭐ 自动存档(2026-08-03)。prereg v2.0 §5.1 要「连续两周」,而本仪表原来
+        # 只写 _latest.md 每次覆盖 —— 那个条件在产物上判不了。md 给人看,json 给
+        # 下次自比用(解析 markdown 太脆)。同日重跑覆盖当天这份 = 当天最新读数。
+        if not args.no_archive and hist is not None:
+            hist.mkdir(parents=True, exist_ok=True)
+            (hist / f"{today}.md").write_text(text, encoding="utf-8")
+            (hist / f"{today}.json").write_text(
+                json.dumps(stats, ensure_ascii=False, indent=1), encoding="utf-8")
+            print(f"[archive] {hist}/{today}.{{md,json}}")
     return 0
 
 
