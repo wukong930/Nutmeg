@@ -1909,6 +1909,21 @@ function _isWideBook(pr) {
   const v = pr && _bookVig(pr.psc_home, pr.psc_draw, pr.psc_away);
   return v != null && v > WIDE_BOOK_VIG;
 }
+//: 档位徽章/配色 —— `_evRelTag`(卡片)与 `_tierChip`(串关腿行)**共用这一份**。
+//: 抽出来是因为两处各存一份迟早会漂:改了一处、另一处静默保持旧色。
+const _TIER_BADGE = { sweet: '🟢', edge: '🟡', cold: '⚠️', chalk: '⚠️' };
+const _TIER_COLOR = { sweet: '#059669', edge: '#b45309', cold: '#e11d48', chalk: '#e11d48' };
+//: 串关腿行上的紧凑档位标(2026-08-03)。
+//: ⛔ **纯显示** —— 不进选池、不进排序、不进判闸。构造器至今**一次都没读过**
+//: `tier` 字段,而且那是**有依据的**:甜区与边缘的 σ_EV 实测相等
+//: (4.6% vs 4.6%,CI 重叠,逐桶符号 3:4:1)⇒ 没有理由给边缘腿加门槛。
+//: 加这个标只补一个**知情缺口**:owner 问「边缘腿会不会进串关」——
+//: 会(占池 20.3%),但票面上看不出来。**能看见 ≠ 该据此改选择。**
+function _tierChip(tier) {
+  if (!tier || !_TIER_BADGE[tier]) return '';
+  return ` <span title="${t('rel_' + tier + '_hint')}" style="font-size:0.85em;`
+    + `color:${_TIER_COLOR[tier]};white-space:nowrap">${_TIER_BADGE[tier]}${t('rel_' + tier)}</span>`;
+}
 function _evRelTag(p, flip, sigmaEv, wide) {
   // 水位闸优先于 sharp-flip:flip 说的是「这条线可能陈旧/有误」,wide 说的是
   // 「这条线根本不该叫 Pinnacle」—— 后者更根本,先报它。
@@ -1924,8 +1939,8 @@ function _evRelTag(p, flip, sigmaEv, wide) {
   }
   const tier = _evRelTier(p);
   if (!tier) return '';
-  const badge = { sweet: '🟢', edge: '🟡', cold: '⚠️', chalk: '⚠️' }[tier];
-  const color = { sweet: '#059669', edge: '#b45309', cold: '#e11d48', chalk: '#e11d48' }[tier];
+  const badge = _TIER_BADGE[tier];
+  const color = _TIER_COLOR[tier];
   // B2 side-by-side: show the variance-adjusted bar next to the flat 5% (display-only).
   const vthr = Math.round(_evVarThreshold(p, sigmaEv) * 100);
   const thr = `<span onclick="showEvHelp(event)" title="${t('rel_var_thr_vs')} — 点看说明" style="color:var(--text-muted);font-weight:400;cursor:pointer"> ·${t('rel_var_thr_short')}~${vthr}%ⓘ</span>`;
@@ -5128,7 +5143,7 @@ function _parlayBuilderHtml(items) {
           ${t(c.role === 'main' ? 'pb_main' : 'pb_alt')}</div>
         ${c.legs.map(l => `<div class="pl-2">· <span class="font-medium">${zhTeam(l.pr.home_team)} vs ${zhTeam(l.pr.away_team)}</span>
             <span class="text-muted">${zhLeague(l.pr.league)}</span>
-            <span class="font-medium">${l.label}</span>
+            <span class="font-medium">${l.label}</span>${_tierChip(l.tier)}
             <span class="text-muted">@${l.sp.toFixed(2)}</span>
             <span style="color:#059669">${f(l.evLo)}</span></div>`).join('')}
         <div class="pl-2 text-muted">${t('pb_odds')} <b>${c.odds.toFixed(2)}</b>×
@@ -5158,7 +5173,7 @@ function _parlayBuilderHtml(items) {
     <div class="px-2 py-1 text-xs"><div class="pl-2">·
       <span class="font-medium">${zhTeam(b1.pr.home_team)} vs ${zhTeam(b1.pr.away_team)}</span>
       <span class="text-muted">${zhLeague(b1.pr.league)}</span>
-      <span class="font-medium">${b1.label}</span>
+      <span class="font-medium">${b1.label}</span>${_tierChip(b1.tier)}
       <span class="text-muted">@${b1.sp.toFixed(2)}</span>
       <span style="color:#059669">${f(b1.evLo)}</span>${_singleBadge(
         _legIsHc(b1) ? b1.pr.jc_hc_single_available : b1.pr.jc_single_available)}</div></div></div>`;

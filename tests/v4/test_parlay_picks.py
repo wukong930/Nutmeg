@@ -221,3 +221,46 @@ def test_every_leg_count_has_its_i18n_key_in_both_languages() -> None:
     for k in (1, 2, 3, 4):
         assert f"pb_{k}x:" in zh, f"中文缺 pb_{k}x"
         assert f"pb_{k}x:" in en, f"英文缺 pb_{k}x"
+
+
+# ------------------------------------------------------- 档位标(纯显示)
+
+
+def test_parlay_legs_show_their_tier_but_selection_ignores_it() -> None:
+    """⭐ 承重:档位在串关腿行上**可见**,但在选池/排序里**不可读**。
+
+    这两件事必须同时成立,少一半都错:
+    · 只可见不可读 = 现状(对的):甜区与边缘 σ_EV 实测相等(4.6% vs 4.6%,
+      CI 重叠,逐桶符号 3:4:1)⇒ 没有理由给边缘腿加门槛,见
+      test_parlay_tier_weighting 的那批实测(24 条规则 0 条过闸)。
+    · 只可读不可见 = 把「档位加权」从后门放回来。
+    · 都不可见 = owner 2026-08-03 问的那个知情缺口:边缘腿占池 20.3%,
+      但票面上看不出这张 3 串里装了几条。
+    """
+    js = _js()
+    assert "_tierChip(l.tier)" in js, "串关腿行没挂档位标"
+    assert "_tierChip(b1.tier)" in js, "1 串参考行没挂档位标(同一份信息不该只给串关)"
+    for fn in ("function _parlayPool", "function _parlayPicks", "function _parlayCombos"):
+        assert "tier" not in _fn(fn), f"{fn} 读了 tier —— 选择/排序不许看档位"
+
+
+def test_tier_badge_and_colour_have_a_single_source() -> None:
+    """徽章与配色只许有一份 —— 两处各存一份,改了一处另一处会**静默保持旧色**。"""
+    js = _js()
+    assert js.count("sweet: '🟢'") == 1, "🟢 映射出现多次(_evRelTag 与 _tierChip 该共用)"
+    assert js.count("_TIER_BADGE[") >= 2 and js.count("_TIER_COLOR[") >= 2, (
+        "共享常量没被两处同时使用")
+
+
+def test_unknown_tier_renders_nothing_rather_than_garbage() -> None:
+    """`tier` 可能是 null(P 不在 (0,1))。回落必须是**空**,不是 `undefined甜区`。"""
+    src = "\n".join(_fn(a) for a in (
+        "const _TIER_BADGE", "const _TIER_COLOR", "function _tierChip"))
+    stub = "function t(k){return {rel_edge:'边缘',rel_edge_hint:'h'}[k]||k;}"
+    r = subprocess.run(
+        ["node", "-e", src + "\n" + stub +
+         "\nconsole.log([null, undefined, 'bogus', 'edge']"
+         ".map(x => JSON.stringify(_tierChip(x) === '' ? '' : 'CHIP')).join(','));"],
+        capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == '"","","","CHIP"', r.stdout
