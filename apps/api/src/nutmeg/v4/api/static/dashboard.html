@@ -2198,6 +2198,10 @@ const I18N = {
     pb_sameday_empty: '⚠️ 最近一期只有 1 场可投注 —— 串不起来。'
                       + '上面的日分布里还有别的期,想跨期串就取消勾选「只串同一天」。',
     pb_hit:           '命中率',
+    pb_main:          '主选',
+    pb_alt:           '备选(与主选零重叠)',
+    pb_rank_hdr:      '为什么只有两行、且不排名次',
+    pb_rank_note:     '<p><b>以前每档出 5 行,但那 5 行不是 5 个选项。</b>组合按 ∏(1+evLo) 排序,而这个乘积对候选池单调 —— 于是 top-k 组合天然从池顶堆起,彼此高度重合:</p><ul style="margin:8px 0 0 18px"><li>2 串:5 行 10 个腿位,只有 <b>4.3 条不同的腿</b>,第 1 条腿出现在 <b>81%</b> 的行</li><li>3 串:<b>5.1 条</b>,<b>94%</b></li><li>4 串:5 行 20 个腿位,只有 <b>6.0 条</b>,<b>97%</b> —— <b>第一条腿倒了,5 行一起死</b></li></ul><p style="margin-top:8px"><b>而且名次不预测结果。</b>实测各名次的 ROI:2 串 #1 −12.5% / #2 −4.7% / #3 −10.6% / #4 −22.6% / #5 −17.0%;3 串 #1 −25.2% / #2 −13.9% / #3 −38.9% / #4 <b>+17.0%</b> / #5 −25.6%。<b>#1 在任何一档都不是最好的</b>,而误差 ±10~65pp 意味着这些差全都不显著 —— <b>「不显著」正是重点</b>:排成 1..5 传达了一个我们测量上不具备的精度。这和「EV 是排除器不是排序器」是同一件事。</p><p style="margin-top:8px">所以现在只出两张:<b>主选</b>(∏(1+evLo) 最大)和<b>备选</b>(与主选<b>不共用任何一条腿</b>的最优票)。<b>⚠️ 备选不是更好的票</b> —— 实测 2 串 −22.8%±10.1 / 3 串 −4.3%±25.0 / 4 串 +25.3%±65.9,和主选分不出好坏。它唯一的价值是<b>不跟主选一起死</b>。两张各买半注:期望就是两者平均(线性,没有魔法),但波动降约 19% —— <b>EV 是负的,所以那意味着「输得更稳」,是不是你要的由你定</b>。池子太小凑不出零重叠的备选时,只出主选,不拿第 2 名充数。</p>',
     pb_hist:          '历史实测',
     pb_rand:          '随机腿基线',
     pb_odds:          '赔率积',
@@ -2716,6 +2720,10 @@ const I18N = {
     pb_sameday_empty: 'Only 1 bettable match on the nearest matchday — nothing to combine. '
                       + 'Other matchdays are listed above; untick "same-day legs only" to cross them.',
     pb_hit:           'hit rate',
+    pb_main:          'main',
+    pb_alt:           'alt (zero overlap with main)',
+    pb_rank_hdr:      'why only two rows, and no ranking',
+    pb_rank_note:     '<p><b>This used to show 5 rows per tier, but those were never 5 options.</b> Combinations are ranked by product(1+evLo), which is monotone in the pool, so the top-k combos stack from the top of the pool and overlap heavily:</p><ul style="margin:8px 0 0 18px"><li>2-leg: 5 rows, 10 leg slots, only <b>4.3 distinct legs</b>; the #1 leg appears in <b>81%</b> of rows</li><li>3-leg: <b>5.1</b> distinct, <b>94%</b></li><li>4-leg: 5 rows, 20 slots, only <b>6.0</b> distinct, <b>97%</b> — <b>if the top leg loses, all 5 die together</b></li></ul><p style="margin-top:8px"><b>And rank does not predict outcome.</b> Measured ROI by rank: 2-leg #1 -12.5% / #2 -4.7% / #3 -10.6% / #4 -22.6% / #5 -17.0%; 3-leg #1 -25.2% / #2 -13.9% / #3 -38.9% / #4 <b>+17.0%</b> / #5 -25.6%. <b>#1 is never the best</b>, and with +/-10 to 65pp error none of those gaps is significant — <b>and that is the point</b>: numbering rows 1..5 implies a precision we measurably do not have. Same thing as "EV is an excluder, not a ranker".</p><p style="margin-top:8px">So now only two tickets: <b>main</b> (max product(1+evLo)) and <b>alt</b> (best ticket sharing <b>no leg</b> with main). <b>The alt is NOT a better ticket</b> — measured 2-leg -22.8%+/-10.1, 3-leg -4.3%+/-25.0, 4-leg +25.3%+/-65.9, indistinguishable from main. Its only value is that it <b>does not die with main</b>. Half-staking both: the mean is just their average (linear, no magic) but variance drops ~19% — <b>EV is negative, so that means losing more steadily; whether you want that is your call</b>. When the pool is too small for a zero-overlap alt, only main is shown; the #2 combo is never used as filler.</p>',
     pb_hist:          'historical realized',
     pb_rand:          'random-leg baseline',
     pb_odds:          'odds product',
@@ -4953,7 +4961,6 @@ function _sweetBoardHtml(items) {
 // 这是赢家诅咒在组合层的样子:筛得越狠,选中的越是被高估的那些。
 // 所以「每天从可投注场次里出最优组合」既是 owner 要的,也是实测最好的版本。
 const _PARLAY_POOL_CAP = 12;     // C(12,4)=495,够用且不炸浏览器
-const _PARLAY_SHOW = 5;
 //: ⚠️ 2026-08-03 更正:这几行原来写的是「每腿 evLo≥+5% 的 ROI 复利,**推算不是
 //: 直接测的**」—— 那描述的是 v119 有地板时代的旧常数,和下面这组**对不上**了。
 //: 现在这组是**直接跑出来的**:873 个比赛日,每天每场取自己 evLo 最高的一条腿
@@ -4962,7 +4969,15 @@ const _PARLAY_SHOW = 5;
 //: 留着旧注释比没有注释更坏 —— 它会让下一个人以为这些数是外推的、可以随手重算。
 //: 「≈」和随机基线继续保留:误差带很宽,两两之间仍然分不出来。
 const _PARLAY_BACKTEST = { 1: -0.052, 2: -0.125, 3: -0.252, 4: -0.304 };
-const _PARLAY_RANDOM   = { 1: -0.115, 2: -0.216, 3: -0.306, 4: -0.385 };
+//: 随机腿基线 —— ⭐ 2026-08-03 从**解析值换成实测值**。
+//: 原来用的是 (1/1.1294)^k−1(纯抽水复利):−11.5 / −21.6 / −30.6 / −38.5。
+//: 那个式子假设**抽水在三条腿上均摊** —— 而我们实测过它不是(热门腿吃 60%)。
+//: 真跑一遍(每个比赛日随机取腿 ×200 次,按真实赛果结算,SE 按**比赛日**聚类
+//: 而不是按重抽次数 —— 后者会把 SE 缩小 1.5-1.7 倍):
+//:     1串 −12.7%±0.58 · 2串 −25.2%±0.94 · 3串 −31.9%±1.55 · 4串 −44.7%±2.30
+//: ⇒ 真实随机比解析线**更差**,构造器的净提升被旧尺子**低估了** 1.2-6.2pp。
+const _PARLAY_RANDOM    = { 1: -0.127, 2: -0.252, 3: -0.319, 4: -0.447 };
+const _PARLAY_RANDOM_SE = { 1: 0.0058, 2: 0.0094, 3: 0.0155, 4: 0.0230 };
 //: 样本量与误差(别把上面几个数当精确值):1串 n=873 ±5.1 · 2串 n=750 ±10.6 ·
 //: 3串 n=648 ±17.6 · 4串 n=550 ±33.5。全是负的、都好过随机基线,**但两两之间分不出来**。
 //: ⚠️ 4 串是 2026-08-03 **实测**(owner 问「能不能放大到 4 串」时补测的),不是外推 ——
@@ -5056,7 +5071,36 @@ function _parlayCombos(pool, k) {
     const ev = legs.reduce((a, l) => a * (1 + l.ev), 1) - 1;       // 点估(仅显示)
     const lg = legs.map(l => l.pr.league);
     return { legs, odds, evLo, ev, dup: new Set(lg).size < lg.length };
-  }).sort((a, b) => b.evLo - a.evLo).slice(0, _PARLAY_SHOW);
+  }).sort((a, b) => b.evLo - a.evLo);
+}
+//: ⭐ 2026-08-03:每档从 5 行砍到 **2 行**,而且第 2 行不是「第 2 名」。
+//: 实测那 5 行**根本不是 5 个选项**:∏(1+evLo) 对池的排序单调 ⇒ top-k 从池顶堆起,
+//:     2串 5 行 10 个腿位 → 只有 4.3 条不同的腿,第 1 条腿出现在 81% 的行
+//:     3串                 → 5.1 条,94%
+//:     4串 5 行 20 个腿位 → **6.0 条,97%** ← 5 行共命,第一条腿倒了一起死
+//: 而且**名次不预测 ROI**(#1 在任何一档都不是最好的):
+//:     2串 #1 −12.5 / #2 −4.7 / #3 −10.6 / #4 −22.6 / #5 −17.0
+//:     3串 #1 −25.2 / #2 −13.9 / #3 −38.9 / #4 **+17.0** / #5 −25.6
+//: SE ±10~65pp 所以这些差都不显著 —— **而「不显著」正是重点**:排成 1..5 传达了
+//: 一个测量上不具备的精度。同「EV 是排除器不是排序器」,只是显形在票的层面。
+//: ⇒ 改成「主选 + **不共用任何腿**的备选」:2 行都是真的不同的注,且不共命。
+//: ⚠️ 备选**不是更好的票**(实测 2串 −22.8±10.1 / 3串 −4.3±25.0 / 4串 +25.3±65.9,
+//:    和主选分不出好坏)。它唯一的价值是**不跟主选一起死**。
+//: 面板要显示的两张:主选(argmax)+ **与主选零重叠**的最优票。
+//: ⚠️ 这里**没有可调的行数常量**。原来有个 `_PARLAY_SHOW`,改成 main+alt 之后它
+//: 一处都没被引用 —— 一个不影响行为的常量,配上一条断言它的测试,就是「检查和
+//: 它的前提对不上」那一族。行数是**结构**(主选 + 零重叠备选)不是**参数**,
+//: 留个假旋钮比没有更坏。
+//: 找不到零重叠的(池太小)⇒ 只出主选,**不退而求其次拿第 2 名充数** ——
+//: 那正是这次要去掉的东西(第 2 名 81-97% 和主选共用腿,不是独立选项)。
+function _parlayPicks(pool, k) {
+  const all = _parlayCombos(pool, k);
+  if (!all.length) return [];
+  const main = all[0];
+  const used = new Set(main.legs.map(l => l.key));
+  const alt = all.find(c => c.legs.every(l => !used.has(l.key)));
+  return alt ? [{ ...main, role: 'main' }, { ...alt, role: 'alt' }]
+             : [{ ...main, role: 'main' }];
 }
 function _parlayBuilderHtml(items) {
   const pool = _parlayPool(items);
@@ -5069,7 +5113,7 @@ function _parlayBuilderHtml(items) {
   if (pool.length < 2 && !blockedBySameDay) return '';
   const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
   const block = (k) => {
-    const combos = _parlayCombos(pool, k);
+    const combos = _parlayPicks(pool, k);
     if (!combos.length) return '';
     const warn = k >= 4 ? ` <span class="info-i" style="color:#e11d48"
         onclick="showInfo(t('pb_4x'), t('pb_4x_note'))"
@@ -5078,8 +5122,10 @@ function _parlayBuilderHtml(items) {
         <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[k])}</b>
         ±${(_PARLAY_BACKTEST_SE[k] * 100).toFixed(1)}pp (n=${_PARLAY_BACKTEST_N[k]})
         · ${t('pb_hit')} ${(_PARLAY_HIT[k] * 100).toFixed(1)}%
-        · ${t('pb_rand')} ${f(_PARLAY_RANDOM[k])}</span></div>
+        · ${t('pb_rand')} ${f(_PARLAY_RANDOM[k])}±${(_PARLAY_RANDOM_SE[k] * 100).toFixed(1)}</span></div>
       ${combos.map(c => `<div class="px-2 py-1 text-xs">
+        <div class="font-medium" style="color:${c.role === 'main' ? '#b45309' : '#6b7280'}">
+          ${t(c.role === 'main' ? 'pb_main' : 'pb_alt')}</div>
         ${c.legs.map(l => `<div class="pl-2">· <span class="font-medium">${zhTeam(l.pr.home_team)} vs ${zhTeam(l.pr.away_team)}</span>
             <span class="text-muted">${zhLeague(l.pr.league)}</span>
             <span class="font-medium">${l.label}</span>
@@ -5106,7 +5152,7 @@ function _parlayBuilderHtml(items) {
   const solo = !b1 ? '' : `<div class="mt-2"><div class="text-xs font-medium">${t('pb_1x')}
       <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[1])}</b>
       ±${(_PARLAY_BACKTEST_SE[1] * 100).toFixed(1)}pp (n=${_PARLAY_BACKTEST_N[1]})
-      · ${t('pb_rand')} ${f(_PARLAY_RANDOM[1])}
+      · ${t('pb_rand')} ${f(_PARLAY_RANDOM[1])}±${(_PARLAY_RANDOM_SE[1] * 100).toFixed(1)}
       · <span class="info-i" onclick="showInfo(t('pb_1x'), t('pb_1x_note'))"
           title="${t('pb_info_tip')}">${t('pb_1x_tag')}ⓘ</span></span></div>
     <div class="px-2 py-1 text-xs"><div class="pl-2">·
@@ -5131,6 +5177,8 @@ function _parlayBuilderHtml(items) {
         onchange="_parlaySetSameDay(this.checked)"> ${t('pb_sameday')}</label>
       <span class="info-i" onclick="showInfo(t('pb_sameday_hdr'), t('pb_sameday_note'))"
         title="${t('pb_info_tip')}">ⓘ</span>
+      · <span class="info-i" onclick="showInfo(t('pb_rank_hdr'), t('pb_rank_note'))"
+        title="${t('pb_info_tip')}">${t('pb_main')}/${t('pb_alt')}ⓘ</span>
       <span class="text-muted"> · ${dayHint}</span></div>
     ${blockedBySameDay
       ? `<div class="text-xs px-2 py-2" style="color:#b45309">${t('pb_sameday_empty')}</div>${solo}`

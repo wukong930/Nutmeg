@@ -146,9 +146,16 @@ def test_backtest_constants_match_the_measurement() -> None:
     assert [b[k] for k in (1, 2, 3)] == [-0.052, -0.125, -0.252]
     n = tier("_PARLAY_BACKTEST_N")
     assert [int(n[k]) for k in (1, 2, 3)] == [873, 750, 648], "样本量没跟着换"
+    # ⚠️ 2026-08-03 换过一次:随机基线从**解析值**换成**实测值**。
+    # 旧值 (1/1.1294)^k−1 = −11.5/−21.6/−30.6,假设抽水在三条腿上均摊 ——
+    # 而我们实测过它不是(热门腿吃 60% 抽水)。真跑一遍(每个比赛日随机取腿
+    # ×200 次、按真实赛果结算、SE 按**比赛日**聚类)得 −12.7/−25.2/−31.9/−44.7:
+    # **真实随机比解析线更差** ⇒ 旧尺子把构造器自己的净提升低估了 1.2-6.2pp。
+    # 这条测试当时红了 —— 红得对,它就是为「有人动了基线」立的。详见
+    # test_parlay_picks.py::test_random_baseline_is_the_measured_one_not_the_analytic。
     r = tier("_PARLAY_RANDOM")
-    assert [r[k] for k in (1, 2, 3)] == [-0.115, -0.216, -0.306], (
-        "随机腿基线变了 —— 它是纯抽水 (1/1.1294)^k−1,是那把尺子")
+    assert [r[k] for k in (1, 2, 3)] == [-0.127, -0.252, -0.319], (
+        "随机腿基线变了 —— 它是 873 个比赛日的**实测**随机取腿 ROI,是那把尺子")
 
 
 def test_note_says_it_will_not_be_positive() -> None:

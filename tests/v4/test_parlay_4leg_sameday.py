@@ -43,7 +43,11 @@ REPO = Path(__file__).resolve().parents[2]
 DASH = REPO / "apps/api/src/nutmeg/v4/api/static/dashboard.html"
 
 #: 4 串实测(2026-08-03)。改这里必须重跑回测,不许「凑一个像样的数」。
-FOUR_LEG = {"roi": -0.304, "se": 0.335, "n": 550, "random": -0.385, "hit": 0.011}
+#: ⚠️ 同日 `random` 从 −0.385 改成 −0.447:那一位原来是**解析值** (1/1.1294)^4−1,
+#: 后来换成 873 个比赛日的**实测**随机取腿 ROI(解析式假设抽水三腿均摊,
+#: 实测不是 —— 热门腿吃 60%)。其余四个数没动,它们本来就是实测的。
+#: 详见 test_parlay_picks.py::test_random_baseline_is_the_measured_one_not_the_analytic。
+FOUR_LEG = {"roi": -0.304, "se": 0.335, "n": 550, "random": -0.447, "hit": 0.011}
 
 
 def _js() -> str:
