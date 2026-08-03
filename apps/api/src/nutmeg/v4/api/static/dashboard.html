@@ -2213,6 +2213,8 @@ const I18N = {
     pb_sameday_empty: '⚠️ 最近一期只有 1 场可投注 —— 串不起来。'
                       + '上面的日分布里还有别的期,想跨期串就取消勾选「只串同一天」。',
     pb_hit:           '命中率',
+    pb_age:           '数据',
+    pb_age_tip:       '这份候选池是多久之前抓的(取胜平负/杯赛两个源里较旧的那个)。⚠️ 它只是让你判断该不该去重取 —— 真正防陈旧的是开球闸:已开球的场会自动退出池子,不需要你按任何按钮。要拿最新盘口请用卡片上的 🎯/🔄(会走网络)。',
     pb_main:          '主选',
     pb_alt:           '备选(与主选零重叠)',
     pb_rank_hdr:      '为什么只有两行、且不排名次',
@@ -2735,6 +2737,8 @@ const I18N = {
     pb_sameday_empty: 'Only 1 bettable match on the nearest matchday — nothing to combine. '
                       + 'Other matchdays are listed above; untick "same-day legs only" to cross them.',
     pb_hit:           'hit rate',
+    pb_age:           'data',
+    pb_age_tip:       'How long ago this candidate pool was fetched (the older of the 1X2 / cup sources). It only tells you whether a re-fetch is worth it — what actually prevents staleness is the kickoff gate: matches that have kicked off drop out of the pool on their own, no button needed. For fresh lines use the per-card refresh.',
     pb_main:          'main',
     pb_alt:           'alt (zero overlap with main)',
     pb_rank_hdr:      'why only two rows, and no ranking',
@@ -4698,11 +4702,39 @@ function _lgGroupHtml(lg, col, count, cardsHtml, pfx) {
 // 188 场里 19 场(10.1%)是让球-only,全是一边倒的大场、15 场是世界杯 —— 正是
 // 最该看见它们的时候,它们却掉进参考区(owner 实报挪超 Bodo/Glimt vs Fredrikstad)。
 // 后端 _load_bettable_pairs(ingest_odds.py)必须同口径 —— 两处同改。
+//: ⭐ 2026-08-03 —— 开球闸。**镜像后端** `min_kickoff_buffer_minutes=5`
+//: (`routes.py` sp-calc / cup-market / today 三处都传 5),改一处必须改两处。
+//:
+//: ## 为什么客户端也要有
+//: 后端只在**抓取那一刻**过滤。而这个页面会开着不动 —— 早上 9 点打开、晚上 11 点
+//: 再看,20 点已开球的场**仍在 `_SPCALC.preds` 里**,原来的 `_isJcBettable`
+//: 只看竞彩 SP 字段在不在、**完全没有时间概念** ⇒ 它们继续被推荐进串关,
+//: 还连累「只串同一天」(最近一期永远停在今天,明天的场浮不上来)。
+//: ⚠️ **加个刷新按钮修不了这个** —— 按了只是拿同一份陈旧数据重跑同一个过滤,
+//: 答案一模一样,却让人以为按过就是新的。闸必须在过滤里,不在按钮里。
+//:
+//: ## 为什么闸在这里而不在 `_parlayPool`
+//: `_isJcBettable` 是共享 sink,三个消费者(全局榜+构造器 / 近期赛事「可投注」
+//: 分组 / 竞彩价年龄标)一起受益。逐个消费者打补丁 = Altitude 那条老教训。
+//:
+//: ## 拿不到开球时刻的场:**保留**,不装懂
+//: `kickoff_utc` 缺失(近 30 天实测 2.6%)⇒ 判不了 ⇒ 不剔。后端抓取时它是赛前的,
+//: 而「宁可多留一条可能过期的,不要静默吞掉一条能买的」在这里是对的方向:
+//: 前者你在投注站会发现,后者你永远不知道错过了什么。
+const _JC_KO_BUFFER_MIN = 5;
 function _isJcBettable(pr) {
   if (!pr) return false;
   const had  = pr.jc_home != null && pr.jc_draw != null && pr.jc_away != null;
   const hhad = pr.jc_hc_home != null && pr.jc_hc_draw != null && pr.jc_hc_away != null;
-  return !!(had || hhad);
+  if (!(had || hhad)) return false;
+  if (pr.kickoff_utc) {                       // 只在**能判**的时候判
+    const ko = new Date(pr.kickoff_utc).getTime();
+    // ⚠️ `Number.isFinite` 在这里**不承重**:坏时间戳给 NaN,而 `NaN <= x` 本来
+    // 就是 false ⇒ 拆掉它行为不变(2026-08-03 变异验证过)。留着是写明意图,
+    // **别把它当成一道真的闸** —— 别处若靠「有 isFinite 所以坏值被挡住了」会踩空。
+    if (Number.isFinite(ko) && ko <= Date.now() + _JC_KO_BUFFER_MIN * 60000) return false;
+  }
+  return true;
 }
 // Group [{pr, idx}] by league, order leagues by earliest kickoff, sort each league
 // by kickoff, render via _lgGroupHtml — the existing card layout, factored out so
@@ -5061,6 +5093,25 @@ function _parlayPool(items) {
   }
   return pool.slice(0, _PARLAY_POOL_CAP);
 }
+//: 构造器数据有多旧 —— 取两个源里**较旧**的那个(和 `jc_captured_at` 取
+//: `min(stamps)` 同一个保守口径:两块几乎总是同批,真分叉时旧的那侧才是风险)。
+//: ⚠️ 它**不解决**陈旧,只是让「该不该去重取」这个判断有依据。真正防陈旧的是
+//: `_isJcBettable` 里的开球闸 —— 那个不需要人动手。
+//: ⚠️ **只看真正给池子供了料的源。** 一个 `preds` 为空的源(比如杯赛 tab 从没打开过)
+//: 对候选池零贡献,它的抓取时刻也就无关 —— 若强行要求两个源都有 fetchedAt,
+//: 标签会**永远不显示**,那比不准更坏。
+//: ⚠️ 但**有 preds 却没有 fetchedAt** ⇒ 判不了这个源 ⇒ 整体返回 null。
+//: 「我不知道」和「刚取的」必须长得不一样,不许拿另一个源顶上去。
+//:
+//: ⭐ 这一版是改出来的:第一版注释写「任一源缺 ⇒ null」,代码却 `filter(Boolean)`
+//: 之后取剩下那个 —— **注释和代码说的不是一回事**,而且注释写的策略本身也错
+//: (会让标签永远不显示)。端到端跑一遍才发现。又一次:**先跑,别信自己的注释。**
+function _parlayDataAge() {
+  const src = [_SPCALC, _CUPMKT].filter(x => x && (x.preds || []).length);
+  if (!src.length) return null;                       // 池子本来就空,没什么可标的
+  if (src.some(x => !x.fetchedAt)) return null;       // 有料却不知道何时取的 ⇒ 不装懂
+  return Date.now() - Math.min(...src.map(x => x.fetchedAt));
+}
 //: 各期可投注场次分布 —— 让「同期开关挡掉了什么」可见,而不是静默少几场。
 //: 无开球时刻的归 '?' 并单列,别混进任何一期。
 function _parlayDayCounts(items) {
@@ -5182,7 +5233,10 @@ function _parlayBuilderHtml(items) {
     <summary class="font-bold cursor-pointer">
       <span style="color:#b45309">${IC('ticket')}</span> ${t('pb_hdr')}
       <span class="text-sm font-normal text-gray-500">· ${pool.length}${
-        _parlaySameDay() && rawTotal > pool.length ? `/${rawTotal}` : ''}</span>
+        _parlaySameDay() && rawTotal > pool.length ? `/${rawTotal}` : ''}</span>${
+        (() => { const a = _parlayDataAge();
+          return a === null ? '' : ` <span class="text-xs font-normal text-muted"
+            title="${t('pb_age_tip')}">${t('pb_age')} ${_formatStale(a)}</span>`; })()}
       <span class="info-i" style="font-size:0.8em;font-weight:400"
             onclick="event.preventDefault();event.stopPropagation();showInfo(t('pb_hdr'), t('pb_note'))"
             title="${t('pb_info_tip')}">ⓘ <span data-i18n="info_link">说明</span></span></summary>
@@ -5362,7 +5416,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
     _entered[op.home_team + '|' + op.away_team + '|' + op.date] &&
     !_newKeys.has(op.home_team + '|' + op.away_team + '|' + op.date));
   if (_revived.length) preds = preds.concat(_revived);
-  _SPCALC = { preds, bankroll, kelly, minEv };
+  _SPCALC = { preds, bankroll, kelly, minEv, fetchedAt: Date.now() };
   $('#today-spcalc-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
   const outcomes = ['H', 'D', 'A'];
   // V12 W4 — one card's HTML. Uses the fixture's *global* index `idx` for all
@@ -6856,6 +6910,7 @@ function renderCupMarket(preds, pending) {
     });
   }
   _CUPMKT.preds = preds;
+  _CUPMKT.fetchedAt = Date.now();
   _CUPMKT.pending = pending;   // V14 — kept so _cupManualReprice can re-render in place
   const sec = $('#cupmkt-section'), list = $('#cupmkt-list'), empty = $('#cupmkt-empty');
   if (preds.length === 0 && pending.length === 0) {
