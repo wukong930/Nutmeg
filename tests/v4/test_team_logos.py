@@ -10,12 +10,13 @@ Tests don't depend on actual logo PNGs being downloaded — they:
 """
 from __future__ import annotations
 
+import json
+import sqlite3
 from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -186,3 +187,101 @@ class TestIngestCLIScaffold:
         with pytest.raises(SystemExit) as exc:
             ingest_team_logos.main(["--help"])
         assert exc.value.code == 0
+
+
+# ---------- --from-fixture-cache (2026-08-04) ---------------------------
+#
+# 病史:`/teams?league=<杯赛>` 只给正赛名单。UCL 2026 实测 36 队,而资格赛的
+# `Olympiakos Piraeus` / `Sparta Praha` 已经在盘面上却不在那 36 里 ⇒ 按 /teams
+# 补队徽每年都会漏一批,症状是「有的队没圆标」——没人会当 bug 报。
+# 修法是改从**已缓存的 /fixtures** 取(每行带 teams.*.logo,覆盖实际出场的人)。
+
+class TestFromFixtureCache:
+    def _fixture_cache(self, root, teams):
+        """写一个嵌套的 _fixtures 缓存;嵌套是故意的 —— 真实缓存分子目录。"""
+        d = root / "_fixtures" / "2026"
+        d.mkdir(parents=True)
+        (d / "f.json").write_text(json.dumps([
+            {"teams": {"home": {"name": h, "logo": f"https://x/{h}.png"},
+                       "away": {"name": a, "logo": f"https://x/{a}.png"}}}
+            for h, a in teams
+        ]))
+        return root
+
+    def _obs_db(self, path, names):
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE odds_snapshots (home_team TEXT, away_team TEXT)")
+        conn.executemany("INSERT INTO odds_snapshots VALUES (?, ?)",
+                         [(n, n) for n in names])
+        conn.commit()
+        conn.close()
+
+    def _run(self, tmp_path, monkeypatch, *, teams, pop, extra=()):
+        """跑一次 --from-fixture-cache,返回**实际被下载的队名**。"""
+        from nutmeg.v4.cli import ingest_team_logos as m
+        api = self._fixture_cache(tmp_path / "api", teams)
+        db = tmp_path / "obs.db"
+        self._obs_db(db, pop)
+        got = []
+
+        def fake_dl(url, dest, **kw):
+            got.append(dest.stem)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b"\x89PNG")
+            return True
+
+        monkeypatch.setattr(m, "_download_logo", fake_dl)
+        rc = m.main(["--from-fixture-cache", "--api-cache-dir", str(api),
+                     "--observation-db", str(db), "--out-dir", str(tmp_path / "logos"),
+                     "--throttle-ms", "0", *extra])
+        assert rc == 0
+        return got
+
+    def test_downloads_only_the_bettable_population(self, tmp_path, monkeypatch):
+        """⚠️ 这条是本模式的**安全闸**,不是锦上添花。
+
+        实测 fixtures 缓存里 8,374 支队、其中 7,405 支本地没 PNG —— 不过滤就是
+        把一整个下载器对着无关的低级别球队跑。人口取「上过盘面的队名」,
+        和本项目「统计量只在会下注的人口上算」同一条纪律。
+        """
+        got = self._run(
+            tmp_path, monkeypatch,
+            teams=[("Sparta Praha", "Slavia Praha"), ("Nobody FC", "Nobody Utd")],
+            pop=["Sparta Praha", "Slavia Praha"],
+        )
+        assert sorted(got) == ["slavia_praha", "sparta_praha"]
+        assert "nobody_fc" not in got, "缓存里有但没上过盘面的队被下载了 —— 过滤没接上"
+
+    def test_skips_national_teams(self, tmp_path, monkeypatch):
+        """国家队走国旗 emoji(`_NATION_FLAG`),下 PNG 是白费带宽。"""
+        got = self._run(
+            tmp_path, monkeypatch,
+            teams=[("Brazil", "Argentina"), ("Sparta Praha", "Koper")],
+            pop=["Brazil", "Argentina", "Sparta Praha", "Koper"],
+        )
+        assert sorted(got) == ["koper", "sparta_praha"]
+
+    def test_nested_and_broken_cache_files(self, tmp_path, monkeypatch):
+        """坏掉的缓存文件不许打断整趟扫描 —— 半个 JSON 只该少一批,不该少全部。"""
+        from nutmeg.v4.cli import ingest_team_logos as m
+        api = self._fixture_cache(tmp_path / "api", [("Koper", "Bravo")])
+        (api / "_fixtures" / "broken.json").write_text("{not json")
+        urls = m._logo_urls_from_fixture_cache(api)
+        assert set(urls) == {"Koper", "Bravo"}
+
+    def test_league_and_season_still_required_without_the_flag(self, tmp_path):
+        """放宽 required=True 之后,**旧用法必须照样被拦**。
+
+        不加这条的话「忘了带 --league」会静默变成一趟什么都不做的成功运行 ——
+        又一个「抓了空集也叫成功」。
+        """
+        from nutmeg.v4.cli import ingest_team_logos as m
+        for argv in ([], ["--league", "EPL"], ["--season", "2026"]):
+            with pytest.raises(SystemExit) as exc:
+                m.main(argv)
+            assert exc.value.code != 0, f"{argv} 应该被 argparse 拦下"
+
+    def test_missing_db_is_not_fatal(self, tmp_path):
+        """新 checkout 没有观测库。返回空人口 = 什么都不下,而不是崩。"""
+        from nutmeg.v4.cli import ingest_team_logos as m
+        assert m._bettable_team_names(tmp_path / "nope.db") == set()
