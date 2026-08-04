@@ -105,6 +105,24 @@ for _en, _zh in TEAM_NAME_ZH.items():
 _ZH_OVERRIDES: dict[str, str] = {
     # 竞彩-only Chinese names absent from TEAM_NAME_ZH. value = the LIVE
     # odds_snapshots/gather name. Both paren widths — the 竞彩 feed is inconsistent.
+    #
+    # 欧冠资格赛 2026-08-04(面板报「竞彩在售、但没进盘面 2/7」)—— 这两支队
+    # **词典里有**,只是竞彩用了另一种中文写法,所以属于 ① 类(补 override,
+    # 不动 team_name_zh.py):
+    #   Slovan Bratislava  → 词典写「布拉迪斯拉发斯洛万」,竞彩写「布拉迪斯拉发」
+    #   Union St. Gilloise → 词典写「圣吉罗斯联」,      竞彩写「圣吉尔联合」
+    # ⭐ 英文值**照抄 odds_snapshots 里那条线**(join 目标本身),不是按音译写的。
+    #   注意是 `Union St. Gilloise`(带点)而**不是** `Union Saint-Gilloise` ——
+    #   TEAM_NAME_ZH 两种都有,但实盘那条线用的是前者。
+    # ⭐ 配对靠**赛事身份**不是猜:两场里已解析的那一侧(米亚尔比=Mjallby AIF /
+    #   博德闪耀=Bodo/Glimt)在 2026-08-04 UCL 各只有**唯一**一个对手,
+    #   对手就是这两个名字。撞车检查:两个中文名在 TEAM_NAME_ZH / _ZH_OVERRIDES /
+    #   竞彩档案 / 皇冠档案里**都没被别的队占用**(0 冲突)。
+    # ✅ 同时确认过这不是「Pinnacle 没覆盖资格赛」那种情况 —— 两场的 psc 都在
+    #   odds_snapshots 里(08-04 03:24Z 抓取,2.08/3.62/3.18 与 2.07/3.8/3.08),
+    #   所以补词典**确实能让它们进盘面**。
+    "布拉迪斯拉发": "Slovan Bratislava",
+    "圣吉尔联合": "Union St. Gilloise",
     "刚果(金)": "Congo DR",
     "刚果（金）": "Congo DR",
     # 芬超 Veikkausliiga — 竞彩 uses descriptive 中文 (坦佩雷山猫=Tampere Lynx=Ilves,
