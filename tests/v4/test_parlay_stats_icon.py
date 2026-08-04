@@ -103,6 +103,51 @@ class TestNoNumberLost:
             assert f"+{(e['hist'] - e['rand']) * 100:.1f}pp" in _render(k), k
 
 
+class TestFourLegWarningFoldedIn:
+    """4 串那条「100 张中 1 张ⓘ」并进了 实测ⓘ(owner 2026-08-04)。
+
+    ⚠️ 它讲的是这一档**最危险**的地方 —— 命中率 1.1%,平均 91 张才中 1 张,
+    「中一次的爽感会盖过 90 次没中」。合并是为了少一个入口,**不是**为了淡化它。
+    """
+
+    def test_note_is_in_the_four_leg_body_only(self):
+        assert "pb_4x_note" in _render(4), "4 串的警告没并进 ⓘ"
+        for k in (1, 2, 3):
+            assert "pb_4x_note" not in _render(k), f"{k} 串不该出现 4 串的警告"
+
+    def test_standalone_badge_is_gone(self):
+        """并进来了就不该在标题旁再挂一个 —— 两个入口讲同一件事只会互相稀释。"""
+        block = _block(r"\n  const block = \(k\) => \{.*?\n  \};", _js())
+        assert "pb_4x_note" not in block, "标题旁还挂着独立的 4 串 ⓘ"
+
+    def test_the_hit_rate_line_still_names_the_91_tickets(self):
+        """表格里那行命中率必须带上「平均 91 张才中 1 张」——
+        「1.1%」这个百分数本身不会让人产生「91 张」的实感。"""
+        assert "pb_hit_note_4x" in _render(4), "4 串命中率行没带 91 张的注解"
+
+
+class TestAltLabelIsVisibleButNotGreen:
+    def test_alt_label_uses_the_scoped_class(self):
+        js = _js()
+        assert ".pb-alt-label" in js and '[data-theme="dark"] .pb-alt-label' in js, \
+            "备选标题色没有亮/暗两套"
+        assert "pb-alt-label" in _block(r"\n  const block = \(k\) => \{.*?\n  \};", js), \
+            "备选行没挂上那个 class"
+
+    def test_alt_label_is_not_green(self):
+        """⛔ **不许用绿色。** 实测备选并不比主选好(−22.8±10.1 / −4.3±25.0 /
+        +25.3±65.9,分不出好坏),它唯一的价值是不跟主选一起死。
+        绿色 = 用颜色说了一句数据不支持的话。
+        """
+        js = _js()
+        rules = re.findall(r"\.pb-alt-label\s*\{\s*color:\s*(#[0-9a-fA-F]{6})", js)
+        assert rules, "抠不到 .pb-alt-label 的色值"
+        for hexv in rules:
+            r, g, b = (int(hexv[i:i + 2], 16) for i in (1, 3, 5))
+            assert not (g > r + 24 and g > b + 24), \
+                f"{hexv} 偏绿 —— 会被读成「备选更好」,而实测分不出好坏"
+
+
 class TestHeaderNoLongerCarriesTheBlob:
     def test_tier_header_delegates_to_the_icon(self):
         """档位标题行不再内联那一串统计,而是接上 ⓘ。

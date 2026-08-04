@@ -217,6 +217,14 @@
      ⚠️ **只在 .pb-card 内生效**:全局改 text-xs 会波及整个面板的表格、徽章、
      tab 栏,那些地方的密度是照 12px 排过的。选择器 `.pb-card .text-xs`
      特异度 (0,2,0) 高于 Tailwind 的 `.text-xs` (0,1,0),所以不依赖加载顺序。 */
+  /* 备选行的标题色(owner 2026-08-04:原来的 #6b7280 太灰,看不见)。
+     ⛔ **刻意不用绿色**:实测备选并不比主选好(−22.8±10.1 / −4.3±25.0 /
+     +25.3±65.9,分不出好坏),它唯一的价值是**不跟主选一起死**。
+     用绿色 = 用颜色说了一句数据不支持的话。靛蓝既醒目又不带褒贬。
+     亮/暗两套 —— 单一色值总有一边对比度不够。 */
+  .pb-alt-label { color: #4f46e5; }
+  [data-theme="dark"] .pb-alt-label { color: #a5b4fc; }
+
   .pb-card .text-xs { font-size: 13.5px; line-height: 1.65; }
   .pb-card .text-sm { font-size: 15px; }
   .pb-card summary { font-size: 1.05em; }
@@ -2207,6 +2215,9 @@ const I18N = {
     pb_hdr:           '串关构造器',
     pb_note:          '当天<b>每场可投注比赛各出一条最优腿</b>(按判闸下界 evLo;竞彩混合过关禁同场两腿),再枚举组合按 ∏(1+evLo) 排序。<b>⚠️ 它不会给你正数</b> —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。<br>⭐ <b>池故意不设地板</b>:873 个比赛日实测,无地板 2串 −12.5%/3串 −25.2% 是最好的;地板抬到 0% 变成 −42.9%/−100%(n=34),抬到 +5% 全军覆没 —— 筛得越狠,选中的越是被高估的腿(赢家诅咒)。<br>⭐ <b>只串同一天</b>(默认开):竞彩常连列 2–3 天,今天的腿串明天的会拉长暴露窗口。<b>注意「一天」按竞彩的期算,北京 12:00 换日(实测 228 场零例外)</b>,所以周日晚 22 点和周一凌晨 3 点算同一期。<b>⚠️ 这条规则本身有没有用我测不出来</b> —— 档案只有终盘价,没有「D−2 时刻的竞彩价」;按终盘距开球分箱 ROI 也分不出来(&lt;6h −12.3% vs &gt;48h −12.3%),那测的是终盘新鲜度不是提前几天下注。所以它是个**开关**不是结论,代价只是候选变少。<br>⭐ <b>腿越少越好</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2% &lt; 4串 −30.4%(4 串命中率仅 1.1%)。上面那条 1 串参考就是实测最优选项。按「历史实测」定注额,别按「理论 EV」—— 后者在全正腿相乘时会让 3 串看起来比 2 串好,那是反的。',
     pb_info_tip:      '点击查看说明',
+    // ⚠️ 2026-08-04 owner 撤掉了它的渲染点(卡顶那行常驻小字)。**键故意留着** ——
+    // 它是这张卡唯一一句常驻的「不会给正数」,恢复只需把那一行 <div> 加回去。
+    // 删掉键会让恢复变成「重写文案」,而重写出来的多半没这句这么直白。
     pb_note_short:    '⚠️ 不会给正数 · 腿越少越好 · 按「历史实测」定注额',
     pb_1x_tag:        '实测最优,但让球买不到单关',
     pb_dup_body:      '<p>这张票里有两条腿来自<b>同一联赛</b>。串关的联合概率算法默认各腿独立,而同联赛同一晚的比赛共享因子(天气、赛程密度、裁判尺度、该联赛当轮的进球环境),<b>真实联合概率低于算出来的</b>。</p><p style="margin-top:8px"><b>实例(2026-08-02 美职联):</b>6 场里 <b>4 场平局</b>,期望只有 1.35 场,<b>+2.59 SD</b>。那一晚一张 6 串 1 的五条输腿里有四条死于同一件事 —— 不是六次独立失败,是<b>一次事件杀了四条腿</b>。</p><p style="margin-top:8px">跨联赛不能消除相关(还有跨联赛的共同因子),但能显著削弱。能换就换。</p>',
@@ -5210,7 +5221,13 @@ function _parlayStatsBody(k) {
             k >= 4 ? t('pb_hit_note_4x') : '') : ''}
       ${row(t('pb_rand'), `${f(_PARLAY_RANDOM[k])} ±${pp(_PARLAY_RANDOM_SE[k])}`, '')}
       ${row(t('pb_gain'), `+${pp(gain)}`, '')}
-    </table><div style="margin-top:12px">${t('pb_stats_caveat')}</div>`;
+    </table><div style="margin-top:12px">${t('pb_stats_caveat')}</div>${
+    // 4 串那条「100 张中 1 张」原来是标题旁一个独立的红色 ⓘ(owner 2026-08-04
+    // 要求并进来)。⚠️ **正文一个字没删** —— 它讲的是这一档最危险的地方
+    // (中一次的爽感盖过 90 次没中),只是从两个入口变成一个。
+    k >= 4 ? `<hr style="margin:14px 0;border:0;border-top:1px solid var(--border)">
+      <div style="color:#e11d48;font-weight:600;margin-bottom:6px">⚠️ ${t('pb_4x_tag')}</div>
+      <div>${t('pb_4x_note')}</div>` : ''}`;
 }
 function _parlayStatsIcon(k) {
   return `<span class="info-i" style="font-weight:400"
@@ -5241,13 +5258,13 @@ function _parlayBuilderHtml(items) {
     const stats = _parlayStatsIcon(k);
     const combos = _parlayPicks(pool, k);
     if (!combos.length) return '';
-    const warn = k >= 4 ? ` <span class="info-i" style="color:#e11d48"
-        onclick="showInfo(t('pb_4x'), t('pb_4x_note'))"
-        title="${t('pb_info_tip')}">${t('pb_4x_tag')}ⓘ</span>` : '';
-    return `<div class="mt-2"><div class="text-xs font-medium">${t('pb_' + k + 'x')}${warn}
+    // 4 串的「100 张中 1 张ⓘ」原本是这里第二个独立徽章,2026-08-04 并进了
+    // `_parlayStatsBody(4)` 的末尾 —— 一个档位一个入口,内容一字未删。
+    return `<div class="mt-2"><div class="text-xs font-medium">${t('pb_' + k + 'x')}
         ${stats}</div>
       ${combos.map(c => `<div class="px-2 py-1 text-xs">
-        <div class="font-medium" style="color:${c.role === 'main' ? '#b45309' : '#6b7280'}">
+        <div class="font-medium${c.role === 'main' ? '' : ' pb-alt-label'}"${
+          c.role === 'main' ? ' style="color:#b45309"' : ''}>
           ${t(c.role === 'main' ? 'pb_main' : 'pb_alt')}</div>
         ${c.legs.map(l => `<div class="pl-2">· <span class="font-medium">${zhTeam(l.pr.home_team)} vs ${zhTeam(l.pr.away_team)}</span>
             <span class="text-muted">${zhLeague(l.pr.league)}</span>
@@ -5295,7 +5312,15 @@ function _parlayBuilderHtml(items) {
       <span class="info-i" style="font-size:0.8em;font-weight:400"
             onclick="event.preventDefault();event.stopPropagation();showInfo(t('pb_hdr'), t('pb_note'))"
             title="${t('pb_info_tip')}">ⓘ <span data-i18n="info_link">说明</span></span></summary>
-    <div class="text-xs text-muted mt-1 mb-2">${t('pb_note_short')}</div>
+    <!-- ⚠️ 2026-08-04 owner 删掉了这里的常驻一句话
+         (i18n 键 pb_note_short = 「不会给正数 · 腿越少越好 · 按历史实测定注额」,
+         键**故意留着**,恢复只需把 div 加回来)。
+         ⇒ **「不会给正数」现在没有常驻可见的位置了**,只剩标题旁那个 ⓘ 里的
+         pb_note 全文。常驻可见的负向信号只剩每条腿/每张票的红色负 EV 数字。
+         ⛔ 要是将来发现这张卡又被当成「能赢的东西」看,第一个该考虑恢复的就是它。
+         ⚠️ 本段是 HTML 注释,但它躺在一个 JS 模板字面量里 ——
+         **绝对不要在这里写反引号**,会当场终止模板串(2026-08-04 踩过,
+         pytest 全绿而 node --check 抓住了:那些测试读原文、不执行 JS)。 -->
     <div class="text-xs mb-2">
       <label style="cursor:pointer"><input type="checkbox" ${_parlaySameDay() ? 'checked' : ''}
         onchange="_parlaySetSameDay(this.checked)"> ${t('pb_sameday')}</label>
