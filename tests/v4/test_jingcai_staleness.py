@@ -163,51 +163,71 @@ class TestClubCoreCloseFallback:
         # 原有北欧口径不能被破坏
         assert _club_core("IK Sirius") == _club_core("Sirius")
 
-    # ⚠️ 2026-08-01 —— 下面两条原本用「Inter Miami / Inter Miami CF」构造分裂。
-    # 那天把分裂修到了 ingest 层(`odds_source_aliases`),`Inter Miami CF` 进了
-    # 别名表 ⇒ 写进库时就被归一,精确 join 直接命中,**根本走不到 club-core 兜底**。
-    # 歧义那条当场变红(好),但正例那条**照样绿** —— 它测的东西没了,而它不吭声。
-    # 这才是危险的一半:红测试会喊,失去牙齿的绿测试不会。
+    # ⚠️ 这些用例的**前提是「库里存在一个 sink 不会归一掉的拼法分裂」**,而这个前提
+    # 被推翻过两次:
+    #   2026-08-01 原用「Inter Miami / Inter Miami CF」,当天分裂修进了 ingest 层
+    #     ⇒ 写进库时就被归一、精确 join 直接命中、**根本走不到 club-core 兜底**。
+    #     歧义那条当场变红(好),正例那条**照样绿** —— 它测的东西没了却不吭声。
+    #   2026-08-04 换用的「别名表故意没收的真实撞车对」(瑞超)也补进别名表了,
+    #     `UNRESOLVED_SPLITS` 归零 ⇒ **已经没有「仍未收敛的真实名字」可换**。
     #
-    # 所以改用**别名表故意没收的**真实撞车对(瑞超,见 UNRESOLVED_SPLITS),
-    # 并在下面用 test_fixture_names_must_stay_unaliased 钉住这个前提:
-    # 将来谁把它们补进别名表,那条会先红,而不是这两条悄悄变哑。
+    # 所以这次不再去找一对「碰巧还没被收」的真名 —— 那等于把前提押在别人不动手上。
+    # 改成:**合成联赛码 + 真实拼法**。`_LEAGUE` 既不是 `soccer_*` 也不是 V4 码,
+    # `canonical_team` 查 (联赛, 队名) 必然落空 ⇒ sink 对它永远是 no-op,
+    # 别名表怎么长都不会把这两行折叠掉。名字仍用真的,因为要测的是 `_club_core`
+    # 对真实后缀/大小写/句点的折叠。
+    #
+    # 而且不靠注释保证:下面 test_the_fixture_really_lands_as_two_rows 直接**读回
+    # 库里的内容**断言,前提坏了会先红在那条上,而不是让结论悄悄反转。
+    _LEAGUE = "TEST_SPELLING_SPLIT"
     _AMBIG = (("Servette FC", "FC St Gallen"), ("Servette", "FC ST. Gallen"))
 
     def _write(self, db, home, away, ph):
         return record_row_snapshot(db, {
-            "date": "2026-07-22", "league": "SUI_SUPER_LEAGUE",
+            "date": "2026-07-22", "league": self._LEAGUE,
             "home_team": home, "away_team": away,
             "psc_home": ph, "psc_draw": 3.9, "psc_away": 4.2,
             "ou_line": 3.5, "psc_over25": 1.9, "psc_under25": 1.9,
             "kickoff_utc": "2026-07-22T23:30:00+00:00",
         }, source="closing", captured_at="2026-07-22T23:00:00+00:00")
 
-    def test_fixture_names_must_stay_unaliased(self):
-        """下面两条测试的前提:这些拼法**没有**被 ingest 层归一掉。
+    def test_the_fixture_really_lands_as_two_rows(self, tmp_path):
+        """前提断言(行为版,不是字符串版):两种拼法进库后必须**仍是两对**。
 
-        一旦有了共现证据把它们补进 `ODDS_SOURCE_ALIASES`,精确 join 会命中,
-        club-core 兜底就测不到了 —— 那时请换一对仍未收敛的名字,别删断言。
+        歧义闸的判据是 `len({(home, away)}) != 1`;要是 sink 把两行归一成同一对,
+        歧义就不存在了、`test_ambiguous_core_never_guesses` 会静默变成在测正例。
+        钉的是**库里真实落了什么**,所以别名表/sink 怎么改都瞒不过去。
         """
-        from nutmeg.v4.data.odds_source_aliases import canonical_team
-        for h, a in self._AMBIG:
-            for n in (h, a):
-                assert canonical_team("SUI_SUPER_LEAGUE", n) == n, (
-                    f"{n!r} 已进别名表 ⇒ 本类的 club-core 用例已失去牙齿,换名字")
+        import sqlite3
+        db = tmp_path / "o.db"
+        for (home, away), ph in zip(self._AMBIG, (1.8, 2.4), strict=True):
+            self._write(db, home, away, ph)
+        pairs = set(sqlite3.connect(db).execute(
+            "SELECT home_team, away_team FROM odds_snapshots").fetchall())
+        assert pairs == set(self._AMBIG), (
+            f"落库的不是两对原样拼法而是 {pairs} ⇒ 本类的歧义用例已失去牙齿。"
+            "多半是 _LEAGUE 撞上了真实联赛码、被别名表归一了,换一个合成码。")
 
     def test_close_found_across_the_spelling_split(self, tmp_path):
         """竞彩 `Servette` ↔ Pinnacle `Servette FC` —— 精确 join 落空后,
-        club-core 兜底必须把这条收盘线找回来。"""
+        club-core 兜底必须把这条收盘线找回来。
+
+        ⚠️ 顺带断言精确 join **确实**落空:否则这条根本没走到兜底,
+        测的是 `_pinn_close` 的第一段而不是它要测的第三段。"""
         import sqlite3
 
         from nutmeg.v4.cli.jingcai_staleness import _pinn_close
         db = tmp_path / "o.db"
         self._write(db, "Servette FC", "FC St Gallen", 1.8)
+        q = {"match_date": "2026-07-22", "home_team": "Servette",
+             "away_team": "FC ST. Gallen"}
         with sqlite3.connect(db) as conn:
             conn.row_factory = sqlite3.Row
-            got = _pinn_close(conn, {"match_date": "2026-07-22",
-                                     "home_team": "Servette",
-                                     "away_team": "FC ST. Gallen"})
+            assert not conn.execute(
+                "SELECT 1 FROM odds_snapshots WHERE match_date=? AND home_team=? "
+                "AND away_team=?", (q["match_date"], q["home_team"], q["away_team"])
+            ).fetchone(), "精确 join 命中了 ⇒ 这条没在测 club-core 兜底"
+            got = _pinn_close(conn, q)
         assert got is not None, "club-core 兜底没接上"
         assert got[0] == 1.8
 

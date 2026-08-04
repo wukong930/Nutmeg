@@ -23,7 +23,8 @@
 「一侧已学到」迭代钉住另一侧。一致性闸:同名指向不同目标 ⇒ 冲突,拒绝(实测 0 冲突)。
 
 ⭐ **方法自带对照组**:两侧本来就同名的 93 支球队应当映射到自己 —— 实测全部正确。
-这才是敢信它推出的 54 条的理由。
+这才是敢信它推出的 54 条的理由。(2026-08-04 补到 **61 条** —— 那 7 条走的是
+另一种证据「队表钉」,见文件末尾。)
 
 ⛔ **不许按模式补**。实测反例:`FC Lahti → Lahti`(去前缀)但 `Jaro → FF Jaro`
 (**加**前缀);美职 10 组双拼法里 9 组「短名是正典」而 `LA Galaxy` 恰好相反。
@@ -56,6 +57,9 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('FIN_VEIKKAUSLIIGA', 'SJK Seinäjoki'): 'SJK',   # 证据 8 场
     ('FIN_VEIKKAUSLIIGA', 'TPS Turku'): 'Turku PS',   # 证据 13 场
     ('FIN_VEIKKAUSLIIGA', 'VPS Vaasa'): 'VPS',   # 证据 5 场
+    # ↓ 韩职 2 条**只有队表钉**(共现至今推不出),详见文件末尾
+    ('KOR_K_LEAGUE_1', 'Jeonbuk Hyundai Motors'): 'Jeonbuk Motors',   # 队表唯一 eonbuk
+    ('KOR_K_LEAGUE_1', 'Sangju Sangmu FC'): 'Gimcheon Sangmu FC',   # 队表唯一 angmu
     ('NOR_ELITESERIEN', 'Bodø/Glimt'): 'Bodo/Glimt',   # 证据 14 场
     ('NOR_ELITESERIEN', 'Fredrikstad FK'): 'Fredrikstad',   # 证据 3 场
     ('NOR_ELITESERIEN', 'HamKam'): 'Ham-Kam',   # 证据 19 场
@@ -71,6 +75,12 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('SCO_PREMIERSHIP', 'Hearts'): 'Heart Of Midlothian',   # 证据 1 场
     ('SCO_PREMIERSHIP', 'St Johnstone'): 'ST Johnstone',   # 证据 1 场
     ('SCO_PREMIERSHIP', 'St Mirren'): 'ST Mirren',   # 证据 1 场
+    # ↓ 瑞超 5 条:共现推导与队表钉**各自独立地给出同一答案**(5/5),见文件末尾
+    ('SUI_SUPER_LEAGUE', 'FC Basel'): 'FC Basel 1893',   # 共现 8 场 + 队表唯一 asel
+    ('SUI_SUPER_LEAGUE', 'FC Lausanne-Sport'): 'Lausanne',   # 共现 12 场 + 队表唯一 ausanne
+    ('SUI_SUPER_LEAGUE', 'FC St Gallen'): 'FC ST. Gallen',   # 共现 7 场 + 队表唯一 allen
+    ('SUI_SUPER_LEAGUE', 'Grasshopper Zürich'): 'Grasshoppers',   # 共现 12 场 + 队表唯一 rasshopper
+    ('SUI_SUPER_LEAGUE', 'Servette'): 'Servette FC',   # 共现 7 场 + 队表唯一 ervette
     ('SWE_ALLSVENSKAN', 'AIK'): 'AIK Stockholm',   # 证据 8 场
     ('SWE_ALLSVENSKAN', 'GAIS'): 'Gais',   # 证据 17 场
     ('SWE_ALLSVENSKAN', 'Halmstads BK'): 'Halmstad',   # 证据 19 场
@@ -91,17 +101,43 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('USA_MLS', 'Vancouver Whitecaps FC'): 'Vancouver Whitecaps',   # 证据 18 场
 }
 
-#: ⛔ 共现证据不足、**故意留空**的名字(探测器每次会重报)。补它们要等更多共现
-#: 数据,或人工用赛事身份逐条核实 —— **不许按音译/模式填**。
-UNRESOLVED_SPLITS: tuple[tuple[str, str], ...] = (
-    ("KOR_K_LEAGUE_1", "Jeonbuk Hyundai Motors"),
-    ("KOR_K_LEAGUE_1", "Sangju Sangmu FC"),
-    ("SUI_SUPER_LEAGUE", "FC Basel"),
-    ("SUI_SUPER_LEAGUE", "FC Lausanne-Sport"),
-    ("SUI_SUPER_LEAGUE", "FC St Gallen"),
-    ("SUI_SUPER_LEAGUE", "Grasshopper Zürich"),
-    ("SUI_SUPER_LEAGUE", "Servette"),
-)
+#: ⛔ 证据不足、**故意留空**的名字(探测器每次会重报)。补它们要有证据 ——
+#: **不许按音译/模式填**。2026-08-04 起为空,原来那 7 条见下面的「队表钉」。
+UNRESOLVED_SPLITS: tuple[tuple[str, str], ...] = ()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 第二种证据:**队表钉**(2026-08-04,韩职 2 条 + 瑞超 5 条)
+#
+# 用 API-Football `/teams` 的**权威当季队表**(读缓存,0 次 API 调用),
+# 每条同时满足三个条件才收:
+#   · 队表里对该词根**恰好一个**候选(唯一 ⇒ 不是在若干相似名里挑)
+#   · 未解名**不在**队表(⇒ 它确实是外来拼法,不是并存的另一支队)
+#   · 两个名字在库里**从未互相对阵**(⇒ 不是把两支真队错并成一支)
+# 三条全过 7/7。
+#
+# ⭐ **瑞超那 5 条是双证据**:同日重跑 `derive_odds_name_aliases.py`,共现法
+# 现在也能推出来(7-12 场),而且**和队表钉给出完全相同的 5 个目标名**。
+# 两条互相独立的证据链对上了 —— 这比任何一条单独成立都强。
+# 韩职那 2 条共现至今仍推不出(探测器把它们留在 pending),**只有队表钉**。
+#
+# ⚠️ 我在这条注释里写错过一次,值得留着:原文写「derive 脚本只扫了 7 个联赛,
+# 韩职瑞超从来没被扫过」—— 假的。脚本是 `for lg in sorted(names)`,按**库里
+# 发现的**联赛遍历。我是从「别名表里出现过 7 个联赛码」倒推出「扫描范围是 7 个」
+# 的,**拿输出当范围**。同族见 [[syntactic-proxy-for-semantic-property]]:
+# 断言一个机制之前,去读它/跑它,别从它的产物反推。
+# (同批错的还有「FC Basel 共享 0 场」—— 那是我自己「同对手同日」的口径,
+# 探测器数的是 (联赛, 开球时刻) 共现,两个数不可比。)
+#
+# ⚠️ 其中 2 条是**改名**不是拼法差异:Sangju Sangmu→Gimcheon(2021 迁址)、
+# Jeonbuk 去掉 Hyundai(2024)。对 join 来说要的就是「同一个身份」,所以照收;
+# 但记住它们是**有时间方向的** —— 2021 年前的行本来就该叫 Sangju。
+#
+# ⚠️ 「closing 侧孤儿 = 0」**不等于**「没有分裂了」:这个扫描是**单侧**口径,
+# 只找得到「只在 closing 出现」的名字。**两侧都存在**的双拼法它看不见 ——
+# 实例:WC 的 `Czechia`(10 场)与 `Czech Republic`(19 场)在 gather 侧**同时**
+# 存在,那是 gather 源自己前后不一致,不归本模块管(`_alias_close` 的国家队
+# 兜底已覆盖),也**没有**足够证据往这张表里塞。
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def canonical_league(league: str | None) -> str | None:

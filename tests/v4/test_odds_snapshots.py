@@ -312,15 +312,42 @@ class TestUpstreamNameCanonicalisation:
         for (lg, _old), new in ODDS_SOURCE_ALIASES.items():
             assert canonical_team(lg, new) == new, f"{lg}/{new} 不是不动点"
 
-    def test_unresolved_list_is_pinned_so_it_cant_grow_silently(self):
-        """⚠️ 7 条共现证据不足、**故意留空**。钉住数量:再多一条就红。
+    def test_roster_pinned_pairs_resolve(self):
+        """2026-08-04 用**队表钉**补的 7 条 —— 逐条按键取值,别焊结构。
 
-        这条防的正是今天反复出现的形状 —— 缺口悄悄变大而没有任何东西喊。
+        证据不是「长得像」:API-Football 当季队表里对该词根**恰好一个**候选、
+        未解名**不在**队表、两名在库里**从未互相对阵**。三条全过才收。
+        瑞超 5 条另有共现推导独立佐证(两法给出同一答案);韩职 2 条只有队表钉。
+        其中 2 条是**改名**(Sangju→Gimcheon 2021 迁址、Jeonbuk 2024 去 Hyundai),
+        对 join 而言要的就是同一身份,所以照收。
+
+        改这里的任何一条 = 改跨源 join 的对象,请重跑那三个条件,别凭印象。
+        """
+        from nutmeg.v4.data.odds_source_aliases import canonical_team
+        expected = {
+            ("KOR_K_LEAGUE_1", "Jeonbuk Hyundai Motors"): "Jeonbuk Motors",
+            ("KOR_K_LEAGUE_1", "Sangju Sangmu FC"): "Gimcheon Sangmu FC",
+            ("SUI_SUPER_LEAGUE", "FC Basel"): "FC Basel 1893",
+            ("SUI_SUPER_LEAGUE", "FC Lausanne-Sport"): "Lausanne",
+            ("SUI_SUPER_LEAGUE", "FC St Gallen"): "FC ST. Gallen",
+            ("SUI_SUPER_LEAGUE", "Grasshopper Zürich"): "Grasshoppers",
+            ("SUI_SUPER_LEAGUE", "Servette"): "Servette FC",
+        }
+        for (lg, old), new in expected.items():
+            assert canonical_team(lg, old) == new, f"{lg}/{old} 没归一到 {new}"
+
+    def test_unresolved_list_is_pinned_so_it_cant_grow_silently(self):
+        """⚠️ 钉住数量:再多一条就红。防的是缺口悄悄变大而没有任何东西喊。
+
+        2026-08-04 由 7 → **0**:那 7 条(韩职 2 + 瑞超 5)用**队表钉**补齐。
+        瑞超 5 条同日重跑 derive 脚本,共现法也推出同样的 5 个目标名(双证据);
+        韩职 2 条共现至今推不出,只有队表钉。三个收录条件写在别名表文件末尾。
+
         新的分裂要么补进别名表(要有证据),要么显式改这个数字。
         """
         from nutmeg.v4.data.odds_source_aliases import UNRESOLVED_SPLITS
-        assert len(UNRESOLVED_SPLITS) == 7, (
-            f"未收敛项从 7 变成 {len(UNRESOLVED_SPLITS)}:{UNRESOLVED_SPLITS}\n"
+        assert len(UNRESOLVED_SPLITS) == 0, (
+            f"未收敛项从 0 变成 {len(UNRESOLVED_SPLITS)}:{UNRESOLVED_SPLITS}\n"
             "跑 scripts/derive_odds_name_aliases.py 看新分裂,有证据才补。")
 
     def test_sport_key_league_is_normalised_to_the_v4_code(self, tmp_path):
