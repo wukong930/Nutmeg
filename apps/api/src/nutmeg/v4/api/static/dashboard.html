@@ -225,6 +225,14 @@
   .pb-alt-label { color: #4f46e5; }
   [data-theme="dark"] .pb-alt-label { color: #a5b4fc; }
 
+  /* 腿行点击跳到该场卡片(owner 2026-08-04),复用甜区榜的 `_sweetJump`。
+     ⚠️ 甜区榜的 .sw-row **没有** hover 样式(只有 cursor:pointer)—— 那里每行
+     自成一块所以还看得出来;串关卡的腿是密排的小字,不给反馈就完全不像能点。
+     只给本卡加,不动 .sw-row(改它会波及那张榜,是另一件事)。 */
+  .pb-leg { cursor: pointer; border-radius: 4px; transition: background-color .12s; }
+  .pb-leg:hover { background-color: rgba(180, 83, 9, .10); }
+  [data-theme="dark"] .pb-leg:hover { background-color: rgba(245, 158, 11, .14); }
+
   .pb-card .text-xs { font-size: 13.5px; line-height: 1.65; }
   .pb-card .text-sm { font-size: 15px; }
   .pb-card summary { font-size: 1.05em; }
@@ -5266,7 +5274,8 @@ function _parlayBuilderHtml(items) {
         <div class="font-medium${c.role === 'main' ? '' : ' pb-alt-label'}"${
           c.role === 'main' ? ' style="color:#b45309"' : ''}>
           ${t(c.role === 'main' ? 'pb_main' : 'pb_alt')}</div>
-        ${c.legs.map(l => `<div class="pl-2">· <span class="font-medium">${zhTeam(l.pr.home_team)} vs ${zhTeam(l.pr.away_team)}</span>
+        ${c.legs.map(l => `<div class="pl-2 pb-leg" onclick="_sweetJump('${l.mode}',${l.idx})"
+            title="${t('sw_jump_hint')}">· <span class="font-medium">${zhTeam(l.pr.home_team)} vs ${zhTeam(l.pr.away_team)}</span>
             <span class="text-muted">${zhLeague(l.pr.league)}</span>
             <span class="font-medium">${l.label}</span>${_tierChip(l.tier)}
             <span class="text-muted">@${l.sp.toFixed(2)}</span>
@@ -5293,7 +5302,8 @@ function _parlayBuilderHtml(items) {
       <span class="text-muted">· <span class="info-i"
           onclick="showInfo(t('pb_1x'), t('pb_1x_note'))"
           title="${t('pb_info_tip')}">${t('pb_1x_tag')}ⓘ</span></span></div>
-    <div class="px-2 py-1 text-xs"><div class="pl-2">·
+    <div class="px-2 py-1 text-xs"><div class="pl-2 pb-leg"
+      onclick="_sweetJump('${b1.mode}',${b1.idx})" title="${t('sw_jump_hint')}">·
       <span class="font-medium">${zhTeam(b1.pr.home_team)} vs ${zhTeam(b1.pr.away_team)}</span>
       <span class="text-muted">${zhLeague(b1.pr.league)}</span>
       <span class="font-medium">${b1.label}</span>${_tierChip(b1.tier)}

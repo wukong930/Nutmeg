@@ -148,6 +148,59 @@ class TestAltLabelIsVisibleButNotGreen:
                 f"{hexv} 偏绿 —— 会被读成「备选更好」,而实测分不出好坏"
 
 
+class TestLegRowsJumpToTheMatchCard:
+    """腿行点击跳到该场卡片(owner 2026-08-04),**复用甜区榜的 `_sweetJump`**。
+
+    ⚠️ 关键是「复用」不是「另写一份」:`_sweetJump` 里有一段处理联赛组折叠
+    (`.spcalc-lg-cards` 折着就先展开)。另写一个跳转函数迟早会漏掉那一段,
+    然后表现成「有时候跳不过去」——最难查的那种。
+    """
+
+    def _rows(self):
+        js = _js()
+        return (_block(r"\n  const block = \(k\) => \{.*?\n  \};", js),
+                _block(r"const solo = !b1 \? '' :.*?</div></div></div>`;", js))
+
+    def test_both_combo_and_solo_rows_are_clickable(self):
+        """1 串参考那行也要能点 —— 它和组合行是同一个池子里的腿,
+        只在组合行接上会造成「有的能点有的不能」,比都不能点更让人困惑。"""
+        for name, src in zip(("档位块", "1串参考"), self._rows(), strict=True):
+            assert "_sweetJump(" in src, f"{name}的腿行没接跳转"
+
+    def test_jump_carries_that_leg_s_own_mode_and_idx(self):
+        """⚠️ mode/idx 必须来自**这条腿自己**。写死或取错会跳到别场 ——
+        而且看起来「功能是好的」,只是跳错了,不会报错。
+        """
+        block, solo = self._rows()
+        assert "_sweetJump('${l.mode}',${l.idx})" in block, \
+            f"档位块的跳转没带上这条腿自己的 mode/idx\n{block[:400]}"
+        assert "_sweetJump('${b1.mode}',${b1.idx})" in solo, \
+            "1串参考的跳转没带上那条腿自己的 mode/idx"
+
+    def test_pool_actually_carries_mode_and_idx(self):
+        """跳转的前提:池里的腿身上真的有 mode/idx。
+        `_parlayPool` 若哪天不再透传,上面两条仍然会绿(它们只看模板字符串),
+        但线上会变成 `_sweetJump('undefined', undefined)`。"""
+        pool = _block(r"\nfunction _parlayPool\(.*?\n\}", _js())
+        assert "idx, mode" in pool or ("idx" in pool and "mode" in pool), \
+            "_parlayPool 没把 mode/idx 放进腿对象"
+
+    def test_hover_affordance_is_scoped_to_this_card(self):
+        """密排小字不给 hover 反馈就完全不像能点。
+        ⚠️ 只给 .pb-leg,**不改 .sw-row** —— 改它会波及甜区榜,那是另一件事。"""
+        js = _js()
+        # ⚠️ 不能写 `".pb-leg:hover" in js` —— `[data-theme="dark"] .pb-leg:hover`
+        # **含有**这个子串,于是删掉亮色那条它照样绿(2026-08-04 变异验出来的)。
+        # 逐条抠出选择器,再看亮/暗各有没有。
+        sels = [s.strip() for s in re.findall(r"([^\n{};]*\.pb-leg:hover)\s*\{", js)]
+        light = [s for s in sels if "data-theme" not in s]
+        dark = [s for s in sels if 'data-theme="dark"' in s]
+        assert light, f"缺亮色底的 .pb-leg:hover(现有:{sels})"
+        assert dark, f"缺暗色底的 .pb-leg:hover(现有:{sels})"
+        assert not re.search(r"\.sw-row\s*[:{]", js), \
+            "动到了甜区榜的 .sw-row —— 本次改动不该碰它"
+
+
 class TestHeaderNoLongerCarriesTheBlob:
     def test_tier_header_delegates_to_the_icon(self):
         """档位标题行不再内联那一串统计,而是接上 ⓘ。
