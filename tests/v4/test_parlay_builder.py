@@ -113,14 +113,36 @@ def test_same_league_combo_is_flagged() -> None:
     assert "c.dup ?" in _fn("_parlayBuilderHtml"), "同联赛没渲染警告"
 
 
-def test_historical_realized_appears_on_every_combo_row() -> None:
-    """⭐ 全正腿相乘时 3 串理论 EV **必然**高于 2 串 —— 只在小节标题写实测,
-    逐行扫下来的结论会和实测反过来。所以每行都要并排显示。
+def test_theoretical_ev_is_never_the_only_unqualified_number() -> None:
+    """⚠️ **本条 2026-08-04 由 owner 的显式要求改写,原护栏已退役 —— 留档如下。**
+
+    原护栏叫 `test_historical_realized_appears_on_every_combo_row`,理由是:
+    「全正腿相乘时 3 串理论 EV **必然**高于 2 串 —— 只在小节标题写实测,逐行扫
+    下来的结论会和实测反过来。所以每行都要并排显示。」
+
+    owner 要求把「· 历史实测 −12.5%」和档位标题那串统计**一起**收进 ⓘ(理由是
+    版面太挤)。⇒ 票行上现在**只剩理论 EV 一个数**,而它正是原护栏点名的那个
+    会把人带反的数。**这不是护栏过期,是护栏守的东西被有意取舍掉了。**
+
+    残余风险(记在这里,免得将来当成 bug 查):**逐行横扫时 3 串看着比 2 串好**,
+    而实测是反的(−25.2% vs −12.5%)。
+
+    替代缓解:ⓘ 弹窗**第一句**就是「定注额看历史实测,别看票行上那个理论 EV」,
+    并说明名次不预测 ROI。本测试改为钉住**那句指路存在**——
+    如果连它都没了,票行上那个会带反人的数就成了唯一信息源,且无人提示。
     """
     body = _fn("_parlayBuilderHtml")
     rows = body[body.index("pb_odds"):body.index("</details>")]
-    assert "pb_theo" in rows and "_PARLAY_BACKTEST[k]" in rows, (
-        "组合行没有把理论 EV 和历史实测并排 —— 用户会只看见乐观的那个")
+    assert "pb_theo" in rows, "票行连理论 EV 都没有了?"
+    assert "_PARLAY_BACKTEST" not in rows, (
+        "历史实测又回到票行了 —— 若是有意恢复,请连同本测试的理由一起改回")
+    src = DASH.read_text(encoding="utf-8")
+    hits = re.findall(r"pb_stats_caveat:\s*'((?:[^'\\]|\\.)*)'", src)
+    assert len(hits) >= 2, f"pb_stats_caveat 中英双语没齐(找到 {len(hits)} 条)"
+    for body_text in hits:
+        assert ("定注额" in body_text or "Size stakes" in body_text), (
+            "ⓘ 里没有「按历史实测定注额、别按理论 EV」那句指路 —— "
+            "票行上唯一可见的数会把人带反,而且没有任何提示")
 
 
 def test_backtest_constants_match_the_measurement() -> None:

@@ -211,6 +211,16 @@
   }
   .info-i:hover { color: var(--accent-gold); }
 
+  /* ── 串关构造器字号(owner 2026-08-04)────────────────────────────────
+     这张卡整屏都是 text-xs(12px)且行高只有 16px —— 中文在这个密度下很难扫。
+     整卡放大一档并放松行高。
+     ⚠️ **只在 .pb-card 内生效**:全局改 text-xs 会波及整个面板的表格、徽章、
+     tab 栏,那些地方的密度是照 12px 排过的。选择器 `.pb-card .text-xs`
+     特异度 (0,2,0) 高于 Tailwind 的 `.text-xs` (0,1,0),所以不依赖加载顺序。 */
+  .pb-card .text-xs { font-size: 13.5px; line-height: 1.65; }
+  .pb-card .text-sm { font-size: 15px; }
+  .pb-card summary { font-size: 1.05em; }
+
   /* ── Badges ────────────────────────────────────────────────────────── */
   .badge-ok {
     padding: 2px 8px;
@@ -2222,6 +2232,10 @@ const I18N = {
     pb_rank_note:     '<p><b>以前每档出 5 行,但那 5 行不是 5 个选项。</b>组合按 ∏(1+evLo) 排序,而这个乘积对候选池单调 —— 于是 top-k 组合天然从池顶堆起,彼此高度重合:</p><ul style="margin:8px 0 0 18px"><li>2 串:5 行 10 个腿位,只有 <b>4.3 条不同的腿</b>,第 1 条腿出现在 <b>81%</b> 的行</li><li>3 串:<b>5.1 条</b>,<b>94%</b></li><li>4 串:5 行 20 个腿位,只有 <b>6.0 条</b>,<b>97%</b> —— <b>第一条腿倒了,5 行一起死</b></li></ul><p style="margin-top:8px"><b>而且名次不预测结果。</b>实测各名次的 ROI:2 串 #1 −12.5% / #2 −4.7% / #3 −10.6% / #4 −22.6% / #5 −17.0%;3 串 #1 −25.2% / #2 −13.9% / #3 −38.9% / #4 <b>+17.0%</b> / #5 −25.6%。<b>#1 在任何一档都不是最好的</b>,而误差 ±10~65pp 意味着这些差全都不显著 —— <b>「不显著」正是重点</b>:排成 1..5 传达了一个我们测量上不具备的精度。这和「EV 是排除器不是排序器」是同一件事。</p><p style="margin-top:8px">所以现在只出两张:<b>主选</b>(∏(1+evLo) 最大)和<b>备选</b>(与主选<b>不共用任何一条腿</b>的最优票)。<b>⚠️ 备选不是更好的票</b> —— 实测 2 串 −22.8%±10.1 / 3 串 −4.3%±25.0 / 4 串 +25.3%±65.9,和主选分不出好坏。它唯一的价值是<b>不跟主选一起死</b>。两张各买半注:期望就是两者平均(线性,没有魔法),但波动降约 19% —— <b>EV 是负的,所以那意味着「输得更稳」,是不是你要的由你定</b>。池子太小凑不出零重叠的备选时,只出主选,不拿第 2 名充数。</p>',
     pb_hist:          '历史实测',
     pb_rand:          '随机腿基线',
+    pb_gain:          '净提升',
+    pb_stats_tag:     '实测',
+    pb_hit_note_4x:   '平均 91 张才中 1 张',
+    pb_stats_caveat:  '🔴 <b>定注额看这里的「历史实测」,不要看票行上那个「理论 EV(下界口径)」。</b>票行上现在只剩理论 EV 一个数(2026-08-04 把历史实测收进了本弹窗),但它是<b>逐行变化</b>的,在全正腿相乘时会让 3 串看起来比 2 串好 —— 那是反的。逐行变化制造的是假精度:名次并不预测 ROI(实测 #1 在任何一档都不是最好的,SE ±10~65pp 全不显著)。<br><br>⚠️ <b>±</b> 是标准误,不是波动范围 —— 「−12.5%」这个数<b>自己</b>就带着 ±10.6pp 的不确定,别当精确值用。<br><br>⭐ <b>随机腿基线</b>是 2026-08-03 换上的<b>实测</b>值。旧版是解析值 (1/1.1294)^k−1,它假设竞彩抽水在三条腿上均摊 —— 而实测<b>不是</b>(热门腿吃 60%)。真实随机比解析线更差,所以构造器的净提升以前被自己的尺子<b>低估</b>了 1.2–6.2pp。<br><br>⭐ <b>净提升 = 历史实测 − 随机腿基线</b>。它衡量的是「按 evLo 选腿这一步有没有用」,<b>不是</b>「这一档能不能赢」—— 两个数都是负的。机制是<b>躲开烂腿</b>而不是找出好腿(argmax vs argmin 差 17–41pp,而 top-5 内部完全没顺序)。<br><br>⭐ 定注额按<b>历史实测</b>,别按「理论 EV(下界口径)」—— 后者在全正腿相乘时会让 3 串看起来比 2 串好,那是反的。',
     pb_odds:          '赔率积',
     pb_theo:          '理论 EV(下界口径)',
     pb_dup:           '⚠️ 同联赛',
@@ -2746,6 +2760,10 @@ const I18N = {
     pb_rank_note:     '<p><b>This used to show 5 rows per tier, but those were never 5 options.</b> Combinations are ranked by product(1+evLo), which is monotone in the pool, so the top-k combos stack from the top of the pool and overlap heavily:</p><ul style="margin:8px 0 0 18px"><li>2-leg: 5 rows, 10 leg slots, only <b>4.3 distinct legs</b>; the #1 leg appears in <b>81%</b> of rows</li><li>3-leg: <b>5.1</b> distinct, <b>94%</b></li><li>4-leg: 5 rows, 20 slots, only <b>6.0</b> distinct, <b>97%</b> — <b>if the top leg loses, all 5 die together</b></li></ul><p style="margin-top:8px"><b>And rank does not predict outcome.</b> Measured ROI by rank: 2-leg #1 -12.5% / #2 -4.7% / #3 -10.6% / #4 -22.6% / #5 -17.0%; 3-leg #1 -25.2% / #2 -13.9% / #3 -38.9% / #4 <b>+17.0%</b> / #5 -25.6%. <b>#1 is never the best</b>, and with +/-10 to 65pp error none of those gaps is significant — <b>and that is the point</b>: numbering rows 1..5 implies a precision we measurably do not have. Same thing as "EV is an excluder, not a ranker".</p><p style="margin-top:8px">So now only two tickets: <b>main</b> (max product(1+evLo)) and <b>alt</b> (best ticket sharing <b>no leg</b> with main). <b>The alt is NOT a better ticket</b> — measured 2-leg -22.8%+/-10.1, 3-leg -4.3%+/-25.0, 4-leg +25.3%+/-65.9, indistinguishable from main. Its only value is that it <b>does not die with main</b>. Half-staking both: the mean is just their average (linear, no magic) but variance drops ~19% — <b>EV is negative, so that means losing more steadily; whether you want that is your call</b>. When the pool is too small for a zero-overlap alt, only main is shown; the #2 combo is never used as filler.</p>',
     pb_hist:          'historical realized',
     pb_rand:          'random-leg baseline',
+    pb_gain:          'net gain',
+    pb_stats_tag:     'measured',
+    pb_hit_note_4x:   '~91 tickets per hit',
+    pb_stats_caveat:  '🔴 <b>Size stakes off the "historical realized" figure here — not off the "theoretical EV (lower-bound)" shown on the ticket row.</b> That row now carries only the theoretical figure (historical realized moved into this popup on 2026-08-04), but it varies per row and makes a 3-leg look better than a 2-leg when all legs are positive — which is backwards. The per-row variation is false precision: rank does not predict ROI (measured, #1 is not the best in any tier; SE ±10–65pp, none significant).<br><br>⚠️ <b>±</b> is a standard error, not a range — the −12.5% figure <b>itself</b> carries ±10.6pp of uncertainty. Do not treat it as exact.<br><br>⭐ The <b>random-leg baseline</b> is an <b>empirical</b> value (swapped in 2026-08-03). The old one was analytic, (1/1.1294)^k−1, which assumes 竞彩 vig is split evenly across the three legs — measurement says it is <b>not</b> (favourite legs carry 60%). Real random is worse than the analytic line, so the builder\'s net gain was <b>understated</b> by 1.2–6.2pp under the old yardstick.<br><br>⭐ <b>Net gain = historical realized − random-leg baseline.</b> It measures whether picking legs by evLo helps at all — <b>not</b> whether this tier can win. Both numbers are negative. The mechanism is <b>avoiding bad legs</b>, not finding good ones (argmax vs argmin differ by 17–41pp, while the top-5 have no internal ordering).<br><br>⭐ Size stakes off <b>historical realized</b>, not "theoretical EV (lower-bound)" — the latter makes a 3-leg look better than a 2-leg when all legs are positive, which is backwards.',
     pb_odds:          'odds product',
     pb_theo:          'theoretical EV (lower-bound basis)',
     pb_dup:           'same league',
@@ -5165,6 +5183,41 @@ function _parlayCombos(pool, k) {
 //: 留个假旋钮比没有更坏。
 //: 找不到零重叠的(池太小)⇒ 只出主选,**不退而求其次拿第 2 名充数** ——
 //: 那正是这次要去掉的东西(第 2 名 81-97% 和主选共用腿,不是独立选项)。
+// 档位统计收进 ⓘ(owner 2026-08-04)。原来「历史实测 −12.5% ±10.6pp (n=750) ·
+// 命中率 11.1% · 随机腿基线 −25.2%±0.9」常驻在档位标题后面,一行 40+ 字符,把
+// 「这一注是哪几条腿」挤出了视线。
+//
+// ⛔ **数字一个都没删、没改** —— 只是从常驻改成点开。改这里的人注意两条:
+//   ① **±SE 和 n 不许省。** 它们是这些数唯一的可信度信息;只留「−12.5%」就变成
+//      了假精度(那个数自己带着 ±10.6pp)。同 [[parlay-display-and-baseline-fixed]]
+//      里「排成 1..5 传达了测量上不具备的精度」是同一个错。
+//   ② **随机腿基线是实测值不是解析值**(2026-08-03 换的)。旧解析线假设抽水在
+//      三条腿上均摊,而 [[jingcai-market-microstructure]] 实测它不是。
+function _parlayStatsBody(k) {
+  const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
+  const pp = v => `${(v * 100).toFixed(1)}pp`;
+  const row = (label, val, note) =>
+    `<tr><td style="padding:4px 16px 4px 0;color:var(--text-muted);white-space:nowrap">${label}</td>`
+    + `<td style="padding:4px 0;font-weight:600;white-space:nowrap">${val}</td>`
+    + `<td style="padding:4px 0 4px 14px;color:var(--text-muted)">${note}</td></tr>`;
+  // 净提升 = 历史实测 − 随机腿基线。这才是构造器**自己**的贡献,
+  // 两个数都是负的 ⇒ 它衡量「选腿有没有用」,不是「这一档能不能赢」。
+  const gain = _PARLAY_BACKTEST[k] - _PARLAY_RANDOM[k];
+  return `<table style="border-collapse:collapse;font-size:14px">
+      ${row(t('pb_hist'), `${f(_PARLAY_BACKTEST[k])} ±${pp(_PARLAY_BACKTEST_SE[k])}`,
+            `n=${_PARLAY_BACKTEST_N[k]}`)}
+      ${k > 1 ? row(t('pb_hit'), `${(_PARLAY_HIT[k] * 100).toFixed(1)}%`,
+            k >= 4 ? t('pb_hit_note_4x') : '') : ''}
+      ${row(t('pb_rand'), `${f(_PARLAY_RANDOM[k])} ±${pp(_PARLAY_RANDOM_SE[k])}`, '')}
+      ${row(t('pb_gain'), `+${pp(gain)}`, '')}
+    </table><div style="margin-top:12px">${t('pb_stats_caveat')}</div>`;
+}
+function _parlayStatsIcon(k) {
+  return `<span class="info-i" style="font-weight:400"
+      onclick="showInfo(t('pb_${k}x'), _parlayStatsBody(${k}))"
+      title="${t('pb_info_tip')}">${t('pb_stats_tag')}ⓘ</span>`;
+}
+
 function _parlayPicks(pool, k) {
   const all = _parlayCombos(pool, k);
   if (!all.length) return [];
@@ -5185,16 +5238,14 @@ function _parlayBuilderHtml(items) {
   if (pool.length < 2 && !blockedBySameDay) return '';
   const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
   const block = (k) => {
+    const stats = _parlayStatsIcon(k);
     const combos = _parlayPicks(pool, k);
     if (!combos.length) return '';
     const warn = k >= 4 ? ` <span class="info-i" style="color:#e11d48"
         onclick="showInfo(t('pb_4x'), t('pb_4x_note'))"
         title="${t('pb_info_tip')}">${t('pb_4x_tag')}ⓘ</span>` : '';
     return `<div class="mt-2"><div class="text-xs font-medium">${t('pb_' + k + 'x')}${warn}
-        <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[k])}</b>
-        ±${(_PARLAY_BACKTEST_SE[k] * 100).toFixed(1)}pp (n=${_PARLAY_BACKTEST_N[k]})
-        · ${t('pb_hit')} ${(_PARLAY_HIT[k] * 100).toFixed(1)}%
-        · ${t('pb_rand')} ${f(_PARLAY_RANDOM[k])}±${(_PARLAY_RANDOM_SE[k] * 100).toFixed(1)}</span></div>
+        ${stats}</div>
       ${combos.map(c => `<div class="px-2 py-1 text-xs">
         <div class="font-medium" style="color:${c.role === 'main' ? '#b45309' : '#6b7280'}">
           ${t(c.role === 'main' ? 'pb_main' : 'pb_alt')}</div>
@@ -5205,7 +5256,6 @@ function _parlayBuilderHtml(items) {
             <span style="color:#059669">${f(l.evLo)}</span></div>`).join('')}
         <div class="pl-2 text-muted">${t('pb_odds')} <b>${c.odds.toFixed(2)}</b>×
           · ${t('pb_theo')} <span style="color:${c.evLo >= 0 ? '#059669' : '#e11d48'}">${f(c.evLo)}</span>
-          · ${t('pb_hist')} <b style="color:#e11d48">${f(_PARLAY_BACKTEST[k])}</b>
           ${c.dup ? ` · <span class="info-i" style="color:#b45309"
             onclick="showInfo(t('pb_dup'), t('pb_dup_body'))"
             title="${t('pb_info_tip')}">${t('pb_dup')}ⓘ</span>` : ''}</div>
@@ -5222,10 +5272,9 @@ function _parlayBuilderHtml(items) {
   // ⚠️ 让球腿 0/191 不开单关,所以这一行对让球腿是**看得到买不到**,已在文案注明。
   const b1 = pool[0];
   const solo = !b1 ? '' : `<div class="mt-2"><div class="text-xs font-medium">${t('pb_1x')}
-      <span class="text-muted">· ${t('pb_hist')} ≈ <b>${f(_PARLAY_BACKTEST[1])}</b>
-      ±${(_PARLAY_BACKTEST_SE[1] * 100).toFixed(1)}pp (n=${_PARLAY_BACKTEST_N[1]})
-      · ${t('pb_rand')} ${f(_PARLAY_RANDOM[1])}±${(_PARLAY_RANDOM_SE[1] * 100).toFixed(1)}
-      · <span class="info-i" onclick="showInfo(t('pb_1x'), t('pb_1x_note'))"
+      ${_parlayStatsIcon(1)}
+      <span class="text-muted">· <span class="info-i"
+          onclick="showInfo(t('pb_1x'), t('pb_1x_note'))"
           title="${t('pb_info_tip')}">${t('pb_1x_tag')}ⓘ</span></span></div>
     <div class="px-2 py-1 text-xs"><div class="pl-2">·
       <span class="font-medium">${zhTeam(b1.pr.home_team)} vs ${zhTeam(b1.pr.away_team)}</span>
@@ -5234,7 +5283,7 @@ function _parlayBuilderHtml(items) {
       <span class="text-muted">@${b1.sp.toFixed(2)}</span>
       <span style="color:#059669">${f(b1.evLo)}</span>${_singleBadge(
         _legIsHc(b1) ? b1.pr.jc_hc_single_available : b1.pr.jc_single_available)}</div></div></div>`;
-  return `<details class="bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4"
+  return `<details class="pb-card bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4"
       style="border-left:4px solid #b45309">
     <summary class="font-bold cursor-pointer">
       <span style="color:#b45309">${IC('ticket')}</span> ${t('pb_hdr')}
