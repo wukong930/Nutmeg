@@ -155,6 +155,13 @@ SPORT_KEYS: dict[str, str] = {
     # 补美职联+巴甲(2026-07-14)— 均 /sports?all=true live 核实 active=True。
     "USA_MLS":              "soccer_usa_mls",
     "BRA_SERIE_A":          "soccer_brazil_campeonato",
+    # 补英联赛杯(2026-08-05)— /sports?all=true live 核实 active=True。
+    # ⚠️ 同批注册的 **NED_EERSTE_DIVISIE(荷乙)故意没有条目**:整个 Odds API 只有
+    # `soccer_netherlands_eredivisie`(荷甲),荷乙这个 sport **不存在**(174 个 sport
+    # 全表核过)。同 JPN_J2 先例 —— 留空,走 AF 的 Pinnacle 镜像(实测 fixture
+    # 1551741 有 Pinnacle),registry-coverage 记 warn 非 gap。
+    # 别「补全」它:猜一个不存在的 key 只会让 fetch 每次 404 当空处理。
+    "EFL_CUP":              "soccer_england_efl_cup",
     # Add more as needed: FA Cup, Copa del Rey etc.
 }
 

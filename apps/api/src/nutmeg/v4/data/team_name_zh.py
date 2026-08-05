@@ -903,6 +903,28 @@ _V12_W8_NEW_LEAGUES = {
     "Mirassol": "米拉索尔", "Palmeiras": "帕尔梅拉斯", "RB Bragantino": "布拉甘蒂诺",
     "Remo": "雷莫", "Santos": "桑托斯", "Sao Paulo": "圣保罗",
     "Vasco DA Gama": "瓦斯科达伽马", "Vitoria": "维多利亚",
+    # ── 荷乙 NED_EERSTE_DIVISIE(2026-08-05 owner 补)─────────────────────────
+    # ⭐ 这 13 条**不是查媒体译名写的,是推导出来的**:皇冠线史 `crown_close_history`
+    # 里有荷乙的中文队名(105 场),AF 有英文名 + 日期 + 比分 ⇒ 按「同日同比分且
+    # 该组合唯一」把两侧配对。**零冲突**,每条背后有 1–6 场共同比赛的证据。
+    # 同 [[cross-source-team-name-mismatch]] 的固定修法:别猜,让数据自己配。
+    "De Graafschap": "格拉夫",       # 3 场共同证据
+    "Vitesse": "维迪斯",             # 1(season 2024,当时降在荷乙)
+    "VVV Venlo": "芬洛",             # 1
+    "Emmen": "埃门",                 # 3
+    "Dordrecht": "多德勒支",          # 3
+    "MVV": "马斯特里",               # 1
+    "Roda": "罗达JC",                # 6
+    "FC Volendam": "福伦丹",          # 2
+    "Waalwijk": "瓦尔韦克",           # 5
+    "Den Bosch": "登博思",            # 2
+    "FC Eindhoven": "埃因FC",         # 5
+    "FC OSS": "奥斯",                # 2
+    "Helmond Sport": "海尔蒙特",       # 4
+    # ⛔ `Jong Ajax` / `Jong AZ` / `Jong PSV U21` / `Jong Utrecht` 四支预备队
+    # **故意没有条目** —— 皇冠 105 场荷乙里 19 个中文名一支预备队都没有,竞彩
+    # 不上架它们 ⇒ 没有可抄的中文写法,编一个就是瞎猜。见 test_registry_coverage
+    # 里那条逐名列出的窄豁免(不写 `Jong ` 前缀规则:那是拿语法代理测语义)。
 }
 TEAM_NAME_ZH.update(_V12_W8_NEW_LEAGUES)
 

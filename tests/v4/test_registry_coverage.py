@@ -89,7 +89,46 @@ class TestCheckLeague:
         assert any("AF league-id" in g for g in gaps)
 
 
+#: ⛔ 窄豁免:**中文名不存在**,不是「还没补」。
+#:
+#: 2026-08-05 注册荷乙时,本护栏当场逮到 17 支球队没有中文名 —— 正是它该做的。
+#: 其中 13 支从皇冠线史推导出了中文名(见 `team_name_zh._V12_W8_NEW_LEAGUES` 里
+#: 那段)。剩下这 4 支是**预备队**,证据说它们的中文名根本不存在:
+#:
+#:   `crown_close_history` 里 荷乙 105 场、19 个不同的中文队名,**一支预备队都
+#:   没有** ⇒ 竞彩不上架它们 ⇒ 它们永远不会成为一条可投注的腿 ⇒ 没有可抄的
+#:   中文写法。编一个是瞎猜(而错的队名会静默污染 join,比缺名字更坏)。
+#:
+#: ⚠️ 为什么**逐条列名**而不是写 `name.startswith("Jong ")`:那是拿「名字里有
+#: 没有某串字符」代替「它是不是一支竞彩不上架的预备队」—— 同一个反复出现的
+#: 错误(见 [[syntactic-proxy-for-semantic-property]])。前缀规则会顺手放行任何
+#: 未来叫 Jong 开头的**一队**,而这四个名字变了就该重新报警。
+#:
+#: 若哪天竞彩真的上架了预备队,ingest 侧的「整联赛丢失 / 过半未映射」报警会响。
+_NO_CHINESE_NAME_EXISTS: frozenset[str] = frozenset({
+    "Jong Ajax", "Jong AZ", "Jong PSV U21", "Jong Utrecht",
+})
+
+
 class TestLiveDictCoverage:
+    def test_the_exemption_stays_narrow(self):
+        """⭐ 豁免自身也要被看着 —— 一张没人看的豁免表最后会吞掉真缺口。
+
+        钉死 4 个名字。加第 5 个必须让这条红一次,逼人写清楚证据。
+        """
+        assert len(_NO_CHINESE_NAME_EXISTS) == 4
+        assert all(n.startswith("Jong ") for n in _NO_CHINESE_NAME_EXISTS), \
+            "豁免只为荷乙预备队而设 —— 进来别的东西说明范围漂了"
+
+    def test_the_derived_eerste_divisie_names_are_present(self):
+        """13 条推导名必须真的在字典里 —— 否则豁免之外的部分是空的,
+        本护栏就变成「荷乙整个联赛被跳过」而不是「4 支预备队被跳过」。"""
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+        for en, zh in [("De Graafschap", "格拉夫"), ("Roda", "罗达JC"),
+                       ("Waalwijk", "瓦尔韦克"), ("FC Eindhoven", "埃因FC"),
+                       ("Vitesse", "维迪斯")]:
+            assert TEAM_NAME_ZH.get(en) == zh, en
+
     def test_cached_team_tables_fully_reachable(self):
         """The Wave2 dict fill's acceptance bar, as a permanent regression:
         every team in the CACHED AF tables must stay dict-reachable. Runs off
@@ -122,7 +161,8 @@ class TestLiveDictCoverage:
             except ApiFootballError:
                 continue
             miss = [t["team"]["name"] for t in teams
-                    if t["team"]["name"] not in reachable]
+                    if t["team"]["name"] not in reachable
+                    and t["team"]["name"] not in _NO_CHINESE_NAME_EXISTS]
             if miss:
                 problems.append(f"{lg}: {miss}")
         assert not problems, "dict-unreachable teams reappeared:\n" + "\n".join(problems)

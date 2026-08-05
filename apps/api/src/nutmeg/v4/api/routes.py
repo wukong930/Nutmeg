@@ -394,7 +394,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v135-fe-mktpred-foldkey"
+_FE_VERSION = "nutmeg-v136-fe-eerste-eflcup"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2084,6 +2084,14 @@ _CUP_MARKET_COMPETITIONS = [
     "KOR_K_LEAGUE_1", "JPN_J2", "AUS_A_LEAGUE",
     "SCO_PREMIERSHIP", "TUR_SUPER_LIG", "SUI_SUPER_LEAGUE",
     "USA_MLS", "BRA_SERIE_A",   # 补(2026-07-14)美洲市场模式
+    # 补荷乙 + 英联赛杯(2026-08-05 owner)。两者都**不在**训练集里 ⇒ 只能走市场
+    # 模式。赔率来源实测有别,记在这里免得以后误判「荷乙怎么线这么旧」:
+    #   · EFL_CUP  → Odds API 有 `soccer_england_efl_cup`(active=True)+ AF 镜像,
+    #                双覆盖,鲜线叠加正常工作;
+    #   · 荷乙     → Odds API **根本没有**这个 sport(只有 eredivisie),同 JPN_J2
+    #                先例:只走 AF 的 Pinnacle 镜像(实测 fixture 1551741 有 Pinnacle),
+    #                线会比有 sport key 的联赛旧一些 —— 这是数据现实,不是 bug。
+    "NED_EERSTE_DIVISIE", "EFL_CUP",
 ]
 
 

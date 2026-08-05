@@ -95,6 +95,23 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         has_two_legged_ties=False,  # FA Cup is single-leg with replays
         notes="Includes lower-division teams not in EPL/Championship train set",
     ),
+    "EFL_CUP": Competition(
+        code="EFL_CUP",
+        display_zh="联赛杯 (英格兰)",
+        display_en="EFL Cup (Carabao Cup)",
+        competition_type="club_cup",
+        api_football_id=48,
+        has_knockouts=True,
+        # ⚠️ 这个 True 是**实测**的,不是「我记得半决赛打两回合」:拉 season=2025
+        # 全 93 场,`Semi-finals` 里 Man City–Newcastle 与 Arsenal–Chelsea 各出现
+        # 2 次 ⇒ 两回合。其余轮次单场。(2026-08-05)
+        has_two_legged_ties=True,
+        notes=(
+            "英联赛杯。竞彩写作「英联赛杯」。全部 92 家 EFL 俱乐部参赛 ⇒ 大量队伍不在"
+            "训练集里,只走市场模式(Pinnacle de-vig)。⚠️ AF 的 `League Cup` 这个名字"
+            "苏格兰(185)/埃及(895)/泰国(898) 都有,认 id=48 + country=England。"
+        ),
+    ),
     "COPA_DEL_REY": Competition(
         code="COPA_DEL_REY",
         display_zh="国王杯 (西班牙)",

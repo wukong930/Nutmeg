@@ -249,6 +249,11 @@ _DOMESTIC_LEAGUE_IDS: dict[str, int] = {
     # 71=巴甲(20 队);均日历年制(见 CALENDAR_YEAR_LEAGUES)。sport_key 已 live 核。
     "USA_MLS": 253,             # USA MLS (calendar-year, ≈Feb–Dec)
     "BRA_SERIE_A": 71,          # Brazil Série A (calendar-year, ≈Apr–Dec)
+    # 补荷乙(2026-08-05 owner)— 竞彩写作「荷乙」(皇冠线史 105 行实证)。
+    # id=89 对本地 fixtures 缓存实证(country=Netherlands,season 2025/2026 都在);
+    # 荷兰另有 Tweede Divisie=492,别串。秋春制 ⇒ **不**进 CALENDAR_YEAR_LEAGUES
+    # (实测 season_for_date(2026-08-07) = 2026,与 AF 标的 season 一致)。
+    "NED_EERSTE_DIVISIE": 89,   # Eerste Divisie (Netherlands, Aug–May)
     # 体检(2026-06-10)— 国际友谊赛. The user records friendly bets via the
     # manual reverse calculator (e.g. Croatia vs Slovenia 6/7); without this
     # code the settle cron could NEVER fetch their results → permanent 未结算

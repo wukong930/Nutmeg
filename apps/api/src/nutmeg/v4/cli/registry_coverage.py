@@ -56,6 +56,9 @@ MARKET_MODE_LEAGUES: tuple[str, ...] = (
     "DNK_SUPERLIGA", "KOR_K_LEAGUE_1", "JPN_J2", "AUS_A_LEAGUE",
     "SCO_PREMIERSHIP", "TUR_SUPER_LIG", "SUI_SUPER_LEAGUE",
     "USA_MLS", "BRA_SERIE_A",   # 补(2026-07-14)美洲市场模式
+    # 补(2026-08-05)。荷乙的 sport-key 单元会报 warn —— 那是**预期**的:
+    # Odds API 没有这个 sport(见 odds_api.SPORT_KEYS 注释),同 JPN_J2。
+    "NED_EERSTE_DIVISIE",
 )
 
 

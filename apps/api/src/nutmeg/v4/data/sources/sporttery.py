@@ -376,6 +376,11 @@ _EN_OVERRIDES: dict[str, str] = {
     "Man City": "Manchester City",
     "Man United": "Manchester United",
     "Oxford": "Oxford United",
+    # 2026-08-05 注册荷乙时又踩到「别名遮蔽」:`瓦尔韦克` 在 TEAM_NAME_ZH 里有两个
+    # EN 键(荷甲时期的 `RKC Waalwijk` + AF 现在荷乙用的 `Waalwijk`),而 `_ZH_TO_EN`
+    # 反转是 setdefault 先到先得 ⇒ 反查永远拿到 `RKC Waalwijk`,AF 的 `Waalwijk`
+    # 变成不可达。中文名在、行照写、join 永死 —— 和 07-04 汉堡/PSV/科隆同型。
+    "RKC Waalwijk": "Waalwijk",
     "Paris SG": "Paris Saint Germain",
     "Porto": "FC Porto",
     "Roma": "AS Roma",

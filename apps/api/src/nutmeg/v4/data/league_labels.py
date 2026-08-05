@@ -63,6 +63,10 @@ _EN_TO_CN: dict[str, str] = {
     # (巴甲 Botafogo/Vitoria/Bahia;美职 Chicago Fire/St. Louis City/Seattle)。
     "BRA_SERIE_A": "巴甲",
     "USA_MLS": "美职",
+    # 补(2026-08-05 owner)。中文写法**实证**自 `crown_close_history.league_cn`:
+    # 「荷乙」105 行、「英联赛杯」23 行 —— 不是照着联赛全名意译的。
+    "NED_EERSTE_DIVISIE": "荷乙",
+    "EFL_CUP": "英联赛杯",
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.
@@ -109,6 +113,11 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     # 且 巴甲 在同一张表里另有标签;结构对应物 `COPA_DEL_REY` 在竞赛注册表里正是
     # `club_cup`。EN 轨走 `CUP_COMPETITIONS` 本来就排除它,这里是把中文轨对齐。
     "巴西杯",
+    # 同类第二条(2026-08-05):英联赛杯也是**国内俱乐部杯赛** ⇒ 不进 δ 的拟合
+    # 人口。它在 `CUP_COMPETITIONS` 里注册为 `club_cup`,EN 轨本来就排除,这里
+    # 把中文轨对齐。⚠️ 同批注册的「荷乙」**不加** —— 它是国内俱乐部**联赛**,
+    # 正是 P3 该计数的那种人口(虽然模型没训练它,但训练与否不是本表的判据)。
+    "英联赛杯",
 })
 
 #: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。
