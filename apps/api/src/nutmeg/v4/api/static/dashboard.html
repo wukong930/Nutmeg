@@ -7148,7 +7148,21 @@ async function _mktRecRecord(i) {
 // line back at Pinnacle is −vig; +EV only exists at 竞彩, on the 竞彩盘).
 const _MKT_STRONG_MIN = 0.15;
 function _mktStrength(pr) { return Math.abs((pr.p_home_1x2 || 0) - (pr.p_away_1x2 || 0)); }
-function _mktGroupsHtml(preds, uidStart) {
+//: ⚠️ `pfx` 不是可选的 —— 2026-08-05 实测:它原来缺省成 `''`,而本函数被
+//: `renderMarketPred` 调**两次**(强档/弱档),两块都写进 `#mktpred-list` ⇒
+//: 同一联赛横跨强弱两档时,同一容器里出现两个 `data-lg` 相同的组;更远的是
+//: `#cupmkt-list` 的参考区也用 `''` ⇒ **跨 tab** 又撞一次。活页面上实测
+//: 43 个组里 **11 个 key 各出现 3 份**。
+//:
+//: 危害不在点击当下(`_toggleLeague` 走 `closest`,只收起被点的那个),而在
+//: **下一次重渲**:折叠位是按 key 持久化的全局状态,重渲时每个同 key 的组都会
+//: 读到它。实测复现:在「今日推荐」折叠 UEL → 重渲「近期赛事」的市场板 →
+//: `#cupmkt-list` 里的 UEL 自己塌了。一个 tab 的操作静默改了另一个 tab 的版式。
+//:
+//: 修法就是 `_lgGroupHtml` 注释里本来写着的那句「pfx namespaces the collapse
+//: key so the SAME league folds independently in different sections」——
+//: 这个函数当初漏了传。
+function _mktGroupsHtml(preds, uidStart, pfx) {
   const byC = {};
   preds.forEach((pr) => { (byC[pr.league] = byC[pr.league] || []).push(pr); });
   const order = Object.keys(byC).sort((a, b) =>
@@ -7156,7 +7170,8 @@ function _mktGroupsHtml(preds, uidStart) {
   let u = uidStart;
   const html = order.map((lg) => {
     const items = byC[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y));
-    return _lgGroupHtml(lg, leagueColor(lg), items.length, items.map((pr) => _mktPredCardHtml(pr, u++)).join(''));
+    return _lgGroupHtml(lg, leagueColor(lg), items.length,
+      items.map((pr) => _mktPredCardHtml(pr, u++)).join(''), pfx);
   }).join('');
   return { html, nextUid: u };
 }
@@ -7184,11 +7199,13 @@ function renderMarketPred(preds) {
   const weak = preds.filter((pr) => _mktStrength(pr) < _MKT_STRONG_MIN);
   const cnt = $('#mktpred-count');
   if (cnt) cnt.textContent = ` · ${strong.length}/${preds.length} ${t('mkt_strong_n')}`;
-  const a = _mktGroupsHtml(strong, 0);
+  // 强/弱两档各自的名字空间:同一联赛同时出现在两档里时互不干扰,
+  // 也不再和「近期赛事」市场板的参考区(`''`)跨 tab 撞。
+  const a = _mktGroupsHtml(strong, 0, 'mkts:');
   let html = strong.length ? a.html
     : `<div class="text-sm text-muted py-2">${t('mkt_no_strong')}</div>`;
   if (weak.length) {
-    const b = _mktGroupsHtml(weak, a.nextUid);
+    const b = _mktGroupsHtml(weak, a.nextUid, 'mktw:');
     html += `<details class="mt-4 pt-3" style="border-top:1px dashed var(--border-subtle)">`
       + `<summary class="text-sm text-muted cursor-pointer">${t('mkt_tossup_fold')} (${weak.length})</summary>`
       + `<div class="mt-2 space-y-2">${b.html}</div></details>`;
