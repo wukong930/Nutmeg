@@ -2149,7 +2149,16 @@ const I18N = {
     jc_morning_hint:  '竞彩分批上架:当日新场多在北京 09:25–09:45 晨批发布(北欧等小联赛常当天才开售),此刻名单可能不全;09:45 后点 🎯 刷新竞彩立取,或等 09:50 / 11:05 自动补捕。',
     spcalc_enter_sp:  '输入竞彩 SP 看 EV',
     spcalc_mkt:       '市',
-    spcalc_mkt_tip:   'Pinnacle 去 vig 的市场公允概率(对照模型 P;两者背离时留个心眼)',
+    spcalc_mkt_tip:   'Pinnacle 去 vig(WPO)的市场公允概率 —— **判闸用的就是它**',
+    spcalc_ev_model:  'EV模型',
+    spcalc_ev_mkt:    'EV市场',
+    spcalc_ev_nomkt:  '无 Pinnacle 线 · 不判闸',
+    spcalc_diverge_tip: '模型 P 与市场 P 背离 ≥5pp —— 模型在说一件市场不同意的事。'
+                      + '判闸走市场,这里只提醒你多看一眼。',
+    spcalc_p_stale:   '⏳ 旧盘',
+    spcalc_p_stale_tip: '你手填了实时盘口,但模型 P 不会跟着变(它 40 个特征里只有 5 个'
+                      + '来自收盘 1X2,其余是冻结快照)。这个 P 基于手填前的盘口。'
+                      + '判闸用的市场 EV 已经跟着你的手填更新了。',
     spcalc_record_btn:'已下单',
     bet_record:       '记此注',
     bet_stake:        '注额',
@@ -2686,7 +2695,17 @@ const I18N = {
     jc_morning_hint:  '竞彩 lists same-day additions in a ~09:25–09:45 (Beijing) morning batch (Nordic & minor leagues often matchday-only), so this slate may be incomplete; hit 🎯 after ~09:45, or the 09:50 / 11:05 auto-captures pull them in.',
     spcalc_enter_sp:  'Enter 竞彩 SP for EV',
     spcalc_mkt:       'Mkt',
-    spcalc_mkt_tip:   'Pinnacle de-vig market fair prob (vs model P; watch when they diverge)',
+    spcalc_mkt_tip:   'Pinnacle de-vig (WPO) market fair prob — this is what the gate uses',
+    spcalc_ev_model:  'EV(model)',
+    spcalc_ev_mkt:    'EV(mkt)',
+    spcalc_ev_nomkt:  'no Pinnacle line · not gated',
+    spcalc_diverge_tip: 'Model P diverges from market P by >=5pp. The gate follows the '
+                      + 'market; this is a nudge to look twice.',
+    spcalc_p_stale:   '⏳ stale',
+    spcalc_p_stale_tip: 'You hand-filled live odds, but the model P does not follow '
+                      + '(only 5 of its 40 features come from the closing 1X2; the rest '
+                      + 'are a frozen snapshot). This P is from the pre-fill odds. '
+                      + 'The market EV used by the gate IS updated.',
     spcalc_record_btn:'Placed',
     bet_record:       'Record this bet',
     bet_stake:        'Stake',
@@ -4059,6 +4078,41 @@ const _TODAY_REC_BTN_OFF = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed;
 
 // V12 W8k — sharp (Pinnacle de-vig) argmax outcome ('H'/'D'/'A'), or null if
 // no Pinnacle line. Used to flag when the model's prediction is contested.
+// ── 2026-08-06 owner:市场 P / 双 EV / 模型陈旧标 ─────────────────────────────
+//
+// 背景(owner 提的三问):模型 P **会**随 Pinnacle 盘口变(market_p_* 是模型的输入
+// 特征,实测改赔率主胜从 43.8% 走到 32.2%),但它**不跟着手填变** —— 而手填恰恰
+// 发生在临场、线动得最多的时候。于是同一张卡上「市」是新的、模型 P 是旧的,
+// 判闸却用旧的那个。
+//
+// ⛔ 没走「让手填也重算模型 P」那条路:40 个特征里只有 5 个(收盘 1X2 去vig)手填
+// 能改,其余 35 个(Elo/form/开盘漂移)是冻结快照。硬刷那 5 个会把模型推出训练
+// 分布,而且**给不新鲜的东西刷层新鲜的漆,比让它显示自己不新鲜更危险**。
+
+//: 模型 P 与市场 P 差多少算「背离」(百分点)。只做**显示**,不参与判闸 ——
+//: 判闸已经统一到市场 EV,背离标是给人看的「这里模型在说一件市场不同意的事」。
+const _PMKT_DIVERGE_PP = 5;
+
+/** 该场的**纯市场**公允 P(服务端 WPO);没有 Pinnacle 线时返回 null。
+ *
+ * ⚠️ 故意**不做**客户端 basic 兜底:兜底会让「服务端字段缺失」静默退化成另一种
+ * 去vig 方法,而那正是本次要消灭的劈叉(显示 42% / 计算 42.5%)。没有就说没有。
+ */
+function _mktP(pr) {
+  const m = { H: pr && pr.p_home_market, D: pr && pr.p_draw_market, A: pr && pr.p_away_market };
+  const ok = ['H', 'D', 'A'].every((k) => typeof m[k] === 'number' && m[k] > 0 && m[k] < 1);
+  return ok ? m : null;
+}
+
+/** 模型 P 是不是「基于比当前盘口更旧的赔率」。
+ *
+ * 手填过(`_manual`)就一定是 —— 手填只重算让球和市场 P,模型 P 原地不动。
+ * 这不是估计,是结构事实,所以直接看标志位,不去比数值(比数值反而会在「手填
+ * 了但填的和缓存一样」时给出「不陈旧」的错觉:那种情况模型 P 确实不陈旧,
+ * 但下一次手填改了数它就陈旧了,而标志位已经立着了 —— 宁可多提醒)。
+ */
+function _modelPStale(pr) { return !!(pr && pr._manual); }
+
 function _devigArgmax1x2(h, d, a) {
   if (!h || !d || !a) return null;
   const inv = [1 / h, 1 / d, 1 / a];
@@ -5625,18 +5679,17 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
     const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
     const psc = { H: pr.psc_home, D: pr.psc_draw, A: pr.psc_away };
     // V13 — Pinnacle de-vig 1X2 (market fair P) shown next to the model P so a
-    // model↔market divergence is visible at a glance. Pure transparency — the
-    // recommendation still uses the model P; we never auto-pick the rosier one.
-    const Mkt = (() => {
-      const inv = [psc.H, psc.D, psc.A].map(x => (x > 1 ? 1 / x : null));
-      if (inv.some(v => v === null)) return null;
-      const s = inv[0] + inv[1] + inv[2];
-      return { H: inv[0] / s, D: inv[1] / s, A: inv[2] / s };
-    })();
+    // model↔market divergence is visible at a glance.
+    //
+    // 2026-08-06 — 改读**服务端**下发的 `p_*_market`(WPO)。这里原来自己按比例
+    // (basic)除了一遍,而 EV/分析路一律 WPO ⇒ 显示 42% 却按 42.5% 算 EV。现在
+    // 判闸真的用市场 EV 了,这 0.5pp 就不再是「显示小瑕疵」而是钱。
+    // 见 [[devig-js-server-mismatch]]:EV 路 server-first,别在 JS 重写 WPO。
+    const Mkt = _mktP(pr);
     const rows = outcomes.map(o => `
       <div class="flex items-center gap-2 text-sm py-1 flex-wrap">
         <span class="w-12 shrink-0 text-secondary">${outcomeLabel(o)}</span>
-        <span class="w-14 shrink-0 num-display text-muted">P ${(P[o] * 100).toFixed(0)}%</span>
+        <span class="w-14 shrink-0 num-display text-muted">P ${(P[o] * 100).toFixed(0)}%</span>${_modelPStale(pr) ? `<span class="shrink-0 text-xs" style="color:#b45309" title="${t('spcalc_p_stale_tip')}">${t('spcalc_p_stale')}</span>` : ''}
         <span class="w-16 shrink-0 num-display text-secondary" title="${t('spcalc_mkt_tip')}">${Mkt ? t('spcalc_mkt') + ' ' + (Mkt[o] * 100).toFixed(0) + '%' : ''}</span>
         <input type="number" inputmode="decimal" step="0.01" min="1.01"
                class="spcalc-sp w-20 px-2 py-1 border rounded num-display"
@@ -5906,6 +5959,7 @@ function _spcalcRecalc(idx) {
   const pr = _SPCALC.preds[idx];
   if (!pr) return;
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
+  const Mkt = _mktP(pr);   // 纯市场公允 P(服务端 WPO);null = 该场没有 Pinnacle 线
   const { minEv, bankroll, kelly } = _SPCALC;
   let best = null;
   // ⚠️ 2026-08-05 — 数一下到底填了几个 SP。原来不管有没有盘,只要没腿过闸就一律
@@ -5924,16 +5978,44 @@ function _spcalcRecalc(idx) {
     const sp = parseFloat(inp.value);
     if (!sp || sp <= 1.0) { evSpan.textContent = ''; evSpan.removeAttribute('style'); evSpan.className = 'flex-1 text-xs text-muted'; return; }
     spCount += 1;
-    const ev = P[o] * sp - 1.0;
-    const pass = ev >= minEv;
+    // ── 双 EV(2026-08-06 owner)────────────────────────────────────────────
+    // 模型 EV 仍然算、仍然显示,但**判闸改用市场 EV**。理由不是「市场更准」——
+    // 那也没测过 —— 而是:
+    //   · 模型至今没有一次被证明赢过 Pinnacle(clubelo 那轮:模型仍输);
+    //   · 自检看板还读不了(休赛期 N=2 是噪声,要等秋季 N≥100);
+    //   · team_state 冻在 2026-06-01,上赛季后半程一场没进;
+    //   · 实测结论「EV 是排除器不是排序器」⇒ 模型当否决器安全,当发现器是在赌
+    //     一个未验证的组件;
+    //   · 市场模式的**所有**比赛早就是市场 P 判闸,改完全系统口径统一。
+    // 秋季 scoreboard 有量之后再谈让模型 P 进判闸。
+    const evModel = P[o] * sp - 1.0;
+    const evMkt = Mkt ? Mkt[o] * sp - 1.0 : null;
+    // ⛔ 没有 Pinnacle 线 ⇒ **不判闸**,而不是回退到模型 EV。回退等于把刚移出
+    //    判闸的东西从后门放回来,而且是静默的。宁可这条腿永远不变绿。
+    const evGate = evMkt;
+    const pass = evGate !== null && evGate >= minEv;
     const jcImplied = (100 / sp).toFixed(0);
-    // A-3 影子:门槛与 ± 带共用 σ_P(h)·SP( = 半宽/2,半宽是 2σ)。
-    evSpan.innerHTML = `EV ${ev >= 0 ? '+' : ''}${(ev * 100).toFixed(1)}%${_frzBandHtml(pr, o, sp)} ${_evRelTag(P[o], false, _frzHalfEv(pr, o, sp) / 2, _isWideBook(pr))} · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(P[o] * 100).toFixed(0)}%`;
+    const dPP = Mkt ? (P[o] - Mkt[o]) * 100 : null;
+    // ⚠️ 减 1e-9:`0.47 - 0.42` 在浮点里是 0.049999999999999996 ⇒ ×100 = 4.999…9,
+    // 差一点点够不着 5 —— 而 47%/42% 正是这张德乙卡上的真实数字。没有这个 eps,
+    // 「整 5pp 背离标不标」就取决于浮点往哪边掉。测试用的就是这组数,别改成 6pp
+    // 绕过去(那是把测试改成迁就 bug)。
+    const diverge = dPP !== null && Math.abs(dPP) >= _PMKT_DIVERGE_PP - 1e-9;
+    const mdl = `${t('spcalc_ev_model')} ${evModel >= 0 ? '+' : ''}${(evModel * 100).toFixed(1)}%`;
+    const mkt = evMkt === null ? `<span style="color:#b45309">${t('spcalc_ev_nomkt')}</span>`
+      : `${t('spcalc_ev_mkt')} ${evMkt >= 0 ? '+' : ''}${(evMkt * 100).toFixed(1)}%`;
+    // A-3 影子:门槛与 ± 带共用 σ_P(h)·SP( = 半宽/2,半宽是 2σ)。带挂在**判闸用的**
+    // 那个 EV 上(市场),否则区间和绿灯说的不是同一件事。
+    const band = evMkt === null ? '' : _frzBandHtml(pr, o, sp);
+    const relP = Mkt ? Mkt[o] : P[o];
+    evSpan.innerHTML = `${mkt}${band} <span class="text-muted">/ ${mdl}${diverge ? ` <span title="${t('spcalc_diverge_tip')}" style="color:#b45309">⚠︎${dPP > 0 ? '+' : ''}${dPP.toFixed(0)}pp</span>` : ''}</span> ${_evRelTag(relP, false, _frzHalfEv(pr, o, sp) / 2, _isWideBook(pr))} · ${t('spcalc_jc')} ${jcImplied}% / ${t('spcalc_fair')} ${(relP * 100).toFixed(0)}%`;
     evSpan.className = 'flex-1 text-xs';
-    evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
+    evSpan.style.color = pass ? '#059669' : ((evGate !== null && evGate < 0) ? '#e11d48' : '');
     evSpan.style.fontWeight = pass ? '600' : '';
-    if (pass && (!best || ev > best.ev)) {
-      best = { o, ev, sp, stake: _spcalcStake(P[o], sp, bankroll, kelly) };
+    if (pass && (!best || evGate > best.ev)) {
+      // 注额也按**判闸用的**那个 P 下 Kelly —— 用模型 P 下注、用市场 P 判闸
+      // 会得到一个两边都不自洽的仓位。
+      best = { o, ev: evGate, sp, stake: _spcalcStake(Mkt[o], sp, bankroll, kelly) };
     }
   });
   const verdict = $(`#spcalc-verdict-${idx}`);
@@ -6865,8 +6947,19 @@ async function _spcalcManualReprice(idx) {
       psc_away: pr.psc_away, psc_over25: pr.psc_over25, psc_under25: pr.psc_under25,
       ou_line: pr.ou_line, odds_update: pr.odds_update,
       odds_source: pr.odds_source ?? null,
+      // 2026-08-06 — 市场 P 也要进快照,否则 ↩︎ 复原只还原一半:模型 P 回去了、
+      // 市场 P 还停在手填值上,两列来自不同盘口。
+      p_home_market: pr.p_home_market, p_draw_market: pr.p_draw_market,
+      p_away_market: pr.p_away_market,
     };
     // ⛔ 这里**故意没有** pr.p_home_1x2 = data.p_home_1x2 —— 标准模式 1X2 = 模型 P。
+    //
+    // ✅ 但**市场** P 必须跟着手填走(2026-08-06):`data.p_*_1x2` 就是这次手填值的
+    // WPO 去vig,和服务端 sp-calc 下发 `p_*_market` 用的是同一个函数。不更新它,
+    // 「市」列和市场 EV 就会停在旧盘口上 —— 而手填的全部意义就是盘口动了。
+    pr.p_home_market = data.p_home_1x2;
+    pr.p_draw_market = data.p_draw_1x2;
+    pr.p_away_market = data.p_away_1x2;
     pr.handicap_lines = data.handicap_lines;
     pr.psc_home = h; pr.psc_draw = d; pr.psc_away = a;
     pr.psc_over25 = (o && u) ? o : null; pr.psc_under25 = (o && u) ? u : null; pr.ou_line = line;

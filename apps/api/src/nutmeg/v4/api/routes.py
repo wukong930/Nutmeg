@@ -394,7 +394,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v136-fe-eerste-eflcup"
+_FE_VERSION = "nutmeg-v137-fe-dual-ev-market-gate"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1799,12 +1799,19 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                         a * pa + (1 - a) * pin[2],
                     )
             hc_lines = _model_board_handicap_lines(f, grid, corr)
+            # 2026-08-06 — 纯市场公允 P,和模型 P 并列下发。**同一个 WPO 函数**
+            # 供:这里的显示、前端的市场 EV、手填后的 reprice 端点 ⇒ 三处不可能
+            # 漂开。前端原来自己 basic 去vig 画「市」列,和 EV 路的 WPO 差 0.5pp。
+            mkt = _pinnacle_devig_1x2(f.psc_home, f.psc_draw, f.psc_away)
             preds.append(SinglePrediction(
                 home_team=f.home_team, away_team=f.away_team,
                 league=f.league, date=f.date,
                 kickoff_utc=getattr(f, "kickoff_utc", None),
                 lambda_home=float(lh), lambda_away=float(la),
                 p_home_1x2=float(ph), p_draw_1x2=float(pd_), p_away_1x2=float(pa),
+                p_home_market=(float(mkt[0]) if mkt else None),
+                p_draw_market=(float(mkt[1]) if mkt else None),
+                p_away_market=(float(mkt[2]) if mkt else None),
                 psc_home=f.psc_home, psc_draw=f.psc_draw, psc_away=f.psc_away,
                 psc_over25=getattr(f, "psc_over25", None),
                 psc_under25=getattr(f, "psc_under25", None),

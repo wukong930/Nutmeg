@@ -62,9 +62,17 @@ class TestSpCalcMarkup:
 
     def test_model_vs_market_1x2_shown(self, html):
         """V13 — each model-board outcome row shows the Pinnacle de-vig market
-        1X2 (`市`/`Mkt`) next to the model P, for an at-a-glance divergence
-        check. Transparency only — the recommendation still uses model P."""
-        assert "const Mkt = (() => {" in html        # client-side de-vig
+        1X2 (`市`/`Mkt`) next to the model P, for an at-a-glance divergence check.
+
+        ⚠️ 2026-08-06 改写:原来断言 `const Mkt = (() => {` —— 那是**客户端 basic
+        去vig**,已被删掉。市场 P 改由服务端下发(WPO,`p_*_market`),因为判闸现在
+        真的用市场 EV 了,而显示用 basic(42.0%)、EV 用 WPO(42.5%)会是静默劈叉。
+        原断言里 "the recommendation still uses model P" 那句也不再成立。
+
+        不变量没变:**每行仍要并排显示模型 P 和市场 P**。守的是这个,不是某个写法。
+        """
+        assert "const Mkt = _mktP(pr);" in html       # 服务端 WPO,不再客户端去vig
+        assert "const Mkt = (() => {" not in html, "客户端 basic 去vig 回来了"
         assert "t('spcalc_mkt')" in html
         for k in ("spcalc_mkt", "spcalc_mkt_tip"):
             assert html.count(k + ":") >= 2, f"i18n {k!r} missing from a locale"
@@ -1016,7 +1024,12 @@ class TestEvReliability:
         # 面改经 `_hcEvHtml`(点估 + δ 区间),分级由它内部转发 → 直接数 `_evRelTag(P[o]`
         # 只剩 2 个 1X2 面。故分两段数,而不是把断言从 4 调成 2 —— 那样等于悄悄放弃
         # 「让球面也必须分级」这条不变量。
-        assert html.count("_evRelTag(P[o]") >= 2          # 两个 1X2 面
+        # 2026-08-06:`_spcalcRecalc` 的分级参数从 `P[o]`(模型)改成 `relP`
+        # (= 判闸用的市场 P,没有市场线时退回模型 P)—— 分级必须跟着**判闸用的那个
+        # P** 走,否则「冷门警告」标的是一个不参与判闸的概率。所以这里分两种写法数,
+        # 而不是把 >=2 降成 >=1:两个 1X2 面都必须分级这条不变量没变。
+        assert html.count("_evRelTag(P[o]") + html.count("_evRelTag(relP") >= 2
+        assert "const relP = Mkt ? Mkt[o] : P[o];" in html
         assert html.count("_hcEvHtml(ev, evLo, evHi, P[o]") >= 2   # 两个让球面
         # A-3 影子:让球面的门槛也吃 σ_P(h)(frzHalf=2σ_EV),但**只吃冻结那半** ——
         # δ 已由 evLo 下界判过闸,再进门槛就重复计一次。

@@ -162,6 +162,19 @@ class SinglePrediction(BaseModel):
     p_home_1x2: float
     p_draw_1x2: float
     p_away_1x2: float
+    # 2026-08-06 owner — **纯市场**公允 P(Pinnacle WPO 去vig),和模型 P 并列下发。
+    #
+    # 为什么必须由服务端算、而不是前端就地除:前端原来用 basic(按比例)去vig 画
+    # 「市」那一列,而 EV/分析路(`_pinnacle_devig_1x2`、手填 reprice 端点)一律走
+    # **WPO**。两者对这场德乙差 0.5pp(42.0 vs 42.5)—— 只要 EV 用一个、显示用
+    # 另一个,面板上就会出现「市 42%」却按 42.5% 算 EV 的静默劈叉。
+    # 见 [[devig-js-server-mismatch]]:结论是 **EV 路 server-first**,别把 WPO
+    # 移植进 JS。这三个字段就是那条结论的落地。
+    #
+    # None = 该场没有 Pinnacle 线(市场 EV 无从算起,前端据此退回只显示模型 EV)。
+    p_home_market: float | None = None
+    p_draw_market: float | None = None
+    p_away_market: float | None = None
     # V12 W3 — Pinnacle closing odds echoed back so the dashboard's 竞彩 SP
     # calculator can pre-fill inputs and show the 竞彩-vs-Pinnacle soft-line
     # gap. Optional: not every prediction path carries them (e.g. WC).
