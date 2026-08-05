@@ -15,6 +15,7 @@ localStorage 永久删)。owner 实报该行为有害:手填 Pinnacle 正是因�
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -75,16 +76,23 @@ class TestManualRestoreHealsDerived:
     结果 restore 后一律用输入重算(market-reprice 纯计算、零额度)。"""
 
     def test_restore_triggers_background_reprice(self, html: str) -> None:
-        """⚠️ 2026-07-30 本断言按设计变红过一次:`_cupManRefreshDerived` 加了
-        `rerender` 参数(手填要贴到「近期赛事」上下两块板,重算完得重渲**调用方**
-        那块)。这里**加强**而非放松 —— 除了原来的「restore 会触发后台重算」,
-        再钉死重算结果必须回到调用方的板子上,别退回硬编码 renderCupMarket。
+        """⚠️ 本断言按设计变红过**两次**,两次都是同一个原因:形参表加了一个参数
+        (2026-07-30 加 `rerender`,2026-08-05 加 `keepModelP`)。
+
+        两次都不是「后台重算没了」——「restore 会触发后台重算」这个性质自始至终
+        成立,红的只是我把它写成了「签名逐字等于这一串」。这是
+        [[syntactic-proxy-for-semantic-property]] 里那条:**断言值别连带断言结构**。
+        同一根线绊两次就该改写法,不是改字面量:现在钉死**前两个形参及其顺序**
+        (它们是被调用方真正依赖的契约),后面加参数不再误报。
+        行为侧另有覆盖:`test_spcalc_manual_pin.py` 里的
+        `test_background_refit_honours_the_flag` 真跑这个函数,断言重渲发生了一次。
         """
-        assert "async function _cupManRefreshDerived(pairs, rerender)" in html
-        assert "if (restored.length) _cupManRefreshDerived(restored, rerender);" in html
+        assert re.search(r"async function _cupManRefreshDerived\(pairs, rerender\b", html)
+        assert re.search(r"if \(restored\.length\) _cupManRefreshDerived\(restored, rerender\b",
+                         html), "restore 不再触发后台重算"
         # 重算用的是存的输入(m.h/m.d/m.a),不是贴回的派生值
         assert "psc_home: m.h, psc_draw: m.d, psc_away: m.a," in html
-        # ⭐ 新增:重算完必须重渲调用方那块板(否则那块板永远显示旧 schema 派生值)
+        # ⭐ 重算完必须重渲调用方那块板(否则那块板永远显示旧 schema 派生值)
         assert "if (rerender) rerender();" in html
 
     def test_refresh_respects_user_revert_race(self, html: str) -> None:
@@ -148,7 +156,10 @@ class TestManualAppliesToBothBoardsOnTheSameTab:
     """
 
     def test_spcalc_loader_applies_the_stored_manual_fill(self, html: str) -> None:
-        assert "_cupApplyStoredManual(body.predictions, _spRerender)" in html, (
+        # 2026-08-05:调用点加了第三参 keepModelP ⇒ 逐字断言误报。守的性质是
+        # 「loadSpCalc 会贴手填」,不是「实参恰好两个」。第三参本身由
+        # test_spcalc_manual_pin.py::test_loadspcalc_passes_the_flag 单独钉。
+        assert re.search(r"_cupApplyStoredManual\(body\.predictions, _spRerender\b", html), (
             "loadSpCalc 又不贴手填了 —— 同一 tab 两块板会各算各的 EV")
 
     def test_spcalc_card_shows_the_manual_badge(self, html: str) -> None:
@@ -168,7 +179,8 @@ class TestManualAppliesToBothBoardsOnTheSameTab:
         一直显示 localStorage 里那份**可能是旧 schema** 的派生值 —— 正是
         2026-07-18 「贴回的旧 board 没有 p_*_lo,让球 EV 区间静默消失」那个洞。
         """
-        assert "async function _cupManRefreshDerived(pairs, rerender)" in html
+        # 同上:钉前两个形参及顺序,不钉形参个数(见 test_restore_triggers_background_reprice)
+        assert re.search(r"async function _cupManRefreshDerived\(pairs, rerender\b", html)
         assert "if (rerender) rerender();" in html
         assert "else renderCupMarket(_CUPMKT.preds, _CUPMKT.pending || []);" in html
 
