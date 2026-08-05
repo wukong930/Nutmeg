@@ -2172,6 +2172,9 @@ const I18N = {
     spcalc_pick:      '建议',
     spcalc_suggest:   '注额',
     spcalc_nobet:     '无 +EV (建议 no-bet)',
+    // ⏳ 竞彩这场还没上架 —— 和「上架了但不值得买」必须分开说,
+    // 否则一句劝退用在一个你根本买不了的场次上,读起来像「模型看空」。
+    spcalc_nojc:      '⏳ 竞彩未开盘 — 开盘后自动带入,也可手填 SP 先试算',
     spcalc_recorded:  '已记录到观测库',
     spcalc_recorded_btn:'已记录',
     spcalc_record_err:'记录失败, 请重试',
@@ -2703,6 +2706,7 @@ const I18N = {
     spcalc_pick:      'Pick',
     spcalc_suggest:   'stake',
     spcalc_nobet:     'No +EV (no-bet)',
+    spcalc_nojc:      '⏳ Not listed by 竞彩 yet — auto-fills once it is; or type an SP to try it now',
     spcalc_recorded:  'Recorded to observation DB',
     spcalc_recorded_btn:'Recorded',
     spcalc_record_err:'Record failed, retry',
@@ -5554,6 +5558,15 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
           <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}</span>
         </div>
         ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}
+        ${/* 2026-08-05 — Pinnacle 原盘 + 大小球,原来只有市场模式卡有。
+              ⭐ **不是为了好看**:标准模式的 1X2 走模型 P,但**让球是 Pinnacle
+              市场反推的**(routes.py `_model_board_handicap_lines`,从去vig 的
+              Pinnacle 1X2 **+ 大小球**拟合 DC 网格)。⇒ 大小球线在驱动你要下注的
+              让球数字,却在这张卡上完全不可见 —— 那条线要是脏的(非常规盘口、
+              滚球退化价),让球 P 跟着脏,而你没有任何察觉的办法。
+              顺带把 `_pinRawHtml` 自带的**水位过宽警告**也带进来:标准模式此前
+              一道这类闸都没有。 */''}
+        ${_pinRawHtml(pr)}
         ${rows}
         <div class="flex items-center justify-between gap-2 mt-2 pt-2" style="border-top:1px solid rgba(0,0,0,0.08)">
           <span id="spcalc-verdict-${idx}" class="text-xs text-muted">${t('spcalc_enter_sp')}</span>
@@ -5595,6 +5608,14 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
             </div>
           </div>
         </details>
+        ${/* 2026-08-05 — 净胜球分组,原来只有市场模式卡有。`margin_bands` 一直就在
+              sp-calc 的返回里(白发了),`_marginBandsHtml` 也是现成的纯函数。
+              hcap 传 `jc_hc_line`:它和 `handicap_home` 同一套符号约定
+              (主 −1 ⇒ L=−1,净胜 +1 时 1+(−1)=0 = 走盘),已核对 `b.margin + L` 那段。
+              ⚠️ `_cupFold*` 名字带 cup 但**是通用的**(键 = 队名+开球时刻);
+              两个模式的场次集合不相交(受训联赛走标准/其余走市场),不会撞键。
+              没改名 —— 改它会波及市场模式,是另一件事。 */''}
+        ${_marginBandsHtml(pr.margin_bands, pr.jc_hc_line, _cupFoldAttrs('mb', _cupFoldKey(pr)))}
       </div>`;
   };
   // V12 W4 → 2026-07-07 — 竞彩可投注 pinned to the top in its own zone, then the
@@ -5764,11 +5785,18 @@ function _spcalcRecalc(idx) {
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const { minEv, bankroll, kelly } = _SPCALC;
   let best = null;
+  // ⚠️ 2026-08-05 — 数一下到底填了几个 SP。原来不管有没有盘,只要没腿过闸就一律
+  // 写「无 +EV(建议 no-bet)」⇒ **「竞彩还没开盘」和「开了但不值得买」长得一模
+  // 一样**。那是本项目反复踩的「分不出『没有』和『没去看』」。欧洲联赛开赛后,
+  // 赛前 2-3 天的卡片**全都是前一种**,却全被写成后一种 —— 一句劝你别下注的话,
+  // 用在一个你**根本还买不了**的场次上,读起来像「模型看空」,其实什么都没说。
+  let spCount = 0;
   ['H', 'D', 'A'].forEach(o => {
     const inp = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
     const evSpan = $(`#spcalc-ev-${idx}-${o}`);
     const sp = parseFloat(inp.value);
     if (!sp || sp <= 1.0) { evSpan.textContent = ''; evSpan.removeAttribute('style'); evSpan.className = 'flex-1 text-xs text-muted'; return; }
+    spCount += 1;
     const ev = P[o] * sp - 1.0;
     const pass = ev >= minEv;
     const jcImplied = (100 / sp).toFixed(0);
@@ -5789,8 +5817,15 @@ function _spcalcRecalc(idx) {
     btn.disabled = false;
     btn.style.cssText = 'background:#059669;color:#fff;cursor:pointer';
   } else {
-    verdict.textContent = t('spcalc_nobet');
+    // 三态,不是两态:
+    //   一个 SP 都没有 + 服务端也没预填 ⇒ 竞彩还没上架这场(⏳)
+    //   一个 SP 都没有 + 服务端有预填    ⇒ 你把框清空了 ⇒ 提示填
+    //   有 SP 但没腿过闸                 ⇒ 才是真的「无 +EV」
+    const jcOnSale = pr.jc_home != null || pr.jc_draw != null || pr.jc_away != null;
+    verdict.textContent = spCount > 0 ? t('spcalc_nobet')
+      : (jcOnSale ? t('spcalc_enter_sp') : t('spcalc_nojc'));
     verdict.removeAttribute('style');
+    if (spCount === 0 && !jcOnSale) verdict.style.color = 'var(--text-muted)';
     btn.disabled = true;
     btn.style.cssText = 'background:#e5e7eb;color:#9ca3af;cursor:not-allowed';
   }
