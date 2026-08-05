@@ -369,6 +369,68 @@ def check_model_supply_chain(
     return info, alarms
 
 
+#: 已知会同时收到两轨写入的表(cron 写竞彩中文缩写 / 面板 记一笔 写 V4 EN 代码)。
+#: 别写成「扫全库所有 league 列」—— 那会把 `polymarket_gaps` 这种**本来就该**
+#: 两轨并存(EN=外盘联赛 33 种,中文=竞彩侧 2 种,规范化后零重叠)的表也拖进来报警。
+_LEAGUE_TRACK_TABLES: tuple[tuple[str, str], ...] = (
+    ("jingcai_sp", "league"),
+    ("jingcai_sp_snapshots", "league"),
+)
+
+
+def check_league_labels(db_path: str | Path) -> tuple[list[str], list[str]]:
+    """联赛标签双轨探针(2026-08-05)。
+
+    `league_labels` 模块开头就描述了这个病(一个联赛两种写法 ⇒ 被劈成两组,
+    per-league N 稀释、CLV 闸的 FDR 家族凭空多一个成员),`classify_league` 的
+    docstring 也写着 unknown「必须被报出来」—— 但**没有任何地方在报**。
+    这里把那个早就设计好、从未接线的警报接上。
+
+    两种警报语义不同,别混:
+      · split   已经在发生的稀释 ⇒ 跑 `nutmeg-backfill-league-labels` 并归一轨
+      · unknown 标签表落后于现实 ⇒ 照证据往 `_EN_TO_CN`/`_CN_SYNONYM` 补一行
+        (⛔ 不许猜中文缩写:补错的映射会把两个联赛静默合并,比缺一行坏得多)
+
+    缺库/缺表 = 跳过(CI 无 data/),不 alarm。
+    """
+    from nutmeg.v4.data.league_labels import audit_label_tracks
+
+    info: list[str] = []
+    alarms: list[str] = []
+    p = Path(db_path)
+    if not p.exists():
+        return [f"联赛标签探针: {p} 不存在 — 跳过"], []
+    conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    try:
+        for table, col in _LEAGUE_TRACK_TABLES:
+            try:
+                labels = [r[0] for r in conn.execute(
+                    f"SELECT DISTINCT {col} FROM {table} WHERE {col} IS NOT NULL")]
+            except sqlite3.Error:
+                info.append(f"{table}.{col}: 表不存在 — 跳过")
+                continue
+            a = audit_label_tracks(labels)
+            info.append(f"{table}.{col}: {len(labels)} 种写法 · "
+                        f"劈开 {len(a['split'])} · 未知 {len(a['unknown'])}")
+            for cn, variants in a["split"]:
+                alarms.append(
+                    f"{table}.{col} 联赛「{cn}」被劈成 {len(variants)} 种写法 "
+                    f"{variants} — 按联赛分组会算成两组;跑 "
+                    f"`python -m nutmeg.v4.cli.backfill_league_labels --apply`")
+                    # ⚠️ 写模块形式而不是 `nutmeg-backfill-league-labels`:入口点在
+                    # pyproject 里注册了,但要重装 editable 才会出现在 .venv/bin
+                    # (本机 venv 里没有 pip,装不了)。报警指向一个跑不了的命令,
+                    # 和这轮刚修掉的「tooltip 指着不存在的控件」是同一类毛病。
+            if a["unknown"]:
+                alarms.append(
+                    f"{table}.{col} 有标签表不认识的联赛 {a['unknown']} — "
+                    f"它们会掉出 P3 等按人口的计数(丹超那个活例);"
+                    f"照证据补进 league_labels(⛔ 别猜中文缩写)")
+    finally:
+        conn.close()
+    return info, alarms
+
+
 def write_heartbeat(db_path: str | Path) -> None:
     """Touch `<db dir>/.data_freshness_heartbeat` — proof the sentinel ran.
     Fail-soft: a heartbeat failure must never break the freshness report."""
@@ -449,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="跳过 AF/OA 配额探针 (默认: env 里有 key 才探,fail-soft)")
     p.add_argument("--no-supply", action="store_true",
                    help="跳过模型供应链探针 (artifact/源树/parquet;缺目录本就自动跳过)")
+    p.add_argument("--no-league-labels", action="store_true",
+                   help="跳过联赛标签双轨探针 (劈开的写法 / 标签表不认识的联赛)")
     args = p.parse_args(argv)
 
     db_path = Path(args.db)
@@ -465,6 +529,8 @@ def main(argv: list[str] | None = None) -> int:
     quota_alarms, probe_fails = ([], []) if args.no_quota else check_api_quota()
     supply_info, supply_alarms = (
         ([], []) if args.no_supply else check_model_supply_chain(today))
+    label_info, label_alarms = (
+        ([], []) if args.no_league_labels else check_league_labels(db_path))
 
     if args.porcelain:
         for s in statuses:
@@ -485,12 +551,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"SUPPLY\t{q}")
         for q in supply_alarms:
             print(f"SUPPLY-STALE\t{q}")
+        for q in label_info:
+            print(f"LEAGUE-LABEL\t{q}")
+        for q in label_alarms:
+            print(f"LEAGUE-LABEL-SPLIT\t{q}")
     else:
         report = render(statuses, db_path, today)
         if supply_info or supply_alarms:
             report += "\n\n  — 模型供应链(体检 W1:哨兵以前只看采集表)—"
             report += "".join(f"\n  · {q}" for q in supply_info)
             report += "".join(f"\n  ✗ {q}" for q in supply_alarms)
+        if label_info or label_alarms:
+            report += "\n\n  — 联赛标签双轨(2026-08-05:模块早就描述了这个病,却没人在报)—"
+            report += "".join(f"\n  · {q}" for q in label_info)
+            report += "".join(f"\n  ✗ {q}" for q in label_alarms)
         if quota_alarms:
             report += "\n" + "\n".join(f"⚠️ 配额: {q}" for q in quota_alarms)
         if probe_fails:
@@ -505,7 +579,9 @@ def main(argv: list[str] | None = None) -> int:
     # the daily_settle chain's osascript push fires for it too (P1#13: the
     # pull-only panels meant a burned-out key was discovered days later).
     # 体检 W1:模型供应链报警(artifact/源树超龄)同乘 — D1 冻结类必须响。
-    return 1 if (crit_stale or quota_alarms or supply_alarms) else 0
+    # 2026-08-05:联赛标签劈开/未知**同乘**这条非零退出 —— 它损坏的是「按联赛
+    # 分人口」这件事本身(P3 计数、CLV 闸的 FDR 家族),和捕获表停更一样值得人看。
+    return 1 if (crit_stale or quota_alarms or supply_alarms or label_alarms) else 0
 
 
 if __name__ == "__main__":

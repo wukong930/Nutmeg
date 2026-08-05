@@ -34,6 +34,19 @@ _EN_TO_CN: dict[str, str] = {
     "FRA_LIGUE_2": "法乙",
     "NED_EREDIVISIE": "荷甲",
     "PRT_PRIMEIRA_LIGA": "葡超",
+    # ⭐ 2026-08-05 补漏。本表上面那句注释说自己取自「v4_model ∪ v4_model_cat 的
+    # team_state」—— 那个并集是 **14** 个(生产 artifact v4_model_cat 有 14,含
+    # BEL_PRO_LEAGUE;旧 lgb 的 v4_model 只有 13),而表里一直只有 13。
+    # 后果**不是**少一行文案:中文轨 `classify_league('比甲')` 落到 `unknown`
+    # ⇒ `is_domestic_club_league` 判 False ⇒ 比甲的 cron 行(占 86% 的中文轨)
+    # 整个掉出 δ 的 P3 预注册计数 —— 正是本文件 `classify_league` docstring 里
+    # 拿丹超举的那个「活例」,只是活例本身就在表里躺着没人发现。
+    # 中文缩写不是猜的:仓库内两处**独立**映射都写 比甲(dashboard 的联赛字典 +
+    # team_name_zh 的「比甲 BEL_PRO_LEAGUE (Belgian Pro League) — 16 teams」)。
+    # ⚠️ 竞彩(sporttery)自己写什么标签**尚未观测到**(比甲休赛期,库里 0 行),
+    # 所以只补 EN→CN,**不编**中文同义词。真标签冒出来时 `check_league_labels`
+    # 会把它报成 unknown/劈开,那时照证据补进 `_CN_SYNONYM`。
+    "BEL_PRO_LEAGUE": "比甲",
     "JPN_J1": "日职",
     # non-trained labels OBSERVED in jingcai_sp (exploratory-only leagues)
     "WC": "世界杯",
@@ -59,11 +72,16 @@ _CN_SYNONYM: dict[str, str] = {
     "日职联": "日职",          # common variant of the J1 abbrev
 }
 
-#: The 13-league confirmatory universe (canonical CN form) — the production
-#: artifact's training face. Pre-registered: only these leagues can CONFIRM.
+#: The confirmatory universe (canonical CN form) — the production artifact's
+#: training face. Pre-registered: only these leagues can CONFIRM.
+#: 2026-08-05:13 → 14,补 比甲。理由同上面 `_EN_TO_CN` 里那段 —— 生产 artifact
+#: 的 team_state 一直有 BEL_PRO_LEAGUE,是本表当初漏了,不是预注册故意排除它。
+#: ⚠️ 日职**留着**:JPN_J1 在两个 artifact 的 team_state 里都在 ⇒ 它属于**训练**
+#: 面。服务侧 V12 W7 把 J1 移出模型盘走市场模式(OOD),那是**服务集**的事;
+#: 两个集合本来就不必相等,别拿服务集去删训练集(我差点这么干)。
 TRAINED_LEAGUES_CN: frozenset[str] = frozenset({
     "英超", "英冠", "西甲", "西乙", "德甲", "德乙",
-    "意甲", "意乙", "法甲", "法乙", "荷甲", "葡超", "日职",
+    "意甲", "意乙", "法甲", "法乙", "荷甲", "葡超", "比甲", "日职",
 })
 
 # ── 「国内俱乐部联赛」谓词(prereg v1.8 §2 P3,2026-07-27)────────────────────
@@ -83,6 +101,14 @@ TRAINED_LEAGUES_CN: frozenset[str] = frozenset({
 _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     "世界杯", "欧洲杯", "美洲杯", "亚洲杯", "非洲杯", "世预赛", "欧国联",  # 国家队
     "欧冠", "欧罗巴", "欧协联",                                           # 洲际俱乐部杯
+    # ⭐ 第三类:**国内**俱乐部杯赛。本集合原来的注释只写了上面两类,而 P3 要的是
+    # 「国内俱乐部**联赛**」—— 国内杯赛既不是国家队也不是洲际杯,却同样不在
+    # δ 的拟合人口里(δ 拟合在 football-data 各国**联赛** CSV 上)。
+    # 2026-08-05:新上线的 `check_league_labels` 探针**第一天**就把 巴西杯 报成
+    # unknown(14 行,08-02~08-06)—— 证据:对手是 Santos/Gremio/Mirassol 等俱乐部,
+    # 且 巴甲 在同一张表里另有标签;结构对应物 `COPA_DEL_REY` 在竞赛注册表里正是
+    # `club_cup`。EN 轨走 `CUP_COMPETITIONS` 本来就排除它,这里是把中文轨对齐。
+    "巴西杯",
 })
 
 #: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。
@@ -137,3 +163,60 @@ def canonical_league(label: str | None) -> str:
         return "(未标联赛)"
     s = str(label).strip()
     return _EN_TO_CN.get(s) or _CN_SYNONYM.get(s) or s
+
+
+def league_filter_variants(labels) -> set[str]:
+    """把一组联赛(任一轨的写法)展开成**所有等价的 RAW 写法**,给 ``WHERE league
+    IN (…)`` 用。
+
+    ⭐ 为什么需要它:``canonical_league`` 只在**行拿到手之后**才能用,而
+    ``WHERE`` 是在拿到手之前跑的。2026-08-05 我自己踩了这个坑 —— 拿 13 个 V4
+    代码查 ``jingcai_sp`` 得到 0 行,而 cron 写的是中文,86% 的行根本没被问到。
+    **0 行长得和「没有数据」一模一样**,我差一点就据此说「管道坏了」。
+    这是本项目反复出现的「分不出『没有』和『没去看』」。
+
+    ⚠️ 回填**不能**替代它:回填只是把两轨并成一轨,拿**另一轨**的写法去查照样 0 行。
+
+    传字符串会被当成可迭代的字符序列 —— 那正是 [[health-check-guardrails]] 里
+    「``leagues="all"`` 退化成子串判断」那个洞,所以这里直接拒绝。
+    """
+    if isinstance(labels, str):
+        raise TypeError("league_filter_variants 要一组标签,不是单个字符串 "
+                        "(字符串会退化成逐字符迭代)")
+    want = {canonical_league(x) for x in labels}
+    out: set[str] = set()
+    for raw, cn in list(_EN_TO_CN.items()) + list(_CN_SYNONYM.items()):
+        if cn in want:
+            out.add(raw)
+    # 规范形自己也是一种合法写法(cron 就直接写它)
+    out |= want
+    return out
+
+
+def audit_label_tracks(labels) -> dict[str, list]:
+    """观测到的一组 RAW 标签 → ``{"split": [...], "unknown": [...]}``。
+
+    ``split``   同一个规范联赛出现了 **>1 种写法**(= 本模块开头描述的那个病:
+                一个联赛被劈成两组,per-league N 被稀释)。
+    ``unknown`` ``classify_league`` 判不出来的标签。``classify_league`` 的
+                docstring 早就写着 unknown「**必须被报出来**」,但在 2026-08-05
+                之前**没有任何地方调它来报** —— 设计好的警报从来没接线,
+                同「检查的前提没人检查」那一族。
+
+    纯函数,不碰 DB;调用方(``data_freshness.check_league_labels``)负责取标签。
+    """
+    if isinstance(labels, str):
+        raise TypeError("audit_label_tracks 要一组标签,不是单个字符串")
+    by_canon: dict[str, set[str]] = {}
+    unknown: set[str] = set()
+    for raw in labels:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        by_canon.setdefault(canonical_league(s), set()).add(s)
+        if classify_league(s) == "unknown":
+            unknown.add(s)
+    split = sorted(
+        (cn, sorted(v)) for cn, v in by_canon.items() if len(v) > 1
+    )
+    return {"split": split, "unknown": sorted(unknown)}

@@ -112,7 +112,11 @@ def test_league_labels_canonicalized_into_one_gate_group(tmp_path):
 
 
 def test_canonical_league_failopen_and_trained_set():
-    from nutmeg.v4.data.league_labels import TRAINED_LEAGUES_CN, canonical_league
+    from nutmeg.v4.data.league_labels import (
+        _EN_TO_CN,
+        TRAINED_LEAGUES_CN,
+        canonical_league,
+    )
 
     assert canonical_league("EPL") == "英超"
     assert canonical_league("WC") == "世界杯"
@@ -120,7 +124,14 @@ def test_canonical_league_failopen_and_trained_set():
     assert canonical_league("芬超") == "芬超"            # already canonical → identity
     assert canonical_league("KOR_K1_SOMETHING") == "KOR_K1_SOMETHING"  # fail-open
     assert canonical_league(None) == "(未标联赛)" and canonical_league(" ") == "(未标联赛)"
-    assert len(TRAINED_LEAGUES_CN) == 13 and "日职" in TRAINED_LEAGUES_CN
+    # 2026-08-05:原来写的是 `len(TRAINED_LEAGUES_CN) == 13`。补上漏掉的比甲之后
+    # 它红了 —— 但红的是**计数**,不是这条用例关心的性质。硬编码个数等于把
+    # 「这张表将来一定会增补」变成一次必然的假红,而改字面量只是把同一个陷阱
+    # 重新上膛(同 [[syntactic-proxy-for-semantic-property]]「断言值别连带断言结构」)。
+    # 表和生产的对应关系由 test_league_label_tracks.py::TestTableCannotDriftFromProduction
+    # 专门守;这里只钉本用例真正依赖的那两点。
+    assert "日职" in TRAINED_LEAGUES_CN                 # 训练面 ≠ 服务集(J1 走市场模式)
+    assert set(_EN_TO_CN.values()) >= TRAINED_LEAGUES_CN, "训练面里出现了映射表没有的写法"
 
 
 def test_hhad_selected_reverse_fits_capture_ou(tmp_path):

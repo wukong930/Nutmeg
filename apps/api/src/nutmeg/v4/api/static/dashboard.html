@@ -2225,7 +2225,7 @@ const I18N = {
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
     sw_second:        '次优',
     pb_hdr:           '串关构造器',
-    pb_note:          '当天<b>每场可投注比赛各出一条最优腿</b>(按判闸下界 evLo;竞彩混合过关禁同场两腿),再枚举组合按 ∏(1+evLo) 排序。<b>⚠️ 它不会给你正数</b> —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。<br>⭐ <b>池故意不设地板</b>:873 个比赛日实测,无地板 2串 −12.5%/3串 −25.2% 是最好的;地板抬到 0% 变成 −42.9%/−100%(n=34),抬到 +5% 全军覆没 —— 筛得越狠,选中的越是被高估的腿(赢家诅咒)。<br>⭐ <b>只串同一天</b>(默认开):竞彩常连列 2–3 天,今天的腿串明天的会拉长暴露窗口。<b>注意「一天」按竞彩的期算,北京 12:00 换日(实测 228 场零例外)</b>,所以周日晚 22 点和周一凌晨 3 点算同一期。<b>⚠️ 这条规则本身有没有用我测不出来</b> —— 档案只有终盘价,没有「D−2 时刻的竞彩价」;按终盘距开球分箱 ROI 也分不出来(&lt;6h −12.3% vs &gt;48h −12.3%),那测的是终盘新鲜度不是提前几天下注。所以它是个**开关**不是结论,代价只是候选变少。<br>⭐ <b>腿越少越好</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2% &lt; 4串 −30.4%(4 串命中率仅 1.1%)。上面那条 1 串参考就是实测最优选项。按「历史实测」定注额,别按「理论 EV」—— 后者在全正腿相乘时会让 3 串看起来比 2 串好,那是反的。',
+    pb_note:          '当天<b>每场可投注比赛各出一条最优腿</b>(按判闸下界 evLo;竞彩混合过关禁同场两腿),再枚举组合按 ∏(1+evLo) 排序。<b>⚠️ 它不会给你正数</b> —— 串关 EV = ∏(1+EVᵢ)−1 是恒等式,腿不 +EV 串起来只是把负 EV 指数放大。<br>⭐ <b>池故意不设地板</b>:873 个比赛日实测,无地板 2串 −12.5%/3串 −25.2% 是最好的;地板抬到 0% 变成 −42.9%/−100%(n=34),抬到 +5% 全军覆没 —— 筛得越狠,选中的越是被高估的腿(赢家诅咒)。<br>⭐ <b>只串同一天</b>(默认开):竞彩常连列 2–3 天,今天的腿串明天的会拉长暴露窗口。<b>注意「一天」按竞彩的期算,北京 12:00 换日(实测 228 场零例外)</b>,所以周日晚 22 点和周一凌晨 3 点算同一期。<b>⚠️ 这条规则本身有没有用我测不出来</b> —— 档案只有终盘价,没有「D−2 时刻的竞彩价」;按终盘距开球分箱 ROI 也分不出来(&lt;6h −12.3% vs &gt;48h −12.3%),那测的是终盘新鲜度不是提前几天下注。所以它是个**开关**不是结论,代价只是候选变少。<br>⭐ <b>腿越少越好</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2% &lt; 4串 −30.4%(4 串命中率仅 1.1%)。上面那条 1 串参考就是实测最优选项。按「历史实测」定注额,别按「理论 EV」—— 后者在全正腿相乘时会让 3 串看起来比 2 串好,那是反的。<br>⭐ <b>腿行的数字是「点估 ± 带」,票面的「理论 EV」是「下界之积」</b>(2026-08-05 改)。两者**故意不同口径**:± 带按定义就是围绕点估的半宽(δ 带 ⊕ 冻结带),挂到下界后面会造出一个不存在的统计量。腿行的<b>颜色仍由下界决定</b>,所以判闸一点没放松;改的只是那个数字从「下界」变成「点估 ± 带」—— 点估比下界好看,所以它<b>必须</b>带着 ± 一起出现。这三处(甜区榜 / 串关腿行 / 点进去那张卡片)现在走同一个函数,不会再各印各的。',
     pb_info_tip:      '点击查看说明',
     // ⚠️ 2026-08-04 owner 撤掉了它的渲染点(卡顶那行常驻小字)。**键故意留着** ——
     // 它是这张卡唯一一句常驻的「不会给正数」,恢复只需把那一行 <div> 加回去。
@@ -2758,7 +2758,7 @@ const I18N = {
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
     sw_second:        '2nd',
     pb_hdr:           'parlay builder',
-    pb_note:          'One best leg per bettable match today (ranked by the gate lower bound evLo; 竞彩 forbids two legs from one match), then combinations ranked by product(1+evLo). <b>It will NOT hand you a positive number</b> — parlay EV = product(1+EVi)-1 is an identity.<br>The pool deliberately has NO floor: measured over 873 matchdays, no-floor is best (2-leg -12.5%, 3-leg -25.2%); a 0% floor collapses to -42.9% / -100% (n=34) and a +5% floor wipes out entirely — the harder you select on EV, the more you pick over-estimated legs (winner curse).<br>Same-day only (default on): 竞彩 often lists 2-3 days at once, and mixing days stretches the exposure window. Note that "day" means the 竞彩 matchday, which rolls over at 12:00 Beijing (measured, 228 matches, zero exceptions), so Sunday 22:00 and Monday 03:00 are the same day. <b>Whether the rule itself helps is NOT measured</b> — the archive only has closing prices, and binning ROI by time-to-kickoff shows nothing (&lt;6h -12.3% vs &gt;48h -12.3%), which measures closing-price freshness, not how early you bet. So it is a toggle, not a conclusion; the only cost is fewer candidates.<br>Fewer legs is better: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2% &lt; 4-leg -30.4% (4-leg hits only 1.1% of the time). The single-leg reference above is the best measured option. Size off the historical number, not the theoretical EV — with all-positive legs the latter makes a 3-leg look better than a 2-leg, which is backwards.',
+    pb_note:          'One best leg per bettable match today (ranked by the gate lower bound evLo; 竞彩 forbids two legs from one match), then combinations ranked by product(1+evLo). <b>It will NOT hand you a positive number</b> — parlay EV = product(1+EVi)-1 is an identity.<br>The pool deliberately has NO floor: measured over 873 matchdays, no-floor is best (2-leg -12.5%, 3-leg -25.2%); a 0% floor collapses to -42.9% / -100% (n=34) and a +5% floor wipes out entirely — the harder you select on EV, the more you pick over-estimated legs (winner curse).<br>Same-day only (default on): 竞彩 often lists 2-3 days at once, and mixing days stretches the exposure window. Note that "day" means the 竞彩 matchday, which rolls over at 12:00 Beijing (measured, 228 matches, zero exceptions), so Sunday 22:00 and Monday 03:00 are the same day. <b>Whether the rule itself helps is NOT measured</b> — the archive only has closing prices, and binning ROI by time-to-kickoff shows nothing (&lt;6h -12.3% vs &gt;48h -12.3%), which measures closing-price freshness, not how early you bet. So it is a toggle, not a conclusion; the only cost is fewer candidates.<br>Fewer legs is better: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2% &lt; 4-leg -30.4% (4-leg hits only 1.1% of the time). The single-leg reference above is the best measured option. Size off the historical number, not the theoretical EV — with all-positive legs the latter makes a 3-leg look better than a 2-leg, which is backwards.<br>Leg rows show the POINT estimate with its band; the theoretical EV on the ticket line is the product of LOWER BOUNDS (changed 2026-08-05). The two bases differ on purpose: the band is by definition the half-width around the point estimate (delta band combined with the freeze band), so hanging it off the lower bound would invent a statistic that does not exist. Leg colour is still driven by the lower bound, so nothing about gating got looser; only the printed number moved from lower bound to point-plus-band — and since the point estimate flatters, it MUST always appear with its band. The sweet-spot board, the parlay leg rows and the match card you jump to now share one function.',
     pb_info_tip:      'tap for the explanation',
     pb_note_short:    'Never positive · fewer legs is better · size off the historical number',
     pb_1x_tag:        'best measured, but handicap legs cannot be single-bet',
@@ -4871,15 +4871,32 @@ function _sweetLegs(pr, idx, mode) {
 function _offSweetPassingLegs(pr, idx, mode) {
   return _boardLegs(pr, idx, mode).filter(l => l.tier !== 'sweet' && l.evLo >= 0.05);
 }
-function _sweetLegHtml(lg) {
+// 2026-08-05 —— 一条腿的「EV 点估 ± 带」,**甜区榜和串关构造器共用这一份**。
+//
+// ⭐ 抽出来的理由不是 DRY 好听,是**同一条腿在同一页上曾经有两个数**:甜区榜印
+// `ev ± 带`,串关腿行印 `evLo`(下界,更保守)。点一下串关腿跳到卡片,卡片印的又是
+// `ev ± 带` —— 三处两套口径,而它们说的是同一注。
+//
+// 为什么带只能挂在 `ev` 上:`half = hypot(ev − evLo, 冻结带)`,**按定义**就是围绕
+// 点估的半宽。写成 `evLo ± half` 会造出一个不存在的统计量 —— 比不显示更坏
+// (同「δ₊₂ 故意不出常数:编常数比缺常数更坏」)。
+//
+// ⚠️ 判闸没有变松:颜色/粗细仍由 **`evLo`** 决定,票面的「理论 EV」仍是下界之积。
+// 变的只是腿行印出来的那个点估数字 —— 它比下界好看,所以**必须**带着 ± 一起出现,
+// 单独印点估才是把眼睛往乐观那边带。
+function _legEvHtml(lg) {
   const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
   // 绿=判闸(下界)过 +5%,红=点估已负 —— 与卡片同一钱学
   const color = lg.evLo >= 0.05 ? '#059669' : (lg.ev < 0 ? '#e11d48' : '');
   const band = lg.half > 1e-9
     ? ` <span class="text-muted" style="font-size:0.9em">±${(lg.half * 100).toFixed(1)}%</span>` : '';
+  return `<span style="color:${color};font-weight:${lg.evLo >= 0.05 ? '600' : '400'}">`
+    + `EV ${f(lg.ev)}</span>${band}`;
+}
+function _sweetLegHtml(lg) {
   return `<span class="font-medium">${lg.label}</span>
     <span class="text-muted">@${lg.sp.toFixed(2)}</span>
-    <span style="color:${color};font-weight:${lg.evLo >= 0.05 ? '600' : '400'}">EV ${f(lg.ev)}</span>${band}`;
+    ${_legEvHtml(lg)}`;
 }
 function _sweetJump(mode, idx) {
   const el = document.querySelector(
@@ -5285,7 +5302,11 @@ function _parlayBuilderHtml(items) {
             <span class="text-muted">${zhLeague(l.pr.league)}</span>
             <span class="font-medium">${l.label}</span>${_tierChip(l.tier)}
             <span class="text-muted">@${l.sp.toFixed(2)}</span>
-            <span style="color:#059669">${f(l.evLo)}</span></div>`).join('')}
+            ${/* 2026-08-05 owner:腿行加 ± 带。走 `_legEvHtml` —— 和甜区榜、
+                 和跳过去的那张卡片是**同一个函数**,三处不可能再各印各的。
+                 口径见 `_legEvHtml` 的注释:印点估+带、颜色仍由下界给。
+                 票面的「理论 EV」(下一行)**不动**,仍是下界之积。 */''}
+            ${_legEvHtml(l)}</div>`).join('')}
         <div class="pl-2 text-muted">${t('pb_odds')} <b>${c.odds.toFixed(2)}</b>×
           · ${t('pb_theo')} <span style="color:${c.evLo >= 0 ? '#059669' : '#e11d48'}">${f(c.evLo)}</span>
           ${c.dup ? ` · <span class="info-i" style="color:#b45309"
@@ -5314,7 +5335,7 @@ function _parlayBuilderHtml(items) {
       <span class="text-muted">${zhLeague(b1.pr.league)}</span>
       <span class="font-medium">${b1.label}</span>${_tierChip(b1.tier)}
       <span class="text-muted">@${b1.sp.toFixed(2)}</span>
-      <span style="color:#059669">${f(b1.evLo)}</span>${_singleBadge(
+      ${_legEvHtml(b1)}${_singleBadge(
         _legIsHc(b1) ? b1.pr.jc_hc_single_available : b1.pr.jc_single_available)}</div></div></div>`;
   return `<details class="pb-card bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4"
       style="border-left:4px solid #b45309">
