@@ -332,8 +332,10 @@ def fetch_fixtures_for_date(
 ) -> list[dict[str, Any]]:
     """Pull all fixtures on the given UTC date, optionally filtered to one league."""
     params: dict[str, Any] = {"date": on_date.isoformat()}
+    lid: int | None = None
     if league_canonical:
-        params["league"] = league_id(league_canonical)
+        lid = league_id(league_canonical)
+        params["league"] = lid
         # Season is league-aware: European leagues use the Aug–Jul heuristic,
         # calendar-year leagues (J1 etc.) use the date's year. See
         # season_for_date — getting this wrong returns 0 fixtures.
@@ -349,7 +351,57 @@ def fetch_fixtures_for_date(
                 return _request("/fixtures", params, cache_dir=cache_dir, refresh=True)
             except ApiFootballError:
                 pass  # keep the stale cache rather than break the board
-    return _request("/fixtures", params, cache_dir=cache_dir, refresh=refresh)
+    rows = _request("/fixtures", params, cache_dir=cache_dir, refresh=refresh)
+    if lid is not None and not rows:
+        rows = _confirm_absence_by_date(on_date, lid, league_canonical,
+                                        cache_dir=cache_dir, refresh=refresh)
+    return rows
+
+
+#: 2026-08-05 —— **「合法地返回 [] 」和「真的没有比赛」长得一模一样**,这一条修的就是它。
+#:
+#: 实测事故:J1 从 2026-08-07 起改秋春制,API-Football 把这批 fixture 标成
+#: ``season=2027``,而 `season_for_date` 两个分支都给 2026(日历年分支 = 当年;
+#: 欧洲启发式对 8 月也 = 当年)⇒ 带 league 过滤的查询**合法地**返回 ``[]``,
+#: 缓存文件字面就是 2 字节的 ``[]``。面板上 J1 整个消失,而且没有任何报错。
+#: ⚠️ 「把 JPN_J1 移出 CALENDAR_YEAR_LEAGUES」这个显而易见的修法**是错的** ——
+#: 两个分支都产生不了 2027。
+#:
+#: 修法不是给每个联赛维护一张赛制切换表(那还是在猜),而是**让 API 自己说**:
+#: 同一天**不带 league** 的查询覆盖全部联赛、且每个 fixture 自带 ``league.season``。
+#: 实测 2026-08-07:324 场 / 142 个联赛,里面就有那 2 场 J1(season=2027)。
+#:
+#: 代价:每个日期最多**多打 1 次**(不带 league 的响应按日期缓存,当天所有联赛共用),
+#: 换来的是 0 场从「可能是我 season 猜错了」变成**可证的缺席**。
+def _confirm_absence_by_date(
+    on_date: date,
+    lid: int,
+    league_canonical: str | None,
+    *,
+    cache_dir: Path,
+    refresh: bool,
+) -> list[dict[str, Any]]:
+    """league+season 查询空了 → 用同日的**无过滤**查询复核,并按 league id 筛。"""
+    import logging
+
+    try:
+        # league_canonical=None ⇒ 不带 league/season ⇒ 不会再触发本函数(无递归)
+        all_rows = fetch_fixtures_for_date(
+            on_date, None, cache_dir=cache_dir, refresh=refresh)
+    except ApiFootballError:
+        return []          # 网络/额度问题:退回「就是没有」,不比修复前更差
+    hit = [r for r in all_rows if ((r.get("league") or {}).get("id")) == lid]
+    if hit:
+        # ⚠️ 必须喊出来。自愈而不告诉你 = 你永远不知道 season 表已经错了,
+        # 直到某天连按日兜底也失效。同「零新增 ≠ 扫完了」。
+        seasons = sorted({(r.get("league") or {}).get("season") for r in hit})
+        logging.getLogger(__name__).warning(
+            "season 推导错了:%s %s 按 season=%s 查得 0 场,而按日查回 %d 场"
+            "(API 实际 season=%s)—— 已用按日结果兜住;该联赛可能改了赛制,"
+            "去核对 CALENDAR_YEAR_LEAGUES / season_for_date",
+            league_canonical, on_date,
+            season_for_date(on_date, league_canonical), len(hit), seasons)
+    return hit
 
 
 def fetch_fixtures_for_league_season(

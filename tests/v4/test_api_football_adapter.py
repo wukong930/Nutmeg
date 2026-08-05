@@ -373,6 +373,12 @@ class TestUpcomingFixtureTTL:
         calls: list[bool] = []
 
         def fake_request(endpoint, params, *, cache_dir=None, refresh=False, **kw):
+            # 2026-08-05 —— **只记 league 查询**。新加的「按日兜底」(league 查询空了
+            # 就用同日无过滤查询复核,见 `_confirm_absence_by_date`)会多打一次不带
+            # league 的调用;本类测的是 **TTL/refresh 标志**,不是调用次数,所以把
+            # 兜底那一跳排除在计数外,而不是去掉兜底。
+            if "league" not in params:
+                return []                    # 兜底:确认「真的没有」,不影响本类断言
             calls.append(refresh)
             if refresh:
                 if raise_on_refresh:
