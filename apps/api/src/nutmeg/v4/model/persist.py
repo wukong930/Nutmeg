@@ -34,6 +34,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
+from nutmeg.utils.team_canonical import resolve_serving_name
 from nutmeg.v4.calibration.temperature import TemperatureCalibrator
 from nutmeg.v4.features import GBM_FEATURE_COLUMNS
 from nutmeg.v4.features.clubelo_features import build_clubelo_features
@@ -398,11 +399,30 @@ def build_features_for_fixtures(
     unknown_teams: list[str] = []
     n_rest_ood = 0
 
+    # 2026-08-05 —— 这里曾是裸 `dict.get(队名)`。而 `team_state` 的键来自
+    # football-data.co.uk("Bochum"/"Hertha"),服务侧喂进来的是 API-Football
+    # 的注册名("VfL Bochum"/"Hertha BSC")⇒ **39.9% 的队名对不上**,静默吃
+    # Elo=1500 占位。实测当天 8 条腿里 3 条中招,单腿 P 偏 5~9pp。
+    #
+    # 走 `resolve_serving_name`(确定性三级 + 法定记号剥离,**没有 fuzzy**)。
+    # 每个联赛的解析表**建一次**,不是逐行现算 —— 一天几十场、每场两队,
+    # 逐行去扫 30 支球队的 pool 是白烧 CPU。
+    _resolved: dict[str, dict[str, object]] = {}
+
+    def _state_for(league: str, name: str):
+        cache = _resolved.setdefault(league, {})
+        if name in cache:
+            return cache[name]
+        teams = artifact.team_state.get(league, {})
+        hit = resolve_serving_name(name, league, teams.keys())
+        st = teams.get(hit.canonical) if hit.canonical else None
+        cache[name] = st
+        return st
+
     for i, row in enumerate(out.itertuples(index=False)):
         league = row.league
-        teams = artifact.team_state.get(league, {})
-        sh = teams.get(row.home_team)
-        sa = teams.get(row.away_team)
+        sh = _state_for(league, row.home_team)
+        sa = _state_for(league, row.away_team)
         if sh is None:
             unknown_teams.append(f"{league}:{row.home_team}")
         if sa is None:
@@ -433,7 +453,10 @@ def build_features_for_fixtures(
     if unknown_teams or n_rest_ood:
         preview = ", ".join(sorted(set(unknown_teams))[:5])
         log.warning(
-            "served-with-defaults: %d 队名不在 team_state(Elo=1500+form NaN)%s%s"
+            # 队名解析(精确/归一化/别名/法定记号剥离)已经跑过还是没命中 ⇒
+            # 这队**真的没在训练集里**(升班马/新队),不是名字对不上 ——
+            # 修法是重训,不是补别名。
+            "served-with-defaults: %d 队解析后仍不在 team_state(Elo=1500+form NaN)%s%s"
             "; rest_days>%.0fd(分布外)%d 腿 — 行为未变,只计数",
             len(unknown_teams), " — " if preview else "", preview,
             _REST_DAYS_OOD, n_rest_ood)

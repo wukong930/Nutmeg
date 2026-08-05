@@ -18,6 +18,7 @@ adding an explicit alias when ingest reports it as unmatched.
 from __future__ import annotations
 
 import difflib
+import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -165,7 +166,10 @@ TEAM_ALIASES: dict[str, dict[str, str]] = {
         "az": "AZ Alkmaar",
         "sparta rotterdam": "Sparta Rotterdam",
         "go ahead eagles": "Go Ahead Eagles",
-        "nec nijmegen": "NEC Nijmegen",
+        # ⚠️ 目标必须是 team_state 里真实存在的键。这条曾写成 "NEC Nijmegen"
+        # (football-data 用的是 "Nijmegen")—— 别名存在但指向池外,等于没写,
+        # 而且比没写更坏:表里有一行,看起来像已经处理过了。2026-08-05 修。
+        "nec nijmegen": "Nijmegen",
         "rkc waalwijk": "Waalwijk",
         "fc groningen": "Groningen",
         "willem ii": "Willem II",
@@ -177,8 +181,10 @@ TEAM_ALIASES: dict[str, dict[str, str]] = {
     "PRT_PRIMEIRA_LIGA": {
         "fc porto": "Porto",
         "sl benfica": "Benfica",
-        "sporting cp": "Sporting",
-        "sporting clube de portugal": "Sporting",
+        # 同「指向池外」的死别名:football-data 管葡体叫 "Sp Lisbon",不叫
+        # "Sporting"。葡超豪门因此一直吃 1500 占位 Elo。2026-08-05 修。
+        "sporting cp": "Sp Lisbon",
+        "sporting clube de portugal": "Sp Lisbon",
         "sc braga": "Sp Braga",
         "vitoria sc": "Guimaraes",
         "vitoria de guimaraes": "Guimaraes",
@@ -193,6 +199,50 @@ TEAM_ALIASES: dict[str, dict[str, str]] = {
         "gd chaves": "Chaves",
         "santa clara": "Santa Clara",
         "moreirense fc": "Moreirense",
+    },
+    # ── 以下 6 个联赛此前**完全没有别名块** ───────────────────────────────
+    # 它们都在 14 个训练联赛之内,但别名表只覆盖了顶级联赛 ⇒ 服务侧队名解析
+    # 一直靠 fuzzy 兜底,而 fuzzy 在服务侧已被关掉(见 `resolve_serving_name`)。
+    #
+    # 这批条目**不是手写猜的**,是 2026-08-05 用两条可复核的判据筛出来的:
+    #   ① 归一化后词元包含,且在该联赛 team_state 池内**唯一**;
+    #   ② 目标必须出现在 football-data 该联赛**最新赛季**的名单里。
+    # 判据②拦掉了三条看起来很像、其实是升降级换人的毒配对:
+    #   "Rouen" ↛ "Quevilly Rouen"(两家不同俱乐部,后者 2324 后就不在队列)
+    #   "SK Beveren" ↛ "Waasland-Beveren"(2021 之后消失,就算真是改名也已陈旧)
+    #   "ADO Den Haag" ↛ "Den Haag"(已降级)
+    # 纯前缀差异("VfL Bochum"→"Bochum")不在这里 —— 那由 `_affix_core` 规则
+    # 自动处理,写进表里反而会随赛季腐烂。
+    "BEL_PRO_LEAGUE": {
+        "standard liege": "Standard",
+        "union st gilloise": "St. Gilloise",
+        "zulte waregem": "Waregem",
+    },
+    "ENG_CHAMPIONSHIP": {
+        "hull city": "Hull",
+    },
+    "ESP_SEGUNDA_DIVISION": {
+        "deportivo la coruna": "La Coruna",
+        "racing santander": "Santander",
+    },
+    "FRA_LIGUE_2": {
+        "clermont foot": "Clermont",
+        # ⚠️ 别名表按联赛分 ⇒ 球队降级就丢映射。这条在 FRA_LIGUE_1 里早就有,
+        # 圣埃蒂安降到乙级后又要重写一遍。补一条比让它吃 1500 便宜。
+        "saint etienne": "St Etienne",
+    },
+    "GER_2_BUNDESLIGA": {
+        "arminia bielefeld": "Bielefeld",
+        "karlsruher sc": "Karlsruhe",       # 形容词式词尾,剥前缀规则够不着
+        "dynamo dresden": "Dresden",
+        "eintracht braunschweig": "Braunschweig",
+    },
+    "JPN_J1": {
+        "fagiano okayama": "Okayama",
+        "kashima": "Kashima Antlers",
+        "kyoto sanga": "Kyoto",
+        "machida zelvia": "Machida",
+        "urawa": "Urawa Reds",
     },
 }
 
@@ -281,7 +331,7 @@ def to_v4_canonical(
     name: str,
     league: str,
     v4_team_pool: Iterable[str],
-    fuzzy_threshold: float = 0.86,
+    fuzzy_threshold: float | None = 0.86,
 ) -> CanonicalLookupResult:
     """Resolve an external team name to its V4 canonical name.
 
@@ -294,6 +344,11 @@ def to_v4_canonical(
 
     fuzzy_threshold of 0.86 is conservative; lower threshold causes silent
     wrong joins (e.g., "Real Madrid" vs "Real Sociedad" ratio ~0.79).
+
+    ``fuzzy_threshold=None`` **disables step 4 entirely** — the lookup becomes
+    fully deterministic. 服务侧走的就是这条(见 `resolve_serving_name`):
+    「关掉模糊」是一个**有名字的状态**,不是「把阈值调到恰好不可达」——
+    后者会在有人改动第 4 级时静默失效。
     """
     if not name:
         return CanonicalLookupResult(None, "unmatched", 0.0)
@@ -314,12 +369,83 @@ def to_v4_canonical(
         canonical = league_aliases[name_norm]
         if canonical in pool:
             return CanonicalLookupResult(canonical, "alias", 1.0)
-    # 4. fuzzy
+    # 4. fuzzy (opt-out: None ⇒ 到此为止,只走确定性的三级)
+    if fuzzy_threshold is None:
+        return CanonicalLookupResult(None, "unmatched", 0.0)
     matches = difflib.get_close_matches(name_norm, list(pool_norm.keys()), n=1, cutoff=fuzzy_threshold)
     if matches:
         canonical = pool_norm[matches[0]]
         ratio = difflib.SequenceMatcher(None, name_norm, matches[0]).ratio()
         return CanonicalLookupResult(canonical, "fuzzy", ratio)
+    return CanonicalLookupResult(None, "unmatched", 0.0)
+
+
+#: 俱乐部**法定形式**记号。football-data.co.uk 一律剥掉("VfL Bochum" → "Bochum"、
+#: "1. FC Nürnberg" → "Nurnberg"),而 API-Football 保留完整注册名。
+#:
+#: ⚠️ 这张表**只收法律形式/社团后缀**,绝不收任何地名、队名词或队伍身份标记:
+#:   · 不收 ``b`` / ``ii`` —— 预备队标记有意义,剥掉会把 "Sociedad B" 并进 "Sociedad"。
+#:   · 不收 ``club`` —— "Club Brugge KV" 剥掉 ``kv`` 后已与 "Club Brugge" 相等,
+#:     多剥一个只会让 "Cercle Brugge" 之类更容易撞上。
+#: 表越小越安全:每多一个词元,就多一次把两支不同球队折叠成同一个 core 的机会。
+_LEGAL_FORM_TOKENS = frozenset({
+    "fc", "sc", "sv", "vfl", "vfb", "spvgg", "kv", "kvc", "bsc", "tsg", "fsv", "msv",
+    "ad", "cf", "cd", "ud", "rc", "ca", "ac", "as", "ss", "ssc", "sk", "afc", "cfc",
+    "1",
+})
+#: 队名里的成立年份:"Hannover 96" / "Darmstadt 98" / "Schalke 04"。两侧**对称**
+#: 剥离后再比,所以 "FC Schalke 04" 和 "Schalke 04" 都归到 ``("schalke",)``。
+_FOUNDING_YEAR = re.compile(r"^(0[0-9]|1[0-9]|[5-9][0-9])$")
+
+
+def _affix_core(name: str) -> tuple[str, ...]:
+    """归一化后剥掉法定形式记号与成立年份,返回剩下的词元。
+
+    这是一条**规则**,不是逐队的猜测:它只能删掉封闭表里的记号,没法把
+    "Kashima" 变成 "Tokushima"。配合调用方的「池内唯一」要求即可安全使用。
+    """
+    return tuple(
+        tok for tok in normalize_name(name).split()
+        if tok not in _LEGAL_FORM_TOKENS and not _FOUNDING_YEAR.match(tok)
+    )
+
+
+def resolve_serving_name(
+    name: str,
+    league: str,
+    v4_team_pool: Iterable[str],
+) -> CanonicalLookupResult:
+    """服务侧队名解析 —— **全确定性,没有模糊那一级**。
+
+    `to_v4_canonical` 的前三级(精确 / 归一化精确 / 别名)原样复用,第四级把
+    ``fuzzy`` 换成 `_affix_core` + 池内唯一。
+
+    ## 为什么服务侧必须关掉 fuzzy(2026-08-05 实测)
+
+    拿 203 个 API-Football 队名对 14 个联赛的 ``team_state`` 量了一遍:
+
+    * fuzzy@0.86 在 81 条缺失里只捞回 **2** 条(2.5%),却要承担全部误配风险;
+    * 把阈值降到能捞回东西的高度,毒配对同时进来 —— ``VfL Bochum → Bochum``
+      (对)和 ``Kashima → Tokushima``(错)**相似度都是 0.750**,不存在能把
+      两者分开的阈值;
+    * 降阈值后它还**优先挑错的**:``Kashima Antlers`` 就在池子里,但 ratio
+      仅 0.636,排在 ``Tokushima``(0.750)之后 —— 正确答案在场却选错。
+
+    ⇒ 高阈值几乎修不动东西,低阈值在正确答案在场时选错,两头都不成立。
+
+    `_affix_core` 则捞回 23 条且逐条复核全对,因为它只删封闭表里的法定记号,
+    构造不出跨球队的折叠。见 [[cross-source-team-name-mismatch]]。
+    """
+    pool = list(v4_team_pool)
+    hit = to_v4_canonical(name, league, pool, fuzzy_threshold=None)
+    if hit.canonical is not None:
+        return hit
+    core = _affix_core(name)
+    if not core:
+        return CanonicalLookupResult(None, "unmatched", 0.0)
+    cands = [t for t in pool if _affix_core(t) == core]
+    if len(cands) == 1:
+        return CanonicalLookupResult(cands[0], "affix", 1.0)
     return CanonicalLookupResult(None, "unmatched", 0.0)
 
 
