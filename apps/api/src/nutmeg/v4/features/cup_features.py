@@ -32,7 +32,7 @@ from nutmeg.v4.data.competitions import (
     competition_type_id,
     has_two_legged_format,
     is_cup_competition,
-    is_knockout_round,
+    is_knockout_fixture,
     is_national_team_competition,
 )
 
@@ -61,9 +61,11 @@ def derive_cup_features_single(
     """
     is_cup = is_cup_competition(league_code)
     is_nat = is_national_team_competition(league_code)
-    # is_knockout: only set for cup matches when the round label is a
-    # knockout token. League matches always emit 0.
-    is_ko = 1.0 if (is_cup and is_knockout_round(round_label)) else 0.0
+    # is_knockout: competition-first — a pure-knockout cup (FA Cup, EFL
+    # Cup) is 1 on every round including a missing label; a group-stage
+    # cup falls back to the round-label heuristic. Non-cup codes return
+    # False from the helper, so league matches still emit 0.
+    is_ko = 1.0 if is_knockout_fixture(league_code, round_label) else 0.0
     # is_two_legged: structural flag of the COMPETITION. The actual leg
     # number (1st/2nd) isn't surfaced here — finer-grained features can
     # be added later when training data includes aggregate context.

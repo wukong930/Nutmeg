@@ -23,6 +23,7 @@ from nutmeg.v4.data.competitions import (
     has_two_legged_format,
     is_club_cup_competition,
     is_cup_competition,
+    is_knockout_fixture,
     is_knockout_round,
     is_national_team_competition,
 )
@@ -116,6 +117,113 @@ class TestKnockoutRoundDetection:
     def test_non_knockout_labels(self, label):
         assert not is_knockout_round(label)
 
+    # The English-cup early rounds the token list used to miss. These 9
+    # labels are the full round vocabulary API-Football returned for the
+    # EFL Cup (league 48) season=2025 — all 93 fixtures, pulled 2026-08-05,
+    # not invented. The FA Cup (already registered) emits the same family,
+    # so it has been mis-flagging its early rounds since V6 W11.
+    @pytest.mark.parametrize("label", [
+        "Preliminary Round",
+        "1st Round",
+        "2nd Round",
+        "3rd Round",
+        "4th Round",
+        "Quarter-finals",
+        "Semi-finals",
+        "Final",
+        "Round of 128",
+    ])
+    def test_english_cup_round_labels(self, label):
+        assert is_knockout_round(label)
+
+    # Labels lifted verbatim from our own cup_history parquets (UCL/UEL/
+    # EURO/WC/COPA_AMERICA), so the heuristic is pinned against real data
+    # on both sides.
+    @pytest.mark.parametrize("label", [
+        "Preliminary round",          # UCL, lowercase variant
+        "1st Qualifying Round",       # UCL/UEL two-legged qualifier
+        "2nd Qualifying Round",
+        "3rd Qualifying Round",
+        "Knockout Round Play-offs",
+        "Play-offs",
+        "3rd Place Final",
+        "8th Finals",                 # WC 2018's Round-of-16 spelling
+        "Qualifying Play-offs Path A - Semi-Finals",
+    ])
+    def test_real_knockout_labels_from_parquets(self, label):
+        assert is_knockout_round(label)
+
+    @pytest.mark.parametrize("label", [
+        "Group Stage - 1",
+        "Group A - 6",
+        "League Stage - 8",           # UCL/UEL 2024/25 Swiss phase
+        # The trap: EURO qualifying is round-robin, 10 matchdays, 250 rows
+        # in our parquets. "1st Qualifying Round" above is a knockout tie;
+        # this is not. The trailing " - <N>" matchday suffix is what tells
+        # them apart.
+        "Qualifying Round - 1",
+        "Qualifying Round - 10",
+    ])
+    def test_real_group_labels_from_parquets(self, label):
+        assert not is_knockout_round(label)
+
+
+class TestKnockoutFixtureDispatch:
+    """Competition-first dispatch — the registry answers where it can."""
+
+    @pytest.mark.parametrize("label", [
+        "Preliminary Round",
+        "1st Round",
+        "2nd Round",
+        "3rd Round",
+        "4th Round",
+        "Quarter-finals",
+        "Semi-finals",
+        "Final",
+        "Round of 128",
+    ])
+    def test_pure_knockout_cup_every_round(self, label):
+        # FA Cup has no group phase, so the competition decides and the
+        # label never gets a vote.
+        assert is_knockout_fixture("FAC", label)
+
+    def test_pure_knockout_cup_without_label(self):
+        # The point of the competition layer: still right when the round
+        # label is missing entirely.
+        assert is_knockout_fixture("FAC", None)
+        assert is_knockout_fixture("DFB_POKAL")
+
+    def test_group_stage_cup_defers_to_label(self):
+        assert is_knockout_fixture("UCL", "Round of 16")
+        assert not is_knockout_fixture("UCL", "Group Stage - 1")
+        assert not is_knockout_fixture("UCL", "League Stage - 8")
+        assert not is_knockout_fixture("EURO", "Qualifying Round - 3")
+        # …and a group-stage cup with no label stays 0 rather than
+        # guessing.
+        assert not is_knockout_fixture("UCL", None)
+
+    def test_no_knockout_phase_never_fires(self):
+        # Round-robin qualifying: has_knockouts=False wins over any label.
+        assert not is_knockout_fixture("WC_QUAL_UEFA", "Final")
+
+    def test_non_cup_codes(self):
+        assert not is_knockout_fixture("EPL", "Round of 16")
+        assert not is_knockout_fixture("NOT_A_CODE", "Final")
+
+    def test_registry_group_stage_flags(self):
+        # Pure-knockout domestic cups — this is what makes the early
+        # rounds resolve without string parsing.
+        for code in ("FAC", "COPA_DEL_REY", "COPPA_ITALIA",
+                     "DFB_POKAL", "COUPE_DE_FRANCE"):
+            assert CUP_COMPETITIONS[code].has_group_stage is False
+        # Group/league phase then knockouts.
+        for code in ("UCL", "UEL", "UECL", "WC", "EURO", "COPA_AMERICA"):
+            assert CUP_COMPETITIONS[code].has_group_stage is True
+        # has_knockouts is not a substitute for has_group_stage: UCL has
+        # both, which is exactly why the label heuristic still exists.
+        assert CUP_COMPETITIONS["UCL"].has_knockouts is True
+        assert CUP_COMPETITIONS["WC_QUAL_UEFA"].has_knockouts is False
+
 
 # ---------- API-Football integration ----------------------------------
 
@@ -185,6 +293,22 @@ class TestDeriveCupFeaturesSingle:
         assert f["is_knockout"] == 0.0
         # But two-legged is a structural property of the competition
         assert f["is_two_legged"] == 1.0
+
+    def test_fa_cup_early_round_is_knockout(self):
+        # Was 0 before the competition-first dispatch: "3rd Round" hit no
+        # token in the old label list, so 84 of the EFL Cup's 93 fixtures
+        # (and the FA Cup equivalents) trained as non-knockout.
+        f = derive_cup_features_single("FAC", "3rd Round")
+        assert f["is_cup_match"] == 1.0
+        assert f["is_knockout"] == 1.0
+        assert f["is_two_legged"] == 0.0
+        assert f["competition_type_id"] == 1.0
+
+    def test_fa_cup_without_round_label_is_knockout(self):
+        # Pure-knockout cup — the competition answers, so a missing label
+        # is not a reason to emit 0.
+        f = derive_cup_features_single("FAC", round_label=None)
+        assert f["is_knockout"] == 1.0
 
 
 class TestBuildCupFeaturesDataFrame:

@@ -267,6 +267,44 @@ class TestDeriveRoundFlags:
         flags = out["is_knockout"].tolist()
         assert flags == [0, 1, 1]
 
+    def test_pure_knockout_cup_early_rounds(self, tmp_path):
+        # FA Cup has no group phase, so every round is a knockout tie —
+        # including the numbered early rounds the label heuristic used to
+        # score 0. Labels are the real API-Football vocabulary.
+        rows = [
+            normalize_fixture(
+                _api_fixture(fid=1, round_label="1st Round"), "FAC", 2024,
+            ),
+            normalize_fixture(
+                _api_fixture(fid=2, round_label="3rd Round"), "FAC", 2024,
+            ),
+            normalize_fixture(
+                _api_fixture(fid=3, round_label="Final"), "FAC", 2024,
+            ),
+        ]
+        write_cup_history_parquet(rows, tmp_path / "FAC_2024.parquet")
+        df = load_cup_history_parquet(tmp_path / "FAC_2024.parquet")
+        out = derive_round_flags(df)
+        assert out["is_knockout"].tolist() == [1, 1, 1]
+
+    def test_euro_round_robin_qualifying_stays_zero(self, tmp_path):
+        # EURO qualifying is round-robin groups over 10 matchdays; the
+        # " - <N>" suffix is what separates it from UEFA's two-legged
+        # "1st Qualifying Round".
+        rows = [
+            normalize_fixture(
+                _api_fixture(fid=1, round_label="Qualifying Round - 3"),
+                "EURO", 2024,
+            ),
+            normalize_fixture(
+                _api_fixture(fid=2, round_label="Round of 16"), "EURO", 2024,
+            ),
+        ]
+        write_cup_history_parquet(rows, tmp_path / "EURO_2024.parquet")
+        df = load_cup_history_parquet(tmp_path / "EURO_2024.parquet")
+        out = derive_round_flags(df)
+        assert out["is_knockout"].tolist() == [0, 1]
+
 
 # ---------- CLI -------------------------------------------------------
 

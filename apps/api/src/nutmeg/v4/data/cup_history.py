@@ -41,7 +41,7 @@ from typing import Iterable, Optional
 import pandas as pd
 
 from nutmeg.v4.cli.auto_settle import FINISHED_STATUSES
-from nutmeg.v4.data.competitions import is_knockout_round
+from nutmeg.v4.data.competitions import is_knockout_fixture
 from nutmeg.v4.data.sources import api_football
 
 
@@ -202,14 +202,23 @@ def load_multi_season_cup_history(
 
 
 def derive_round_flags(df: pd.DataFrame) -> pd.DataFrame:
-    """Append `is_knockout` boolean column derived from `round_label`.
+    """Append `is_knockout` boolean column derived from (`league`, `round_label`).
 
-    Cheap one-liner; pulled out as a separate function so V7 W7's
+    Competition-first: a pure-knockout cup is flagged from the registry
+    (the FA Cup's "3rd Round" is a knockout tie — the old label-only
+    path scored it 0), and only group-stage cups like UCL fall through
+    to the round-label heuristic.
+
+    Pulled out as a separate function so V7 W7's
     feature_columns_with_cup() can call it on the loaded multi-season
-    DataFrame without duplicating regex logic.
+    DataFrame without duplicating the dispatch.
     """
     out = df.copy()
-    out["is_knockout"] = out["round_label"].apply(is_knockout_round).astype(int)
+    pairs = out[["league", "round_label"]].itertuples(index=False, name=None)
+    out["is_knockout"] = pd.Series(
+        [is_knockout_fixture(league, label) for league, label in pairs],
+        index=out.index,
+    ).astype(int)
     return out
 
 

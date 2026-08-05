@@ -19,6 +19,7 @@ import from here rather than hard-coding magic codes.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -37,7 +38,21 @@ CompetitionType = Literal["league", "club_cup", "national_team_cup"]
 
 @dataclass(frozen=True)
 class Competition:
-    """One competition entry in the registry."""
+    """One competition entry in the registry.
+
+    `has_knockouts` and `has_group_stage` are INDEPENDENT, and the pair
+    is what `is_knockout_fixture` dispatches on:
+
+    - (True, False) → pure knockout cup (FAC, DFB_POKAL): every round is
+      a knockout tie, so no round-label parsing is needed
+    - (True, True) → group/league phase then knockouts (UCL, WC): the
+      round label is the only thing that can tell the two apart
+    - (False, True) → round-robin only (WC_QUAL_UEFA): never a knockout
+
+    `has_group_stage` deliberately has no default — both candidate
+    defaults are silently wrong for half the registry, so a new entry
+    has to state it.
+    """
 
     code: str                       # canonical V4 code (e.g. "UCL")
     display_zh: str                 # Chinese display name
@@ -45,6 +60,7 @@ class Competition:
     competition_type: CompetitionType
     api_football_id: int | None     # None when not surfaced via API-Football
     has_knockouts: bool             # True if format includes knockout rounds
+    has_group_stage: bool           # True if format has a non-knockout phase
     has_two_legged_ties: bool       # True if any round is home-and-away
     notes: str = ""
 
@@ -62,6 +78,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=2,
         has_knockouts=True,
+        has_group_stage=True,   # group stage → 2024/25 Swiss "League Stage"
         has_two_legged_ties=True,
         notes="Cross-league: clubs from multiple European leagues",
     ),
@@ -72,6 +89,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=3,
         has_knockouts=True,
+        has_group_stage=True,
         has_two_legged_ties=True,
     ),
     "UECL": Competition(
@@ -81,6 +99,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=848,
         has_knockouts=True,
+        has_group_stage=True,
         has_two_legged_ties=True,
     ),
 
@@ -92,6 +111,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=45,
         has_knockouts=True,
+        has_group_stage=False,  # single-elimination from the qualifying rounds up
         has_two_legged_ties=False,  # FA Cup is single-leg with replays
         notes="Includes lower-division teams not in EPL/Championship train set",
     ),
@@ -102,9 +122,13 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=48,
         has_knockouts=True,
-        # ⚠️ 这个 True 是**实测**的,不是「我记得半决赛打两回合」:拉 season=2025
-        # 全 93 场,`Semi-finals` 里 Man City–Newcastle 与 Arsenal–Chelsea 各出现
-        # 2 次 ⇒ 两回合。其余轮次单场。(2026-08-05)
+        # 纯淘汰赛,**实测**:season=2025 全 93 场的轮次只有 Preliminary Round /
+        # 1st–4th Round / Quarter-finals / Semi-finals / Final —— 没有任何小组
+        # 阶段标签。⇒ `is_knockout_fixture` 对它每一轮都返回 True,不碰字符串。
+        has_group_stage=False,
+        # ⚠️ 这个 True 是**实测**的,不是「我记得半决赛打两回合」:同一次拉取里
+        # `Semi-finals` 的 Man City–Newcastle 与 Arsenal–Chelsea 各出现 2 次
+        # ⇒ 两回合。其余轮次单场。(2026-08-05)
         has_two_legged_ties=True,
         notes=(
             "英联赛杯。竞彩写作「英联赛杯」。全部 92 家 EFL 俱乐部参赛 ⇒ 大量队伍不在"
@@ -119,6 +143,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=143,
         has_knockouts=True,
+        has_group_stage=False,
         has_two_legged_ties=False,
     ),
     "COPPA_ITALIA": Competition(
@@ -128,6 +153,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=137,
         has_knockouts=True,
+        has_group_stage=False,
         has_two_legged_ties=True,
     ),
     "DFB_POKAL": Competition(
@@ -137,6 +163,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=81,
         has_knockouts=True,
+        has_group_stage=False,
         has_two_legged_ties=False,
     ),
     "COUPE_DE_FRANCE": Competition(
@@ -146,6 +173,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=66,
         has_knockouts=True,
+        has_group_stage=False,
         has_two_legged_ties=False,
     ),
 
@@ -157,6 +185,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="national_team_cup",
         api_football_id=1,
         has_knockouts=True,
+        has_group_stage=True,
         has_two_legged_ties=False,
         notes="Single venue, group stage + knockouts",
     ),
@@ -167,6 +196,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="national_team_cup",
         api_football_id=4,
         has_knockouts=True,
+        has_group_stage=True,   # incl. round-robin "Qualifying Round - N"
         has_two_legged_ties=False,
     ),
     "COPA_AMERICA": Competition(
@@ -176,6 +206,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="national_team_cup",
         api_football_id=9,
         has_knockouts=True,
+        has_group_stage=True,
         has_two_legged_ties=False,
     ),
     "WC_QUAL_UEFA": Competition(
@@ -185,6 +216,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="national_team_cup",
         api_football_id=32,
         has_knockouts=False,  # round-robin groups
+        has_group_stage=True,
         has_two_legged_ties=False,
     ),
 }
@@ -194,7 +226,7 @@ CUP_COMPETITIONS: dict[str, Competition] = {
 # Used by `is_knockout_round(label)` to flag a fixture as knockout vs
 # group-stage. Matches both English ("Round of 16") and abbreviations.
 _KNOCKOUT_ROUND_TOKENS = (
-    "round of",       # "Round of 16", "Round of 32"
+    "round of",       # "Round of 16", "Round of 32", "Round of 128"
     "1st knockout",   # API-Football's 1st knockout round label
     "knockout",
     "quarter-final",
@@ -203,10 +235,31 @@ _KNOCKOUT_ROUND_TOKENS = (
     "semi-final",
     "semi-finals",
     "semi final",
-    "final",          # matches "Final", "3rd-place final" etc.
+    "final",          # matches "Final", "3rd Place Final", "8th Finals"
     "play-off",
     "playoff",
 )
+
+# Named-stage tokens above only cover the LATE rounds. English cups number
+# their early rounds instead ("1st Round" … "4th Round", "Preliminary
+# Round"), and UEFA numbers its qualifiers ("1st Qualifying Round") — all
+# single-elimination, none of them containing a token above. These two
+# patterns catch that family.
+_KNOCKOUT_ROUND_PATTERNS = (
+    # "1st Round", "4th Round", "1st Qualifying Round", "5th Round Proper"
+    re.compile(r"\b\d+(?:st|nd|rd|th)\b.*\bround\b"),
+    # "Preliminary Round", "Preliminary round"
+    re.compile(r"\bpreliminary\b.*\bround\b"),
+)
+
+# API-Football suffixes every repeated-matchday phase with " - <N>":
+# "Group A - 1", "Group Stage - 3", "League Stage - 8", "Regular Season -
+# 12" — and, the trap this guard exists for, EURO's round-robin
+# "Qualifying Round - 1" … "- 10" (250 rows in our own parquets). A
+# knockout TIE never carries that suffix. The guard is scoped to
+# _KNOCKOUT_ROUND_PATTERNS only, so it can never flip a label that the
+# named-stage tokens already resolve to True.
+_MATCHDAY_SUFFIX_RE = re.compile(r"-\s*\d+\s*$")
 
 
 # --- Public helpers -----------------------------------------------------
@@ -253,11 +306,18 @@ def has_two_legged_format(code: str) -> bool:
 
 
 def is_knockout_round(round_label: str | None) -> bool:
-    """Heuristic on API-Football's `fixture.league.round` string.
+    """Label-only heuristic on API-Football's `fixture.league.round`.
+
+    Prefer `is_knockout_fixture(code, label)` — for a pure-knockout cup
+    the competition itself is the answer and no string needs parsing.
+    This function is what that one falls back to for mixed-format
+    competitions (UCL/WC/EURO), where the round label really is the only
+    thing separating a group match from a knockout tie.
 
     Group-stage rounds look like "Group A - Matchday 3" or
-    "Regular Season - 12"; knockout rounds contain one of
-    ``_KNOCKOUT_ROUND_TOKENS``. Returns False for None / empty / NaN /
+    "Regular Season - 12"; knockout rounds either contain one of
+    ``_KNOCKOUT_ROUND_TOKENS`` or match ``_KNOCKOUT_ROUND_PATTERNS``
+    without a matchday suffix. Returns False for None / empty / NaN /
     any non-str type (pandas often hands us NaN-as-float when a column
     is missing).
     """
@@ -266,7 +326,34 @@ def is_knockout_round(round_label: str | None) -> bool:
     if not round_label:
         return False
     rl = round_label.lower()
-    return any(tok in rl for tok in _KNOCKOUT_ROUND_TOKENS)
+    if any(tok in rl for tok in _KNOCKOUT_ROUND_TOKENS):
+        return True
+    if _MATCHDAY_SUFFIX_RE.search(rl):
+        return False
+    return any(pat.search(rl) for pat in _KNOCKOUT_ROUND_PATTERNS)
+
+
+def is_knockout_fixture(competition_code: str, round_label: str | None = None) -> bool:
+    """Is this fixture a knockout tie? Competition first, label second.
+
+    Three-way dispatch on the registry, so the string heuristic only runs
+    where it is actually load-bearing:
+
+    - not a registered cup (league codes, unknown codes) → False
+    - cup with no knockout phase (WC_QUAL_UEFA) → False
+    - pure-knockout cup (FAC / EFL / COPA_DEL_REY / DFB_POKAL …) → True
+      for EVERY round, including a missing label. "1st Round" of the FA
+      Cup is as much a knockout as the final; the old label-only path
+      called those group matches.
+    - mixed group-then-knockout cup (UCL / UEL / WC / EURO) → defer to
+      `is_knockout_round`, the only case where the label decides.
+    """
+    comp = CUP_COMPETITIONS.get(competition_code)
+    if comp is None or not comp.has_knockouts:
+        return False
+    if not comp.has_group_stage:
+        return True
+    return is_knockout_round(round_label)
 
 
 def cup_codes() -> list[str]:
@@ -291,6 +378,7 @@ __all__ = [
     "competition_type_id",
     "has_two_legged_format",
     "is_knockout_round",
+    "is_knockout_fixture",
     "cup_codes",
     "api_football_id_for_cup",
 ]
