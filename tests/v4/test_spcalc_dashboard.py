@@ -1132,8 +1132,10 @@ class TestSweetEvBoard:
     def test_functions_defined_and_wired(self, html):
         for fn in ("_sweetLegs", "_sweetBoardHtml", "_sweetJump", "_sweetLegHtml"):
             assert f"function {fn}(" in html, fn
-        assert "_bettableFirstHtml(preds, cardHtml, 'spcalc')" in html
-        assert "_bettableFirstHtml(preds, _cupCardHtml, 'cup')" in html
+        # 2026-08-05:可投注区独立成全局列表,`_bettableFirstHtml` 拆成切分 + 写 DOM。
+        # 榜和卡片仍是同一份 preds、同一个 `_isJcBettable` 谓词 —— 那才是这条要守的。
+        assert "_renderBettableInto('spcalc', bett, cardHtml)" in html
+        assert "_renderBettableInto('cup', _cBett, _cupCardHtml)" in html
 
     def test_global_board_container_above_std_mode(self, html):
         """2026-07-18 owner 需求:全局榜 —— 两模式合并、独立排版、置于标准模式上方。
@@ -1336,9 +1338,20 @@ class TestSweetBoardProjectStyle:
         assert "${IC('refresh')}" in html
         assert "🍬 ${t('sw_board_hdr')}" not in html
 
-    def test_bettable_header_uses_yuan_icon(self, html):
-        assert "${IC('yuan')} ${t('jc_bettable_hdr')}" in html
-        assert "💴 ${t('jc_bettable_hdr')}" not in html
+    def test_bettable_header_matches_its_sibling_section_headers(self, html):
+        """原断言钉的是置顶区那个 **pin 头**(`${IC('yuan')} ${t('jc_bettable_hdr')}`),
+        守的性质是「用图标系统,别在模板里塞裸 emoji」。
+
+        2026-08-05 可投注区升级成一个**顶层区块**,pin 头连同 `jc_bettable_hdr` 一起
+        没了。顶层区块头在本项目里一直是另一套写法:emoji 写在 i18n 值里、由
+        `data-i18n` 静态渲染(`h_spcalc: '📊 标准模式'` / `h_cupmkt: '💹 市场模式'`)。
+        被禁的是**模板里**的 `💴 ${t(...)}`,不是 i18n 值里的 emoji —— 两者不是一回事。
+        所以这里改成钉「和它的两个兄弟区块头同款」。
+        """
+        assert 'data-i18n="h_jc_bettable"' in html
+        for key in ("h_jc_bettable", "h_spcalc", "h_cupmkt"):
+            assert f"{key}:" in html, key
+        assert "💴 ${t(" not in html, "模板里塞裸 emoji 的老写法不许回来"
 
     def test_freeze_badge_uses_hourglass_icon(self, html):
         # 与「待开盘」徽章(spcalc_pending_badge 的 {ic:hourglass})同款

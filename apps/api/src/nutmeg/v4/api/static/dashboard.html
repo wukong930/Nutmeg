@@ -1001,8 +1001,34 @@
          style="border-left:4px solid #dc2626" role="status" aria-live="polite"></div>
     <!-- 2026-07-18 owner 需求:按钮卡 + 列表卡合一(市场模式同款),省一屏头部。
          section 不再 hidden —— 刷新按钮任何时候都要可点;空态走 #spcalc-empty。 -->
+    <!-- 💴 全局竞彩可投注列表(2026-08-05 owner:「独立出来成一个列表,放到甜区EV榜上面」)。
+         沿用 2026-07-18 甜区榜全局化的同一套做法,再上移一层。
+
+         ⭐⭐ 两个**按模式独占**的子容器,不是一个 —— 这不是洁癖,是三条实测出来的硬约束:
+         ① 卡片只能**搬**不能复制。同一 data-idx 出现两次时,页面全部 querySelector 取
+            文档序第一个 ⇒ 第二张卡收得下键盘、永远没有反应;更贵的是 `_recordBet`
+            会在你点的那张卡上开注额框、却把**另一张卡的赔率**发出去,无提示无 alert。
+            CSS 隐藏也救不了(隐藏元素照样赢选择器)。
+         ② 不能交给 `_sweetBoardRefresh` 渲染:它挂 350ms 防抖且零 DOM 读回,
+            而 `_spcalcRecalc` 每次 oninput 都重排这个防抖 ⇒ **每敲一个数字,350ms 后
+            卡片被按 preds 重建,输入值和焦点一起没**。
+         ③ 两个 renderer 不能共写同一块 innerHTML:后跑的那个把先跑的卡片整片抹掉,
+            而对方的后处理早已跑完,不会再补。
+         ⇒ 每块子容器由**它自己那个 renderer** 在后处理循环**之前同步**写入。 -->
+    <div id="jc-bettable-global" class="hidden bg-white shadow-sm rounded-lg p-4 sm:p-6 mb-4"
+         style="border-left:4px solid #059669">
+      <h3 class="font-bold mb-2"><span data-i18n="h_jc_bettable">💴 竞彩可投注</span>
+        <span id="jc-bettable-count" class="text-sm font-normal text-gray-500"></span>
+        <span class="info-i" style="font-size:0.8em;font-weight:400"
+              onclick="showInfo(t('h_jc_bettable'), t('jc_bettable_note'))"
+              title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span></h3>
+      <div id="jc-bettable-hint"></div>
+      <div id="jc-bettable-spcalc"></div>
+      <div id="jc-bettable-cupmkt"></div>
+    </div>
     <!-- 🍬 全局甜区 EV 榜(2026-07-18 owner:两模式合并、独立排版、置于标准模式上方)。
-         内容由 _sweetBoardRefresh() 从 _SPCALC.preds + _CUPMKT.preds 合并渲染;空则不占位。 -->
+         内容由 _sweetBoardRefresh() 从 _SPCALC.preds + _CUPMKT.preds 合并渲染;空则不占位。
+         2026-08-05:上方多了可投注列表 —— 它的联赛组**默认折叠**,所以榜仍在首屏。 -->
     <div id="sweet-board-global"></div>
     <!-- 🎫 串关构造器(2026-08-02 owner:「怎么串」)。空则不占位。 -->
     <div id="parlay-builder-global"></div>
@@ -2116,7 +2142,9 @@ const I18N = {
     h_today_wc:       '{chip:trophy} WC 板块',
     today_wc_hint:    '世界杯让球已统一至 💹 市场模式(去vig 1X2 + 大小球反推、实测最优);本页是 1X2 赛前预测.',
     spcalc_n_matches: '场',
-    jc_bettable_hdr:  '竞彩可投注',
+    h_jc_bettable:    '💴 竞彩可投注',
+    jc_bettable_note: '竞彩**当前在售**的场次(胜平负或让球任一有完整 SP,且距开球 >5 分钟)—— 两种模式合并成一张表,2026-08-05 从两块模式板里搬出来独立成列表、置于甜区 EV 榜之上。<br>⚠️ <b>联赛组默认收起</b>:完整卡片很高(3 天窗口实测触到过 33 场),全展开会把甜区榜和串关构造器推到几屏之外,而榜的用法恰恰是「先扫一眼再下潜」。点组头展开,展开/收起会被记住。<br>⭐ 卡片是<b>搬</b>过来的、不是复制:同一场比赛在页面上只有一张卡。真复制的话,第二张卡收得下键盘却永远没有反应,而且 📌 记一笔会把<b>另一张卡</b>的赔率发出去 —— 这是实测出来的,不是顾虑。<br>两块模式板里剩下的是模型 / Pinnacle <b>参考</b>场次(竞彩没上架,买不了)。',
+    jc_all_moved_up:  'ℹ️ 本模式今天的场次全部可投注,已移至顶部「竞彩可投注」列表。',
     jc_ref_hdr:       '竞彩未上架 · 仅模型 / Pinnacle 参考',
     jc_morning_hint:  '竞彩分批上架:当日新场多在北京 09:25–09:45 晨批发布(北欧等小联赛常当天才开售),此刻名单可能不全;09:45 后点 🎯 刷新竞彩立取,或等 09:50 / 11:05 自动补捕。',
     spcalc_enter_sp:  '输入竞彩 SP 看 EV',
@@ -2651,7 +2679,9 @@ const I18N = {
     h_today_wc:       '{chip:trophy} WC',
     today_wc_hint:    'World Cup handicap is unified into 💹 Market mode (de-vig 1X2 + O/U reverse, measured best). This tab forecasts 1X2.',
     spcalc_n_matches: 'matches',
-    jc_bettable_hdr:  'Bettable on 竞彩',
+    h_jc_bettable:    '💴 Bettable on 竞彩',
+    jc_bettable_note: 'Matches 竞彩 is currently selling (a complete SP on either 1X2 or handicap, kickoff more than 5 minutes away) — both modes merged into one list, pulled out of the two mode boards on 2026-08-05 and placed above the sweet-spot EV board.<br>League groups start COLLAPSED: full cards are tall (a 3-day window has hit 33 matches) and expanding them all would push the sweet-spot board and the parlay builder several screens down, which defeats scan-then-drill. Tap a group header to expand; the state is remembered.<br>Cards are MOVED here, not copied: each match has exactly one card on the page. A duplicate would accept keystrokes and never respond, and the record-bet pin would post the OTHER copy odds — measured, not hypothetical.<br>What stays on the mode boards is the model / Pinnacle reference slate: 竞彩 does not list those, so you cannot bet them.',
+    jc_all_moved_up:  'ℹ️ Every match in this mode is bettable today; they all moved up to the 竞彩 bettable list at the top.',
     jc_ref_hdr:       'Not on 竞彩 · model / Pinnacle reference',
     jc_morning_hint:  '竞彩 lists same-day additions in a ~09:25–09:45 (Beijing) morning batch (Nordic & minor leagues often matchday-only), so this slate may be incomplete; hit 🎯 after ~09:45, or the 09:50 / 11:05 auto-captures pull them in.',
     spcalc_enter_sp:  'Enter 竞彩 SP for EV',
@@ -4707,13 +4737,28 @@ let _collapsedLgs = (() => {
   try { return new Set(JSON.parse(localStorage.getItem('nutmeg_collapsed_lgs') || '[]')); }
   catch (e) { return new Set(); }
 })();
+//: 2026-08-05 —— **默认折叠**的前缀。全局竞彩可投注列表用它:owner 要完整卡片,
+//: 但完整卡片很高(卡头+原盘行+3 个带输入框的 1X2 行+判词行+3 个 details),
+//: 实测 3 天窗口可投注场次触到过 33 场 —— 默认展开会把甜区榜和串关构造器推到
+//: 好几屏之外,而榜的定位恰恰是「先扫一眼再下潜」。默认收起 ⇒ 顶部只占几行组头。
+const _LG_DEFAULT_COLLAPSED = new Set(['jcg:']);
+//: `_collapsedLgs` 的语义在这里从「折叠集」升级成「**与默认相反**的集合」。
+//: ⚠️ 对既有前缀完全等价:默认折叠=false ⇒ `has XOR false === has`,
+//: 逐字保持旧行为,localStorage 存量条目不用迁移。只有新前缀走反向默认。
+//: `_toggleLeague` 必须用**同一个**函数算默认,否则点一下就和渲染对不上。
+function _lgDefaultCollapsed(key) {
+  for (const p of _LG_DEFAULT_COLLAPSED) if (key.startsWith(p)) return true;
+  return false;
+}
 function _toggleLeague(headEl) {
   const group = headEl.closest('.spcalc-lg-group');
   if (!group) return;
   const lg = group.getAttribute('data-lg');
   const cards = group.querySelector('.spcalc-lg-cards');
   const nowCollapsed = cards.classList.toggle('hidden');
-  if (nowCollapsed) _collapsedLgs.add(lg); else _collapsedLgs.delete(lg);
+  // 存的是「偏离默认」:折叠态 ≠ 默认 ⇒ 记一笔;回到默认 ⇒ 抹掉。
+  if (nowCollapsed !== _lgDefaultCollapsed(lg)) _collapsedLgs.add(lg);
+  else _collapsedLgs.delete(lg);
   const chev = headEl.querySelector('.lg-chevron');
   if (chev) chev.textContent = nowCollapsed ? '▸' : '▾';
   headEl.setAttribute('aria-expanded', String(!nowCollapsed));
@@ -4724,7 +4769,7 @@ function _lgGroupHtml(lg, col, count, cardsHtml, pfx) {
   // pfx namespaces the collapse key so the SAME league folds independently in
   // different sections (e.g. scored board vs 待开盘). Default '' = scored boards.
   const key = (pfx || '') + lg;
-  const collapsed = _collapsedLgs.has(key);
+  const collapsed = _collapsedLgs.has(key) !== _lgDefaultCollapsed(key);   // XOR,见上
   return `
     <div class="spcalc-lg-group mb-4" data-lg="${key}">
       <div class="spcalc-lg-head flex items-center gap-2 mb-2 px-2 py-1 rounded cursor-pointer select-none"
@@ -5386,24 +5431,55 @@ function _jcMorningHintHtml() {
 // Partition preds into the 竞彩可投注 pin zone (top) + the reference rump (below),
 // each league-grouped. Returns the full inner HTML for the list container. With
 // nothing bettable it degrades to the plain league grouping (no headers = old look).
-function _bettableFirstHtml(preds, cardHtml, mode) {
+//: 2026-08-05 owner:「竞彩可投注独立出来成一个列表,放到甜区EV榜上面」。
+//: 原来的 `_bettableFirstHtml(preds, cardHtml, mode)` 把「切分 + 置顶区 + 参考区」
+//: 揉在一个返回字符串里,由**各自模式板**的 innerHTML 吞下。现在切分保留、
+//: 置顶区搬去全局容器,所以拆成两个函数:切分是纯的,写 DOM 的那半带副作用。
+//: ⚠️ 旧签名收**单个** `cardHtml`,而全局列表要装两模式的卡(标准是
+//: `renderTodaySpCalc` 里的局部箭头函数,市场是顶层 `_cupCardHtml`)—— 这也是
+//: 为什么全局列表是**两个按模式独占的子容器**、不是一个合并的 innerHTML。
+function _bettableSplit(preds) {
   const bett = [], rest = [];
-  preds.forEach((pr, idx) => (_isJcBettable(pr) ? bett : rest).push({ pr, idx }));
-  const hint = _jcMorningHintHtml();
-  if (!bett.length) return hint + _lgGroupsHtml(rest, cardHtml, '');
-  let html = hint + `<div class="jc-pin-hdr flex items-center gap-2 mb-2 px-2 py-1 rounded"
-      style="border-left:4px solid #059669;background:#05966914">
-      <span class="font-display font-semibold text-sm" style="color:#059669">${IC('yuan')} ${t('jc_bettable_hdr')}</span>
-      <span class="text-xs text-muted">· ${bett.length}</span></div>`;
-  // 甜区榜已全局化(#sweet-board-global,标准模式卡上方),不再嵌在模式卡里;
-  // 这里只剩可投注置顶区本体。榜的重算由 render 出口 + 重算尾部的防抖钩负责。
-  html += _lgGroupsHtml(bett, cardHtml, 'jc:');
+  (preds || []).forEach((pr, idx) => (_isJcBettable(pr) ? bett : rest).push({ pr, idx }));
+  return { bett, rest };
+}
+//: 模式板里剩下的「参考」区。可投注那批已搬走 ⇒ 这里只剩 rest。
+//: ⚠️ 若 rest 为空(该模式今天**每一场**都可投注),不能只留一块空白 ——
+//: 那读起来像「板坏了」。补一句「已移至顶部」,同「分不出没有和没去看」。
+function _referenceZoneHtml(rest, cardHtml, bettCount) {
   if (rest.length) {
-    html += `<div class="text-xs text-muted mt-4 mb-2 px-2 pt-2"
-        style="border-top:1px dashed var(--border-subtle)">${t('jc_ref_hdr')}</div>`;
-    html += _lgGroupsHtml(rest, cardHtml, '');
+    return `<div class="text-xs text-muted mt-2 mb-2 px-2 pt-2"
+        style="border-top:1px dashed var(--border-subtle)">${t('jc_ref_hdr')}</div>`
+      + _lgGroupsHtml(rest, cardHtml, '');
   }
-  return html;
+  return bettCount
+    ? `<div class="text-xs text-muted mt-2 px-2 py-2">${t('jc_all_moved_up')}</div>`
+    : '';
+}
+//: 把某个模式的可投注卡写进它**独占**的全局子容器。同步、无防抖 ——
+//: 调用方必须在自己的后处理循环**之前**调它,否则那圈 forEach 找不到卡片。
+//: 折叠前缀 `'jcg:'`(不是旧的 `'jc:'`):新容器是新的名字空间,
+//: 且它在 `_LG_DEFAULT_COLLAPSED` 里 ⇒ 默认收起。
+function _renderBettableInto(mode, bett, cardHtml) {
+  const box = document.getElementById(
+    mode === 'cup' ? 'jc-bettable-cupmkt' : 'jc-bettable-spcalc');
+  if (!box) return;
+  box.innerHTML = bett.length ? _lgGroupsHtml(bett, cardHtml, 'jcg:') : '';
+  _bettableGlobalSync();
+}
+//: 外壳的可见性 + 计数 + 晨批提示。两块子容器各写各的,总数只能在这里合。
+//: 提示留在外壳:它讲的是「竞彩 09:24-09:44 分批上架,名单不全≠数据丢了」,
+//: 是**整个列表**的注解,不属于任何一个模式。
+function _bettableGlobalSync() {
+  const wrap = document.getElementById('jc-bettable-global');
+  if (!wrap) return;
+  const n = wrap.querySelectorAll('.card-rec').length;
+  const cnt = document.getElementById('jc-bettable-count');
+  if (cnt) cnt.textContent = n ? ` · ${n}` : '';
+  const hint = document.getElementById('jc-bettable-hint');
+  if (hint) hint.innerHTML = _jcMorningHintHtml();
+  // 晨批提示自己就是内容:有提示没场次时也要露面(那正是「名单还没出全」的时刻)
+  wrap.classList.toggle('hidden', !n && !(hint && hint.innerHTML.trim()));
 }
 
 // V13 — 记此注: record the EXACT outcome the user bet + their real stake (incl
@@ -5498,6 +5574,10 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
     // 否则外部的 #sweet-board-global 会继续用旧 preds 渲染幽灵行。
     _SPCALC.preds = [];
     list.innerHTML = ''; $('#today-spcalc-count').textContent = '';
+    // 2026-08-05 —— 全局可投注列表同理:本模式的子容器也要显式清空,
+    // 否则顶部会留着一批**已经不在 preds 里**的幽灵卡,而它们的 data-idx
+    // 还会被 querySelector 抢走(见容器注释里那三条实测约束)。
+    _renderBettableInto('spcalc', [], null);
     _setPending('spcalc', pending); _sweetBoardScheduleRefresh(); return;
   }
   // Preserve any 竞彩 SP the user already typed, keyed by fixture identity,
@@ -5645,13 +5725,27 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   // V12 W4 → 2026-07-07 — 竞彩可投注 pinned to the top in its own zone, then the
   // model/Pinnacle reference rump; each zone league-grouped by earliest kickoff
   // with colored headers. Shared with 市场模式 via _bettableFirstHtml.
-  const scoredHtml = _bettableFirstHtml(preds, cardHtml, 'spcalc');
+  // 2026-08-05 —— 可投注卡搬进全局列表(甜区榜上方),板里只留参考区。
+  // ⭐ **顺序是硬约束**:`_renderBettableInto` 必须在下面那圈后处理 forEach
+  // **之前**同步跑完。`_spcalcRecalc` 的 `parseFloat(inp.value)` 没有空值守卫
+  // (`_cupRecalc` 有,两模式一直不对称),卡片此刻不在 DOM 就直接抛 —— 而且
+  // 异常冒到 loadSpCalc 的 catch 会把一个纯 DOM 时序 bug 显示成
+  // 「抓取盘口失败(API 暂不可用)」。下面另加了逐卡 try/catch 兜底。
+  const { bett, rest } = _bettableSplit(preds);
+  _renderBettableInto('spcalc', bett, cardHtml);
+  const scoredHtml = _referenceZoneHtml(rest, cardHtml, bett.length);
   // V14 — 待开盘 fixtures now feed the merged 待开盘赛事 section at the page bottom.
   list.innerHTML = scoredHtml;
   _setPending('spcalc', pending);
   _sweetBoardScheduleRefresh();   // 🍬 全局榜:列表重渲后同步(外部容器不随卡重建)
   // Restore preserved SP into the freshly-rendered inputs + recompute.
+  // ⭐ 2026-08-05 加逐卡 try/catch。原来这圈里任何一张卡抛异常,**它之后所有**
+  // 场次的 SP 恢复 / 让球线回填全不跑,尾部的 `_parlayRestore()` 也永远不执行,
+  // 而异常冒到 loadSpCalc 的 catch 会显示成「抓取盘口失败(API 暂不可用)」——
+  // 一个 DOM 问题伪装成网络问题。同后端 `_calc_predictions` 早就做的
+  // 「一场中毒不许拖垮整块板」(体检 Wave2),前后端现在同一个态度。
   preds.forEach((pr, idx) => {
+   try {
     const saved = _entered[pr.home_team + '|' + pr.away_team + '|' + pr.date];
     if (saved) {
       // Session-typed SP wins over the server pre-fill (it's the freshest line).
@@ -5713,6 +5807,9 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
         }
       }
     }
+   } catch (e) {
+    console.warn('sp-calc 卡片后处理失败,跳过该场:', pr && pr.home_team, e);
+   }
   });
   // V12 W5 — re-check parlay legs + refresh the 串关篮子 after a re-render.
   _parlayRestore();
@@ -5818,6 +5915,10 @@ function _spcalcRecalc(idx) {
   ['H', 'D', 'A'].forEach(o => {
     const inp = document.querySelector(`.spcalc-sp[data-idx="${idx}"][data-outcome="${o}"]`);
     const evSpan = $(`#spcalc-ev-${idx}-${o}`);
+    // 2026-08-05 补空值守卫。`_cupRecalc` 一直是全守卫的,这里一直不是 ——
+    // 卡片不在 DOM 时 `inp.value` 直接抛,而异常会连坐掉**它之后所有**场次的
+    // SP 恢复 + `_parlayRestore`,最后显示成「API 暂不可用」。两模式对齐。
+    if (!inp || !evSpan) return;
     const sp = parseFloat(inp.value);
     if (!sp || sp <= 1.0) { evSpan.textContent = ''; evSpan.removeAttribute('style'); evSpan.className = 'flex-1 text-xs text-muted'; return; }
     spCount += 1;
@@ -5997,6 +6098,7 @@ function _spcalcHcRecalc(idx) {
   ['H', 'D', 'A'].forEach(o => {
     const inp = document.querySelector(`.spcalc-hcsp[data-idx="${idx}"][data-outcome="${o}"]`);
     const evSpan = $(`#spcalc-hcev-${idx}-${o}`);
+    if (!inp || !evSpan) return;                    // 2026-08-05 同 _spcalcRecalc
     const sp = parseFloat(inp.value);
     if (!P || !sp || sp <= 1.0) { evSpan.textContent = ''; evSpan.removeAttribute('style'); evSpan.className = 'flex-1 text-xs text-muted'; return; }
     const ev = P[o] * sp - 1.0;
@@ -7189,13 +7291,17 @@ function renderCupMarket(preds, pending) {
   if (preds.length === 0 && pending.length === 0) {
     // 合并卡(2026-07-18)常显 —— 藏 section=藏刷新按钮;清列表 + 亮空提示卡。
     list.innerHTML = ''; $('#cupmkt-count').textContent = '';
+    _renderBettableInto('cup', [], null);   // 💴 顶部列表:cup 侧清空也要同步
     empty.classList.remove('hidden'); _setPending('cupmkt', pending);
     _sweetBoardScheduleRefresh(); return;   // 🍬 全局榜:cup 侧清空也要同步
   }
   empty.classList.add('hidden');
   $('#cupmkt-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
   // 2026-07-07 — 竞彩可投注置顶 (same zoning as 标准模式 via _bettableFirstHtml).
-  list.innerHTML = _bettableFirstHtml(preds, _cupCardHtml, 'cup');
+  // 2026-08-05 —— 同标准模式:可投注卡搬进全局列表,板里只留参考区。
+  const { bett: _cBett, rest: _cRest } = _bettableSplit(preds);
+  _renderBettableInto('cup', _cBett, _cupCardHtml);
+  list.innerHTML = _referenceZoneHtml(_cRest, _cupCardHtml, _cBett.length);
   _setPending('cupmkt', pending);   // 待开盘 → merged bottom section
   _sweetBoardScheduleRefresh();   // 🍬 全局榜:列表重渲后同步(外部容器不随卡重建)
   // Restore preserved 竞彩 SP / 让球线 into the freshly-rendered inputs + recompute.

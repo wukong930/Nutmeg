@@ -32,11 +32,19 @@ class TestMorningHint:
         assert "new Date(Date.now() + 8 * 3600e3)" in html
         assert ">= 11 * 60 + 10) return '';" in html
 
-    def test_wired_into_both_partition_paths(self, html: str) -> None:
-        # 有可投注场:提示置于 pin 头之上;无可投注场:降级路径同样带提示。
-        assert "const hint = _jcMorningHintHtml();" in html
-        assert "if (!bett.length) return hint + _lgGroupsHtml(rest, cardHtml, '');" in html
-        assert 'let html = hint + `<div class="jc-pin-hdr' in html
+    def test_shown_regardless_of_whether_anything_is_bettable(self, html: str) -> None:
+        """守的性质没变:**别把分批开售误读成数据丢失**,所以有没有可投注场次都要提示。
+
+        2026-08-05 可投注区搬进全局容器 `#jc-bettable-global` ⇒ 原来的「两条分区路径」
+        (有 bett / 无 bett)在新版式里塌成一处:提示挂在容器上,由 `_bettableGlobalSync`
+        统一渲染。而且比原来**更强** —— 一场都没有时容器仍会因为提示而露面,
+        那正是「名单还没出全」的时刻,恰恰最该看见它。
+        """
+        i = html.index("function _bettableGlobalSync(")
+        body = html[i:html.index("\nfunction ", i + 10)]
+        assert "hint.innerHTML = _jcMorningHintHtml();" in body
+        # 零场次 + 有提示 ⇒ 仍然显示(!n && !hint 才隐藏)
+        assert "wrap.classList.toggle('hidden', !n && !(hint && hint.innerHTML.trim()));" in body
 
     def test_i18n_keys_present_both_locales(self, html: str) -> None:
         # zh + en 字典各一条 + 渲染处 t() 引用 ≥1。
