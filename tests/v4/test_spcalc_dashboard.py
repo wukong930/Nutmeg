@@ -134,7 +134,6 @@ class TestSpCalcMarkup:
         for fn in (
             "function renderTodaySpCalc(",
             "function _spcalcRecalc(",
-            "async function _spcalcRecord(",
             "function _spcalcStake(",
         ):
             assert fn in html, f"missing JS function: {fn}"
@@ -178,7 +177,7 @@ class TestSpCalcMarkup:
         assert 'id="spcalc-hcline-${idx}"' in html
         assert "class=\"spcalc-hcsp" in html
         for fn in ("function _spcalcHcLine(", "function _spcalcHcRecalc(",
-                   "async function _spcalcHcRecord(", "function _spcalcHcP("):
+                   "function _spcalcHcP("):
             assert fn in html, f"missing handicap fn: {fn}"
         # handicap record posts handicap_home + odds_handicap_* (not odds_1x2).
         assert "handicap_home: line" in html
@@ -276,9 +275,24 @@ class TestParlayBasket:
     记录串关 POSTs the exact legs to /recommend/parlay (double-gated)."""
 
     def test_basket_markup_present(self, html):
+        # 2026-08-06 owner — 标准模式的「串」勾选框已删。`class="spcalc-parlay-cb"`
+        # 因此从断言里拿掉,其余篮子结构保留。
         for s in ('id="parlay-basket"', 'id="parlay-legs"', 'id="parlay-summary"',
-                  'id="parlay-record-btn"', 'class="spcalc-parlay-cb"'):
+                  'id="parlay-record-btn"'):
             assert s in html, f"missing basket markup: {s}"
+
+    def test_the_only_leg_entry_point_is_gone(self, html):
+        """⚠️ 记录这次删除的**真实范围**,别让它以后被误读成「只是少了个勾选框」。
+
+        `_parlayToggle` 的唯一调用方就是那个勾选框(实测 grep:构造器是纯显示面板,
+        从不写 `_PARLAY`)⇒ 删掉它之后,篮子(`#parlay-basket` / 记录串关 /
+        `/recommend/parlay`)**没有任何入口**,是孤儿。
+
+        篮子本体**故意留着**(owner 只说删勾选框),但这条测试把「它现在喂不进腿」
+        这个事实钉住 —— 哪天要恢复串关,得先恢复一个入口,而不是以为它还活着。
+        """
+        assert 'class="spcalc-parlay-cb"' not in html
+        assert 'onchange="_parlayToggle(' not in html
 
     def test_basket_js_hooks(self, html):
         for fn in ("function _parlayToggle(", "function _parlayRender(",
@@ -286,9 +300,6 @@ class TestParlayBasket:
                    "function _parlayRestore("):
             assert fn in html, f"missing parlay fn: {fn}"
 
-    def test_checkbox_on_1x2_rows(self, html):
-        # Each 1X2 outcome row carries the parlay toggle wired to _parlayToggle.
-        assert 'onchange="_parlayToggle(${idx}' in html
 
     def test_records_to_parlay_endpoint(self, html):
         assert "/recommend/parlay" in html

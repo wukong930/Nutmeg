@@ -184,8 +184,7 @@ class TestManualAppliesToBothBoardsOnTheSameTab:
         assert "if (rerender) rerender();" in html
         assert "else renderCupMarket(_CUPMKT.preds, _CUPMKT.pending || []);" in html
 
-    @pytest.mark.parametrize("fn", ["_spcalcRecord", "_spcalcHcRecord"])
-    def test_spcalc_record_paths_forward_provenance(self, html: str, fn: str) -> None:
+    def test_the_surviving_record_path_forwards_provenance(self, html: str) -> None:
         """⭐ 手填一旦能到这块板,记账就**必须**带 `odds_source`。
 
         `store._request_odds_source` 从 `fixtures[].odds_source` 读它落进
@@ -193,7 +192,12 @@ class TestManualAppliesToBothBoardsOnTheSameTab:
         而 store.py 明写「绝不默认成 api_football —— 那等于把『没告诉我』伪装成
         『我查过了』」。改这条之前本板不可能有手填,所以漏了不说谎;现在会。
         """
-        start = html.index(f"function {fn}(")
-        body = html[start:start + 2600]
+        # 2026-08-06 改写:卡级「已下单」(`_spcalcRecord`/`_spcalcHcRecord`)已按
+        # owner 要求删除(recommendation_sessions 由 daily/morning_recommend cron
+        # 自动写,手动那份是重复)。⇒ 📌 `_recordBet` 成了**唯一**的手动记账路径,
+        # 溯源断言必须跟着搬过来,否则删掉那两个函数的同时就静默丢了 provenance。
+        assert "function _spcalcRecord(" not in html, "卡级已下单回来了?溯源断言要一起回来"
+        start = html.index("function _recordBet(")
+        body = html[start:start + 4000]
         assert "odds_source: pr.odds_source ?? null" in body, (
-            f"{fn} 记账漏了溯源 —— 手填价会被记成自动抓取的")
+            "_recordBet 记账漏了溯源 —— 手填价会被记成自动抓取的")

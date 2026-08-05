@@ -126,9 +126,11 @@ _spcalcRecalc(0);
   const e = _els['spcalc-ev-0-' + o];
   if (e) {{ _out.ev[o] = e.innerHTML; _out.cls[o] = e.className; }}
 }});
-const v = _els['spcalc-verdict-0'], b = _els['spcalc-record-0'];
+const v = _els['spcalc-verdict-0'];
 _out.verdict = v ? v.textContent : null;
-_out.btnDisabled = b ? b.disabled : null;
+// 2026-08-06 — 卡级「已下单」按钮已删,过闸信号改读 verdict:
+//   过闸 ⇒ `spcalc_pick: …`   不过闸 ⇒ `spcalc_nobet` / `spcalc_enter_sp` / `spcalc_nojc`
+_out.passed = !!(v && String(v.textContent).includes('spcalc_pick'));
 console.log(JSON.stringify(_out));
 """
     r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=30)
@@ -156,7 +158,7 @@ class TestGateFollowsTheMarket:
         这条红了 = 判闸又滑回模型 P 了。
         """
         out = _run(_pred(pm=(0.47, 0.25, 0.28), pk=(0.42, 0.26, 0.32)), {"H": 2.40})
-        assert out["btnDisabled"] is True, out["verdict"]
+        assert out["passed"] is False, out["verdict"]
         assert "spcalc_nobet" in (out["verdict"] or "")
         # 两个 EV 都得显示出来,不是把模型 EV 藏了
         assert "+0.8%" in out["ev"]["H"] and "+12.8%" in out["ev"]["H"], out["ev"]["H"]
@@ -168,7 +170,7 @@ class TestGateFollowsTheMarket:
         模型 30% → EV −28%;市场 50% → EV +20%(SP=2.40)。
         """
         out = _run(_pred(pm=(0.30, 0.30, 0.40), pk=(0.50, 0.25, 0.25)), {"H": 2.40})
-        assert out["btnDisabled"] is False, out["verdict"]
+        assert out["passed"] is True, out["verdict"]
         assert "+20.0%" in out["ev"]["H"] and "-28.0%" in out["ev"]["H"], out["ev"]["H"]
 
     def test_stake_uses_the_gating_probability(self):
@@ -188,7 +190,7 @@ class TestNoMarketLineMeansNoGate:
         这里模型 EV 高达 +88%,仍然不许过。
         """
         out = _run(_pred(pm=(0.78, 0.12, 0.10), pk=None), {"H": 2.40})
-        assert out["btnDisabled"] is True, out["verdict"]
+        assert out["passed"] is False, out["verdict"]
         assert "spcalc_ev_nomkt" in out["ev"]["H"], out["ev"]["H"]
 
     def test_partial_market_p_is_treated_as_missing(self):
@@ -196,7 +198,7 @@ class TestNoMarketLineMeansNoGate:
         pr = _pred(pm=(0.47, 0.25, 0.28), pk=None)
         pr["p_home_market"] = 0.42          # 只有主胜
         out = _run(pr, {"H": 2.40})
-        assert out["btnDisabled"] is True
+        assert out["passed"] is False
         assert "spcalc_ev_nomkt" in out["ev"]["H"]
 
 

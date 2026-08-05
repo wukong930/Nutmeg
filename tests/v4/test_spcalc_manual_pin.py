@@ -280,6 +280,11 @@ class TestStoredManualRestoreIsModeAware:
                          r"\s*true\s*\)", body), "loadSpCalc 没传 keepModelP=true"
 
 
+#: 面板 2026-08-06 起把提示文案收进 `<details>`,summary 里带一个 `IC('info')` 图标。
+#: 本文件测的是 **id 前缀**和**预填值**,图标只需存在;不桩掉它整个 harness 会 ReferenceError。
+_IC_STUB = "const IC=n=>'<i data-ic=\\''+n+'\\'></i>';"
+
+
 class TestPanelIsWiredIntoTheCard:
     def test_card_renders_the_panel(self):
         js = _js()
@@ -301,7 +306,7 @@ class TestPanelIsWiredIntoTheCard:
         直接复用 `cupman-h-0` 会让 `getElementById` 撞到另一块板的输入框,
         安静地拿错值重算另一张卡。"""
         out = subprocess.run(
-            ["node", "-e", f"const t=k=>k;const outcomeLabel=o=>o;"
+            ["node", "-e", f"const t=k=>k;const outcomeLabel=o=>o;{_IC_STUB}"
                            f"{_fn('_spcalcManualHtml')}"
                            f"console.log(_spcalcManualHtml({json.dumps(_PR)}, 0));"],
             capture_output=True, text=True, timeout=30)
@@ -313,7 +318,7 @@ class TestPanelIsWiredIntoTheCard:
 
     def test_panel_prefills_from_the_cards_current_line(self):
         out = subprocess.run(
-            ["node", "-e", f"const t=k=>k;const outcomeLabel=o=>o;"
+            ["node", "-e", f"const t=k=>k;const outcomeLabel=o=>o;{_IC_STUB}"
                            f"{_fn('_spcalcManualHtml')}"
                            f"console.log(_spcalcManualHtml({json.dumps(_PR)}, 0));"],
             capture_output=True, text=True, timeout=30)
