@@ -290,6 +290,60 @@ def check_api_quota() -> tuple[list[str], list[str]]:
 ARTIFACT_MAX_AGE_DAYS = 120
 SOURCE_TREE_MAX_AGE_DAYS = 120
 
+#: 「源树里有多少场比赛是 artifact 从没见过的」的报警线。
+#:
+#: ⭐ 为什么另立一个数,而不是靠上面两个天数(2026-08-05 owner 问「Elo 会不会
+#: 自动更新」时挖出来的):上面两个量的都是**代理** ——
+#:
+#:   · artifact 年龄  = 「多久没重训」,但休赛期不重训是**对的**;
+#:   · 源树 CSV mtime = 「多久没进新文件」,而它可以被**手动放一次文件**清零。
+#:
+#: 秋天这两个代理会同时说谎:8 月手动更新一次 CSV ⇒ mtime 变绿、报警闭嘴,
+#: 而 artifact 仍然没吸收那批比赛。**刷新输入把关于输出的报警说服了。**
+#: 本探针直接数「date > training_cutoff 的行数」,touch 文件动不了它。
+#:
+#: 阈值取一个联赛一轮的量级:13 个训练联赛 × 每轮约 8-10 场 ≈ 100+/轮,所以
+#: 200 ≈ 落后两轮。低于它多半是零星补录,不值得为它重训一次。
+UNABSORBED_MATCHES_ALARM = 200
+
+
+def _training_cutoff(artifact_dir: Path) -> str | None:
+    """artifact 训练截止日(``metadata.metadata.training_cutoff``),取不到给 None。
+
+    ⚠️ 这个键嵌在 ``metadata.json`` 的 ``metadata`` 子字典里,不是顶层 —— 顶层
+    只有 feature_columns / elo_* / model_type。写成顶层会永远拿到 None,而
+    「拿不到 cutoff」和「没有新比赛」在报告里长得一样(都不报警)⇒ 静默失效。
+    """
+    meta = artifact_dir / "metadata.json"
+    if not meta.exists():
+        return None
+    try:
+        import json
+        raw = json.loads(meta.read_text()) or {}
+    except Exception:  # noqa: BLE001 — 坏 metadata 不该炸掉整个体检
+        return None
+    cutoff = (raw.get("metadata") or {}).get("training_cutoff")
+    return str(cutoff)[:10] if cutoff else None
+
+
+def _count_matches_after(sources_dir: Path, cutoff: str) -> int | None:
+    """源树里日期严格晚于 ``cutoff`` 的比赛行数;读不了给 None(≠0)。
+
+    ⚠️ **None 和 0 必须分开**:0 = 「去看了,确实没有」(休赛期的正确答案),
+    None = 「没看成」。把读失败折成 0 就是又一次「分不出没有和没去看」。
+    """
+    try:
+        import pandas as pd
+
+        from nutmeg.v4.data.ingest import load_all_matches
+        df = load_all_matches(sources_dir)
+        if df.empty:
+            return 0
+        dates = pd.to_datetime(df["date"], errors="coerce")
+        return int((dates > pd.Timestamp(cutoff)).sum())
+    except Exception:  # noqa: BLE001 — 探针坏了要说出来,不能装作「没有新数据」
+        return None
+
 
 def check_model_supply_chain(
     today: date,
@@ -346,6 +400,23 @@ def check_model_supply_chain(
             info.append(f"训练源树: 最新 CSV {nd} · {age}d(红线 {SOURCE_TREE_MAX_AGE_DAYS}d)")
             if age > SOURCE_TREE_MAX_AGE_DAYS:
                 alarms.append(f"football-data 源树 {age} 天没进新数据 — ingest 断供,重训会空转")
+
+        # ⭐ 未吸收比赛数 —— 直接量语义,不靠 mtime 代理(见 UNABSORBED_MATCHES_ALARM)。
+        cutoff = _training_cutoff(art)
+        if cutoff is None:
+            info.append("未吸收比赛: 跳过 — artifact metadata 里没有 training_cutoff")
+        else:
+            n_new = _count_matches_after(src, cutoff)
+            if n_new is None:
+                info.append("未吸收比赛: 探针失败(源树读不了)— 非报警,连续出现修探针")
+            else:
+                info.append(
+                    f"未吸收比赛: {n_new} 场晚于 cutoff {cutoff}"
+                    f"(红线 {UNABSORBED_MATCHES_ALARM};休赛期为 0 属正常)")
+                if n_new > UNABSORBED_MATCHES_ALARM:
+                    alarms.append(
+                        f"源树里有 {n_new} 场比赛晚于训练 cutoff {cutoff},artifact 从没见过它们"
+                        f" — 重训现在能真的买到东西了(不是「artifact 老了」,是「它落后了」)")
     else:
         info.append(f"训练源树 {src}: 不存在 — 跳过")
 

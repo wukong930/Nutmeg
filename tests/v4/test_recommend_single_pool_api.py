@@ -22,12 +22,24 @@ ARTIFACT_PATH = REPO_ROOT / "data" / "v4_model"
 
 @pytest.fixture(scope="module")
 def client():
+    # ⚠️ 2026-08-05:这里原来是**裸赋值不还原**,`NUTMEG_V4_ARTIFACT_PATH` 会一直
+    # 指向 `data/v4_model`(遗留 LGB,cutoff 2025-06-01)污染同一进程里后面所有
+    # 测试。新加的「未吸收比赛」探针把它照出来了:那个 artifact 对着生产源树
+    # 落后 4871 场 ⇒ 供应链报警 ⇒ `test_data_freshness` 里两条 `main() == 0`
+    # 莫名其妙变 1,而且**只在跑全套时**红 —— 单跑那个文件是绿的。
+    # 一个测试悄悄改了另一个测试的世界,同「测试替身抹掉守卫」一族。
+    prev = os.environ.get("NUTMEG_V4_ARTIFACT_PATH")
     os.environ["NUTMEG_V4_ARTIFACT_PATH"] = str(ARTIFACT_PATH)
     from nutmeg.v4.api import clear_artifact_cache, v4_router
     clear_artifact_cache()
     app = FastAPI()
     app.include_router(v4_router, prefix="/api")
-    return TestClient(app)
+    yield TestClient(app)
+    if prev is None:
+        os.environ.pop("NUTMEG_V4_ARTIFACT_PATH", None)
+    else:
+        os.environ["NUTMEG_V4_ARTIFACT_PATH"] = prev
+    clear_artifact_cache()
 
 
 @pytest.fixture(scope="module")

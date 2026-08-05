@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -329,7 +328,7 @@ class TestServingEndToEnd:
 
     Uses tmp copy of the artifact dir so we don't pollute prod data."""
 
-    def test_correction_changes_predictions_upcoming_probs(self, tmp_path: Path):
+    def test_correction_changes_predictions_upcoming_probs(self, tmp_path: Path, monkeypatch):
         import shutil
 
         from fastapi import FastAPI
@@ -338,7 +337,11 @@ class TestServingEndToEnd:
         # Clone artifact into a tmp dir we own
         tmp_art = tmp_path / "v4_model"
         shutil.copytree(ARTIFACT_PATH, tmp_art)
-        os.environ["NUTMEG_V4_ARTIFACT_PATH"] = str(tmp_art)
+        # ⚠️ 2026-08-05:这里原来是裸 `os.environ[...] = ...`,不还原 ⇒ 之后同一
+        # 进程里所有测试都指着这个**跑完就被删掉的 tmp 目录**。用 monkeypatch
+        # (自动还原)。事故形态见 test_recommend_single_pool_api 里的注释:
+        # 全套红、单跑绿,而红的是另一个文件。
+        monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", str(tmp_art))
 
         from nutmeg.v4.api import clear_artifact_cache, v4_router
         clear_artifact_cache()
