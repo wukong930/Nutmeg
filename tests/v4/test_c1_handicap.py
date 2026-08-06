@@ -19,6 +19,13 @@ from nutmeg.v4.model.market_handicap import (
     _C1_DELTA_P1_SE,
     _C1_DELTA_SE,
     _C1_SE_K,
+    _C2_DELTA_A,
+    _C2_DELTA_D,
+    _C2_DELTA_H,
+    _C2_SE_A,
+    _C2_SE_D,
+    _C2_SE_H,
+    _UNCAL_SE,
     c1_leg_lower_bounds,
     implied_handicap_lines,
 )
@@ -132,16 +139,84 @@ def test_ses_are_the_honest_unpooled_ones_not_the_borrowed_ones():
 
 
 def test_lower_bounds_shift_only_the_two_corrected_legs():
-    d = _C1_SE_K * _C1_DELTA_SE
+    """哪些腿被下界修正 —— **期望值写死字面量,不用常数反推**。
+
+    ⚠️ 2026-08-07(P0-3)重写。原版是 `d = _C1_SE_K * _C1_DELTA_SE` 再断言
+    `lo[0] == 0.30 - d` —— **用同一个常数推出期望值**,所以 `_C1_SE_K` 从 2.0
+    改成 0.1 时 `d` 跟着变,断言照样过。钱路审查实测:那个改动**全量 3,182 条零红**,
+    而它把整套 A′ 保守带缩了 20 倍(下界≈点估 ⇒ 让球闸实质失效)。
+
+    ⭐ 规矩:**断言值别连带断言结构**。结构(哪条腿被碰)和数值(碰多少)要分开钉,
+    数值那半必须是外部算好的常数。
+    """
+    # 0.30 − 2.0×0.0078 = 0.2844;0.22 − 2.0×0.0078 = 0.2044(手算,不引常数)
     lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48)
-    assert lo[0] == pytest.approx(0.30 - d)    # 让胜(被 C1 减过)→ 再减 k·SE
-    assert lo[1] == pytest.approx(0.22 - d)    # 让平(被 C1 加过)→ δ 若更小则更低
-    assert lo[2] == pytest.approx(0.48)        # 让负 没被 C1 碰 → 无 δ 误差
-    dp = _C1_SE_K * _C1_DELTA_P1_SE
+    assert lo[0] == pytest.approx(0.2844, abs=1e-9)   # 让胜(被 C1 减过)→ 再减 k·SE
+    assert lo[1] == pytest.approx(0.2044, abs=1e-9)   # 让平(被 C1 加过)→ δ 若更小则更低
+    assert lo[2] == pytest.approx(0.48, abs=1e-9)     # 让负 没被 C1 碰 → 无 δ 误差
+    # 0.22 − 2.0×0.0101 = 0.1998;0.28 − 2.0×0.0101 = 0.2598
     lo1 = c1_leg_lower_bounds(+1, 0.50, 0.22, 0.28)
-    assert lo1[0] == pytest.approx(0.50)       # +1 的让胜没被碰
-    assert lo1[1] == pytest.approx(0.22 - dp)
-    assert lo1[2] == pytest.approx(0.28 - dp)
+    assert lo1[0] == pytest.approx(0.50, abs=1e-9)    # +1 的让胜没被碰
+    assert lo1[1] == pytest.approx(0.1998, abs=1e-9)
+    assert lo1[2] == pytest.approx(0.2598, abs=1e-9)
+
+
+def test_conservatism_multiplier_is_pinned_by_value():
+    """⭐ `_C1_SE_K` 的**量值**必须被钉住,不只是「存在且为正」。
+
+    它是把点估变成判闸下界的那个乘数,**通吃每一条让球腿**(占腿位约 52%)。
+    改小它 = 悄悄放松整套 A′ 判闸,而 P0-2 的护栏会全绿 —— 那些护栏守的是
+    「判闸读 `PB.lo` 而不是 `P`」,**不是**「`PB.lo` 有多低」。两者互补,缺一半
+    就是虚假的安全感。
+
+    2.0 ≈ 95% 单侧,是**预注册的策略选择**,不是可调旋钮。要改必须走预注册
+    (同「看过结局之后不许调参数」),改完把这里的数字一起改 —— 让它红一次是**目的**。
+    """
+    assert _C1_SE_K == 2.0, (
+        f"_C1_SE_K = {_C1_SE_K},不是 2.0(≈95% 单侧)。"
+        "调小 ⇒ 让球闸整体放松且没有别的东西会响;调大 ⇒ 更保守但会静默砍掉可投注腿。"
+        "任一方向都要走预注册,不是在这里改个数。")
+
+
+def test_delta_and_se_magnitudes_are_pinned_with_provenance():
+    """⭐ δ 与 SE 的**量值**钉死 —— 每个数字后面都有 N 和 prereg 版本。
+
+    原有断言只守「SE 比 v1.9 收缩值大」「+1 的 SE 比 −1 大」—— 都是**不等式**,
+    对「三个 δ₋₂ 常数一起缩 10 倍」这种等比变化完全免疫(守恒和方向都不变)。
+    审查实测:δ₋₂ 三个一起缩 10× ⇒ **零红**。
+
+    这里钉字面量。δ 重估(prereg 走完)时这条会红 —— **那正是要的**:
+    重估是一次审慎决定,应该逼人回来更新这份记录,而不是悄悄漂过去。
+    """
+    # v2.0 独立聚类 SE(prereg v2.0);括号里是样本量
+    assert pytest.approx(0.0463, abs=1e-9) == _C1_DELTA       # δ₋₁ 点估
+    assert pytest.approx(0.0078, abs=1e-9) == _C1_DELTA_SE    # δ₋₁ SE(N=3,131)
+    assert pytest.approx(0.0320, abs=1e-9) == _C1_DELTA_P1    # δ₊₁ 点估
+    assert pytest.approx(0.0101, abs=1e-9) == _C1_DELTA_P1_SE  # δ₊₁ SE(N=1,803)
+    # δ₋₂ 三腿(prereg v1.8),守恒:−0.064 + 0.021 + 0.043 = 0
+    assert pytest.approx((0.064, 0.021, 0.043), abs=1e-9) == (_C2_DELTA_H, _C2_DELTA_D, _C2_DELTA_A)
+    assert pytest.approx((0.025, 0.023, 0.027), abs=1e-9) == (_C2_SE_H, _C2_SE_D, _C2_SE_A)
+    # 未校准线(+2 / ±3)吃的地板 —— 借 +2 实测,秋季须重测
+    assert pytest.approx(0.078, abs=1e-9) == _UNCAL_SE
+
+
+def test_the_band_is_actually_wide_enough_to_matter():
+    """行为侧:下界必须**真的**比点估低到能改变判闸结论的程度。
+
+    上面两条钉的是常数;这条钉的是**后果** —— 万一有人绕开常数、在
+    `c1_leg_lower_bounds` 里改了组合方式,常数没动但带塌了,这条会红。
+
+    −1 线让胜:点估 0.30 → 下界 0.2844,差 1.56pp。在 SP=3.50 上
+    EV 从 +5.0% 掉到 −0.5% ⇒ **足以翻转 +5% 闸**。带若缩到 0.1×,
+    差只剩 0.08pp,EV 差 0.3pp,闸基本不动 —— 那才是审查发现的实质放松。
+    """
+    lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48)
+    gap = 0.30 - lo[0]
+    assert gap > 0.010, f"让胜下界只比点估低 {gap:.4f} —— A′ 保守带塌了"
+    sp = 3.50
+    assert 0.30 * sp - 1 >= 0.05, "fixture 前提:点估口径应过 +5% 闸"
+    assert lo[0] * sp - 1 < 0.05, (
+        f"下界口径也过闸了(EV={lo[0] * sp - 1:+.2%})—— 带不足以改变结论,判闸形同虚设")
 
 
 def test_lower_bounds_identity_only_on_the_zero_line():
