@@ -1151,6 +1151,9 @@ def record_bet(req: ManualBetRequest) -> ManualBetResponse:
                 "outcome": req.outcome, "odds": req.odds,
                 "probability": req.probability, "stake": req.stake,
                 "bankroll": req.bankroll,
+                # 溯源:共享 sink `store._request_odds_source` 从这个键读。
+                # 漏了它,手打价和镜像价在台账里就永远分不出来(且不可回溯)。
+                "odds_source": req.odds_source,
             })
             recorded = True
         except Exception:  # noqa: BLE001

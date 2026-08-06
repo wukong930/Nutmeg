@@ -477,6 +477,16 @@ class ManualBetRequest(BaseModel):
     probability: float = Field(0.0, ge=0.0, le=1.0)  # model P (for EV display)
     stake: float = Field(..., gt=0.0)            # real money the user bet
     bankroll: float = Field(1000.0, gt=0)
+    #: 这次下注所依据的 Pinnacle 价的**出处**('manual' / 'odds_api' / 'api_football')。
+    #:
+    #: 🚨 P0-6(2026-08-07)—— 前端从 `a06476a` 起就一直在送这个字段,但本模型没声明它,
+    #: Pydantic 默认**静默丢弃**未声明字段 ⇒ 它从来没到过 recorder。链路后半段其实是通的:
+    #: `record_manual_bet` 把 `bet` 当 request 传给 `insert_session`,后者调
+    #: `store._request_odds_source(request)` 读的就是这个键。**断点只在这一行的缺席。**
+    #:
+    #: ⚠️ 缺省 None = 「不知道」,`_request_odds_source` 会如实写 NULL ——
+    #: **绝不默认成 'api_football'**(那等于把「没告诉我」伪装成「我查过了」)。
+    odds_source: str | None = None
     record_session: bool = False
 
 
