@@ -2423,7 +2423,12 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="missing/invalid Pinnacle 1X2",
         )
-    from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+    from nutmeg.v4.combo.lottery_rules import DEFAULT_MIN_EV_PER_UNIT
+    from nutmeg.v4.model.market_handicap import (
+        c1_leg_lower_bounds,
+        devig_over,
+        implied_handicap_lines,
+    )
     p_over = devig_over(req.psc_over25, req.psc_under25)
     lines = implied_handicap_lines(
         fair[0], fair[1], fair[2], p_over, ou_line=req.ou_line, c1=True
@@ -2435,13 +2440,24 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
             detail=f"handicap line {req.handicap_home} out of range [-3, 3]",
         )
     _, p_h, p_d, p_a = row
-    P = {"H": p_h, "D": p_d, "A": p_a}
+    # 🚨 P0-5(2026-08-07)—— 判闸/选腿/注额一律走 **δ 逐腿下界**,不是点估。
+    #
+    # 2026-08-06 钱路审查实测:这个端点会记录的 64 注里 **90.6% 被看板自己拒绝**,
+    # 22% 选中的是**另一条腿** —— 因为看板(`_spcalcHcRecalc`/`_cupHcRecalc`)判的是
+    # `PB.lo[o] * sp - 1 >= 0.05`,而这里判的是点估 `ev > 0`。同一注两套口径,
+    # 而这个端点**没有前置判闸**:按钮就在每张市场模式让球卡上,点了直接进台账。
+    #
+    # ⚠️ 下界**不是概率分布**(三腿和 < 1),按 `c1_leg_lower_bounds` 的契约只许判闸,
+    #    不许展示/归一化/喂模型 —— 所以 `p_handicap` 落库和回包仍送点估三元组。
+    lo_h, lo_d, lo_a = c1_leg_lower_bounds(req.handicap_home, p_h, p_d, p_a)
+    PLO = {"H": lo_h, "D": lo_d, "A": lo_a}
     odds = {"H": req.odds_handicap_H, "D": req.odds_handicap_D, "A": req.odds_handicap_A}
     ev = {
-        o: (P[o] * odds[o] - 1.0) if (odds[o] and odds[o] > 1.0) else None
+        o: (PLO[o] * odds[o] - 1.0) if (odds[o] and odds[o] > 1.0) else None
         for o in ("H", "D", "A")
     }
-    # Highest-EV leg among the outcomes that carry a 竞彩 SP.
+    # 选腿也走下界 —— 用点估选、用下界判会选中「点估最高但下界不是最高」的那条,
+    # 审查实测 22% 的注就是这么选错的。
     filled = [o for o in ("H", "D", "A") if ev[o] is not None]
     best = max(filled, key=lambda o: ev[o]) if filled else None
 
@@ -2456,10 +2472,14 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
     # NEGATIVE expected_return that then polluted the unfiltered ROI / settle /
     # calibration population. No +EV leg → 空仓: stake 0, record nothing. Mirrors
     # the WC-handicap endpoint (test_wc_handicap_recording: "Sub-EV → not recorded").
-    if best is not None and ev[best] is not None and ev[best] > 0:
+    # ⛔ 闸从 `> 0` 收紧成 `>= DEFAULT_MIN_EV_PER_UNIT`(0.05)—— 和看板、和项目 DNA
+    #    「只投 EV≥+5%」同一个数,而且**引常量不抄字面量**(抄一个 0.05 进来,
+    #    以后调闸就会漏掉这一处)。`> 0` 会放行一大批 0~5% 的腿进台账,而看板
+    #    从不推荐它们 ⇒ 台账人口 ≠ 决策人口,秋季算 ROI 算的是另一群注。
+    if best is not None and ev[best] is not None and ev[best] >= DEFAULT_MIN_EV_PER_UNIT:
         from nutmeg.v4.combo.kelly import fractional_kelly_stake
         k = fractional_kelly_stake(
-            hit_probability=P[best], ev_per_unit=ev[best],
+            hit_probability=PLO[best], ev_per_unit=ev[best],
             bankroll=req.bankroll, kelly_fraction=req.kelly_fraction,
         )
         best_stake = max(float(k.recommended_stake), 2.0)
@@ -2491,8 +2511,8 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
                 # 体检 A3 — surface the failure (≠ gate-off); UI goes red.
                 record_failed = True
     elif best is not None:
-        # Least-negative leg is still surfaced for context (best_outcome /
-        # best_ev) but it is NOT a bet — no +EV → 空仓, stake 0.
+        # 没过闸的腿仍然回包(best_outcome / best_ev 给上下文),但**不是注**:
+        # stake 0、不落库。⚠️ 2026-08-07 起「没过闸」包含 0~5% 这一段,不再只是负 EV。
         best_stake = 0.0
 
     def _fair(p):

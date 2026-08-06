@@ -154,8 +154,15 @@ class TestEndToEndSettlement:
 
 class TestMarketHandicapEndpoint:
     def _payload(self, **over):
-        # 让平 SP 4.30 是这里**唯一** +EV 的腿(P=25.65% → 打平 SP 3.90 → EV +10.3%),
-        # 记录路径(下面两个 gate 测试)全靠它才走得到。
+        # 让平 SP 4.60 是这里**唯一**过闸的腿。记录路径(下面两个 gate 测试)全靠它才走得到。
+        #
+        # ⚠️ 2026-08-07(P0-5)从 4.30 调到 4.60。**不是测试挂了去迁就** —— 是这个端点的
+        # 判闸口径从「点估 > 0」改成了「**下界** >= 5%」(和看板同源)。同一条腿:
+        #   点估 EV +10.44%(过旧闸)  vs  **下界 EV +3.74%**(不过新闸)
+        # 恰好落在 0~5% 那一段 —— 而那正是本次要堵的洞:审查实测该端点会记录的 64 注里
+        # 90.6% 被看板自己拒绝。旧 fixture 把「点估口径的 +EV」固化了下来。
+        # 4.60 ⇒ 下界 EV +10.97%,三腿仍然只有它一条过闸。
+        # 照上一条注释定的规矩办:**重挑 SP,别删断言**。
         #
         # ⚠️ 原 fixture 的 +EV 腿是 让胜 @5.50 —— 它在 prereg v1.7(2026-07-17)δ 重估
         # 前是 +1.03%,重估后是 **−13.8%**。那个 +EV 从来不是真的:它正是 C1 要杀的
@@ -167,7 +174,7 @@ class TestMarketHandicapEndpoint:
             "psc_home": 2.43, "psc_draw": 3.04, "psc_away": 3.41,
             "psc_over25": 1.95, "psc_under25": 1.95,
             "handicap_home": -1,
-            "odds_handicap_H": 5.50, "odds_handicap_D": 4.30, "odds_handicap_A": 1.46,
+            "odds_handicap_H": 5.50, "odds_handicap_D": 4.60, "odds_handicap_A": 1.46,
             "bankroll": 1000.0, "kelly_fraction": 0.25,
             "record_session": False,
         }
