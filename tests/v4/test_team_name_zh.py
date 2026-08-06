@@ -425,3 +425,135 @@ class TestUEFAQualifiers:
         from nutmeg.v4.data.team_name_zh import coverage_by_league
         cov = coverage_by_league()
         assert cov.get("UEFA_QUALIFIERS", 0) >= 48
+
+
+# ---------- 2026-08-06 — AF 真实拼法别名 ---------------------------------
+
+class TestAFSpellingAliases:
+    """盘面/收盘线走 AF 原始拼法,词典只有清洗过的短名 ⇒ 前端显示英文。这一块把两侧接上。
+
+    ⚠️ 这里原来写着「`nutmeg-harvest-team-zh` 的『结构上限』就是这个集合」——**假的**。
+    工具的 `new_key_ceiling` 用语义尺子(`KnownTeams`),而这 25 条全是词典**已有
+    球队**的另一种拼法 ⇒ 它在改动前后都打印「上限 0」(实测 939 键 → 0,964 键 → 0)。
+    25 = 精确键口径的 26 减掉故意不要的 `Kyoto Sanga FC`。别照这句去跑 CLI 找「25」。
+    """
+
+    def test_af_spellings_resolve(self):
+        from nutmeg.v4.data.team_name_zh import lookup_zh
+        assert lookup_zh("SC Freiburg") == "弗赖堡"
+        assert lookup_zh("VfL Bochum") == "波鸿"
+        assert lookup_zh("1. FC Köln") == "科隆"
+        # 重音兄弟键 —— 跟词典的「杜塞尔多夫」,不是竞彩的「杜塞多夫」
+        assert lookup_zh("Fortuna Düsseldorf") == "杜塞尔多夫"
+        assert lookup_zh("Shimizu S-Pulse") == "清水心跳"
+
+    def test_the_two_entries_that_split_a_club_in_two_stay_fixed(self):
+        """🚨 回归条 —— 首版这两条行尾写着「词典完全没有这支队」,**都是假的**:
+        词典 407 行有 `Almere City: 阿尔梅勒城`、521 行有 `Kyoto Sanga: 京都不死鸟`。
+        它们于是给同一支队造了第二个中文名 —— 正是这一块声称要治的病。
+
+        · Almere:盘面实测只用 `Almere City FC` ⇒ 键留着,中文改成词典写法。
+        · Kyoto:盘面实测 `Kyoto Sanga FC` 出现 0 次(只有 `Kyoto Sanga`)⇒ 整条删,
+          留着只会把 `_ZH_OVERRIDES['京都']` 这个死 join 目标伪装成活的,并让前端
+          `_enTeamForSettle` 从 known=false 翻成 true(静默关掉结算警告)。
+        """
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH, lookup_zh
+        assert lookup_zh("Almere City FC") == lookup_zh("Almere City") == "阿尔梅勒城"
+        assert "Kyoto Sanga FC" not in TEAM_NAME_ZH
+        assert lookup_zh("Kyoto Sanga") == "京都不死鸟"
+        # 「京都」不再是任何键的值 ⇒ zh→en 反查落空 ⇒ 手工记账那条警告回来了。
+        assert "京都" not in set(TEAM_NAME_ZH.values())
+
+    def test_both_spellings_of_a_club_show_the_same_name(self):
+        """这才是这一块存在的理由 —— 同一支队不能因上游拼法不同显示成两个名字。
+        逐条按 `_EN_OVERRIDES`(短名 → AF 拼法)配对,不是挑几个样本。"""
+        from nutmeg.v4.data.sources.sporttery import _EN_OVERRIDES
+        from nutmeg.v4.data.team_name_zh import _AF_SPELLING_ALIASES_2026_08 as AF
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH, lookup_zh
+        pairs = [(short, af) for short, af in _EN_OVERRIDES.items()
+                 if af in AF and short in TEAM_NAME_ZH]
+        assert len(pairs) >= 20, f"配对只剩 {len(pairs)} 对 —— _EN_OVERRIDES 变了?"
+        for short, af in pairs:
+            assert lookup_zh(short) == lookup_zh(af), (
+                f"{short!r} 显示「{lookup_zh(short)}」但 {af!r} 显示「{lookup_zh(af)}」"
+                " —— 同一支队两个名字,正是这一块要修的病")
+
+    def test_no_entry_was_transliterated_and_dict_spelling_wins(self):
+        """⭐ 两条红线一起钉住:
+
+        ① 「绝不瞎猜队名」—— 每条中文都必须能从已有条目溯源;
+        ② 词典已有这支队时**必须逐字取词典写法** —— 这一块全是别名键,取竞彩
+           写法就会让同一支队显示成两个名字。
+
+        ⚠️ 「同一支队」用的是**运行时那把尺子** `harvest_team_zh.KnownTeams`
+        (`_EN_OVERRIDES` 反查 + `_affix_core` 折叠:大小写 / 重音 / 法定形式记号 /
+        成立年份),不是本文件里另写一份。
+
+        这条曾经的 fold 只折大小写+重音,比真正决定显示的那把弱:`SC Freiburg`
+        对 `Freiburg`、`FC Schalke 04` 对 `Schalke` 都判不出「词典已有这支队」,
+        于是 `if from_dict:` 那条「必须取词典写法」的分支整个跳过 —— 两条错别名
+        (Almere / Kyoto)就是从那个缺口漏过去的。**护栏比它守的东西弱,等于没有。**
+        """
+        from nutmeg.v4.cli.harvest_team_zh import KnownTeams
+        from nutmeg.v4.data.sources.sporttery import _EN_OVERRIDES
+        from nutmeg.v4.data.team_name_zh import _AF_SPELLING_ALIASES_2026_08 as AF
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+
+        base = {k: v for k, v in TEAM_NAME_ZH.items() if k not in AF}
+        kt = KnownTeams(base, _EN_OVERRIDES)
+
+        unsourced = []
+        for en, zh in AF.items():
+            hit = kt.lookup(en)
+            if hit is None:
+                unsourced.append(en)
+                continue
+            assert zh in hit.zhs, (
+                f"{en!r} 写的中文是「{zh}」,但词典里同一支队({hit.how})写作 "
+                f"{list(hit.zhs)} —— 别名键必须逐字跟词典,否则同一支队两个名字")
+        assert not unsourced, (
+            f"这些别名溯源不到词典里的任何一支队:{unsourced} —— 音译猜名是红线;"
+            "确实是新队的话该写进对应联赛块,不该混在别名块里")
+
+    def test_reverse_map_round_trips_for_every_chinese_name(self):
+        """⭐ 别名遮蔽护栏(Waalwijk 2026-08-05 / 汉堡·PSV·科隆 07-04 同型):
+        加别名键会往 `_ZH_TO_EN` 的 setdefault 里塞东西,一旦某个中文名反查到的
+        英文名对应着**另一个**中文名,竞彩行就会静默 join 不上收盘线 —— 行照写、
+        join 永死,只有人去看盘面才发现。2026-08-06 实测 0/808 违例,钉住。"""
+        from nutmeg.v4.data.sources.sporttery import zh_to_canonical
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+        bad = {zh: en for zh in set(TEAM_NAME_ZH.values())
+               if (en := zh_to_canonical(zh)) and TEAM_NAME_ZH.get(en) != zh}
+        assert not bad, f"中文名反查后对不回自己({len(bad)} 条):{list(bad.items())[:5]}"
+
+    def test_block_counted_in_coverage(self):
+        from nutmeg.v4.data.team_name_zh import coverage_by_league
+        assert coverage_by_league().get("AF_SPELLING_ALIASES", 0) == 25
+
+    def test_no_club_in_the_whole_dict_carries_two_chinese_names(self):
+        """⭐ 全词典级不变量,不只是这一块 —— 用运行时那把折叠尺子把所有键分组,
+        一组里出现两个中文名就是「同一支队两个名字」。
+
+        清单是**跑出来的**,不是推的:2026-08-06 实测只有 1 组,而且它是折叠尺子
+        故意偏松的已知副作用(`Vitoria SC` = 葡超吉马良斯 vs `Vitoria` = 巴甲维多利亚,
+        真是两支队)。名单变了 ⇒ 要么有人加了分裂条目,要么两支队被并到了一起,
+        两种都得有人解释。
+        """
+        from nutmeg.v4.cli.harvest_team_zh import fold_key
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+
+        known_split = {
+            "vitoria": "折叠尺子偏松:Vitoria SC(葡超)和 Vitoria(巴甲)是两支队",
+        }
+        groups: dict[str, dict[str, list[str]]] = {}
+        for k, v in TEAM_NAME_ZH.items():
+            f = fold_key(k)
+            if f:
+                groups.setdefault(f, {}).setdefault(v, []).append(k)
+        split = {f: d for f, d in groups.items() if len(d) > 1}
+        new = {f: d for f, d in split.items() if f not in known_split}
+        assert not new, (
+            "同一支队出现了两个中文名:\n  "
+            + "\n  ".join(f"{f}: {d}" for f, d in sorted(new.items())))
+        assert set(split) == set(known_split), (
+            f"已知的分裂组消失了(两侧靠拢了?)—— 更新清单:{set(known_split) - set(split)}")

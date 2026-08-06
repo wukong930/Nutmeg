@@ -1047,6 +1047,113 @@ _UEFA_QUALIFIERS_2026_07 = {
 }
 TEAM_NAME_ZH.update(_UEFA_QUALIFIERS_2026_07)
 
+# ============ AF 真实拼法别名(2026-08-06)=============================
+# `zh_to_canonical` 能吐出、但本词典没有**这个拼法的键**的英文名。它们**今天就是
+# 显示 bug** —— 盘面/收盘线走 AF 原始拼法(`SC Freiburg` / `VfL Bochum` /
+# `1. FC Köln`),而词典只有清洗过的短名(`Freiburg` / `Bochum` / `Koln`)
+# ⇒ `lookup_zh` 原样返回英文,前端显示英文。
+# 同源:`sporttery._EN_OVERRIDES`(词典短名 → AF 拼法)与 `_ZH_OVERRIDES`。
+#
+# ⚠️ 别把这一块读成「`nutmeg-harvest-team-zh` 打印的那个结构上限」——**不是同一个
+#   口径**,原来这行注释写错了。工具的 `new_key_ceiling` 用的是**语义**尺子
+#   (`KnownTeams`:精确键 / `_EN_OVERRIDES` 反查 / 折叠),而这 25 条全都是词典
+#   **已有球队**的另一种拼法 ⇒ 工具在改动前后都打印「结构上限 0」(实测:摘掉本块
+#   的 939 键词典 → 0,现状 964 键 → 0)。25 = **精确键**口径的 26 减掉故意不要的
+#   `Kyoto Sanga FC`,而 `new_key_ceiling` 的 docstring 恰恰在反对精确键口径。
+#   照旧注释去跑 CLI 的人,永远复现不出「25」。
+#
+# ⭐ 中文名**一个都不是音译猜的,也一个都不是竞彩写法** —— 全部逐字照抄词典里
+#   同一支队的现有中文名(经 `_EN_OVERRIDES` 溯源、或大小写/去重音/法定形式记号
+#   折叠后的兄弟键)。这一块全是**别名键**:取竞彩写法就会让同一支队因上游拼法
+#   不同而显示成两个名字,正是要修的病。11 条有两个候选的逐条注在行尾(数过,不是估的)。
+#
+# 🚨 2026-08-06 返工修掉的两条(它们制造了自己声称要治的病):
+#   · `Kyoto Sanga FC: 京都` —— 行尾原写「词典完全没有这支队」,**假的**,词典
+#     521 行就有 `Kyoto Sanga: 京都不死鸟`。⇒ 同队两名。已**删除**:实测
+#     `odds_snapshots` 里 `Kyoto Sanga FC` 出现 **0** 次(盘面只用 `Kyoto Sanga`),
+#     所以这个键修不了任何显示,只会把一个**死的 join 目标**
+#     (`sporttery._ZH_OVERRIDES['京都']`)伪装成活的,并且把 `_enTeamForSettle`
+#     从 known=false 翻成 true —— 静默关掉手工记账的结算警告。
+#   · `Almere City FC: 阿尔梅勒` —— 同样假(词典 407 行有 `Almere City: 阿尔梅勒城`),
+#     但这个拼法**是活的**(odds_snapshots 里只用 `Almere City FC`)⇒ 保留键、
+#     中文改成词典的「阿尔梅勒城」。
+#
+# ℹ️ 冗余度实测(2026-08-06 合入 main 后重测,拿 dashboard.html 里**真的**
+#   `zhTeam`/`_zhFold` 跑,不是照着正则推):把本块整块摘掉后,前端靠折叠仍能给出
+#   一模一样中文的有 **22/25** —— 真正必需的只有 3 条:`Estrela`(折成 Estrela 不在
+#   词典)、`Guimaraes`(词典键是 `Vitoria Guimaraes`,折叠够不着)、`Stade Brestois 29`。
+#   ⚠️ 分支上原写「23/25(本分支 17/25)」是**在分支的窄折叠表上量的**,合入 main
+#   (2634234 扩宽了 `_zhFold` 的德/荷/比记号)后口径变了 —— 参照点变了,数字就得重量。
+#   **仍然全部保留**,
+#   因为还有一个**不折叠**的消费者:`cli/team_assets_check.py` 用
+#   `name not in TEAM_NAME_ZH` 判「卡片会显示英文名」⇒ 删掉冗余键会让那个哨兵
+#   对着显示正常的队报警(假红)。别按「前端折得出来」为由删。
+_AF_SPELLING_ALIASES_2026_08: dict[str, str] = {
+    "1. FC Heidenheim": "海登海姆",  # ← 词典 'Heidenheim'
+    "1. FC Köln": "科隆",  # ← 词典 'Koln'
+    "1. FC Nürnberg": "纽伦堡",  # ← 词典 'Nurnberg'
+    "AD Ceuta FC": "休达",  # ← 词典 'Ceuta'
+    "Almere City FC": "阿尔梅勒城",  # ← 词典 'Almere City';竞彩「阿尔梅勒」
+    "Borussia Mönchengladbach": "门兴格拉德巴赫",  # ← 词典 'Borussia Monchengladbach';竞彩「门兴」
+    "Estac Troyes": "特鲁瓦",  # ← 词典 'Troyes'
+    "Estrela": "阿马多拉之星",  # ← 词典 'Estrela Amadora';竞彩「阿马多拉」
+    "FC Augsburg": "奥格斯堡",  # ← 词典 'Augsburg'
+    "FC Schalke 04": "沙尔克 04",  # ← 词典 'Schalke 04';竞彩「沙尔克04」
+    "FC St. Pauli": "圣保利",  # ← 词典 'St. Pauli'
+    "FSV Mainz 05": "美因茨",  # ← 词典 'Mainz 05'
+    "Fortuna Düsseldorf": "杜塞尔多夫",  # ← 词典 'Fortuna Dusseldorf';竞彩「杜塞多夫」
+    "GIL Vicente": "维森特",  # ← 词典 'Gil Vicente';竞彩「吉维森特」
+    "GO Ahead Eagles": "前进之鹰",  # ← 词典 'Go Ahead Eagles'
+    "Granada CF": "格拉纳达",  # ← 词典 'Granada'
+    "Guimaraes": "吉马良斯",  # ← 词典 'Vitoria Guimaraes'
+    "PAU": "波城",  # ← 词典 'Pau';竞彩「波城FC」
+    "RED Star FC 93": "巴黎红星",  # ← 词典 'Red Star';竞彩「圣旺红星」
+    "SC Freiburg": "弗赖堡",  # ← 词典 'Freiburg'
+    "SV Darmstadt 98": "达姆施塔特",  # ← 词典 'Darmstadt';竞彩「达姆施塔」
+    "SV Elversberg": "埃尔弗斯堡",  # ← 词典 'Elversberg';竞彩「埃沃斯堡」
+    "Shimizu S-Pulse": "清水心跳",  # ← 词典 'Shimizu S-pulse';竞彩「清水鼓动」
+    "Stade Brestois 29": "布雷斯特",  # ← 词典 'Brest'
+    "VfL Bochum": "波鸿",  # ← 词典 'Bochum'
+}
+TEAM_NAME_ZH.update(_AF_SPELLING_ALIASES_2026_08)
+
+# ============ 竞彩 vote-feed 收割(机器维护)===========================
+# 由 `nutmeg-harvest-team-zh --apply` 整块重写(按键排序)。**别手改**,也别在下面
+# 那两行标记之间加注释或语句 —— 整块重写只吐键值对,别的都会丢;工具因此在重写前
+# **先检查块里有没有这类东西,有就拒写**(`harvest_team_zh.block_extras`)。
+# (标记本身不在这段散文里出现:写侧按「独占一行且全文恰好一次」定位,
+#  注释里再提一次会把块的起点挪到注释上。)
+#
+# 收的是 `jingcai_vote` 的 (home_team, home_zh) 对:中文名是竞彩官方写法,
+# 英文名是 `sporttery.zh_to_canonical` 的输出。⚠️ 那个函数**是本词典的反转**
+# (+ `_ZH_OVERRIDES` / `_EN_OVERRIDES`),所以能收进来的新条目有硬上限 ——
+# 只有 `_EN_OVERRIDES` 的值和 `_ZH_OVERRIDES` 里指向词典外英文名的条目,而且还得是
+# 词典**整支队都没有**的(盘面拼法 ≠ 新队:`SC Freiburg` 就是词典的 `Freiburg`)。
+# CLI 每次跑都把这个上限**算出来打印**,别把「0 个新名字」读成「没得收」。
+#
+# 与词典冲突的条目(竞彩保留 FC/CF 后缀、我们剥掉)**永远不会**落到这里 ——
+# 那是编辑口径选择,工具只打印,由人决定。
+#
+# 🚨 2026-08-06 返工:这里原来是 `TEAM_NAME_ZH.update(...)`,而它是**全文件最后
+# 一次 update** ⇒ 机器块会盖住上面所有人工联赛块,而上一段注释偏偏叫人「手工条目
+# 写进上面的块里」—— 那条订正路径是个 no-op,且 harvest 的 classify 会把这种覆盖
+# 读成「一致」,工具还报健康。改成 `setdefault`:**人工永远赢**,和注释说的一致。
+#
+# ⚠️ 为什么是 setdefault 而不是「把这一块挪到人工块前面」:`TEAM_NAME_ZH` 的**插入
+# 顺序**是 `sporttery._ZH_TO_EN` 的输入(那边按 setdefault 先到先得建 中文→英文
+# 反查)。把机器块挪到最前面,机器条目就会抢下反查权 —— 那正是 07-04 / 08-05 两次
+# 「别名遮蔽」事故的形状(行照写、join 永死)。setdefault 两个性质都要:人工赢,
+# 且机器条目留在插入顺序的末尾。
+#
+# 注:这一块用 `dict[str, str]` 而非文件其余部分的 `Dict[str, str]` —— 后者会新增
+# 一条 ruff UP006(存量 17 条不动,但新代码不许再添)。别「统一风格」改回去。
+# HARVEST-BEGIN
+_JINGCAI_VOTE_HARVEST: dict[str, str] = {
+}
+# HARVEST-END
+for _harvest_en, _harvest_zh in _JINGCAI_VOTE_HARVEST.items():
+    TEAM_NAME_ZH.setdefault(_harvest_en, _harvest_zh)
+
 
 def lookup_zh(team_name: str) -> str:
     """Return Chinese name for a canonical team, else input unchanged.
@@ -1113,5 +1220,9 @@ def coverage_by_league() -> Dict[str, int]:
         "POLYMARKET_BOARD":        len(_POLYMARKET_BOARD),
         # 2026-07-05 — UEFA 资格赛第一轮小国冠军.
         "UEFA_QUALIFIERS":         len(_UEFA_QUALIFIERS_2026_07),
+        # 2026-08-06 — AF 真实拼法别名(词典已有球队的另一种拼法,非 harvest 上限).
+        "AF_SPELLING_ALIASES":     len(_AF_SPELLING_ALIASES_2026_08),
+        # 2026-08-06 — 竞彩 vote-feed 收割(nutmeg-harvest-team-zh 维护).
+        "JINGCAI_VOTE_HARVEST":    len(_JINGCAI_VOTE_HARVEST),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }

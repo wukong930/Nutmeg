@@ -510,15 +510,102 @@ def test_pinned_values_have_a_display_name_so_cards_dont_show_english():
     assert not miss, f"这些英文键没有中文显示名,卡片会显示英文:{miss}"
 
 
-def test_display_gap_list_is_pinned_so_new_ones_cant_slip_in_silently():
-    """⚠️ `_ZH_OVERRIDES` 里现有 **12** 条的英文值没有显示中文(历史遗留)。
+def test_every_zh_override_value_maps_to_exactly_one_chinese_name():
+    """`_ZH_OVERRIDES` 的每个英文值都必须在词典里对上**恰好一个**中文名。
 
-    这条**不是**在批准它们,而是把数量钉住:再多一条就红 ⇒ 新加映射必须要么带
-    显示名、要么显式改这个数字(有意为之),不能又一次「悄悄多一个」。
+    ## 这条测的到底是什么(2026-08-06 重写)
+
+    旧版写的是 `en not in TEAM_NAME_ZH`,先钉 12、后收紧成 0。**那是语法代理测
+    语义属性**:「词典里有没有这个精确键」不是「卡片会不会显示英文」——
+    `_ZH_OVERRIDES` 的值按其自身注释就是 odds_snapshots 的**长拼法**,而词典存的
+    是清洗过的短名,两者本来就常常不是同一个字符串。
+
+    机械满足它的办法是给长拼法新造一条词典条目,而如果不先查「词典是不是已经有
+    这支队」,造出来的就是同一支队的**第二个中文名** —— 这次返工修的两条
+    (`Almere City FC` / `Kyoto Sanga FC`)就是被这条测试推出来的。所以现在:
+
+    * **0 个**:一个 override 值都不许对不上中文(否则卡片显示英文)——「不能悄悄
+      多一个」那条守则原样保留;
+    * **不许 >1 个**:也不许对上两个不同的中文名(那就是把一支队劈成两支)。
+
+    判「同一支队」用的是运行时那把尺子 `harvest_team_zh.KnownTeams`,和收割器
+    完全同一条 —— 护栏比它守的东西弱就等于没有。
     """
+    from nutmeg.v4.cli.harvest_team_zh import KnownTeams
+    from nutmeg.v4.data.sources.sporttery import _EN_OVERRIDES, _ZH_OVERRIDES
+    from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+
+    kt = KnownTeams(TEAM_NAME_ZH, _EN_OVERRIDES)
+    gaps, splits = {}, {}
+    for zh, en in _ZH_OVERRIDES.items():
+        hit = kt.lookup(en)
+        if hit is None:
+            gaps[zh] = en
+        elif len(hit.zhs) > 1:
+            splits[en] = hit.zhs
+    assert not gaps, (
+        f"这 {len(gaps)} 条 override 的英文值在词典里找不到这支队,卡片会显示英文:"
+        f"{gaps}\n补进 team_name_zh.py。⚠️ 先查词典是不是已经用**别的拼法**存着这支队"
+        "(`KnownTeams.lookup`):有就照抄那个中文,别新造一个。")
+    assert not splits, (
+        f"这些 override 的英文值在词典里对上了两个不同的中文名:{splits}\n"
+        "同一支队两个名字 —— 挑一个,把另一个改成一样的。")
+
+
+def test_no_zh_override_value_falls_through_to_english_on_the_card():
+    """上一条是服务端的尺子;这条拿**前端真的那段代码**再测一遍显示本身。
+
+    `_affix_core`(服务端)比 `_zhFold`(前端)剥得多、剥的位置也不同(见
+    `test_zhfold_parity`),所以「服务端认得这支队」**推不出**「卡片显示中文」。
+    这里从 dashboard.html 里抠出真的 `zhTeam`/`_zhFold`/`_rebuildTeamZhLower` 丢进
+    node 跑,不重写一份 —— 重写一份就又变成「我以为它这么折」。
+    """
+    import json
+    import re
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
     from nutmeg.v4.data.sources.sporttery import _ZH_OVERRIDES
     from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
-    gaps = sorted(zh for zh, en in _ZH_OVERRIDES.items() if en not in TEAM_NAME_ZH)
-    assert len(gaps) == 12, (
-        f"缺显示名的 override 从 12 变成 {len(gaps)}:{gaps}\n"
-        "新增的请补 team_name_zh.py;确实无法补再改这个数字。")
+
+    if shutil.which("node") is None:
+        pytest.skip("node 不在 PATH —— 这条**没跑**(不是通过),前端折叠没被验到")
+
+    dash = (Path(__file__).resolve().parents[2]
+            / "apps/api/src/nutmeg/v4/api/static/dashboard.html").read_text("utf-8")
+
+    def _fn(name: str) -> str:
+        mt = re.search(rf"\nfunction {re.escape(name)}\(", dash)
+        assert mt, f"dashboard.html 里找不到 {name} —— 它被改名或删了,本护栏失效"
+        start, j, depth = mt.start() + 1, dash.index("{", mt.end()), 0
+        while j < len(dash):
+            if dash[j] == "{":
+                depth += 1
+            elif dash[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        return dash[start:j + 1]
+
+    names = sorted(set(_ZH_OVERRIDES.values()))
+    src = "\n".join([
+        "let TEAM_ZH_DICT = {}; let TEAM_ZH_LOWER = {}; const _LOCALE = 'zh';",
+        _fn("_rebuildTeamZhLower"), _fn("zhTeam"), _fn("_zhFold"),
+        f"TEAM_ZH_DICT = {json.dumps(TEAM_NAME_ZH, ensure_ascii=False)};",
+        "_rebuildTeamZhLower();",
+        f"const ns = {json.dumps(names, ensure_ascii=False)};",
+        "const o = {}; for (const n of ns) o[n] = zhTeam(n);",
+        "console.log(JSON.stringify(o));",
+    ])
+    out = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[:1500]
+    rendered = json.loads(out.stdout)
+
+    assert names, "样本是空的 —— 这条会变空洞"
+    english = {n: rendered[n] for n in names if rendered[n] == n}
+    assert not english, (
+        f"这 {len(english)} 个 override 的英文值在卡片上还是英文:{sorted(english)}")
