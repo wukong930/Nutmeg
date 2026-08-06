@@ -797,6 +797,12 @@ _V12_W7_CUP_AND_VARIANTS = {
     "Maccabi Tel Aviv": "特拉维夫马卡比", "Maccabi Haifa": "海法马卡比",
     "Ferencvarosi TC": "费伦茨瓦罗斯",
     "Legia Warszawa": "华沙莱吉亚", "Lech Poznan": "波兹南莱赫",
+    # 2026-08-06 —— 告警「竞彩在售、但没进盘面」逮到。**整队不在词典**(属 ② 类)⇒
+    # 补这里一处同时修 join 和显示;只补 `_ZH_OVERRIDES` 会变成「join 通了、卡片仍显示英文」。
+    # 英文键不是按译音猜的:拿能解析的对手 `格拉斯哥流浪者→Rangers` 当锚,在 odds_snapshots
+    # 里 2026-08-06 16:00 UEL 唯一命中 `Jagiellonia vs Rangers`,主客顺序也对上。
+    # 中文名取竞彩官方写法「比亚韦斯托克」—— 和你在竞彩 App 里看到的一致,不自造。
+    "Jagiellonia": "比亚韦斯托克",
     "Slovan Bratislava": "布拉迪斯拉发斯洛万",
     "HJK Helsinki": "赫尔辛基HJK", "Kairat Almaty": "阿拉木图凯拉特",
     "FC Astana": "阿斯塔纳", "Sheriff Tiraspol": "蒂拉斯波尔治安官",

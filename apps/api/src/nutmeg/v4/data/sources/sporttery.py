@@ -271,6 +271,12 @@ _ZH_OVERRIDES: dict[str, str] = {
     # 荷甲
     "乌德勒支": "Utrecht", "阿尔克马": "AZ Alkmaar", "鹿斯巴达": "Sparta Rotterdam",
     "阿尔梅勒": "Almere City FC", "福图纳": "Fortuna Sittard", "赫拉克勒": "Heracles",
+    # 2026-08-06 —— 告警「竞彩在售、但没进盘面」逮到:竞彩把 Excelsior 写作「SBV精英」,
+    # 词典里这支队已有条目(`Excelsior: 鹿特丹精英`)⇒ 这是**只换了中文写法**,属 ① 类,
+    # 只补这里、**不动 team_name_zh.py**(卡片继续显示「鹿特丹精英」)。
+    # 英文键不是按译音猜的:拿能解析的对手 `坎布尔→Cambuur` 当锚,在 odds_snapshots 里
+    # 2026-08-07 18:00 NED_EREDIVISIE 唯一命中 `Cambuur vs Excelsior`,主客顺序也对上。
+    "SBV精英": "Excelsior",
     # 葡超
     "博阿维斯": "Boavista", "吉维森特": "GIL Vicente", "埃斯托里": "Estoril",
     "摩雷伦斯": "Moreirense", "法伦斯": "Farense", "葡国民": "Nacional",
