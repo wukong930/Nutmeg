@@ -1211,11 +1211,23 @@ class TestSweetEvBoard:
         assert "second: legs[1] || null" in html
 
     def test_legs_cover_both_markets_from_jc_sp(self, html):
-        # 1X2 三腿用在售 jc_*;让球三腿用 jc_hc_* 在 jc_hc_line 上,P 带 A′ 下界
-        assert ("push('H', t('sw_1x2_h'), pr.p_home_1x2, null, "
-                "_sweetEffSp(mode, idx, '1x2', 'H', pr.jc_home));" in html)
+        """两个市场都要进榜:1X2 三腿吃在售 `jc_*`,让球三腿吃 `jc_hc_*` 且带 A′ 下界。
+
+        ⚠️ 2026-08-07 改写。原来这条钉的是 push 那一行的**源码原文**,里面顺带焊死了
+        `pr.p_home_1x2` —— 于是 P0-1 把 1X2 的 P 从模型 P 换成市场 P(判闸口径统一)时,
+        这条无辜地红了。**它想守的是「两个市场都覆盖」,不是「1X2 用哪个 P」**,
+        却因为断言整行源码把两件事绑在一起 —— 典型的「断言值别连带断言结构」。
+
+        取哪个 P 现在由 `tests/v4/test_gate_p_source_behavioral.py` 用**行为**守
+        (抠真函数进 node 跑、断言 EV 数值),比这里的字符串强得多。
+        """
+        # 1X2:三个 outcome 各一条 push,SP 走在售 jc_*(不管 P 从哪来)
+        for o, jc in (("H", "jc_home"), ("D", "jc_draw"), ("A", "jc_away")):
+            assert f"_sweetEffSp(mode, idx, '1x2', '{o}', pr.{jc})" in html, o
+        # 让球:锁定在售那条线,且 P **必须带下界**(第 4 个实参是 pb.lo.*,不是 null)
         assert "pr.handicap_lines.find(l => l.line === pr.jc_hc_line)" in html
-        assert "push('hcD', lbl('D'), pb.p.D, pb.lo.D, sp('D', pr.jc_hc_draw));" in html
+        for o in ("H", "D", "A"):
+            assert f"push('hc{o}', lbl('{o}'), pb.p.{o}, pb.lo.{o}," in html, o
 
     def test_i18n_keys_both_locales(self, html):
         for k in ("sw_board_hdr", "sw_board_note", "sw_second", "sw_jump_hint",

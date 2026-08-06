@@ -2163,6 +2163,7 @@ const I18N = {
     bet_record:       '记此注',
     bet_stake:        '注额',
     bet_need_sp:      '请先填入竞彩 SP',
+    bet_no_gate_p:    '这条腿现在没有判闸用的 P(缺 Pinnacle 线 / 未选让球线)—— 不记账,免得台账留下一行修不回来的错口径',
     bet_neg_ev:       '此注为负 EV，确认仍要记录',
     bet_recorded:     '已记录',
     bet_gate_off:     '已算(未写库)',
@@ -2711,6 +2712,7 @@ const I18N = {
     bet_record:       'Record this bet',
     bet_stake:        'Stake',
     bet_need_sp:      'Enter the 竞彩 SP first',
+    bet_no_gate_p:    'No gating P for this leg (missing Pinnacle line / no handicap line picked) — not recording, rather than writing a row that can never be corrected',
     bet_neg_ev:       'Negative-EV bet — confirm to record anyway',
     bet_recorded:     'Recorded',
     bet_gate_off:     'Computed (DB off)',
@@ -4972,9 +4974,27 @@ function _boardLegs(pr, idx, mode) {
     legs.push({ o, label, p, sp, ev, evLo, tier,
                 half: Math.hypot(ev - evLo, _frzHalfEv(pr, o, sp)) });
   };
-  push('H', t('sw_1x2_h'), pr.p_home_1x2, null, _sweetEffSp(mode, idx, '1x2', 'H', pr.jc_home));
-  push('D', t('sw_1x2_d'), pr.p_draw_1x2, null, _sweetEffSp(mode, idx, '1x2', 'D', pr.jc_draw));
-  push('A', t('sw_1x2_a'), pr.p_away_1x2, null, _sweetEffSp(mode, idx, '1x2', 'A', pr.jc_away));
+  // 🚨 P0-1(2026-08-07)—— 1X2 腿的 P 必须和**卡片判闸**同源,不能再用模型 P。
+  //
+  // `d2b3950` 把判闸改成市场 P 时,正文写的是「改完**全系统**口径统一」——
+  // 那句话在卡片这一层是真的,外推到这里就是**假的**:本函数一路喂着
+  // 附区闸(`evLo>=0.05`)、腿行绿灯、排序键、串关构造器池、以及可以直接照着下的
+  // 「1串参考」,五个面全都还在按模型 P 判。实测线上 84 条 1X2 腿里 **81 条**存在
+  // 「榜说过闸、同页卡片说不过闸」的 SP 窗口,且 **46/84 是榜更绿**(方向不保守);
+  // 串关 argmax 会系统性挑中模型最乐观的那条腿,偏差按腿数复利。
+  //
+  // ⛔ **没有市场 P ⇒ 整条腿不进榜**,绝不 `?? p_*_1x2` 回退 —— 回退等于把刚移出
+  //    判闸的东西从后门放回来,而且是静默的。卡片那边同样是「不判闸」而非「回退」。
+  // ⚠️ 市场模式(`mode==='cup'`)的 `p_*_1x2` **本身就是** Pinnacle WPO 去vig
+  //    (服务端 `p_*_market` 对这些场次一律下发 null),所以那边保持原样才是同源。
+  //    这也是为什么这里必须**按模式**取,不能一刀切。
+  const mkt = mode === 'cup' ? null : _mktP(pr);
+  const p1x2 = mode === 'cup'
+    ? { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 }
+    : mkt;   // null ⇒ 下面三条 push 全部因 `!(p > 0)` 自然跳过
+  push('H', t('sw_1x2_h'), p1x2 && p1x2.H, null, _sweetEffSp(mode, idx, '1x2', 'H', pr.jc_home));
+  push('D', t('sw_1x2_d'), p1x2 && p1x2.D, null, _sweetEffSp(mode, idx, '1x2', 'D', pr.jc_draw));
+  push('A', t('sw_1x2_a'), p1x2 && p1x2.A, null, _sweetEffSp(mode, idx, '1x2', 'A', pr.jc_away));
   if (pr.jc_hc_line != null && pr.handicap_lines) {
     const lp = pr.handicap_lines.find(l => l.line === pr.jc_hc_line);
     const pb = lp && _hcLineP(lp);
@@ -5568,7 +5588,6 @@ function _bettableGlobalSync() {
 // −EV) into the observation DB. Works for BOTH boards (mode 'spcalc'|'cup') and
 // BOTH markets ('1x2'|'handicap'); the 📌 per outcome row opens an inline stake
 // box. POST /observation/record-bet (server dual-gate decides actual write).
-const _PMAP = { H: 'p_home_1x2', D: 'p_draw_1x2', A: 'p_away_1x2' };
 function _recordBet(mode, idx, outcome, market, btn) {
   const preds = mode === 'cup' ? _CUPMKT.preds : _SPCALC.preds;
   const pr = (preds || [])[idx];
@@ -5579,16 +5598,37 @@ function _recordBet(mode, idx, outcome, market, btn) {
   const spEl = document.querySelector(`.${spClass}[data-idx="${idx}"][data-outcome="${outcome}"]`);
   const odds = spEl ? parseFloat(spEl.value) : NaN;
   if (!(odds > 1.0)) { alert(t('bet_need_sp')); return; }
+  // 🚨 P0-4(2026-08-07)—— 台账送的 P 必须**和授权这注的那个 P 是同一个数**。
+  //
+  // 改之前:1X2 送模型 P(`_PMAP` → `p_*_1x2`)、让球送**点估**;而实际放行这两注的
+  // 分别是**市场 P** 和 **δ 下界**。⇒ 库里的 `probability` / `ev_per_unit` /
+  // `expected_return` 记的是另一个量。
+  //
+  // ⭐ 为什么这条比看板上的错更急:**台账不可回溯** —— 库里不存当时的市场 P 和当时的
+  //    δ 下界,事后没有任何办法把这些行修回来。而这张台账正是秋季回答
+  //    「+5% 闸到底赚不赚」的唯一样本。每记一注,就多一行永远修不好的脏数据。
+  //
+  // ⛔ 取不到判闸 P ⇒ **拒绝记录**,不用 0 也不用模型 P 兜底。少一行 > 错一行:
+  //    `p=0` 会写进一条 ev=−100% 的假记录,比缺失更难发现。
   let hcLine = null, p = 0;
   if (market === 'handicap') {
     const sel = document.querySelector(`#${mode === 'cup' ? 'cuphcline' : 'spcalc-hcline'}-${idx}`);
     if (!sel || sel.value === '') { alert(t('spcalc_hc_pickline')); return; }
     hcLine = parseInt(sel.value, 10);
-    const P = mode === 'cup' ? _cupHcP(idx) : _spcalcHcP(idx);
-    p = (P && P[outcome] != null) ? P[outcome] : 0;
+    // 判闸/注额用的是**下界** `PB.lo`(见 `_spcalcHcRecalc` / `_cupHcRecalc` 的 evLo),
+    // 不是 `lp.p_home` 那个点估。这里必须跟着走同一条。
+    const lp = (pr.handicap_lines || []).find(l => l.line === hcLine);
+    const pb = lp && _hcLineP(lp);
+    p = (pb && pb.lo && pb.lo[outcome] > 0) ? pb.lo[outcome] : 0;
   } else {
-    p = pr[_PMAP[outcome]] || 0;
+    // 市场模式的 `p_*_1x2` 本身就是 Pinnacle WPO 去vig(服务端对这些场次不下发
+    // `p_*_market`);标准模式必须显式取市场 P —— 同 `_boardLegs` 的 P0-1。
+    const mkt = mode === 'cup'
+      ? { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 }
+      : _mktP(pr);
+    p = (mkt && mkt[outcome] > 0) ? mkt[outcome] : 0;
   }
+  if (!(p > 0)) { alert(t('bet_no_gate_p')); return; }
   const ev = p * odds - 1;
   const warn = ev < 0;
   const evPct = (ev * 100).toFixed(1);
