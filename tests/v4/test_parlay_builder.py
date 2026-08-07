@@ -180,18 +180,86 @@ def test_backtest_constants_match_the_measurement() -> None:
         "随机腿基线变了 —— 它是 873 个比赛日的**实测**随机取腿 ROI,是那把尺子")
 
 
-def test_note_says_it_will_not_be_positive() -> None:
-    """⛔ 「不会给正数」必须留着 —— 长文进了 ⓘ 弹窗,**但一句摘要仍要在卡面上**。
+def _i18n_keys_carrying(pattern: str) -> set[str]:
+    """字典里**值**命中 `pattern` 的那些键(键定义是单行 `  key: '...'`)。"""
+    out: set[str] = set()
+    for line in _src().splitlines():
+        m = re.match(r"\s*([a-z0-9_]+):\s*'", line)
+        if m and re.search(pattern, line):
+            out.add(m.group(1))
+    return out
 
-    2026-08-03 owner:「提示类文案看起来很累,用图标代替」。搬进弹窗是对的,
-    但整句搬走就等于默认没人点 ⓘ。所以长版进 `pb_note`(弹窗),
-    卡面留 `pb_note_short` 一行 —— 两边都钉。
+
+def _rendered_i18n_keys() -> set[str]:
+    """真正挂在渲染路径上的键 —— `t('k')` 或 `data-i18n="k"`。"""
+    s = _src()
+    return (set(re.findall(r"t\('([a-z0-9_]+)'\)", s))
+            | set(re.findall(r'data-i18n="([a-z0-9_]+)"', s)))
+
+
+def _warning_is_reachable(pattern: str, rendered: set[str]) -> bool:
+    """判据本体:载着 `pattern` 的键里,至少一个在 `rendered` 里。
+
+    ⭐ 抠成纯函数**只为一件事**:让下面那发空包弹能真打出去。
+    判据要是留在测试体内,「它能不能红」就只能靠读代码相信。
+    """
+    carriers = _i18n_keys_carrying(pattern)
+    return bool(carriers & rendered)
+
+
+_NEVER_POSITIVE = (("中文", r"不会给(你)?正数"),
+                   ("英文", r"NOT hand you a positive number|Never positive"))
+
+
+def test_the_reachability_guard_can_actually_go_red() -> None:
+    """⭐ 先打空包弹,再信实弹的绿。
+
+    旧版护栏就是因为没人打这一枪,才在卡面那行被删掉之后继续绿着 ——
+    它测的是「字典里有没有这串字」,而那串字**永远**在。
+    """
+    for lang, pat in _NEVER_POSITIVE:
+        assert _i18n_keys_carrying(pat), f"{lang}字典里已经没有任何键载着「不会给正数」"
+        assert not _warning_is_reachable(pat, set()), (
+            f"{lang}:渲染集为空时判据仍然绿 —— 它没在检查可达性,只是在文件里找字符串")
+    assert not _warning_is_reachable(r"绝不会出现在任何文案里的字串xyzzy",
+                                     _rendered_i18n_keys()), "判据对不存在的文案也说绿"
+
+
+def test_the_never_positive_warning_is_actually_reachable() -> None:
+    """⛔ 「不会给正数」必须**够得着**,不是「必须在文件里」。
+
+    ⚠️ 这条测试自己是 2026-08-07 修的假护栏。旧写法:
+
+        assert "⚠️ 不会给正数" in s, "卡面摘要没留「不会给正数」"
+
+    而 `pb_note_short` 自 2026-08-04 owner 删掉常驻那行之后**零渲染引用**
+    (键故意留着待恢复,见 `_parlayBuilderHtml` 里的 HTML 注释)。字符串还躺在
+    i18n 字典里 ⇒ 断言恒真 ⇒ 它当时守的是「字典里有没有这串字」,
+    不是「用户看不看得到」。同族:**语法代理测语义属性**。
+
+    现在的判据:载着这句话的键里,**至少一个必须出现在渲染路径上**。
+    今天满足它的是 `pb_note`(标题旁 ⓘ 弹窗)。哪天 owner 把常驻那行加回来,
+    `pb_note_short` 也会满足它 —— 两种状态都绿(这是**故意**的:护栏不该
+    在 owner 走它自己留的恢复路时变红),而「两边都删/都不渲染」会红。
+    """
+    rendered = _rendered_i18n_keys()
+    for lang, pat in _NEVER_POSITIVE:
+        assert _warning_is_reachable(pat, rendered), (
+            f"{lang}的「不会给正数」只剩死键 {sorted(_i18n_keys_carrying(pat))} —— "
+            "没有一个挂在渲染路径上,用户任何情况下都看不到它")
+
+
+def test_pb_note_short_is_parked_not_forgotten() -> None:
+    """`pb_note_short` 现在 0 渲染引用。这是 owner 的决定,不是 bug ——
+    但**必须有东西记着它是死的**,否则下一个人会以为卡面还印着那句话
+    (旧测试的 docstring 就是这么写的,写了三天的假话)。
     """
     s = _src()
-    assert "它不会给你正数" in s, "弹窗正文删掉了「不会给正数」"
-    assert "will NOT hand you a positive number" in s, "英文弹窗删掉了同一句"
-    assert "⚠️ 不会给正数" in s, "卡面摘要没留「不会给正数」"
-    assert "Never positive" in s, "英文卡面摘要同上"
+    assert "pb_note_short" in s, "键被删了 —— 那 _parlayBuilderHtml 的恢复注释要一起删"
+    if "pb_note_short" not in _rendered_i18n_keys():
+        assert "2026-08-04 owner 删掉了这里的常驻一句话" in s, (
+            "`pb_note_short` 不渲染,而解释它为什么留着的注释没了 —— "
+            "留个没人引用又没人解释的键,下一次清理会直接删掉它")
 
 
 def test_long_notes_moved_into_the_info_modal() -> None:
@@ -263,3 +331,42 @@ def test_fe_version_is_well_formed() -> None:
     m = re.search(r'_FE_VERSION = "([^"]+)"', routes)
     assert m, "_FE_VERSION 不见了"
     assert re.fullmatch(r"nutmeg-v\d+-fe-[a-z0-9-]+", m.group(1)), m.group(1)
+
+
+def _js_const_map(name: str) -> dict[int, float]:
+    m = re.search(rf"const {name}\s*=\s*\{{([^}}]*)\}}", _src())
+    assert m, f"{name} 不见了 —— 卡面所有档位数字的来源"
+    return {int(k): float(v) for k, v in re.findall(r"(\d+)\s*:\s*(-?[\d.]+)", m.group(1))}
+
+
+def test_note_prose_quotes_the_same_numbers_as_the_constants() -> None:
+    """⭐ 散文里的「比随机选腿(−X%)好 Ypp」必须**从常量算得出来**。
+
+    2026-08-07 修的一处文案矛盾:`pb_4x_note` 长期写着「比 −38.5% 好 8.1pp」,
+    而 −38.5% 是 2026-08-03 **已退役的解析基线**((1/1.1294)⁴−1),同一屏
+    上面那张表早就换成实测 −44.7% 了 ⇒ 同一档、同一屏印着两个净提升。
+
+    ⚠️ 它当时没红,是因为 `test_random_baseline_is_the_measured_one_not_the_analytic`
+    只钉**常量自己**,散文是自由的 —— 换常量红,而散文引用的旧值不红。
+    这条测试补的就是那道缝:散文和常量必须是同一套数。
+    """
+    rand, back = _js_const_map("_PARLAY_RANDOM"), _js_const_map("_PARLAY_BACKTEST")
+    claim = re.compile(
+        r"(?:随机选腿\(<b>|random legs \(<b>)[−-]([\d.]+)%</b>\)"
+        r"(?:好 <b>|\s*by <b>)([\d.]+)pp</b>")
+    seen = 0
+    for line in _src().splitlines():
+        key = re.match(r"\s*(pb_(\d)x_note):\s*'", line)
+        if not key:
+            continue
+        k = int(key.group(2))
+        for quoted_rand, quoted_gain in claim.findall(line):
+            seen += 1
+            assert float(quoted_rand) == round(-rand[k] * 100, 1), (
+                f"{key.group(1)}:散文写随机基线 −{quoted_rand}%,"
+                f"而 _PARLAY_RANDOM[{k}] = {rand[k]}")
+            assert float(quoted_gain) == round((back[k] - rand[k]) * 100, 1), (
+                f"{key.group(1)}:散文写净提升 {quoted_gain}pp,"
+                f"而常量算出来是 {round((back[k] - rand[k]) * 100, 1)}pp")
+    assert seen, ("一条「比随机选腿…好…pp」都没扫到 —— 要么文案改了写法,"
+                  "要么这条测试在**抓空集当成功**(涓流 END 同族)。先确认再改正则。")

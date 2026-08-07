@@ -47,9 +47,19 @@ def _js() -> str:
 
 
 def _fn(name: str, src: str | None = None) -> str:
-    """抠一个顶层函数/常量声明的源码(配对花括号)。"""
+    """抠一个顶层函数/常量声明的源码(配对花括号)。
+
+    ⚠️ 2026-08-07:锚点从 `js.index(name)` 改成**行首**匹配。原来那版会命中
+    **注释里提到的同名字符串** —— 我写注释时引了一句 `function _tierChip(`,
+    抽取器立刻抠到注释上去,node 直接语法错。顶层声明必然在行首,
+    而散文里的提及必然不在 ⇒ 锚行首既更准也更省事。
+    """
     js = src or _js()
-    i = js.index(name)
+    anchor = "\n" + name
+    k = js.find(anchor)
+    if k < 0:
+        raise AssertionError(f"找不到顶层声明 {name!r}(它被改名/删了,或不在行首)")
+    i = k + 1
     depth, j, started = 0, i, False
     while j < len(js):
         if js[j] == "{":
@@ -242,14 +252,56 @@ def test_parlay_legs_show_their_tier_but_selection_ignores_it() -> None:
     assert "_tierChip(b1.tier)" in js, "1 串参考行没挂档位标(同一份信息不该只给串关)"
     for fn in ("function _parlayPool", "function _parlayPicks", "function _parlayCombos"):
         assert "tier" not in _fn(fn), f"{fn} 读了 tier —— 选择/排序不许看档位"
+    # 🚨 2026-08-07 —— 上面三条**漏掉了真正的出腿函数** `_boardLegs`:
+    # `_parlayPool` 只是委托给它。有人在 `_boardLegs` 里加一句档位过滤,
+    # 上面三条仍会全绿。而 `_boardLegs` 体内 tier **合法出现**(用于 p∈(0,1)
+    # 的有效性检查)⇒ 不能用「tier not in」这种语法断言,只能测行为。
+    # ⇒ 见下面的 `test_selection_ignores_tier_end_to_end`。
 
 
 def test_tier_badge_and_colour_have_a_single_source() -> None:
-    """徽章与配色只许有一份 —— 两处各存一份,改了一处另一处会**静默保持旧色**。"""
+    """徽章与配色只许有一份 —— 两处各存一份,改了一处另一处会**静默保持旧色**。
+
+    🚨 2026-08-07 这条**曾经是假护栏**。它靠数**字符串出现次数**,而当时
+    `_tierChip` 被定义了两次(1996 + 5272),JS 函数提升让**后者赢**:
+    线上跑的是灰色方括号那份,带 ⚠️/红色的那份是死代码。
+    死代码里的那份 `_TIER_BADGE[` 让计数达标 ⇒ **漂移已经发生而本测试全绿**,
+    冷门腿在票面上和边缘腿一样是灰字,整整存在了几天。
+    ⇒ 现在断言的是「**定义恰好一份**」+ 下面那条行为断言,不再数字符串。
+    """
+    import re
     js = _js()
+    n = len(re.findall(r"^function _tierChip\(", js, re.M))
+    assert n == 1, f"_tierChip 有 {n} 份定义 —— 函数提升会让最后一份静默赢"
     assert js.count("sweet: '🟢'") == 1, "🟢 映射出现多次(_evRelTag 与 _tierChip 该共用)"
     assert js.count("_TIER_BADGE[") >= 2 and js.count("_TIER_COLOR[") >= 2, (
         "共享常量没被两处同时使用")
+
+
+def test_cold_legs_are_visually_louder_than_edge_legs() -> None:
+    """⭐ 上一条守「只有一份」,这条守**那一份是对的那份**。
+
+    风险最高的档(冷门/超短)必须在票面上比边缘更响 —— 那正是加徽章那次
+    提交(ac0f877)的意图,而它被死代码吃掉了。行为断言:跑真源码。
+    """
+    import json
+    src = "\n".join(_fn(a) for a in (
+        "const _TIER_BADGE", "const _TIER_COLOR", "function _tierChip"))
+    stub = "function t(k){return k;}"
+    r = subprocess.run(
+        ["node", "-e", src + "\n" + stub + "\nconsole.log(JSON.stringify({"
+         "sweet:_tierChip('sweet'), edge:_tierChip('edge'),"
+         "cold:_tierChip('cold'), chalk:_tierChip('chalk')}));"],
+        capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr[:800]
+    d = json.loads(r.stdout)
+    assert d["sweet"] == "", "甜区不该出标(它是默认档,每条都挂只是噪音)"
+    for tier in ("edge", "cold", "chalk"):
+        assert d[tier], f"{tier} 没出标 —— 读者看不出自己在看非甜区的腿"
+    assert "#e11d48" in d["cold"] and "#e11d48" in d["chalk"], (
+        "冷门/超短没用红色 —— 它们和边缘的视觉权重相同,而 EV 方差按 ~1/P 放大")
+    assert "#e11d48" not in d["edge"], "边缘被标成了和冷门一样的红(过度警示)"
+    assert "⚠️" in d["cold"], "冷门没有 ⚠️ 徽章"
 
 
 def test_unknown_tier_renders_nothing_rather_than_garbage() -> None:
@@ -264,3 +316,37 @@ def test_unknown_tier_renders_nothing_rather_than_garbage() -> None:
         capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == '"","","","CHIP"', r.stdout
+
+
+def test_selection_ignores_tier_end_to_end() -> None:
+    """⭐ 语法断言守不住的那半:`_boardLegs` 体内 tier **合法出现**(p∈(0,1) 有效性检查),
+    所以「tier not in 源码」这种写法对它用不了 —— 只能测**行为**。
+
+    造一个池:冷门 evLo 最高、甜区最低。若选择真的无视档位,
+    主选就该按 evLo 排,冷门排第一、甜区被挤掉。
+    """
+    import json
+    src = "\n".join(_fn(a) for a in (
+        "function _parlayCombos", "function _parlayPicks"))
+    pool = [
+        {"key": "m:1", "label": "COLD", "tier": "cold", "evLo": 0.28, "ev": 0.28,
+         "sp": 9.0, "pr": {"league": "L1"}},
+        {"key": "m:2", "label": "EDGE", "tier": "edge", "evLo": 0.12, "ev": 0.12,
+         "sp": 3.0, "pr": {"league": "L2"}},
+        {"key": "m:3", "label": "CHALK", "tier": "chalk", "evLo": 0.105, "ev": 0.105,
+         "sp": 1.3, "pr": {"league": "L3"}},
+        {"key": "m:4", "label": "SWEET", "tier": "sweet", "evLo": 0.035, "ev": 0.035,
+         "sp": 2.2, "pr": {"league": "L4"}},
+    ]
+    r = subprocess.run(
+        ["node", "-e", src + f"\nconst pool = {json.dumps(pool)};"
+         "\nconst picks = _parlayPicks(pool, 3);"
+         "\nconst main = picks.find(p => p.role === 'main');"
+         "\nconsole.log(JSON.stringify(main.legs.map(l => l.tier)));"],
+        capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr[:1200]
+    tiers = json.loads(r.stdout)
+    assert tiers == ["cold", "edge", "chalk"], (
+        f"主选不是按 evLo 排的({tiers}) —— 档位偷偷进了选择/排序。"
+        "⛔ 那条路 2026-08-03 已被**正面测出档位间 σ_EV 相等**而关闭。")
+    assert "sweet" not in tiers, "甜区腿凭档位被塞进来了(它的 evLo 是池里最低的)"

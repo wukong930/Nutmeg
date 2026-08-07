@@ -1993,8 +1993,20 @@ const _TIER_COLOR = { sweet: '#059669', edge: '#b45309', cold: '#e11d48', chalk:
 //: (4.6% vs 4.6%,CI 重叠,逐桶符号 3:4:1)⇒ 没有理由给边缘腿加门槛。
 //: 加这个标只补一个**知情缺口**:owner 问「边缘腿会不会进串关」——
 //: 会(占池 20.3%),但票面上看不出来。**能看见 ≠ 该据此改选择。**
+// ⭐ 2026-08-07 —— 这个函数**曾经被定义了两次**(这里 + 原 5272 行),而 JS 函数声明
+// 提升让**后者赢** ⇒ 本版(带 ⚠️/🟡 徽章 + 红/橙配色 + tooltip)是**死代码**,
+// 线上真正跑的是那份灰色方括号 `[冷门]`。后果:**风险最高的冷门腿,票面视觉权重
+// 和边缘腿完全相同** —— 而加徽章的那次提交(ac0f877)本意恰恰是把它标红。
+// ⚠️ 更该记的是:守这件事的测试(`test_tier_badge_and_colour_have_a_single_source`)
+// 靠**数字符串出现次数**,而死代码里的那份让计数达标 ⇒ **漂移已发生而测试全绿**。
+// 已改成断言「`function _tierChip(` 在全文件恰好出现一次」+ 行为断言。
+//
+// 甜区**故意不出标**:它是默认档,占池大头,每条都挂 🟢 只是噪音。
+// 沿用原 5272 版「无标 = 甜区,有标 = 非甜区」的约定 —— 那一版这点是对的。
+// ⛔ 不要把 sweet 从 `_TIER_BADGE`/`_TIER_COLOR` 里删掉:那两张表是**共享**的,
+// 卡片上的 `_evRelTag` 要用 sweet。跳过要在本函数里做,不能动共享表。
 function _tierChip(tier) {
-  if (!tier || !_TIER_BADGE[tier]) return '';
+  if (!tier || tier === 'sweet' || !_TIER_BADGE[tier]) return '';
   return ` <span title="${t('rel_' + tier + '_hint')}" style="font-size:0.85em;`
     + `color:${_TIER_COLOR[tier]};white-space:nowrap">${_TIER_BADGE[tier]}${t('rel_' + tier)}</span>`;
 }
@@ -2311,7 +2323,7 @@ const I18N = {
     pb_3x:            '3 串 1',
     pb_4x:            '4 串 1',
     pb_4x_tag:        '100 张中 1 张',
-    pb_4x_note:       '<p>4 串 1 实测 <b>−30.4% ±33.5pp</b>(n=550,2026-08-03 补测)。三件事必须一起看:</p><ul style="margin:8px 0 0 18px"><li><b>命中率 1.1%</b> —— 平均 <b>91 张</b>才中 1 张。中一次的爽感会盖过 90 次没中,这是 4 串最危险的地方。</li><li><b>±33.5pp 意味着那个 −30.4% 自己就很不可靠</b>,别当精确值用。</li><li><b>它仍然是本页最差的一档</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2% &lt; <b>4串 −30.4%</b>。每加一条腿都更差,没有例外。</li></ul><p style="margin-top:8px">它比随机选腿(−38.5%)好 8.1pp,所以选腿这一步确实有用 —— 但「少输」不是「能赢」。加这一档是因为你要看到,不是因为数据支持打它。</p>',
+    pb_4x_note:       '<p>4 串 1 实测 <b>−30.4% ±33.5pp</b>(n=550,2026-08-03 补测)。三件事必须一起看:</p><ul style="margin:8px 0 0 18px"><li><b>命中率 1.1%</b> —— 平均 <b>91 张</b>才中 1 张。中一次的爽感会盖过 90 次没中,这是 4 串最危险的地方。</li><li><b>±33.5pp 意味着那个 −30.4% 自己就很不可靠</b>,别当精确值用。</li><li><b>它仍然是本页最差的一档</b>:单关 −5.2% &lt; 2串 −12.5% &lt; 3串 −25.2% &lt; <b>4串 −30.4%</b>。每加一条腿都更差,没有例外。</li></ul><p style="margin-top:8px">它比随机选腿(<b>−44.7%</b>)好 <b>14.3pp</b>,所以选腿这一步确实有用 —— 但「少输」不是「能赢」。<br>⚠️ 2026-08-07 更正:这里以前写「比 −38.5% 好 8.1pp」,那个 −38.5% 是 <b>2026-08-03 已退役的解析基线</b>((1/1.1294)⁴−1,假设抽水在四条腿上均摊),而上面表格早就换成了实测的 −44.7%。⇒ 同一档、同一屏曾经印着两个净提升。真实随机比解析线更差,所以选腿的净提升以前被<b>低估</b>了。加这一档是因为你要看到,不是因为数据支持打它。</p>',
     pb_sameday:       '只串同一天',
     pb_sameday_hdr:   '「同一天」= 同一期',
     pb_sameday_note:  '<p>竞彩的「一天」<b>在北京 12:00 换日,不是午夜</b> —— 所以<b>周日 22:00 那场和周一 03:00 那场是同一期</b>,勾上之后它们会被串在一起,这是对的。</p><p style="margin-top:8px"><b>实测(2026-08-03,228 场零例外)</b>:拿竞彩自己的编号(周一001)对开球时刻 —— 北京 00:00–11:59 开球的一律归<b>前一日</b>那期(123 场),18:00–23:59 归<b>当日</b>(105 场)。按日历天分组会把 54% 的场次劈错边。</p><p style="margin-top:8px"><b>⚠️ 换日点在 12:00–18:00 之间的哪一点没测出来</b>:样本是 7 月世界杯,全是欧美夜场,这个窗口(澳超/日职下午档那种)一场都没有。取 12:00 是因为竞彩晨批实测在 09:24–09:44 —— 当天早上才发布的名单装不下 10 点就开球的场。<b>下午 12–18 点开球的亚洲场将来可能分错边</b>,看到了告诉我,我去把常数量准。</p><p style="margin-top:8px">另外:<b>没有开球时刻的场一律不进同期票</b>(归到「?」单列),宁可少一条也不猜。</p>',
@@ -2873,7 +2885,7 @@ const I18N = {
     pb_3x:            '3-leg',
     pb_4x:            '4-leg',
     pb_4x_tag:        '1 ticket in 100',
-    pb_4x_note:       '<p>4-leg measured <b>-30.4% +/-33.5pp</b> (n=550, added 2026-08-03). Read all three together:</p><ul style="margin:8px 0 0 18px"><li><b>1.1% hit rate</b> — about <b>91 tickets</b> per win. The one win feels bigger than the 90 losses; that is the real danger here.</li><li><b>+/-33.5pp means the -30.4% itself is unreliable</b> — do not use it as a precise number.</li><li><b>It is still the worst tier on this page</b>: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2% &lt; <b>4-leg -30.4%</b>. Every extra leg is worse, no exception.</li></ul><p style="margin-top:8px">It beats random legs (-38.5%) by 8.1pp, so leg selection does work — but losing less is not winning. This tier exists because you asked to see it, not because the data supports playing it.</p>',
+    pb_4x_note:       '<p>4-leg measured <b>-30.4% +/-33.5pp</b> (n=550, added 2026-08-03). Read all three together:</p><ul style="margin:8px 0 0 18px"><li><b>1.1% hit rate</b> — about <b>91 tickets</b> per win. The one win feels bigger than the 90 losses; that is the real danger here.</li><li><b>+/-33.5pp means the -30.4% itself is unreliable</b> — do not use it as a precise number.</li><li><b>It is still the worst tier on this page</b>: single -5.2% &lt; 2-leg -12.5% &lt; 3-leg -25.2% &lt; <b>4-leg -30.4%</b>. Every extra leg is worse, no exception.</li></ul><p style="margin-top:8px">It beats random legs (<b>-44.7%</b>) by <b>14.3pp</b>, so leg selection does work — but losing less is not winning.<br>⚠️ Corrected 2026-08-07: this used to say &quot;beats -38.5% by 8.1pp&quot;. That -38.5% was the <b>analytic baseline retired on 2026-08-03</b> ((1/1.1294)^4-1, which assumes the vig splits evenly across four legs), while the table above had already moved to the measured -44.7% — so one tier on one screen carried two different net-gain numbers. Real random legs are worse than the analytic line, so the net gain from leg selection had been <b>understated</b>. This tier exists because you asked to see it, not because the data supports playing it.</p>',
     pb_sameday:       'same-day legs only',
     pb_sameday_hdr:   '"same day" = same 竞彩 matchday',
     pb_sameday_note:  '<p>The 竞彩 day <b>rolls over at 12:00 Beijing, not midnight</b> — so a Sunday 22:00 match and a Monday 03:00 match are the <b>same matchday</b>, and this toggle keeps them combinable. That is correct.</p><p style="margin-top:8px"><b>Measured 2026-08-03, 228 matches, zero exceptions</b>: matching 竞彩 own numbering (周一001) against kickoff time, everything kicking off 00:00-11:59 Beijing belongs to the <b>previous</b> matchday (123), and 18:00-23:59 to the <b>same</b> one (105). Grouping by calendar day would put 54% of matches on the wrong side.</p><p style="margin-top:8px"><b>The exact cutoff inside 12:00-18:00 is NOT measured</b>: the sample is the July World Cup, all European/American night games, and that window is empty. 12:00 is chosen because the 竞彩 morning batch publishes at 09:24-09:44 — a list published that morning cannot contain a 10:00 kickoff. <b>Asian afternoon matches kicking off 12-18h may land on the wrong day</b>; tell me if you see one and I will pin the constant.</p><p style="margin-top:8px">Also: matches with no kickoff time never enter a same-day ticket (listed separately under "?"). Fewer candidates beats guessing.</p>',
@@ -5268,12 +5280,9 @@ function _singleBadge(v) {
     : `<span class="ml-1 text-muted" title="${t('sw_single_no_hint')}">${t('sw_single_no')}</span>`;
 }
 //: 档位徽章 —— 附区每行必须自报家门,否则读者不知道自己在看非甜区的东西。
-const _TIER_KEY = { edge: 'rel_edge', cold: 'rel_cold', chalk: 'rel_chalk' };
-function _tierChip(tier) {
-  const k = _TIER_KEY[tier];
-  if (!k) return '';
-  return `<span class="ml-1 text-muted" style="font-size:0.9em">[${t(k)}]</span>`;
-}
+//: ⭐ 2026-08-07:本处**曾经是第二份 `_tierChip` 定义**,靠函数提升覆盖了上面那份
+//: 带徽章/配色的实现,把冷门腿的红色警示变成了灰字。已删,统一用 `_TIER_BADGE`
+//: 那一份(见其上方注释)。`_TIER_KEY` 随之成为死常量,一并删除。
 function _sweetBoardHtml(items) {
   const rows = [];
   const offRows = [];
