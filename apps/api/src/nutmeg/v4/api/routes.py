@@ -611,7 +611,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v142-fe-healthcheck-pill"
+_FE_VERSION = "nutmeg-v143-fe-unmapped-banner-truthful"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1439,7 +1439,18 @@ def sporttery_refresh_endpoint() -> SportteryRefreshResponse:
 
 @router.get("/observation/jingcai-unmapped", response_model=JingcaiUnmappedResponse)
 def jingcai_unmapped_endpoint() -> JingcaiUnmappedResponse:
-    """竞彩因队名映射不到英文规范名而被【整场丢弃】的场次 — 近期赛事页常驻横幅用。
+    """竞彩中文队名映射不到英文规范名的场次 — 近期赛事页横幅用(有缺口才显示)。
+
+    ⛔ **它测的只有一件事:名字解没解出来。** 判据是纯函数 ``summarize_unmapped``,
+    只看每场自己的 home_en/away_en,**从不碰赔率**。所以:
+
+    * 解不出的后果是**竞彩 SP 挂不上**,不是「整场丢弃」—— 盘面行来自
+      API-Football 的**英文**数据,和中文词典是两条独立的链。2026-08-07 实测:
+      横幅点名 2 场日乙,而 ``/predictions/cup-market`` 里 10 场日乙**全在**
+      「待开盘」。原 docstring 写「整场丢弃」是错的,已改。
+    * 反过来,「横幅不响」也**不**代表比赛都能算 EV:Pinnacle/AF 缺价导致的
+      少场对这条判据完全隐形。⇒ 「(N/M)」不能读成「另外 M−N 场都在盘面上」。
+    * 补完词典**必须重启 API**:``_ZH_TO_EN`` 在 import 时建好,uvicorn 无 --reload。
 
     为什么存在:检测早就有、而且工作正常 —— 2026-07-15 竞彩上架 4 场美职联而面板只
     显示 2 场时,``summarize_unmapped`` 11:43 就精确点名了那 2 场、那 3 个错名字,并

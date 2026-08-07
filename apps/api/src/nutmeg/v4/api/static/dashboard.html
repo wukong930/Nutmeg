@@ -2354,10 +2354,12 @@ const I18N = {
     ver_new:'{ic:refresh} 新版本已就绪',
     ver_reload:'点此刷新',
     jc_refreshing:'抓取竞彩中…',
-    jc_unmapped_title:'竞彩在售、但没进盘面的比赛',
-    jc_unmapped_why:'队名对不上词典 → 整场丢弃(join 不了 Pinnacle,算不了 EV)。',
-    jc_unmapped_fix:'先查这队在不在 team_name_zh.py。① 在(只是竞彩换了种中文写法)→ 补 sporttery.py 的 _ZH_OVERRIDES。② 整队不在 → 补 team_name_zh.py,那里一处同时修 join 和显示;只补 _ZH_OVERRIDES 会变成「join 通了、卡片仍显示英文名」。英文键照抄 odds_snapshots 里已有的那条线(即 join 目标本身),别按译音猜 —— 错映射是静默污染,比缺映射更坏。⚠️ 这不是「竞彩 N 场、面板 M 场」的唯一成因:Pinnacle 没覆盖该赛事(如欧战资格赛)同样会少场,那种情况补词典也没用。',
+    jc_unmapped_title:'竞彩队名解不出 → SP 挂不上的比赛',
+    jc_unmapped_why:'这些场的中文队名对不上词典 ⇒ 竞彩 SP 无法 join 到盘面行。⚠️ 这**不**等于比赛不在盘面上 —— 它很可能就在下面的「待开盘」里(2026-08-07 实测:日乙 2 场上榜,而 10 场日乙全都在待开盘区)。本横幅只知道「名字解没解出」,它**不看**有没有赔率。',
+    jc_unmapped_fix:'先查这队在不在 team_name_zh.py。① 在(只是竞彩换了种中文写法)→ 补 sporttery.py 的 _ZH_OVERRIDES。② 整队不在 → 补 team_name_zh.py,那里一处同时修 join 和显示;只补 _ZH_OVERRIDES 会变成「join 通了、卡片仍显示英文名」。英文键照抄盘面真在用的那个拼法(odds_snapshots 或 AF fixture 缓存里的赛程行都可以当锚),别按译音猜 —— 错映射是静默污染,比缺映射更坏。⚠️ 补完必须**重启 API**:词典在进程启动时建表,不重启横幅会继续点名已经修好的队名。⚠️ 反过来也要小心:补完这条横幅就闭嘴了,但比赛能不能算 EV 取决于有没有 Pinnacle 赔率 —— 那是另一条链,横幅看不见它。',
     jc_unmapped_ago:'分钟前抓取',
+    jc_unmapped_gone:'整个联赛的在售场次全部解不出:',
+    jc_unmapped_partial:'过半解不出:',
     cupmkt_hc_record:'{ic:pin} 记录此注',
     cupmkt_hc_recorded:'已记入观测库 (市场让球)',
     cupmkt_hc_need_sp:'先填竞彩让球 SP',
@@ -2905,10 +2907,12 @@ const I18N = {
     ver_new:'{ic:refresh} New version ready',
     ver_reload:'Reload',
     jc_refreshing:'fetching 竞彩…',
-    jc_unmapped_title:'On sale at 竞彩 but missing from this board',
-    jc_unmapped_why:'zh team name not in the dict → the WHOLE match is dropped (no EN name = no Pinnacle join = no EV).',
-    jc_unmapped_fix:'First check whether the club is in team_name_zh.py. ① It is (竞彩 just spells the Chinese differently) → add it to _ZH_OVERRIDES in sporttery.py. ② The club is missing entirely → add it to team_name_zh.py, which fixes the join AND the display in one place; an _ZH_OVERRIDES-only fix joins fine but leaves the English name on the card. Copy the English key from the line already in odds_snapshots (i.e. the join target itself) — never transliterate a guess: a wrong mapping silently poisons joins, which is worse than a missing one. ⚠️ This is NOT the only cause of "竞彩 lists N, the board shows M": a fixture Pinnacle does not cover (e.g. European qualifiers) also goes missing, and no dictionary entry will bring that one back.',
+    jc_unmapped_title:'竞彩 name unresolved → SP cannot be attached',
+    jc_unmapped_why:'The Chinese team name is not in the dict ⇒ the 竞彩 SP cannot be joined to a board row. ⚠️ This does NOT mean the match is absent from the board — it is most likely sitting in 待开盘 below (measured 2026-08-07: 2 J2 matches listed here while all 10 J2 fixtures were on the board as 待开盘). This banner only knows whether the NAME resolved; it never looks at whether odds exist.',
+    jc_unmapped_fix:'First check whether the club is in team_name_zh.py. ① It is (竞彩 just spells the Chinese differently) → add it to _ZH_OVERRIDES in sporttery.py. ② The club is missing entirely → add it to team_name_zh.py, which fixes the join AND the display in one place; an _ZH_OVERRIDES-only fix joins fine but leaves the English name on the card. Copy the English spelling the board actually uses (odds_snapshots, or a fixture row in the API-Football cache, both work as anchors) — never transliterate a guess: a wrong mapping silently poisons joins, which is worse than a missing one. ⚠️ You MUST restart the API afterwards: the dict is built at process start, so without a restart the banner keeps naming clubs you already fixed. ⚠️ And the other way round: fixing the dict silences this banner, but whether the match can be priced depends on Pinnacle odds existing — a separate chain this banner cannot see.',
     jc_unmapped_ago:'min ago',
+    jc_unmapped_gone:'every on-sale fixture in this league failed to resolve: ',
+    jc_unmapped_partial:'more than half failed to resolve: ',
     cupmkt_hc_record:'{ic:pin} Record this bet',
     cupmkt_hc_recorded:'logged to observation DB (market handicap)',
     cupmkt_hc_need_sp:'enter 竞彩 handicap SP first',
@@ -6364,11 +6368,30 @@ async function loadJingcaiUnmapped() {
       ul.appendChild(li);
     });
 
+    // 升级信号:整联赛全丢 / 过半丢。后端一直在算(gone/partial),但在 2026-08-07
+    // 之前前端一个字都没渲染 ⇒ 「日乙 2/2 场全丢」和「随便两场丢了」长得一样。
+    // ⚠️ 这两个信号对**半修**特别脆:一个联赛在售 2 场、只补好其中一场,
+    // gone 就从 2/2 变 1/2 而归零 —— 窟窿还在,而「整联赛级别」的提示没了。
+    // 所以它必须可见:看得见它消失,才知道自己只修了一半。
+    const nodes = [head, why, ul];
+    const gone = j.gone || [], partial = j.partial || [];
+    if (gone.length || partial.length) {
+      const esc = document.createElement('div');
+      esc.className = 'text-xs font-bold mb-2';
+      esc.style.color = '#b91c1c';
+      const bits = [];
+      if (gone.length) bits.push(`${t('jc_unmapped_gone')}${gone.join('、')}`);
+      if (partial.length) bits.push(`${t('jc_unmapped_partial')}${partial.join('、')}`);
+      esc.textContent = `🚨 ${bits.join(' · ')}`;
+      nodes.push(esc);
+    }
+
     const fix = document.createElement('div');
     fix.className = 'text-xs text-muted';
     fix.textContent = t('jc_unmapped_fix');
+    nodes.push(fix);
 
-    el.replaceChildren(head, why, ul, fix);
+    el.replaceChildren(...nodes);
     el.classList.remove('hidden');
   } catch (_) {
     el.classList.add('hidden');   // 网络/端点问题不该让近期赛事页少块肉
