@@ -611,7 +611,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v148-fe-parlay-honesty"
+_FE_VERSION = "nutmeg-v149-fe-onex-lower-bound"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1976,6 +1976,18 @@ _SP_CALC_LEAGUES = [
 _PLAYOFF_BLEND_ALPHA = 0.3
 
 
+def _onex_lo(fair) -> tuple[float | None, float | None, float | None]:
+    """1X2 三腿判闸下界(δ₁ₓ₂)。`fair` 为 None(无 Pinnacle 线)时全 None。
+
+    ⭐ 和 `_pinnacle_devig_1x2` 贴在一起是**故意**的:凡是拿到那个三元组的路径,
+    都在同一屏里看得见它的下界该怎么算 —— 两个模式各写一份是这个项目反复踩过的坑。
+    """
+    if not fair:
+        return (None, None, None)
+    from nutmeg.v4.model.onex_calibration import onex_leg_lower_bounds
+    return onex_leg_lower_bounds(fair[0], fair[1], fair[2])
+
+
 def _pinnacle_devig_1x2(h, d, a):
     """De-vig Pinnacle 1X2 → fair [P_home, P_draw, P_away] via WPO (corrects the
     favourite-longshot bias; single source = ``nutmeg.v4.model.devig``). Returns
@@ -2092,6 +2104,9 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 p_home_market=(float(mkt[0]) if mkt else None),
                 p_draw_market=(float(mkt[1]) if mkt else None),
                 p_away_market=(float(mkt[2]) if mkt else None),
+                # δ₁ₓ₂ 下界 —— 与 mkt 同源同一次去vig,不可能漂开
+                **dict(zip(("onex_lo_home", "onex_lo_draw", "onex_lo_away"),
+                           _onex_lo(mkt), strict=True)),
                 psc_home=f.psc_home, psc_draw=f.psc_draw, psc_away=f.psc_away,
                 psc_over25=getattr(f, "psc_over25", None),
                 psc_under25=getattr(f, "psc_under25", None),
@@ -2544,6 +2559,9 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         kickoff_utc=(r.get("kickoff_utc") or None),
         lambda_home=0.0, lambda_away=0.0,
         p_home_1x2=float(fair[0]), p_draw_1x2=float(fair[1]), p_away_1x2=float(fair[2]),
+        # δ₁ₓ₂ 下界 —— 市场模式的 1X2 点估就在 p_*_1x2(这里 p_*_market 一律 null)
+        **dict(zip(("onex_lo_home", "onex_lo_draw", "onex_lo_away"),
+                   _onex_lo(fair), strict=True)),
         psc_home=r.get("psc_home"), psc_draw=r.get("psc_draw"), psc_away=r.get("psc_away"),
         psc_over25=r.get("psc_over25"), psc_under25=r.get("psc_under25"),
         # V14 — the ACTUAL total line those prices are quoted at (2.75 for the

@@ -175,6 +175,20 @@ class SinglePrediction(BaseModel):
     p_home_market: float | None = None
     p_draw_market: float | None = None
     p_away_market: float | None = None
+    # 2026-08-08 — 1X2 三条腿的**判闸下界**(δ₁ₓ₂,model.onex_calibration)。
+    #
+    # ⚠️ 名字刻意不叫 `p_*_market_lo`:它的**点估在哪个字段取决于模式** ——
+    #   标准模式 → `p_*_market`;市场模式 → `p_*_1x2`(那里 `p_*_market` 一律 null,
+    #   见上面那段注释)。两者是**同一个 Pinnacle WPO 三元组**,所以下界只有一份。
+    #   叫 `p_*_market_lo` 会在市场模式下变成一个撒谎的名字。
+    #
+    # 为什么必须服务端下发而不是前端就地减:常数要和让球侧的 `_C1_SE_K` 同源,
+    # 放进 JS 就会重演 WPO 那次的 server↔JS 漂移([[devig-js-server-mismatch]])。
+    #
+    # None = 该场没有 Pinnacle 线 ⇒ 点估也是 None ⇒ 前端那三条腿本来就不进榜。
+    onex_lo_home: float | None = None
+    onex_lo_draw: float | None = None
+    onex_lo_away: float | None = None
     # V12 W3 — Pinnacle closing odds echoed back so the dashboard's 竞彩 SP
     # calculator can pre-fill inputs and show the 竞彩-vs-Pinnacle soft-line
     # gap. Optional: not every prediction path carries them (e.g. WC).
