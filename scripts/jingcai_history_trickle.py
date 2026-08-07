@@ -54,13 +54,37 @@ def _end_date() -> dt.date:
     return dt.date.today() - dt.timedelta(days=LAG_DAYS)
 
 
+STATUS = Path("logs/jingcai_trickle_status.jsonl")
+
+
+def _write_status(**row) -> None:
+    """每跑一次追加一行 —— **进度由跑的人自己报**。
+
+    ⭐ 为什么不让体检去算:BEGIN / END / WINDOW_DAYS / 游标全在这个脚本里,
+    体检那边要么 import 这个脚本(scripts/ 反向依赖包,不干净),要么**再抄一份常量**
+    —— 那正是「测试替身各写一份」那个家族。让生产者报自己的状态,常数只有一处。
+
+    ⚠️ 必须同时记 `enumerated` 和 `stored_rows`:只看 stored_rows,
+    「没有东西可捞」和「没去看」长得一模一样 —— 2026-07-20 就是被这个假信号
+    说服关掉了这个 job,静默丢了 10.5 个月。判据见 `data_freshness.check_jingcai_trickle`。
+    """
+    import json
+    try:
+        STATUS.parent.mkdir(parents=True, exist_ok=True)
+        with STATUS.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass          # 状态写不下去不该拖垮回填本身
+
+
 def main() -> int:
     end = _end_date()
     try:
         cur = dt.date.fromisoformat(CURSOR.read_text().strip())
     except (OSError, ValueError):
         cur = BEGIN
-    if cur > end:  # 绕回起点 → re-sweep 补缺口(skip_existing = 已入库跳过,便宜)
+    wrapped = cur > end
+    if wrapped:  # 绕回起点 → re-sweep 补缺口(skip_existing = 已入库跳过,便宜)
         cur = BEGIN
     w_end = min(cur + dt.timedelta(days=WINDOW_DAYS - 1), end)
     stamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -68,7 +92,16 @@ def main() -> int:
     stat = backfill(DB, cur.isoformat(), w_end.isoformat(), leagues=LEAGUES,
                     sleep=2.0, limit=0, dry_run=False, skip_existing=True, chunk_days=7)
     print(f"[trickle {stamp}] {stat}")
-    CURSOR.write_text((cur + dt.timedelta(days=WINDOW_DAYS)).isoformat())
+    nxt = cur + dt.timedelta(days=WINDOW_DAYS)
+    CURSOR.write_text(nxt.isoformat())
+    _write_status(
+        ran_at=dt.datetime.now().isoformat(timespec="seconds"),
+        window_start=cur.isoformat(), window_end=w_end.isoformat(),
+        cursor_next=nxt.isoformat(), begin=BEGIN.isoformat(), end=end.isoformat(),
+        days_remaining=max((end - nxt).days, 0), wrapped=wrapped,
+        **{k: int(stat.get(k, 0)) for k in
+           ("enumerated", "in_scope", "fetched", "stored_rows", "skipped", "failed")},
+    )
     return 0
 
 

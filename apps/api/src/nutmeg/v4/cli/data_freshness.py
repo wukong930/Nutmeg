@@ -616,6 +616,116 @@ _LEAGUE_TRACK_TABLES: tuple[tuple[str, str], ...] = (
 )
 
 
+def check_jingcai_trickle(
+    status_path: str | Path = "logs/jingcai_trickle_status.jsonl",
+    *,
+    now: datetime | None = None,
+    lookback: int = 7,
+) -> tuple[list[str], list[str]]:
+    """竞彩历史涓流进度 —— 回答「它扫完了吗」,而且**能区分「没有」和「没去看」**。
+
+    ⭐⭐ 这条探针的全部理由是一次真实事故:2026-07-20 我们看到「连续 56 轮零新增」,
+    判定「覆盖齐了」,**主动退休了这个 job**。而那个零是脚本里 END 写成常量导致的
+    **数学必然**,不是覆盖齐 —— 结果静默丢了 10.5 个月 / 4,751 场,日志天天绿,
+    直到 owner 问一场具体比赛的历史 EV 才暴露。
+
+    ⇒ **判据必须同时看 `stored_rows` 和 `enumerated`**:
+      · `enumerated > 0` 且 `stored_rows == 0`  → 真·扫完了(去看了,确实没东西)
+      · `enumerated == 0`                        → **没去看**(限流/403/空响应)——
+        它长得和「扫完了」一模一样,但结论相反。**这种必须报警。**
+
+    进度与 ETA 都由**跑的人自己写的状态行**算(`jingcai_history_trickle._write_status`)
+    —— BEGIN/END/WINDOW_DAYS 全在那个脚本里,这里再抄一份就是「各写一份常量」。
+    ETA 用**实测**推进速度(最近 lookback 行跨的历史天数 ÷ 跨的日历天数),
+    不假设 cron 频率 —— 频率改了这里不用跟着改,而且改错了这里会看得出来。
+
+    Returns ``(info_lines, alarms)``。文件不存在但 `logs/` 存在 = job 装了没跑过 ⇒ 报警;
+    整个 `logs/` 都没有 = CI/测试环境 ⇒ 跳过不报警。
+    """
+    import json
+
+    now = now or datetime.now()
+    path = Path(status_path)
+    info: list[str] = []
+    alarms: list[str] = []
+
+    if not path.exists():
+        if not path.parent.exists():
+            return ([f"NOTE 无 {path.parent}/ — 跳过涓流进度(CI/测试环境)"], [])
+        return ([], [
+            f"竞彩历史涓流没有任何状态行({path}) — job 可能装了但从没成功跑过。"
+            f"⛔ 别把「没有状态」读成「没在跑因为跑完了」,那正是 2026-07-20 那次事故的形状"
+        ])
+
+    rows: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    if not rows:
+        return ([], ["竞彩历史涓流状态文件是空的 — 同上,不是「跑完了」"])
+
+    last = rows[-1]
+    recent = rows[-lookback:]
+    try:
+        ran = datetime.fromisoformat(str(last["ran_at"]))
+    except (KeyError, ValueError):
+        return ([], ["涓流状态行没有可解析的 ran_at — 探针读不了它自己的输入"])
+
+    age_h = (now - ran).total_seconds() / 3600.0
+    remaining = int(last.get("days_remaining") or 0)
+    enum_sum = sum(int(r.get("enumerated") or 0) for r in recent)
+    stored_sum = sum(int(r.get("stored_rows") or 0) for r in recent)
+    fail_sum = sum(int(r.get("failed") or 0) for r in recent)
+
+    # 实测推进速度 → ETA(不假设 cron 频率)
+    eta = ""
+    if len(recent) >= 2:
+        try:
+            d0 = datetime.fromisoformat(str(recent[0]["ran_at"]))
+            hist = (date.fromisoformat(str(last["cursor_next"]))
+                    - date.fromisoformat(str(recent[0]["cursor_next"]))).days
+            wall = max((ran - d0).total_seconds() / 86400.0, 1e-9)
+            if hist > 0:
+                rate = hist / wall
+                eta = f" · 实测 {rate:.0f} 天历史/天 ⇒ ETA ≈ {remaining / rate:.0f} 天"
+        except (KeyError, ValueError):
+            pass
+
+    info.append(
+        f"竞彩涓流 游标 {last.get('cursor_next')} → 终点 {last.get('end')} · "
+        f"剩 {remaining} 天历史{eta}"
+    )
+    info.append(
+        f"  最近 {len(recent)} 轮:枚举 {enum_sum} · 新增 {stored_sum} 行 · 失败 {fail_sum} · "
+        f"上次 {age_h:.1f}h 前"
+    )
+
+    if age_h > 48:
+        alarms.append(
+            f"竞彩历史涓流 {age_h / 24:.1f} 天没跑 — 回填停了,而缺口不会自己合上"
+        )
+    # ⭐ 核心判据:两个零长得一样,结论相反
+    if enum_sum == 0:
+        alarms.append(
+            f"竞彩涓流最近 {len(recent)} 轮**枚举到 0 场** — 这是「没去看」不是「没东西」"
+            f"(限流/403/空响应)。⛔ 别读成「扫完了」—— 2026-07-20 就是这么丢的 4,751 场"
+        )
+    elif stored_sum == 0 and remaining == 0:
+        info.append(
+            "  ✅ 枚举>0 且连续零新增且游标已到终点 = **真的扫完了**,可以考虑退休它"
+        )
+    if fail_sum > enum_sum * 0.2 and enum_sum:
+        alarms.append(
+            f"竞彩涓流最近 {len(recent)} 轮失败 {fail_sum}/{enum_sum} — 可能被限流"
+        )
+    return (info, alarms)
+
+
 def check_league_labels(db_path: str | Path) -> tuple[list[str], list[str]]:
     """联赛标签双轨探针(2026-08-05)。
 
@@ -751,6 +861,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="跳过模型供应链探针 (artifact/源树/parquet;缺目录本就自动跳过)")
     p.add_argument("--no-league-labels", action="store_true",
                    help="跳过联赛标签双轨探针 (劈开的写法 / 标签表不认识的联赛)")
+    p.add_argument("--no-trickle", action="store_true",
+                   help="跳过竞彩历史涓流进度探针 (回填进度 / 零新增真假判据)")
     args = p.parse_args(argv)
 
     db_path = Path(args.db)
@@ -786,6 +898,17 @@ def main(argv: list[str] | None = None) -> int:
             ]
     label_info, label_alarms = (
         ([], []) if args.no_league_labels else check_league_labels(db_path))
+    # 涓流进度 —— 同 supply 的处理:探针炸了走 alarms,不能装成「没问题」
+    trickle_info: list[str] = []
+    trickle_alarms: list[str] = []
+    if not args.no_trickle:
+        try:
+            trickle_info, trickle_alarms = check_jingcai_trickle()
+        except Exception as exc:  # noqa: BLE001
+            trickle_alarms = [
+                f"竞彩涓流探针自己炸了: {type(exc).__name__}: {exc}"
+                f" — 回填进度**没有被检查**,别据此判断它扫完没扫完"
+            ]
 
     if args.porcelain:
         for s in statuses:
@@ -810,6 +933,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"LEAGUE-LABEL\t{q}")
         for q in label_alarms:
             print(f"LEAGUE-LABEL-SPLIT\t{q}")
+        for q in trickle_info:
+            print(f"TRICKLE\t{q}")
+        for q in trickle_alarms:
+            print(f"TRICKLE-STUCK\t{q}")
     else:
         report = render(statuses, db_path, today)
         if supply_info or supply_alarms:
@@ -820,6 +947,10 @@ def main(argv: list[str] | None = None) -> int:
             report += "\n\n  — 联赛标签双轨(2026-08-05:模块早就描述了这个病,却没人在报)—"
             report += "".join(f"\n  · {q}" for q in label_info)
             report += "".join(f"\n  ✗ {q}" for q in label_alarms)
+        if trickle_info or trickle_alarms:
+            report += "\n\n  — 竞彩历史涓流(2026-08-08:上次它「扫完了」是假信号,丢了 4,751 场)—"
+            report += "".join(f"\n  · {q}" for q in trickle_info)
+            report += "".join(f"\n  ✗ {q}" for q in trickle_alarms)
         if quota_alarms:
             report += "\n" + "\n".join(f"⚠️ 配额: {q}" for q in quota_alarms)
         if probe_fails:
@@ -836,7 +967,10 @@ def main(argv: list[str] | None = None) -> int:
     # 体检 W1:模型供应链报警(artifact/源树超龄)同乘 — D1 冻结类必须响。
     # 2026-08-05:联赛标签劈开/未知**同乘**这条非零退出 —— 它损坏的是「按联赛
     # 分人口」这件事本身(P3 计数、CLV 闸的 FDR 家族),和捕获表停更一样值得人看。
-    return 1 if (crit_stale or quota_alarms or supply_alarms or label_alarms) else 0
+    # 2026-08-08:涓流报警**同乘**这条非零退出 —— 它守的是「回填停了」和
+    # 「零新增是假信号」两件事,而两者都曾经静默地丢掉几千场数据。
+    return 1 if (crit_stale or quota_alarms or supply_alarms or label_alarms
+                 or trickle_alarms) else 0
 
 
 if __name__ == "__main__":
