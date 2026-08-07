@@ -424,7 +424,14 @@ def artifact_trained_at(artifact_dir: Path | str) -> Optional[str]:
     # metadata under "metadata"; some older/hand-built dirs put it flat.
     inner = raw.get("metadata")
     value = (inner or {}).get("trained_at_utc") if isinstance(inner, dict) else None
-    value = value if value is not None else raw.get("trained_at_utc")
+    # ⚠️ Falls back on any FALSY nested value, not just `is None` (2026-08-07).
+    # A nested `""` (or null) alongside a usable flat key used to swallow the
+    # flat one and return None — which every caller reads as "can't tell" and
+    # degrades on. For `cli/data_freshness.py` that degradation is an mtime
+    # fallback, i.e. a stale artifact silently reported as 0d with zero alarms
+    # while the *unfixed* reader would have alarmed. An empty string is not a
+    # date; it must not outrank a real one.
+    value = value if value else raw.get("trained_at_utc")
     return str(value) if value else None
 
 
@@ -505,3 +512,32 @@ def resolve_effective_artifact_path(base_dir: Path | str) -> str:
         target, base,
     )
     return str(base)
+
+
+def same_artifact_dir(a: Path | str, b: Path | str) -> bool:
+    """Do these two paths name the same directory? Normalized, not textual.
+
+    Tolerant of the relative/absolute split we actually ship with: ``.env``
+    carries ``data/v4_model_cat`` while ``run_local_server.sh`` exports
+    ``$REPO_ROOT/data/v4_model_cat``. Both name the same dir and both are
+    correct. Neither side has to exist.
+
+    ⭐ Lives here, next to ``resolve_effective_artifact_path``, for the same
+    reason that one does — it is the *other* half of the "did Layer B redirect
+    us?" question, and both halves must be answerable without importing
+    FastAPI. ``cli/data_freshness.py`` is a launchd sentinel entry point;
+    dragging the whole API dependency tree in for a 3-line path compare is how
+    the sentinel goes mute when an unrelated web dep breaks.
+
+    ``api/routes._same_dir`` is a thin alias of this. **One implementation on
+    purpose**: two copies of "is this the same artifact dir" is exactly how the
+    read side and the check side drift into disagreeing, and the disagreement
+    is silent. Compare with the string test it replaced —
+    ``str(effective) != str(base)`` calls ``data/v4_model_cat`` and
+    ``/repo/data/v4_model_cat`` a redirect, and then the same report prints a
+    stale-artifact alarm *and* a "base, not alarmed" note about one directory.
+    """
+    try:
+        return Path(a).expanduser().resolve() == Path(b).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False

@@ -265,11 +265,16 @@ def _same_dir(a: str, b: str) -> bool:
     `.env` carries ``data/v4_model_cat`` while ``run_local_server.sh`` exports
     ``$REPO_ROOT/data/v4_model_cat``. Both name the same directory and both are
     correct. Does NOT require either path to exist — see artifact_is_expected().
+
+    ⭐ 2026-08-07: the body moved to ``observation.auto_retrain`` so the launchd
+    sentinel (`cli/data_freshness.py`) can ask the same question without
+    importing FastAPI. This name stays as the alias serving already calls.
+    Imported lazily like the pointer helpers below it — routes.py deliberately
+    keeps `observation.auto_retrain` (which pulls numpy) off the import path
+    that FastAPI startup walks.
     """
-    try:
-        return Path(a).expanduser().resolve() == Path(b).expanduser().resolve()
-    except (OSError, RuntimeError, ValueError):
-        return False
+    from nutmeg.v4.observation.auto_retrain import same_artifact_dir
+    return same_artifact_dir(a, b)
 
 
 def is_expected_serving_base(path: str) -> bool:

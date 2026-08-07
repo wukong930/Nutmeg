@@ -326,6 +326,95 @@ def _training_cutoff(artifact_dir: Path) -> str | None:
     return str(cutoff)[:10] if cutoff else None
 
 
+def _serving_artifact(artifact_dir: str | Path | None = None) -> tuple[Path, Path]:
+    """``(base, effective)`` —— effective 就是**服务真的会加载的那个目录**。
+
+    ## 为什么这里必须跟指针(2026-08-07 审查)
+
+    原来这里只解析到 base(env 或兜底值)就停了,而 serving 走
+    ``routes._resolve_artifact()`` **会**跟 ``live_artifact_pointer.json``。
+    Layer B 一部署,两边量的就是两个不同的目录,双向都失效 —— 实测复现过:
+
+      · **假红** — base 停在 2025-06(Layer B 下这是**正常**的回滚落点),
+        指针目标是 6 天前的新盘。服务侧正确,探针却喊「432 天未重训」。
+      · **假绿(更坏的那半)** — base 刚重训过,指针却指向一个 432 天的旧盘。
+        服务侧正在喂那个旧盘,探针报「6d」并返回**零告警**。
+
+    724 天冻结事故的疫苗,恰恰在 Layer B 生效时整个失灵。
+
+    ⛔ 不许在这里第三次手写「读指针 JSON → 看目标存不存在」。本仓已经因为
+    「同一件事三个地方各写一份」栽过(见 `routes.py` 的 `EXPECTED_SERVING_ARTIFACT`
+    注释:换盘要改 9 处)。指针解析只有一个权威实现,直接借:
+    ``observation.auto_retrain.resolve_effective_artifact_path``(纯函数,
+    不需要起 FastAPI;`routes._resolve_artifact()` 是它加了一层 mtime 缓存的
+    同一套规则,`tests/v4/test_supply_chain_follows_layer_b.py` 钉住两者等价)。
+
+    base 侧仍读 ``NUTMEG_V4_ARTIFACT_PATH`` + 字面量兜底,而不是 import
+    ``routes``:这个 CLI 是采集哨兵的 cron 入口,不该为了拿一个常量把 FastAPI
+    整棵依赖树拖进来(它挂了 = 哨兵整个哑掉)。那个字面量由
+    ``test_artifact_identity_guard.py::TestArtifactLiteralsAgree`` 逐值钉死,
+    漏改会红 —— 它是换盘清单的第 7 项。
+    """
+    import os
+
+    from nutmeg.v4.observation.auto_retrain import resolve_effective_artifact_path
+
+    base = Path(artifact_dir or os.environ.get("NUTMEG_V4_ARTIFACT_PATH")
+                or "data/v4_model_cat")
+    return base, Path(resolve_effective_artifact_path(base))
+
+
+#: `_artifact_age_reading()` 第二格的两个取值 —— 这个年龄是**哪个日期**。
+#: 报告里必须能分辨,否则「读到了训练日期」和「读不到、退到文件日期」长成同一句话。
+_TRAINED = "trained"
+_MTIME = "mtime"
+
+
+def _artifact_age_reading(artifact_dir: Path) -> tuple[date, str] | None:
+    """``(日历日, _TRAINED | _MTIME)``,或 ``None`` = 「这里没有盘」。
+
+    **三态,一个都不许合并**(本仓反复栽的就是「分不出没有和没去看」):
+
+      · ``None``        — 没有 ``metadata.json``。既不是新也不是旧,是**空**。
+      · ``_TRAINED``    — 读到了 ``trained_at_utc``,这是真的训练日期。
+      · ``_MTIME``      — 盘在,但读不出训练日期(`47435ce` 之前的旧格式)⇒ 退到
+                          文件 mtime。**调用方必须把「退了」写进输出**:mtime 只会
+                          把陈旧盘报得更年轻,是这条红线最怕的方向。
+
+    ## 为什么 `_MTIME` 以前是默认路径(2026-08-07 实测)
+
+    `model/persist.py::save_artifact()` 写的 ``metadata.json`` 是**嵌套**的 ——
+    训练 metadata 在 ``"metadata"`` 键下面,顶层只有 feature_columns / elo_* /
+    model_type。这里原来只读顶层 ⇒ 恒 None ⇒ **每个生产盘都走了 mtime 兜底**:
+
+      · ``data/v4_model_cat``  顶层 None,嵌套 ``2026-07-15T06:19:12+00:00``
+      · ``data/v4_model``      顶层 None,嵌套 ``2026-05-22T06:17:04+00:00``
+
+    它不报错,只把年龄报得偏乐观。盘上现成的例子:
+    ``v4_model_cat.bak-20260715T135746-pre-clubelo-retrain`` 训练于 2026-05-23、
+    被 ``cp -r`` 出来后 mtime=2026-07-15,**少算 53 天**。rsync / 备份还原同理 ——
+    任何一次搬运都能把陈旧盘刷成「刚训好」,而这正是这条红线要守的东西。
+    同文件的 `_training_cutoff()` 读对了(docstring 还专门警告过这个坑),偏偏
+    年龄这条没有。
+
+    ⛔ 日期解析不在这里重写第三份。``observation.auto_retrain`` 里
+    ``artifact_trained_at``(嵌套优先/顶层兜底)+ ``parse_trained_at``
+    (tz-aware,不裸切 ``[:10]`` —— 带偏移的时间戳切字符串会差一天)就是权威实现,
+    并且已经有 `test_auto_retrain.py::TestTrainedAtReader` 钉着。
+    """
+    meta = artifact_dir / "metadata.json"
+    if not meta.exists():
+        return None
+    from nutmeg.v4.observation.auto_retrain import (
+        artifact_trained_at,
+        parse_trained_at,
+    )
+    parsed = parse_trained_at(artifact_trained_at(artifact_dir))
+    if parsed is not None:
+        return parsed.astimezone(UTC).date(), _TRAINED
+    return datetime.fromtimestamp(meta.stat().st_mtime, UTC).date(), _MTIME
+
+
 def _count_matches_after(sources_dir: Path, cutoff: str) -> int | None:
     """源树里日期严格晚于 ``cutoff`` 的比赛行数;读不了给 None(≠0)。
 
@@ -357,34 +446,110 @@ def check_model_supply_chain(
     Returns ``(info_lines, alarms)``。缺目录 = 跳过(CI/测试环境无 data/,report
     不 alarm);存在才查。空 parquet 只报数不报警(clubelo 日职空文件属正常,
     当前基线 ~121/459 — 突增才值得人看,那是趋势判断,交给读报告的人)。
-    """
-    import os
 
+    ⭐ 年龄和 cutoff 量的都是 **serving 真的会加载的那个盘**(跟 Layer B 指针),
+    不是 base —— 为什么见 `_serving_artifact()`;年龄取的是**训练日期**不是文件
+    日期 —— 为什么见 `_artifact_age_reading()`。两个洞是同一次审查里翻出来的:
+    一个量错了目录,一个量错了日期。
+
+    ⚠️ **告警文案是实现细节,别拿它当接口。** 每条关于某个 artifact 的告警都
+    带着那个盘的**路径**,测试要挑出「关于哪个盘」的告警请按路径过滤。以前的
+    写法是 ``"未重训" in a`` —— 实测把措辞一改,该红的红了,而那条「不该响时
+    不响」的用例**恒绿**(过滤器返回空 = 断言空集,永远成立)。
+    """
     info: list[str] = []
     alarms: list[str] = []
 
-    art = Path(artifact_dir or os.environ.get("NUTMEG_V4_ARTIFACT_PATH")
-               or "data/v4_model_cat")
-    meta = art / "metadata.json"
-    if meta.exists():
-        trained: date | None = None
-        try:
-            import json
-            raw = (json.loads(meta.read_text()) or {}).get("trained_at_utc")
-            if raw:
-                trained = date.fromisoformat(str(raw)[:10])
-        except Exception:  # noqa: BLE001 — 坏 metadata 走 mtime 兜底
-            pass
-        if trained is None:
-            # 旧格式 artifact 无 trained_at_utc(47435ce 之前)→ 文件 mtime 兜底
-            trained = datetime.fromtimestamp(meta.stat().st_mtime, UTC).date()
-        age = max(0, (today - trained).days)
-        line = f"artifact {art.name}: 训练于 {trained} · {age}d(红线 {ARTIFACT_MAX_AGE_DAYS}d)"
-        if age > ARTIFACT_MAX_AGE_DAYS:
-            alarms.append(f"生产 artifact 已 {age} 天未重训 — 724 天冻结的路重演中,去装/修 retrain")
-        info.append(line)
+    from nutmeg.v4.observation.auto_retrain import same_artifact_dir
+
+    base, art = _serving_artifact(artifact_dir)
+    # ⚠️ 不是 `str(art) != str(base)`。`.env` 写相对路径而 run_local_server.sh 导出
+    # 绝对路径,两者指同一个目录 —— 字符串比较会把「没重定向」读成「重定向了」,
+    # 于是同一份报告同时打印「432d 告警」和「NOTE base 不告警」两行自相矛盾的话。
+    # routes.py 的 /health 早就为这个理由留了 `_same_dir`(现在两边同一个实现)。
+    redirected = not same_artifact_dir(art, base)
+    if redirected:
+        info.append(f"Layer B 指针生效: {base} → {art} — 以下年龄量的是生效盘")
+
+    reading = _artifact_age_reading(art)
+    if reading is None:
+        if redirected:
+            # `resolve_effective_artifact_path` 只在 `is_dir()` 时才重定向 ⇒ 这个
+            # 目录**存在**,只是没有 metadata.json = 半途失败的部署(训练目录建好、
+            # 盘还没落全就写了指针)。以前这里走的是「不存在 — 跳过」那条 info:
+            # 服务正在加载它,年龄红线整个跳过,base 又被降级成 NOTE ⇒ **零告警**,
+            # 而同样场景下没有指针时是**会**告警的。静默失效的第三种写法。
+            alarms.append(
+                f"Layer B 指针目标 {art} 存在但没有 metadata.json — 半途失败的部署?"
+                f"服务正在加载它,而年龄红线量不到它 = 724 天那条线现在没人守")
+        elif art.is_dir():
+            info.append(
+                f"artifact {art}: 目录在但没有 metadata.json — 跳过年龄检查(读不出日期)")
+        else:
+            info.append(f"artifact {art}: 不存在 — 跳过(非生产环境?生产缺盘 daemon 自己会响)")
     else:
-        info.append(f"artifact {art}: 不存在 — 跳过(非生产环境?生产缺盘 daemon 自己会响)")
+        trained, how = reading
+        age = (today - trained).days
+        label = "训练于" if how == _TRAINED else "文件日期"
+        line = f"artifact {art.name}: {label} {trained} · {age}d(红线 {ARTIFACT_MAX_AGE_DAYS}d)"
+        if how == _MTIME:
+            # 「读不到」必须长得和「训练于」不一样 —— 以前两者显示成同一句
+            # 「训练于 X」,报告里没有任何字能让人看出这个年龄是文件日期。
+            line += (" ⚠️ metadata.json 里读不到 trained_at_utc,这是 **metadata.json 的"
+                     "文件修改日期,不是训练日期** —— rsync/cp -r/备份还原都会把它刷新,"
+                     "只会把陈旧盘报得更年轻")
+        info.append(line)
+        if age < 0:
+            # ⚠️ 原来这里是 `max(0, …)`。夹成 0 的后果不是「显示成 0d」,是年龄
+            # **永远** 0d、**永远**零告警 —— 一个坏时钟或一次手改 metadata 就能把
+            # 这条红线彻底关掉,而基线在同一个盘上是会喊 949d 的。未来日期本身
+            # 就是故障,要说出来。
+            alarms.append(
+                f"artifact {art} 的{label}是 {trained},在**未来** {-age} 天 — "
+                f"钟或 metadata 坏了;修好之前 {ARTIFACT_MAX_AGE_DAYS}d 红线是瞎的")
+        elif age > ARTIFACT_MAX_AGE_DAYS:
+            alarms.append(
+                f"生产 artifact 已 {age} 天未重训({art})"
+                f" — 724 天冻结的路重演中,去装/修 retrain"
+                + (" (年龄取自 metadata.json 文件日期,非训练日期 —— 真实训练日只会更早)"
+                   if how == _MTIME else ""))
+
+    if redirected:
+        # 📌 决定(2026-08-07,owner 拍板):base 的**陈旧本身**只进 info;真正告警的
+        # 判据是「**出注那条路仍在加载 base**」。两件事必须分开:
+        #
+        #   · 陈旧不告警 —— Layer B 部署后 base 停在旧盘是**设计如此**(它就是
+        #     rollback 的落点,`remove_artifact_pointer()` 一删指针就回到它)。拿它
+        #     告警 = 每天一条永远为真的红,而老误报的护栏最后会被人删掉,连带真
+        #     信号一起没了(见「语法代理测语义属性」那三次)。
+        #   · 但也不能不报 —— 回滚是一次 `rm` 的距离,读报告的人有权先知道
+        #     「万一回滚,落点有多旧」。省掉这一行等于把回滚风险藏起来。
+        #   · 真正该响的那件事(2026-08-07 实读确认):`com.nutmeg.{morning,daily}_recommend`
+        #     的命令行里**没有 `--model`** ⇒ 出注 cron 吃 `cli/recommend.py` 的
+        #     argparse 默认值 = **base**;`load_artifact()` 不读 env、不读指针;
+        #     `do_deploy` 从不刷新 base。⇒ 第一次 Layer B deploy 之后,面板/health
+        #     吃新盘,而**注单吃 base,且 base 再没人刷新**。见记忆
+        #     `serving-artifact-vs-betting-artifact`。
+        #
+        # ⛔ 在 `cli/recommend.py` 改走同一套解析之前不要把这条简化掉。它的前提由
+        #    `test_supply_chain_follows_layer_b.py::TestTheBettingPathPremise` 钉着 ——
+        #    前提一旦不成立那条测试会红,那才是删这条告警的信号。
+        b_reading = _artifact_age_reading(base)
+        if b_reading is None:
+            info.append(
+                f"NOTE base {base}: 读不出年龄(没有 metadata.json)— 回滚落点,不告警")
+        else:
+            b_trained, b_how = b_reading
+            b_age = (today - b_trained).days
+            b_label = "训练于" if b_how == _TRAINED else "文件日期"
+            info.append(
+                f"NOTE base {base.name}: {b_label} {b_trained} · {b_age}d"
+                f" — Layer B 下 base 陈旧属正常,这是回滚的落点;陈旧本身不告警")
+            if b_age > ARTIFACT_MAX_AGE_DAYS:
+                alarms.append(
+                    f"出注 cron 仍在加载 base({base}),而它已 {b_age} 天未重训 —"
+                    f" recommend.py 不读 env 也不跟 Layer B 指针,面板吃生效盘、"
+                    f"注单吃 base;要么重训 base,要么让 recommend 走同一套解析")
 
     src = Path(sources_dir)
     if src.exists():
@@ -402,6 +567,8 @@ def check_model_supply_chain(
                 alarms.append(f"football-data 源树 {age} 天没进新数据 — ingest 断供,重训会空转")
 
         # ⭐ 未吸收比赛数 —— 直接量语义,不靠 mtime 代理(见 UNABSORBED_MATCHES_ALARM)。
+        # ⚠️ `art` 是**生效盘**(跟过指针),不是 base —— 同一个洞的第二个出口:
+        # cutoff 读 base 的话,Layer B 指向一个 cutoff 更旧的盘时积压会被整个藏掉。
         cutoff = _training_cutoff(art)
         if cutoff is None:
             info.append("未吸收比赛: 跳过 — artifact metadata 里没有 training_cutoff")
@@ -598,8 +765,25 @@ def main(argv: list[str] | None = None) -> int:
     write_heartbeat(db_path)
     crit_stale = [s for s in statuses if s.stale and s.critical]
     quota_alarms, probe_fails = ([], []) if args.no_quota else check_api_quota()
-    supply_info, supply_alarms = (
-        ([], []) if args.no_supply else check_model_supply_chain(today))
+    # ⚠️ 2026-08-07:这条**必须**兜住异常。心跳在上面第 598 行就写掉了,而心跳的
+    # 语义是「哨兵跑过」——  探针在这里抛一个异常,整份报告(采集表新鲜度、配额、
+    # 标签)全丢、退出码是个 traceback,而 vote-cron 看门狗看到的是一条**新鲜的
+    # 心跳**,判定「哨兵健在」。同函数里 pandas/pyarrow 的 import 都有 try/except,
+    # 唯独这条没有 —— 而本次接进来的 `observation.auto_retrain` 会拖 numpy,正是
+    # 这条路上第一个真实会抛的东西:我们自己把它点亮了。
+    # 探针自己坏了要**大声说**,不能装成「供应链没问题」(零 info 零 alarm 在报告
+    # 里长得和「一切正常」一模一样)。所以走 alarms —— 它同乘非零退出。
+    supply_info: list[str] = []
+    supply_alarms: list[str] = []
+    if not args.no_supply:
+        try:
+            supply_info, supply_alarms = check_model_supply_chain(today)
+        except Exception as exc:  # noqa: BLE001 — 探针坏了不该拖垮整份报告
+            supply_alarms = [
+                f"模型供应链探针自己炸了: {type(exc).__name__}: {exc}"
+                f" — artifact 年龄/源树/未吸收比赛这一整块**没有被检查**,"
+                f"别把这份报告的其余部分当成供应链体检通过"
+            ]
     label_info, label_alarms = (
         ([], []) if args.no_league_labels else check_league_labels(db_path))
 

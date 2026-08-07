@@ -322,3 +322,60 @@ def test_gap_emitted_in_porcelain(tmp_path, capsys):
     # 所以这个夹具里整表确实也有同一个洞 —— 两条都对,按名字取 closing 那条。
     by_name = {ln.split("\t")[1]: ln.split("\t")[2:] for ln in gap_lines}
     assert by_name["odds_snapshots[closing]"] == ["2026-06-06", "2026-06-15", "10"]
+
+
+# ---------------------------------------------------------------- 探针炸了 ≠ 供应链没问题
+
+class TestSupplyProbeFailureIsNotSilence:
+    """⭐ 心跳在第 598 行就写掉了,供应链探针在第 602 行 —— 中间没有 try/except。
+
+    探针抛一个异常 ⇒ 整份报告(采集表新鲜度、配额、联赛标签)全丢、退出码是个
+    traceback,而 vote-cron 看门狗看到的是一条**新鲜的心跳**,判定「哨兵健在」。
+    「哨兵跑了但什么都没说」和「哨兵说一切正常」在看门狗眼里一模一样。
+
+    同函数里 pandas / pyarrow 的 import 都有 try/except,唯独这条没有 —— 而
+    2026-08-07 接进来的 `observation.auto_retrain`(拖 numpy)正是这条路上第一个
+    真实会抛的东西:我们自己把它点亮了。
+
+    ⛔ 兜住 ≠ 咽下。零 info 零 alarm 在报告里长得和「一切正常」一模一样,所以
+    探针自己坏了必须走 **alarms**(它同乘非零退出),不是静默跳过。
+    """
+
+    def _boom(self, monkeypatch):
+        import nutmeg.v4.cli.data_freshness as df
+
+        def _explode(*a, **kw):
+            raise RuntimeError("numpy 装坏了")
+
+        monkeypatch.setattr(df, "check_model_supply_chain", _explode)
+
+    def test_report_survives_and_says_the_probe_died(self, tmp_path, capsys, monkeypatch):
+        self._boom(monkeypatch)
+        db = _mk_db(tmp_path, _all_today())
+
+        rc = main(["--db", str(db), "--today", "2026-06-17", "--no-quota"])
+
+        out = capsys.readouterr().out
+        assert "RuntimeError" in out and "没有被检查" in out, (
+            f"探针死了,报告里必须说清哪一块没查:{out}")
+        assert "odds_snapshots" in out, f"其余报告不该被一个探针带走:{out}"
+        assert rc == 1, "探针坏了要非零退出 —— 否则 cron 认为体检通过"
+
+    def test_heartbeat_alone_cannot_mean_all_clear(self, tmp_path, monkeypatch):
+        """看门狗只看心跳文件。心跳照写(哨兵确实跑了),但退出码必须把
+        「跑了」和「没事」分开 —— 这两件事合并就是 wc_settle 死了三周的形状。"""
+        self._boom(monkeypatch)
+        db = _mk_db(tmp_path, _all_today())
+
+        rc = main(["--db", str(db), "--today", "2026-06-17", "--no-quota"])
+
+        assert (tmp_path / HEARTBEAT_FILENAME).exists(), "心跳仍要写:哨兵确实跑过"
+        assert rc != 0, "而退出码必须说「没事」不成立"
+
+    def test_no_supply_flag_still_skips_without_touching_the_probe(
+            self, tmp_path, monkeypatch):
+        """`--no-supply` 是跳过,不是「跑了再兜」—— 炸弹不该被引爆。"""
+        self._boom(monkeypatch)
+        db = _mk_db(tmp_path, _all_today())
+        assert main(["--db", str(db), "--today", "2026-06-17",
+                     "--no-quota", "--no-supply"]) == 0

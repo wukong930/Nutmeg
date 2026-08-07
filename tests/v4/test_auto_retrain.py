@@ -736,6 +736,64 @@ class TestTrainedAtReader:
         assert parse_trained_at("2026-07-15T06:00:00") == \
             parse_trained_at("2026-07-15T06:00:00+00:00")
 
+    @pytest.mark.parametrize("empty", ["", None])
+    def test_empty_nested_value_does_not_veto_a_usable_flat_one(self, tmp_path, empty):
+        """⭐ 嵌套值是**空的**时候要退回顶层,不能只在键不存在时才退。
+
+        写成 `value if value is not None else raw.get(...)` 的话,一个 `""` 会赢过
+        顶层的真日期 ⇒ 返回 None ⇒ 每个调用方都读成「读不出来」并降级。对
+        `cli/data_freshness.py` 那个降级是退到文件 mtime:一个陈旧盘被报成 0d、
+        零告警,而**不修这个函数的旧代码在同一个盘上是会告警的**。
+        空串不是日期,不能压过一个真日期。
+        """
+        from nutmeg.v4.observation.auto_retrain import artifact_trained_at
+        d = tmp_path / "both_shapes"
+        d.mkdir()
+        (d / "metadata.json").write_text(json.dumps({
+            "metadata": {"trained_at_utc": empty},
+            "trained_at_utc": LIVE_TRAINED_AT,
+        }))
+        assert artifact_trained_at(d) == LIVE_TRAINED_AT
+
+
+class TestSameArtifactDir:
+    """`same_artifact_dir` 是「这两个路径是不是同一个目录」的**唯一**实现。
+
+    `api/routes._same_dir` 是它的别名(serving 的 /health 走那条),
+    `cli/data_freshness` 判 `redirected` 走这条。两份实现 = 读的一侧和查的一侧
+    有漂的余地,而漂开的表现是**静默**的:同一份报告会同时说「生效盘超龄」和
+    「base 陈旧不告警」,说的其实是同一个目录。
+    """
+
+    @pytest.mark.parametrize("other", [
+        lambda p: str(p),                        # 自己
+        lambda p: str(p) + "/",                  # 尾斜杠
+        lambda p: str(p / "."),                  # 单点
+        lambda p: str(p / "sub" / ".."),         # 绕一圈
+    ])
+    def test_spellings_of_the_same_dir_agree(self, tmp_path, other):
+        from nutmeg.v4.observation.auto_retrain import same_artifact_dir
+        d = tmp_path / "art"
+        (d / "sub").mkdir(parents=True)
+        assert same_artifact_dir(d, other(d))
+
+    def test_different_dirs_disagree(self, tmp_path):
+        from nutmeg.v4.observation.auto_retrain import same_artifact_dir
+        assert not same_artifact_dir(tmp_path / "a", tmp_path / "b")
+
+    def test_neither_side_has_to_exist(self, tmp_path):
+        from nutmeg.v4.observation.auto_retrain import same_artifact_dir
+        assert same_artifact_dir(tmp_path / "ghost", tmp_path / "ghost")
+
+    def test_routes_alias_is_the_same_function(self, tmp_path):
+        """别名不许自己长出第二套语义 —— 行为断言,不是「源码里有没有 import」。"""
+        from nutmeg.v4.api import routes
+        from nutmeg.v4.observation.auto_retrain import same_artifact_dir
+        d = tmp_path / "art"
+        d.mkdir()
+        for a, b in [(str(d), str(d) + "/"), (str(d), str(tmp_path / "other"))]:
+            assert routes._same_dir(a, b) is same_artifact_dir(a, b)
+
 
 class TestCliRollback:
     def test_rollback_clears_both_files(self, tmp_path, serving_base):
