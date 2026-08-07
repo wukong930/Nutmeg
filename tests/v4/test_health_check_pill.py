@@ -21,7 +21,7 @@ import json
 import os
 import re
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -42,7 +42,7 @@ def _client() -> TestClient:
 def _write(tmp_path, monkeypatch, *, ok=True, reds=(), new=(), gone=(),
            age_hours=1.0, detail=None, ran_at="__auto__"):
     if ran_at == "__auto__":
-        ran_at = (datetime.now(timezone.utc)
+        ran_at = (datetime.now(UTC)
                   - timedelta(hours=age_hours)).astimezone().isoformat(timespec="seconds")
     p = tmp_path / "hc.json"
     p.write_text(json.dumps({
@@ -168,17 +168,57 @@ def _js_fn(name: str) -> str:
     raise AssertionError(name)
 
 
-def _render(payload: dict) -> str:
-    """喂一份端点回包,拿到体检点真正渲染出的 HTML(跑生产函数原文)。"""
+def _render(payload: dict, *, click: bool = False, fail: bool = False) -> str:
+    """喂一份端点回包,跑**生产函数原文**,拿回它真正渲染出的东西。
+
+    2026-08-07 —— `_healthDot` 从「拼 HTML 字符串」改成「建 DOM 节点」
+    (理由:`title="${tip}"` 拼属性,体检判词里一个引号就截断它;而且点击行为
+    要按调用方分叉,字符串 onclick 传不了闭包)。所以这个桩也从「收 innerHTML
+    字符串」升级成一个极小的 DOM shim,把节点摊平成可断言的文本。
+
+    `click=True` 时额外触发一次徽章点击,并把 showInfo 收到的内容一起返回 ——
+    这才是「点得开、看得见」的行为断言。
+    """
+    fail_expr = ("Promise.reject(new Error('boom'))" if fail
+                 else f"Promise.resolve({{ json: () => ({json.dumps(payload)}) }})")
     src = f"""
 {_js_fn('_healthDot')}
+{_js_fn('_showHealthCheckDetail')}
 {_js_fn('loadHealthCheck')}
 const API = '/api/v4';
 const t = k => k;
-let captured = '';
-const $ = () => ({{ set innerHTML(v) {{ captured = v; }} }});
-global.fetch = () => Promise.resolve({{ json: () => ({json.dumps(payload)}) }});
-loadHealthCheck().then(() => console.log(captured));
+let out = [];
+let infoTitle = '', infoBody = '';
+function showInfo(title, body) {{ infoTitle = title; infoBody = body; }}
+function loadHealth() {{ out.push('CALLED_loadHealth'); }}
+function mkEl(tag) {{
+  const e = {{ tag, style: {{ cssText: '' }}, children: [], _text: '', _attrs: {{}},
+    set textContent(v) {{ this._text = v; }}, get textContent() {{ return this._text; }},
+    setAttribute(k, v) {{ this._attrs[k] = v; }},
+    appendChild(c) {{ this.children.push(c); return c; }},
+    addEventListener(ev, fn) {{ if (ev === 'click') this._click = fn; }},
+    get innerHTML() {{ return flat(this); }} }};
+  return e;
+}}
+function flat(n) {{
+  if (n == null) return '';
+  if (typeof n === 'string') return n;
+  return (n._text || '') + (n.style ? n.style.cssText : '') + (n.title || '')
+       + JSON.stringify(n._attrs || {{}}) + (n.children || []).map(flat).join(' ');
+}}
+global.document = {{ createElement: mkEl, createTextNode: s => ({{ _text: s }}) }};
+let mounted = null;
+const $ = () => ({{ replaceChildren(...n) {{ mounted = n[0]; }} }});
+global.fetch = () => {fail_expr};
+loadHealthCheck().then(() => {{
+  out.push(flat(mounted));
+  if ({str(bool(click)).lower()} && mounted && mounted._click) {{
+    mounted._click();
+    out.push('INFO_TITLE:' + infoTitle);
+    out.push('INFO_BODY:' + infoBody);
+  }}
+  console.log(out.join('\\n'));
+}});
 """
     r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[:2000]
@@ -224,15 +264,66 @@ def test_new_reds_are_red_and_known_reds_are_only_amber():
 
 
 def test_a_fetch_failure_is_red_not_silently_absent():
-    """端点挂了 ⇒ 红。静静地什么都不显示 = 又一个「看起来没问题」。"""
-    src = f"""
-{_js_fn('_healthDot')}
-{_js_fn('loadHealthCheck')}
-const API='/x'; const t=k=>k; let captured='';
-const $ = () => ({{ set innerHTML(v) {{ captured = v; }} }});
-global.fetch = () => Promise.reject(new Error('boom'));
-loadHealthCheck().then(() => console.log(captured));
-"""
-    r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=60)
-    assert r.returncode == 0, r.stderr[:800]
-    assert "--accent-rose" in r.stdout, f"fetch 失败却没红:{r.stdout[:200]}"
+    """端点挂了 ⇒ 红。静静地什么都不显示 = 又一个「看起来没问题」。
+
+    2026-08-07:改用共享 harness —— 它以前自带一份内联 src,`_healthDot` 改成建
+    DOM 节点后那份没有 document 桩,于是**在真实代码坏掉之前先炸在自己身上**。
+    测试替身各写一份 = 同一件事多处各写一份,同族。
+    """
+    out = _render(_FRESH, fail=True)
+    assert "--accent-rose" in out, f"fetch 失败却没红:{out[:200]}"
+    assert "hc_broken" in out
+
+
+# ─────────────────────────────────── 2026-08-07 追加:点得开、看得见、引号打不断
+
+class TestTheBadgeOpensADetail:
+    """⭐ 起因:owner 问「体检已知红是本来就不能点开查看的吗」。
+
+    不是设计如此,是我建的时候漏了 —— 它是个 `<button>`,但 onclick 只是
+    `loadHealth()`(重新拉一次),红灯内容全在 `title` 里 ⇒
+    **桌面悬停能看到、手机上完全看不到**。而这块面板主要在手机上看。
+    和横幅那边刚修掉的是同一个毛病:**结论算出来了,但没送到眼睛前**。
+    """
+
+    def test_clicking_shows_the_actual_red_lines(self):
+        out = _render({**_FRESH, "reds": ["10. 注册表覆盖率 | 某切片已静默降级"],
+                       "new": [], "ran_at": "2026-08-07T20:00:00+08:00"}, click=True)
+        assert "INFO_TITLE:hc_detail_title" in out, "点了没弹出详情"
+        body = out.split("INFO_BODY:", 1)[1]
+        assert "注册表覆盖率" in body, "详情里看不到红灯内容 —— 那点开就没意义"
+        assert "2026-08-07T20:00:00+08:00" in body, "没显示报告时间(判不了新旧)"
+        assert "hc_detail_recheck" in body, "详情里没有重新检查的入口"
+
+    def test_a_broken_channel_click_shows_why(self):
+        out = _render({**_FRESH, "ok": False, "detail": "体检还没跑过(没有 x.json)"},
+                      click=True)
+        body = out.split("INFO_BODY:", 1)[1]
+        assert "体检还没跑过" in body
+
+    def test_new_and_known_reds_are_separated_in_the_detail(self):
+        """新增红要能一眼和已知红分开 —— 混在一起等于没分级。"""
+        out = _render({**_FRESH, "reds": ["A | 新的", "B | 老的"], "new": ["A | 新的"]},
+                      click=True)
+        body = out.split("INFO_BODY:", 1)[1]
+        assert "hc_new" in body and "hc_known" in body
+        # 已知红那组不能把新增红也列一遍
+        known = body.split("hc_known", 1)[1]
+        assert "老的" in known and "新的" not in known
+
+    def test_a_quote_in_a_red_message_survives_intact(self):
+        """⭐ 以前 `title="${tip}"` 是**拼进属性**的 —— 判词里一个 `"` 就截断属性。
+        体检输出是中文散文,保证不了没有引号。现在走属性赋值 + textContent。
+
+        ⚠️ **这条只能证明「判词完整地走到了 textContent / title 赋值」**,
+        证不了浏览器的 HTML 转义 —— 我的 DOM 桩不模拟 `textContent → innerHTML`
+        的转义,靠它断言 `&lt;b&gt;` 等于**在测桩自己**。转义那半在真浏览器里
+        单独验过(见 commit 说明)。⛔ 别为了让这条更"强"而给桩加转义逻辑:
+        那会变成测试替身自证清白,同族「测试替身抹掉守卫」。
+        """
+        nasty = '10. x | 判词里有个 " 引号 <b>和标签</b>'
+        out = _render({**_FRESH, "reds": [nasty]}, click=True)
+        body = out.split("INFO_BODY:", 1)[1]
+        assert nasty in body, "判词在中途被截断/丢失了"
+        assert '10. x | 判词里有个 " 引号' in out.split("INFO_BODY:", 1)[0], \
+            "徽章 title 没拿到完整判词(以前拼属性时会在第一个引号处断掉)"

@@ -2158,6 +2158,11 @@ const I18N = {
     hc_new:           '体检新增红灯',
     hc_known:         '体检已知红',
     hc_clean:         '体检全绿',
+    hc_gone:          '已修复(基线里该删掉)',
+    hc_detail_title:  '体检详情',
+    hc_detail_ran:    '报告时间:',
+    hc_detail_where:  '完整报告在 logs/health_check_latest.md;已知红的豁免清单在 configs/health_check_known_red.txt。',
+    hc_detail_recheck:'重新检查',
     health_expected:  '预期',
     health_off:       '未就绪',
     health_offline:   'API 离线',
@@ -2719,6 +2724,11 @@ const I18N = {
     hc_new:           'new health-check reds',
     hc_known:         'known health-check reds',
     hc_clean:         'health-check clean',
+    hc_gone:          'fixed (drop it from the baseline)',
+    hc_detail_title:  'Health-check detail',
+    hc_detail_ran:    'Report time: ',
+    hc_detail_where:  'Full report: logs/health_check_latest.md; the known-red baseline lives in configs/health_check_known_red.txt.',
+    hc_detail_recheck:'Re-check',
     health_expected:  'expected',
     health_off:       'not ready',
     health_offline:   'API offline',
@@ -3617,14 +3627,69 @@ document.addEventListener('click', (e) => {
 // compact status dot: green=running, amber=degraded, red=offline. The detail
 // moves to the tooltip; clicking the dot re-checks. The #health-pill target +
 // the periodic re-poll are unchanged.
-function _healthDot(state, label, tip) {
+// ⭐ 2026-08-07 — 从「拼 HTML 字符串」改成「建 DOM 节点」。两个理由:
+// ① `title="${tip}"` 是拼进**属性**的,而 tip 里装的是体检脚本的中文判词 ——
+//    出现一个 `"` 就把属性截断(体检输出是散文,保证不了没有引号)。属性赋值没这问题。
+// ② 点击行为要按调用方分叉(见下),字符串 onclick 传闭包做不到。
+// 顺带把外部文本从 innerHTML 路径上彻底拿掉,和竞彩队名走 textContent 是同一条规矩。
+function _healthDot(state, label, tip, onClick) {
   const color = { ok: 'var(--accent-green)', warn: 'var(--accent-orange)',
                   err: 'var(--accent-rose)' }[state] || 'var(--text-muted)';
-  return `<button onclick="loadHealth()" title="${tip}" aria-label="${label}" `
-    + `style="display:inline-flex;align-items:center;gap:6px;font-size:13px;background:none;`
-    + `border:none;cursor:pointer;color:var(--text-secondary);white-space:nowrap">`
-    + `<span style="width:9px;height:9px;border-radius:50%;background:${color};`
-    + `box-shadow:0 0 6px ${color};flex:none"></span>${label}</button>`;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.title = tip || '';
+  b.setAttribute('aria-label', label);
+  b.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:13px;'
+    + 'background:none;border:none;cursor:pointer;color:var(--text-secondary);white-space:nowrap';
+  const dot = document.createElement('span');
+  dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${color};`
+    + `box-shadow:0 0 6px ${color};flex:none`;
+  b.appendChild(dot);
+  b.appendChild(document.createTextNode(label));
+  b.addEventListener('click', onClick || (() => loadHealth()));
+  return b;
+}
+
+// ⭐ 体检徽章点开看详情。以前点击只是 `loadHealth()`(重新拉一次),红灯内容全在
+// `title` 里 —— **桌面悬停能看到、手机上完全看不到**。而这块面板主要在手机上看,
+// 于是在最常用的场景里它只告诉你「有一条红」,不告诉你是哪条。
+// 这和横幅那边刚修掉的是同一个毛病:**结论算出来了,但没送到眼睛前**。
+function _showHealthCheckDetail(j) {
+  const box = document.createElement('div');
+  const line = (txt, bold) => {
+    const d = document.createElement('div');
+    d.textContent = txt;                       // ⛔ 外部判词一律 textContent
+    d.style.cssText = 'margin:2px 0;' + (bold ? 'font-weight:600' : '');
+    box.appendChild(d);
+    return d;
+  };
+  const hrs = j.age_seconds == null ? null : (j.age_seconds / 3600);
+  line(t('hc_detail_ran') + (j.ran_at || '?')
+       + (hrs == null ? '' : ` (${hrs.toFixed(1)}h)`));
+  if (!j.ok) {
+    line('⚠️ ' + (j.detail || t('hc_broken')), true).style.color = 'var(--accent-rose)';
+  } else if (j.stale) {
+    line('⚠️ ' + t('hc_stale_tip'), true).style.color = 'var(--accent-rose)';
+  }
+  const group = (arr, title, color) => {
+    if (!(arr || []).length) return;
+    line('', false);
+    line(`${title} (${arr.length})`, true).style.color = color;
+    arr.forEach(x => { line('· ' + x).style.color = 'var(--text-secondary)'; });
+  };
+  group(j.new, t('hc_new'), 'var(--accent-rose)');
+  // 已知红 = 在 configs/health_check_known_red.txt 基线里的,显示但不喊
+  group((j.reds || []).filter(r => !(j.new || []).includes(r)), t('hc_known'),
+        'var(--accent-orange)');
+  group(j.gone, t('hc_gone'), 'var(--accent-green)');
+  if (j.ok && !j.stale && !(j.reds || []).length) line('✅ ' + t('hc_clean'), true);
+  line('', false);
+  line(t('hc_detail_where'));
+  // 这一段是我自己的 markup(无外部串),拼 HTML 安全
+  showInfo(t('hc_detail_title'),
+    box.innerHTML
+    + `<div style="margin-top:10px"><button type="button" onclick="loadHealth()" `
+    + `class="px-3 py-1 rounded text-sm border">${t('hc_detail_recheck')}</button></div>`);
 }
 // 定时体检点。⛔ 判据是 `!ok || stale` —— 「读不到」和「太旧」都必须是红,
 // 不能因为 reds 为空就显示绿:那正是「分不出没有和没去看」。
@@ -3637,23 +3702,25 @@ async function loadHealthCheck() {
     const ageTxt = hrs == null ? '' : ` · ${hrs}h`;
     if (!j.ok || j.stale) {
       // 通道自己坏了 —— 这比「有红灯」更要紧,因为它意味着**你什么都不会知道**。
-      el.innerHTML = _healthDot('err', t('hc_broken'),
-        (j.detail || t('hc_stale_tip')) + ageTxt);
+      el.replaceChildren(_healthDot('err', t('hc_broken'),
+        (j.detail || t('hc_stale_tip')) + ageTxt, () => _showHealthCheckDetail(j)));
       return;
     }
     if ((j.new || []).length) {
-      el.innerHTML = _healthDot('err', `${t('hc_new')} (${j.new.length})`,
-        j.new.join(' / ') + ageTxt);
+      el.replaceChildren(_healthDot('err', `${t('hc_new')} (${j.new.length})`,
+        j.new.join(' / ') + ageTxt, () => _showHealthCheckDetail(j)));
     } else if ((j.reds || []).length) {
       // 已知红:显示但不喊。天天喊的告警三天内会被关掉。
-      el.innerHTML = _healthDot('warn', `${t('hc_known')} (${j.reds.length})`,
-        j.reds.join(' / ') + ageTxt);
+      el.replaceChildren(_healthDot('warn', `${t('hc_known')} (${j.reds.length})`,
+        j.reds.join(' / ') + ageTxt, () => _showHealthCheckDetail(j)));
     } else {
-      el.innerHTML = _healthDot('ok', t('hc_clean'), t('hc_clean') + ageTxt);
+      el.replaceChildren(_healthDot('ok', t('hc_clean'), t('hc_clean') + ageTxt,
+        () => _showHealthCheckDetail(j)));
     }
   } catch (e) {
     console.warn('health-check pill failed:', e);
-    el.innerHTML = _healthDot('err', t('hc_broken'), String(e));
+    // 连端点都挂了 —— 这时没有 j 可展开,点击回落成「重新拉一次」
+    el.replaceChildren(_healthDot('err', t('hc_broken'), String(e)));
   }
 }
 
@@ -3681,14 +3748,14 @@ async function loadHealth() {
     const ok = coreOk && obsOk && idOk;
     // 服错盘 = 红,不是黄。黄是「有点降级还能用」,而这个是「所有数字都来自
     // 另一个模型」—— 比后端起不来更危险,因为它看起来完全正常。
-    $('#health-pill').innerHTML = _healthDot(
+    $('#health-pill').replaceChildren(_healthDot(
       !idOk ? 'err' : (ok ? 'ok' : 'warn'),
       !idOk ? t('health_wrong_artifact') : (ok ? t('health_running') : t('health_degraded')),
-      tip);
+      tip));
   } catch (e) {
     // API server down → red dot; raw exception to console only (not the user).
     console.warn('health check failed:', e);
-    $('#health-pill').innerHTML = _healthDot('err', t('health_offline'), t('health_offline_tip'));
+    $('#health-pill').replaceChildren(_healthDot('err', t('health_offline'), t('health_offline_tip')));
   }
   loadHealthCheck();
 }

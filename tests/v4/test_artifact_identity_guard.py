@@ -893,6 +893,11 @@ def _render_health_dot(core: dict) -> str:
     # 那样一来 `loadHealthCheck` 哪天改名/删掉,它就**静默地不再被调用**,
     # 而面板看起来一切正常。测试该补上被测函数的真实依赖,不是让生产代码
     # 学会容忍依赖消失。
+    # ⚠️ 2026-08-07 —— `_healthDot` 从「拼 HTML 字符串」改成「建 DOM 节点」
+    # (`title="${tip}"` 拼属性会被判词里的引号截断)。这份桩当时**没跟着改**,
+    # 于是三条测试一起炸在 `document is not defined` —— 在被测代码之前先炸自己。
+    # 根因是**测试替身各写一份**:同一个 `_healthDot` 有 3 个 harness 各自建桩。
+    # 这里补上 DOM shim;真要收口应该把 shim 抽成共享 fixture,记在 backlog。
     src = f"""
 {_js_fn('_healthDot')}
 {_js_fn('loadHealth')}
@@ -900,7 +905,20 @@ function loadHealthCheck() {{ return Promise.resolve(); }}
 const API = '/api/v4';
 const t = k => k;
 let captured = '';
-const $ = () => ({{ set innerHTML(v) {{ captured = v; }} }});
+function mkEl() {{
+  return {{ style: {{ cssText: '' }}, children: [], _text: '', _attrs: {{}},
+    set textContent(v) {{ this._text = v; }}, get textContent() {{ return this._text; }},
+    setAttribute(k, v) {{ this._attrs[k] = v; }},
+    appendChild(c) {{ this.children.push(c); return c; }},
+    addEventListener() {{}} }};
+}}
+function flat(n) {{
+  if (n == null) return '';
+  return (n._text || '') + (n.style ? n.style.cssText : '') + (n.title || '')
+       + JSON.stringify(n._attrs || {{}}) + (n.children || []).map(flat).join(' ');
+}}
+global.document = {{ createElement: mkEl, createTextNode: s => ({{ _text: s }}) }};
+const $ = () => ({{ replaceChildren(...n) {{ captured = flat(n[0]); }} }});
 const CORE = {json.dumps(core)};
 const OBS = {{ status: 'ok', n_settled: 1, n_recommendations: 2 }};
 global.fetch = (u) => Promise.resolve(
