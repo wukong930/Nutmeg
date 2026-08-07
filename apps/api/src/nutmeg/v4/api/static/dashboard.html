@@ -763,6 +763,11 @@
       <div id="health-pill" class="text-sm">
         <span class="badge-warn" data-i18n="health_checking">checking ...</span>
       </div>
+      <!-- 定时体检点 (2026-08-07)。健康点问「后端活着吗」,这个问「流水线体检
+           上次说了什么」。⚠️ 它存在的原因是 osascript 通知**实测送不到**
+           (退出码 0 但 macOS 静默丢弃) —— 面板不依赖任何系统权限,而且报告
+           自带时间戳 ⇒ cron 死了这里会说出来,不会静静地显示「没红灯」。 -->
+      <div id="hc-pill" class="text-sm"></div>
     </div>
   </div>
 
@@ -2132,6 +2137,11 @@ const I18N = {
     health_teams:     '球队',
     health_settled:   '已结算',
     health_wrong_artifact: '服务盘不对',
+    hc_broken:        '体检没在跑',
+    hc_stale_tip:     '体检报告太旧 —— 定时任务可能死了。跑 scripts/health_check_cron.sh 看看',
+    hc_new:           '体检新增红灯',
+    hc_known:         '体检已知红',
+    hc_clean:         '体检全绿',
     health_expected:  '预期',
     health_off:       '未就绪',
     health_offline:   'API 离线',
@@ -2682,6 +2692,11 @@ const I18N = {
     health_teams:     'teams',
     health_settled:   'settled',
     health_wrong_artifact: 'wrong artifact',
+    hc_broken:        'health-check not running',
+    hc_stale_tip:     'health-check report is stale — the scheduled job may be dead. Run scripts/health_check_cron.sh',
+    hc_new:           'new health-check reds',
+    hc_known:         'known health-check reds',
+    hc_clean:         'health-check clean',
     health_expected:  'expected',
     health_off:       'not ready',
     health_offline:   'API offline',
@@ -3583,6 +3598,37 @@ function _healthDot(state, label, tip) {
     + `<span style="width:9px;height:9px;border-radius:50%;background:${color};`
     + `box-shadow:0 0 6px ${color};flex:none"></span>${label}</button>`;
 }
+// 定时体检点。⛔ 判据是 `!ok || stale` —— 「读不到」和「太旧」都必须是红,
+// 不能因为 reds 为空就显示绿:那正是「分不出没有和没去看」。
+async function loadHealthCheck() {
+  const el = $('#hc-pill');
+  if (!el) return;
+  try {
+    const j = await fetch(API + '/observation/health-check-latest').then(r => r.json());
+    const hrs = j.age_seconds == null ? null : Math.round(j.age_seconds / 3600);
+    const ageTxt = hrs == null ? '' : ` · ${hrs}h`;
+    if (!j.ok || j.stale) {
+      // 通道自己坏了 —— 这比「有红灯」更要紧,因为它意味着**你什么都不会知道**。
+      el.innerHTML = _healthDot('err', t('hc_broken'),
+        (j.detail || t('hc_stale_tip')) + ageTxt);
+      return;
+    }
+    if ((j.new || []).length) {
+      el.innerHTML = _healthDot('err', `${t('hc_new')} (${j.new.length})`,
+        j.new.join(' / ') + ageTxt);
+    } else if ((j.reds || []).length) {
+      // 已知红:显示但不喊。天天喊的告警三天内会被关掉。
+      el.innerHTML = _healthDot('warn', `${t('hc_known')} (${j.reds.length})`,
+        j.reds.join(' / ') + ageTxt);
+    } else {
+      el.innerHTML = _healthDot('ok', t('hc_clean'), t('hc_clean') + ageTxt);
+    }
+  } catch (e) {
+    console.warn('health-check pill failed:', e);
+    el.innerHTML = _healthDot('err', t('hc_broken'), String(e));
+  }
+}
+
 async function loadHealth() {
   try {
     const [coreRes, obsRes] = await Promise.all([
@@ -3616,6 +3662,7 @@ async function loadHealth() {
     console.warn('health check failed:', e);
     $('#health-pill').innerHTML = _healthDot('err', t('health_offline'), t('health_offline_tip'));
   }
+  loadHealthCheck();
 }
 
 // --- Sample data buttons ---

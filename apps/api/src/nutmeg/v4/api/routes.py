@@ -10,6 +10,7 @@ cached LoadedModel.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -28,6 +29,7 @@ from nutmeg.v4.api.schemas import (
     HealthResponse,
     JingcaiRecommendRequest,
     JingcaiSpRequest,
+    HealthCheckLatestResponse,
     JingcaiUnmappedResponse,
     JingcaiSpResponse,
     LegResponse,
@@ -604,7 +606,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v141-fe-artifact-identity"
+_FE_VERSION = "nutmeg-v142-fe-healthcheck-pill"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -1466,6 +1468,55 @@ def jingcai_unmapped_endpoint() -> JingcaiUnmappedResponse:
         gone=s["gone"],
         partial=s["partial"],
         age_seconds=int(age) if age is not None else None,
+    )
+
+
+#: 报告多旧算「cron 可能死了」。job 每天 09:45 + 21:00 两次;笔记本睡眠时 launchd
+#: 唤醒后补跑一次 ⇒ 30h 容得下一整轮 miss + 一次睡眠,又不至于把真死拖上两天。
+_HC_STALE_SECONDS = 30 * 3600
+
+
+@router.get("/observation/health-check-latest",
+            response_model=HealthCheckLatestResponse)
+def health_check_latest_endpoint() -> HealthCheckLatestResponse:
+    """定时体检上一次的判定。读 `health_check_cron.sh` 写的 **JSON 边车**。
+
+    ⛔ **不读那份 .md** —— 那是给人看的中文报告,解析它就是「语法代理测语义属性」:
+    改个措辞面板就瞎,而且瞎的时候看起来一切正常(见 `health_check_cron.sh` 顶部)。
+
+    Fail-soft 但**不 fail-silent**:读不到 ⇒ `ok=False` + 原因,前端显示成红。
+    「没红灯」和「没读到」在这里必须是两个不同的回答。
+    """
+    import json as _json
+
+    p = Path(os.environ.get("NUTMEG_HC_JSON")
+             or "logs/health_check_latest.json")
+    try:
+        raw = _json.loads(p.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return HealthCheckLatestResponse(
+            ok=False, detail=f"体检还没跑过(没有 {p})—— 装了 cron 吗?")
+    except Exception as e:                                   # noqa: BLE001
+        return HealthCheckLatestResponse(
+            ok=False, detail=f"体检判定读不出来:{type(e).__name__}")
+
+    age: int | None = None
+    with contextlib.suppress(Exception):
+        age = int((datetime.now(timezone.utc)
+                   - datetime.fromisoformat(raw["ran_at"])).total_seconds())
+    # 算不出年龄 ⇒ 当成 stale。「不知道多旧」不能当「很新」——
+    # 那正是让一个死掉的 cron 看起来健在的那一步。
+    stale = age is None or age > _HC_STALE_SECONDS
+    return HealthCheckLatestResponse(
+        ok=bool(raw.get("ok")),
+        detail=raw.get("detail"),
+        ran_at=raw.get("ran_at"),
+        age_seconds=age,
+        stale=stale,
+        exit_code=raw.get("exit_code"),
+        reds=list(raw.get("reds") or []),
+        new=list(raw.get("new") or []),
+        gone=list(raw.get("gone") or []),
     )
 
 

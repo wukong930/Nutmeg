@@ -543,6 +543,39 @@ class SportteryRefreshResponse(BaseModel):
     unmapped_teams: list[dict] = []
 
 
+class HealthCheckLatestResponse(BaseModel):
+    """定时体检(`com.nutmeg.daily_health_check`)上一次的判定 —— 给面板读。
+
+    ## 为什么要有这个端点(2026-08-07)
+
+    体检的告警原本只走 `osascript` 桌面通知。实测**通知没送到** —— `osascript`
+    退出码 0 但 macOS 静默丢弃(权限库 TCC 保护,连查都查不了)。
+    ⇒ 一个上线当天就死掉、而且**死的时候看起来正常**的告警通道。
+
+    面板是 owner 每天都看的表面,且不依赖任何系统权限。这里把判定送到那儿。
+
+    ## ⛔ 契约:分不出「没红灯」和「没读到」
+
+    * `ok=False` = **读不到/没跑完**,不是「没问题」。前端必须把它显示成**红**。
+    * `stale` **只在 `ok=True` 时有意义** —— 读不到报告时它是 False,那不代表「新鲜」。
+      前端的判据必须是 `!ok || stale`,不能只看其中一个。
+    * `stale=True` = 报告太旧 ⇒ **cron 可能死了**。这是本端点存在的第二个理由:
+      通道自己的失效必须可见。job 每天跑两次(09:45 / 21:00),笔记本睡眠时
+      launchd 唤醒后补跑一次 ⇒ 阈值取 30h(容得下一整轮 miss + 一次睡眠)。
+    * `reds` 是**全部**红灯,`new` 是基线里没有的那些。面板该突出的是 `new` ——
+      已知红天天报就是噪音,三天内会被关掉(见 `configs/health_check_known_red.txt`)。
+    """
+    ok: bool = False
+    detail: str | None = None       # ok=False 时的原因;或体检自己报的异常
+    ran_at: str | None = None       # 体检跑完的本地时间(ISO)
+    age_seconds: int | None = None
+    stale: bool = False             # age 超阈值 ⇒ cron 可能死了
+    exit_code: int | None = None
+    reds: list[str] = []            # 本次全部红灯「节标题 | 判词」
+    new: list[str] = []             # 不在基线里的(主信号)
+    gone: list[str] = []            # 基线里有、这次没了(提醒剪基线)
+
+
 class JingcaiUnmappedResponse(BaseModel):
     """上次竞彩抓取里因队名映射不到英文规范名而被【整场丢弃】的场次 — 被动可见性。
 

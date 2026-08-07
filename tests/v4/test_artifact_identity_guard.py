@@ -888,9 +888,15 @@ def _render_health_dot(core: dict) -> str:
     """喂一份 /health 回包,拿到健康点真正渲染出的 HTML。"""
     import subprocess
 
+    # ⚠️ `loadHealth` 末尾会调 `loadHealthCheck()`(2026-08-07 加的体检点)。
+    # 这里给它一个桩 —— **不是**在生产代码里加 `typeof === 'function'` 兜底:
+    # 那样一来 `loadHealthCheck` 哪天改名/删掉,它就**静默地不再被调用**,
+    # 而面板看起来一切正常。测试该补上被测函数的真实依赖,不是让生产代码
+    # 学会容忍依赖消失。
     src = f"""
 {_js_fn('_healthDot')}
 {_js_fn('loadHealth')}
+function loadHealthCheck() {{ return Promise.resolve(); }}
 const API = '/api/v4';
 const t = k => k;
 let captured = '';

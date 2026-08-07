@@ -55,6 +55,29 @@ notify() {   # $1=标题 $2=正文
   fi
 }
 
+#: 机器可读的判定,给面板读(`/observation/health-check-latest`)。
+#: ⚠️ **不要让后端去解析上面那份中文报告** —— 那是给人看的散文,解析它就是又一个
+#: 「语法代理测语义属性」:改个措辞前端就瞎,而且瞎的时候看起来一切正常。
+JSON="${NUTMEG_HC_JSON:-${REPORT%.md}.json}"
+
+emit_json() {   # $1=ok(true/false) $2=detail(可空) $3=exit_code
+  # 用 python 写,不手拼 JSON:判词里有中文、引号、`|`,bash 转义迟早出错。
+  NUT_OK="$1" NUT_DETAIL="$2" NUT_RC="$3" \
+  NUT_REDS="${CUR:-}" NUT_NEW="${NEW:-}" NUT_GONE="${GONE:-}" \
+  /usr/bin/env python3 - "$JSON" <<'PY' 2>/dev/null || true
+import json, os, sys, datetime
+def lines(k):
+    return [x for x in (os.environ.get(k) or "").splitlines() if x.strip()]
+json.dump({
+    "ran_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+    "ok": os.environ["NUT_OK"] == "true",
+    "detail": os.environ.get("NUT_DETAIL") or None,
+    "exit_code": int(os.environ.get("NUT_RC") or 0),
+    "reds": lines("NUT_REDS"), "new": lines("NUT_NEW"), "gone": lines("NUT_GONE"),
+}, open(sys.argv[1], "w"), ensure_ascii=False, indent=1)
+PY
+}
+
 mkdir -p "$(dirname "$REPORT")"
 "$HC" > "$REPORT" 2>&1
 HC_RC=$?
@@ -71,6 +94,9 @@ CUR="$(sed 's/\x1b\[[0-9;]*m//g' "$REPORT" | awk '
 # 那么「§18 没红」这个观察就是假的 —— 分不出「没红」和「没去看」。
 if ! sed 's/\x1b\[[0-9;]*m//g' "$REPORT" | grep -q "artifact identity"; then
   notify "🚨 Nutmeg 体检异常" "§18 服务盘一致性不在体检输出里 —— 被摘掉了?体检可能中途退出。看 $REPORT"
+  # ⚠️ 这条早退路径**也要**写 JSON。不写的话面板会读到**上一次**那份(内容是绿的、
+  # 时间戳是旧的)—— 而「上次绿」和「这次没跑完」在面板上长得一模一样。
+  emit_json false "§18 服务盘一致性不在体检输出里 —— 体检可能中途退出" "$HC_RC"
   exit 0
 fi
 
@@ -95,6 +121,8 @@ fi
 if [[ -n "$NEW" ]]; then
   notify "🔴 Nutmeg 体检新增红灯" "$(printf '%s' "$NEW" | head -3 | tr '\n' ';') — 详见 $REPORT"
 fi
+emit_json true "" "$HC_RC"
+
 if [[ -n "$GONE" ]]; then
   notify "🟢 Nutmeg 体检:旧红灯消失" "$(printf '%s' "$GONE" | head -3 | tr '\n' ';') — 请从 configs/health_check_known_red.txt 删掉,否则它会永远保护一个已修好的条目"
 fi
