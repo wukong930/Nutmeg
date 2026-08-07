@@ -176,3 +176,78 @@ def test_producer_and_consumer_agree_on_the_fields(tmp_path: Path, monkeypatch) 
     info, alarms = check_jingcai_trickle(out, now=dt.datetime.now())
     assert not alarms, f"生产者刚写的行喂给消费者就报警 —— 两边对不上:{alarms}"
     assert any("游标" in x for x in info), "消费者没读到进度"
+
+
+# ── 自适应节奏(2026-08-08 owner 授权 hourly 后加的刹车)────────────────────
+
+
+def _pacer(tmp_path: Path, rows: list[dict], gap_h: float):
+    """跑**生产源码**里的 `_should_skip`,喂一段状态历史。"""
+    import importlib.util
+    import sys
+
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "_pacer_under_test", root / "scripts/jingcai_history_trickle.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["_pacer_under_test"] = mod
+    spec.loader.exec_module(mod)
+    f = tmp_path / f"s{gap_h}{len(rows)}{rows[0]['stored_rows'] if rows else 0}.jsonl"
+    ran = (NOW - dt.timedelta(hours=gap_h)).isoformat(timespec="seconds")
+    # 行里自带 ran_at 就别覆盖 —— 否则「坏时间」那条用例根本走不到解析路径
+    f.write_text("\n".join(
+        json.dumps({"ran_at": ran, **r}) for r in rows))
+    mod.STATUS = f
+    return mod._should_skip(NOW)
+
+
+def test_pacer_runs_flat_out_while_backfilling(tmp_path: Path) -> None:
+    """⭐ 回填期(还在捞到东西)必须**每次都跑** —— 这是把 127 天变成 11 天的全部理由。"""
+    skip, why = _pacer(tmp_path, [{"enumerated": 75, "stored_rows": 282}] * 6, 1.0)
+    assert not skip, f"回填期被刹住了,hourly 就白改了:{why}"
+
+
+def test_pacer_brakes_once_caught_up(tmp_path: Path) -> None:
+    """⭐ 追平后自动降回 ≈每日 2 窗 —— **不需要任何人记得改 plist**。
+
+    这条是整个设计的重点:上一次事故的成因就是「一个为事后选的参数静默决定了事前」,
+    而修法不该是「记得改回来」(那是人类记忆,不是护栏)。
+    """
+    covered = [{"enumerated": 80, "stored_rows": 0}] * 6
+    assert _pacer(tmp_path, covered, 1.0)[0], "追平后仍每小时敲 sporttery = 永久的锤子"
+    assert not _pacer(tmp_path, covered, 13.0)[0], "间隔够了却不跑,维持期会掉队"
+
+
+def test_pacer_backs_off_when_blocked(tmp_path: Path) -> None:
+    """`enumerated == 0` = 被挡住(限流/403)。继续每小时敲一个正在拒绝我们的
+    服务器是最坏的一手 —— 必须退避,而且**退避得比追平期更狠**。"""
+    blocked = [{"enumerated": 0, "stored_rows": 0}] * 6
+    assert _pacer(tmp_path, blocked, 1.0)[0], "被挡住还在硬敲"
+    assert not _pacer(tmp_path, blocked, 7.0)[0]
+
+
+def test_pacer_never_skips_without_evidence(tmp_path: Path) -> None:
+    """没有历史 / 读不出上次时间 ⇒ **跑**。
+
+    ⚠️ 方向很重要:不确定时偷懒 = 又一个「没去看」冒充「没东西」。
+    """
+    assert not _pacer(tmp_path, [], 0.0)[0], "没有历史时选择了不跑 —— 方向反了"
+    assert not _pacer(tmp_path, [{"enumerated": 9, "stored_rows": 0,
+                                  "ran_at": "坏时间"}], 1.0)[0]
+
+
+def test_pacer_and_probe_use_the_same_discriminator() -> None:
+    """刹车和体检读数用的是**同一条**判别式(enumerated vs stored_rows)。
+
+    两边各写一套判据 = 「各写一份」那个家族:面板说「已追平」而脚本还在全速跑,
+    或者反过来。这条只钉「两边都以 enumerated 为准」。
+    """
+    root = Path(__file__).resolve().parents[2]
+    pacer = (root / "scripts/jingcai_history_trickle.py").read_text(encoding="utf-8")
+    probe = (root / "apps/api/src/nutmeg/v4/cli/data_freshness.py").read_text(
+        encoding="utf-8")
+    body = pacer[pacer.index("def _should_skip("):]
+    body = body[:body.index("def main(")]
+    assert "enum_sum == 0" in body, "刹车不看 enumerated ⇒ 它分不出「没东西」和「没去看」"
+    assert "stored_sum > 0" in body, "刹车不看 stored_rows ⇒ 它不知道自己还在不在回填期"
+    assert "enum_sum == 0" in probe, "体检那条判别式没了"

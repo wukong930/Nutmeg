@@ -77,7 +77,70 @@ def _write_status(**row) -> None:
         pass          # 状态写不下去不该拖垮回填本身
 
 
+# ── 自适应节奏(2026-08-08,owner 授权 hourly)──────────────────────────────
+# plist 改成 StartInterval 3600 之后,**回填期**每小时一窗(7 天历史/次 ⇒ 168 天/天,
+# 1,775 天的缺口约 11 天扫完,而不是每日 2 窗的 127 天)。
+#
+# ⚠️ 但 hourly 不能是永久状态 —— 整个「涓流」设计就是为了别持续锤 sporttery(403 封 IP)。
+# 而「追平后记得改回来」是**人类记忆**,不是护栏:上一次正是一个「为事后选的参数」
+# (END 常量)静默决定了事前,没人会为此报警。
+#
+# ⇒ **刹车做在脚本里**,不做在 plist 里。判据复用体检那条已经钉死的判别式:
+#     stored_rows > 0            → 回填期,每小时都跑
+#     enumerated>0 且 stored==0  → 追平了(去看了确实没东西)⇒ 12h 一次即可持平
+#     enumerated == 0            → **被挡住了**(限流/403/空响应)⇒ 退避 6h,
+#                                  继续每小时敲一个正在拒绝我们的服务器是最坏的一手
+# 这样 plist 可以永久留在 hourly:节奏由「最近有没有捞到东西」自己决定,
+# 绕回起点 re-sweep 时也会自动降速,不需要任何人记得改回来。
+_PACE_LOOKBACK = 6
+_PACE_IDLE_H = 12.0        # 追平后的最小间隔(≈ 原来的每日 2 窗)
+_PACE_BLOCKED_H = 6.0      # 被挡住时的退避
+
+
+def _recent_status(n: int = _PACE_LOOKBACK) -> list[dict]:
+    import contextlib
+    import json
+    try:
+        lines = STATUS.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines[-n:]:
+        line = line.strip()
+        if line:
+            with contextlib.suppress(ValueError):
+                out.append(json.loads(line))
+    return out
+
+
+def _should_skip(now: dt.datetime | None = None) -> tuple[bool, str]:
+    """→ (跳过吗, 理由)。没有历史 = 跑(不知道就别偷懒)。"""
+    now = now or dt.datetime.now()
+    rows = _recent_status()
+    if not rows:
+        return (False, "无历史")
+    try:
+        last = dt.datetime.fromisoformat(str(rows[-1]["ran_at"]))
+    except (KeyError, ValueError):
+        return (False, "上次时间读不出")
+    gap_h = (now - last).total_seconds() / 3600.0
+    enum_sum = sum(int(r.get("enumerated") or 0) for r in rows)
+    stored_sum = sum(int(r.get("stored_rows") or 0) for r in rows)
+    if stored_sum > 0:
+        return (False, "回填期")
+    need = _PACE_BLOCKED_H if enum_sum == 0 else _PACE_IDLE_H
+    why = "被挡住,退避" if enum_sum == 0 else "已追平,维持期"
+    if gap_h < need:
+        return (True, f"{why}({gap_h:.1f}h < {need:.0f}h)")
+    return (False, f"{why},间隔够了({gap_h:.1f}h)")
+
+
 def main() -> int:
+    skip, why = _should_skip()
+    stamp0 = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    if skip:
+        print(f"[trickle {stamp0}] 跳过 —— {why}")
+        return 0
     end = _end_date()
     try:
         cur = dt.date.fromisoformat(CURSOR.read_text().strip())

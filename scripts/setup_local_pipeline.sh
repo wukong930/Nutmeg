@@ -483,12 +483,53 @@ install_job "com.nutmeg.polymarket_gaps" \
 # 两处防复发:① 脚本里 END 改成 `_end_date()=今天−2`,并有测试**钉源码**禁止写回常量;
 # ② 该 job 进 setup 体系(不再手装)⇒ teardown 排除表不必再收留它,setup 重跑装得回来。
 #
-# 从 hourly 降到**每日 2 窗**:缺口补完后它只需跟上每周新增的 7 天,而窗口就是 7 天/次
-# ⇒ 一天一次即可持平,两窗是给睡眠错过留余量。中国站,ENV_PREFIX 后脚本自己清 6 个代理变量。
-install_job "com.nutmeg.jingcai_history_trickle" \
-  9 40 "" \
-  "$ENV_PREFIX && $VENV_PY scripts/jingcai_history_trickle.py || true" \
-  "21:40"
+# ⚠️ 2026-08-08 —— **从每日 2 窗改回 hourly(StartInterval 3600),owner 授权。**
+#
+# 病史(第二层):上面那段修好了 END 常量,但**频率**这个参数是按「缺口补完后」的
+# 稳态选的("一天一次即可持平")。而 2026-07-31 把 LEAGUES 从 13 受训放开到全部,
+# 等于**重新开了一个 4 年的回填** —— 稳态频率跑回填 = 把 11 天的活拖成 127 天。
+# 实测:游标 2021-09-26 / 剩 1,775 天历史 / 14 天历史每天 ⇒ ETA 127 天;
+# 而早期非受训联赛只有 332 场(近期同口径 2,294 场)⇒ 缺约 7,000 场。
+# **同一个家族:一个为「事后」选的参数,静默地决定了「事前」要花多久。**
+#
+# ⭐ 但 hourly **不靠人记得改回来** —— 刹车做在脚本里(`_should_skip`):
+#     还在捞到东西    → 每次都跑(回填期)
+#     枚举>0 但零新增 → 追平了,12h 一次即可持平(≈ 原来的每日 2 窗)
+#     枚举==0         → 被挡住(限流/403),退避 6h;继续敲一个正在拒绝我们的服务器是最坏的一手
+#   判别式和体检 `check_jingcai_trickle` 是**同一条**,绕回起点 re-sweep 时也会自动降速。
+#   ⇒ plist 可以永久留在 hourly。要人工回退:把下面这块换回 install_job 9 40 "" ... "21:40"。
+TRICKLE_PLIST="$PLIST_DIR/com.nutmeg.jingcai_history_trickle.plist"
+TRICKLE_CMD_XML="${ENV_PREFIX//&/&amp;} &amp;&amp; $VENV_PY scripts/jingcai_history_trickle.py || true"
+cat > "$TRICKLE_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.nutmeg.jingcai_history_trickle</string>
+    <key>WorkingDirectory</key><string>$REPO_ROOT</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string><string>-c</string>
+        <string>$TRICKLE_CMD_XML</string>
+    </array>
+    <key>StartInterval</key><integer>3600</integer>
+    <key>StandardOutPath</key><string>$LOG_DIR/com.nutmeg.jingcai_history_trickle.out.log</string>
+    <key>StandardErrorPath</key><string>$LOG_DIR/com.nutmeg.jingcai_history_trickle.err.log</string>
+    <key>RunAtLoad</key><false/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key><string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>PYTHONPATH</key><string>$REPO_ROOT/apps/api/src</string>
+    </dict>
+</dict>
+</plist>
+EOF
+launchctl bootout "gui/$UID/com.nutmeg.jingcai_history_trickle" 2>/dev/null || true
+if launchctl bootstrap "gui/$UID" "$TRICKLE_PLIST" 2>/dev/null; then
+  echo "  ✓ installed com.nutmeg.jingcai_history_trickle (StartInterval 每 60 分 · 脚本自适应刹车)"
+else
+  echo "  ✗ failed to bootstrap com.nutmeg.jingcai_history_trickle" >&2
+fi
 
 # 体检(2026-07-01)— Pinnacle 收盘锚捕获 (StartInterval 每 30 分 — 非日历,故不用 install_job).
 # ③ measured the gather-side anchor was median ~5h stale (竞彩 KO in 北京深夜/凌晨);
