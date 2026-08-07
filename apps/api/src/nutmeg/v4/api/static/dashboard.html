@@ -6742,7 +6742,33 @@ function _pinRawHtml(pr) {
 // 里有一句「`_cupFold*` 名字带 cup 但是通用的」。但那只是一句注释,
 // **注释说「这个名字在撒谎」并不能阻止它继续骗人**,下一个折叠照样漏。
 // ⇒ 发现命名误导时,改名字,别只加注解。
-const _openFolds = new Set();
+// ⭐ 2026-08-07 —— 从内存 Set 升级成 localStorage 持久化(owner:F5 之后也要记住)。
+// 约定照抄仓里现成的两处,不另起炉灶:`_collapsedLgs`(4980)的 Set↔JSON 存法、
+// `_cupManWrite`(7200)的按比赛日 prune。
+const _LS_FOLDS = 'nutmeg_open_folds';
+//: 折叠键的**最后一段**是开球时刻/日期(见 `_foldKey`)。用 `.pop()` 取而不是 `[2]`:
+//: 队名里万一带 `|`,前面的段数会变,但日期永远在最后。
+function _foldKeyDate(k) {
+  try { return (decodeURIComponent(String(k).split('::').slice(1).join('::'))
+                 .split('|').pop() || '').slice(0, 10); }
+  catch (_) { return ''; }
+}
+const _openFolds = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(_LS_FOLDS) || '[]');
+    // ⚠️ 这行是**表意**不是承重:去掉它,非数组会在下面 `.filter` 上抛,照样被
+    // 外层 catch 接住 —— 变异检验实测(S6 全绿)。真正扛「脏数据不炸页面」的是
+    // 那个 catch。⇒ 别因为「这里检查过类型了」就觉得 catch 可以删。
+    if (!Array.isArray(raw)) return new Set();
+    // 开球日 < 昨天的直接丢:不 prune 会无限增长(同 _cupManWrite)。留一天缓冲 ——
+    // 深夜场按 UTC 日期算可能落在「昨天」,当场清掉会让人以为折叠没记住。
+    const cut = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    return new Set(raw.filter(k => typeof k === 'string' && _foldKeyDate(k) >= cut));
+  } catch (_) { return new Set(); }   // 隐私模式/脏数据 —— 退回本次会话内有效
+})();
+function _saveFolds() {
+  try { localStorage.setItem(_LS_FOLDS, JSON.stringify([..._openFolds])); } catch (_) {}
+}
 function _foldKey(pr) {
   return encodeURIComponent((pr.home_team || '') + '|' + (pr.away_team || '')
     + '|' + (pr.kickoff_utc || pr.date || ''));
@@ -6750,7 +6776,12 @@ function _foldKey(pr) {
 function _onFoldToggle(el) {
   const k = el.getAttribute('data-fold');
   if (!k) return;
+  // 回声守卫(抄 `_sweetBoardSaveOpen`:5238):toggle 是异步任务,且 Chrome 对
+  // **插入即展开**的 <details> 也补发一次 toggle。状态没变 = 回声,不写盘 ——
+  // 每张卡每次重渲都写一遍 localStorage 是纯浪费,而且给竞态留门。
+  if (_openFolds.has(k) === !!el.open) return;
   if (el.open) _openFolds.add(k); else _openFolds.delete(k);
+  _saveFolds();
 }
 function _foldAttrs(kind, fk) {
   const key = kind + '::' + fk;

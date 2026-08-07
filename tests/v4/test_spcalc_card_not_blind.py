@@ -186,6 +186,65 @@ class TestNoJcIsNotTheSameAsNoEv:
         assert any("竞彩" in h and "listed" in h for h in hits)
 
 
+def _q(x: str) -> str:
+    """和前端 `encodeURIComponent` 同口径(测试里造折叠键用)。"""
+    from urllib.parse import quote
+    return quote(x, safe="!'()*-._~")
+
+
+def _tomorrow() -> str:
+    from datetime import UTC, datetime, timedelta
+    return (datetime.now(UTC) + timedelta(days=1)).strftime("%Y-%m-%dT10:00:00Z")
+
+
+def _fold_module() -> str:
+    """把折叠状态那**整段生产源码**原文抠出来(`_LS_FOLDS` → `_foldAttrs` 结束)。
+
+    ⚠️ 不重写、不简化 —— 一旦在测试里重写一份,测的就是我写的那份,
+    生产那份坏了照样绿(同族「测试替身抹掉守卫」)。
+    """
+    js = _js()
+    i = js.index("const _LS_FOLDS")
+    j = js.index("function _foldAttrs(")
+    k, depth = js.index("{", j), 0
+    while k < len(js):
+        if js[k] == "{":
+            depth += 1
+        elif js[k] == "}":
+            depth -= 1
+            if depth == 0:
+                return js[i:k + 1]
+        k += 1
+    raise AssertionError("_foldAttrs 抠不出来")
+
+
+def _run_folds(body: str, preload: str | None = None) -> dict:
+    """跑折叠模块原文 + 一个 localStorage 桩,返回 body 往 `out` 里塞的东西。
+
+    `preload` = 本次「页面加载」时 localStorage 里已有的值(模拟 F5)。
+    桩额外暴露 `_LS.writes`(写盘次数)用于验回声守卫。
+    """
+    import json
+    import subprocess
+
+    src = f"""
+const _LS = {{ v: {json.dumps(preload)}, writes: 0,
+  get(k) {{ return this.v; }},
+  set(k, val) {{ this.v = val; this.writes++; }} }};
+global.localStorage = {{ getItem: k => _LS.get(k), setItem: (k, v) => _LS.set(k, v) }};
+{_fold_module()}
+const pr1 = {{ home_team: 'A', away_team: 'B', kickoff_utc: {json.dumps(_tomorrow())} }};
+const pr2 = {{ home_team: 'C', away_team: 'D', kickoff_utc: {json.dumps(_tomorrow())} }};
+const el = (k, open) => ({{ open, getAttribute: () => k }});
+const out = {{}};
+{body}
+console.log(JSON.stringify(out));
+"""
+    r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[:2000]
+    return json.loads(r.stdout or "{}")
+
+
 class TestMarginBands:
     def test_card_renders_margin_bands(self):
         assert "_marginBandsHtml(pr.margin_bands" in _card(), "标准模式卡片没有净胜球分组"
@@ -222,61 +281,86 @@ class TestMarginBands:
             f"标准模式让球折叠没有折叠记忆,重渲会关掉它。实际标签:{tag}")
 
     def test_the_fold_memory_actually_remembers(self):
-        """⭐ 变异检验抓到的洞:上面几条只断言**标签里有没有 `_foldAttrs`**,
-        没断言**机制真的会记住并还原**。把 `_openFolds.add(...)` 改成 no-op,
-        它们照样全绿 —— 接线在、机制死了。又是语法代理测语义属性。
+        """⭐ 变异检验抓到的洞:光断言「标签里有没有 `_foldAttrs`」,把
+        `_openFolds.add()` 改成 no-op **照样全绿** —— 接线在、机制死了。
+        又是语法代理测语义属性。
 
-        这条跑**生产函数原文**:模拟用户展开 → 再问 `_foldAttrs` 要不要加 open。
+        这条跑**整段生产源码原文**(从 `const _LS_FOLDS` 到 `_foldAttrs` 结束),
+        不重写任何逻辑 —— 桩只提供 localStorage。
         """
-        import json
-        import subprocess
-
-        js = _js()
-
-        def fn(name):
-            i = js.index(f"function {name}(")
-            j, depth = js.index("{", i), 0
-            while j < len(js):
-                if js[j] == "{":
-                    depth += 1
-                elif js[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        return js[i:j + 1]
-                j += 1
-            raise AssertionError(name)
-
-        src = f"""
-const _openFolds = new Set();
-{fn('_foldKey')}
-{fn('_onFoldToggle')}
-{fn('_foldAttrs')}
-const pr = {{ home_team: 'A', away_team: 'B', kickoff_utc: '2026-08-08T10:00:00Z' }};
-const k = _foldKey(pr);
-const before = _foldAttrs('hc', k);
-// 用户点开 —— 模拟浏览器派发 ontoggle
-_onFoldToggle({{ open: true, getAttribute: () => 'hc::' + k }});
-const after = _foldAttrs('hc', k);
-// ⚠️ 隔离检查必须在**还开着的时候**做:第一版把它放在「用户关上」之后,
-// 那时集合已经空了 ⇒ 键不隔离也测不出来(变异 R6 抓到的)。
-const other = _foldAttrs('hc', _foldKey({{ home_team: 'C', away_team: 'D', kickoff_utc: 'x' }}));
-// 另一个 kind 也不该被连带打开(hc 开了不等于 mb 开了)
-const otherKind = _foldAttrs('mb', k);
-// 再点上
-_onFoldToggle({{ open: false, getAttribute: () => 'hc::' + k }});
-const closed = _foldAttrs('hc', k);
-console.log(JSON.stringify({{ before, after, closed, other, otherKind }}));
-"""
-        r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=60)
-        assert r.returncode == 0, r.stderr[:1500]
-        d = json.loads(r.stdout)
+        d = _run_folds("""
+const k = _foldKey(pr1);
+out.before = _foldAttrs('hc', k);
+_onFoldToggle(el('hc::' + k, true));            // 用户点开
+out.after = _foldAttrs('hc', k);
+out.other = _foldAttrs('hc', _foldKey(pr2));    // ⚠️ 必须趁"还开着"查隔离
+out.otherKind = _foldAttrs('mb', k);            // 让球开了不等于净胜球开了
+_onFoldToggle(el('hc::' + k, false));           // 再点上
+out.closed = _foldAttrs('hc', k);
+""")
         assert " open" not in d["before"], "还没展开就带 open"
         assert " open" in d["after"], (
-            "展开后 `_foldAttrs` 没返回 open —— 折叠记忆是死的,"
-            "重渲仍会把面板关掉(标签里有 _foldAttrs 只证明接线在)")
+            "展开后 `_foldAttrs` 没返回 open —— 折叠记忆是死的,重渲仍会关掉面板")
         assert " open" not in d["closed"], "用户手动关上后仍然记成展开"
         assert " open" not in d["other"], "一场展开把别的场也带开了(键不隔离)"
         assert " open" not in d["otherKind"], "让球展开把净胜球也带开了(kind 不隔离)"
+
+    def test_the_fold_survives_a_page_reload(self):
+        """⭐ owner 追加的需求:F5 之后也要记住。
+
+        以前 `_openFolds` 是**内存 Set**,重新加载页面就空了。现在落 localStorage。
+        这条模拟真正的 reload:第一份实例写盘 → 丢掉它 → **用同一份 localStorage
+        重新跑一遍整段源码** → 新实例应当还认得那个折叠。
+        """
+        d = _run_folds("""
+_onFoldToggle(el('hc::' + _foldKey(pr1), true));
+out.ls = _LS.get('nutmeg_open_folds');
+""")
+        assert d["ls"], "展开后没写 localStorage"
+        d2 = _run_folds("out.after_reload = _foldAttrs('hc', _foldKey(pr1));",
+                        preload=d["ls"])
+        assert " open" in d2["after_reload"], (
+            "重新加载后折叠没被记住 —— 持久化没生效(或 prune 把它误删了)")
+
+    def test_stale_matches_are_pruned_on_load(self):
+        """不 prune 会无限增长(同 `_cupManWrite` 的按比赛日删)。
+
+        ⚠️ 留一天缓冲:深夜场按 UTC 算可能落在「昨天」,当场清掉会让人以为没记住。
+        """
+        import json
+        old = "hc::" + _q("A|B|2020-01-01T10:00:00Z")
+        recent = "hc::" + _q("C|D|" + _tomorrow())
+        d = _run_folds("out.kept = [..._openFolds];",
+                       preload=json.dumps([old, recent]))
+        assert recent in d["kept"], "未来的比赛被误删了"
+        assert old not in d["kept"], "2020 年的陈年折叠还留着 —— 不 prune 会无限长"
+
+    def test_corrupt_storage_does_not_break_the_page(self):
+        """隐私模式 / 手改坏的值 —— 退回本次会话内有效,别把整页炸掉。
+
+        ⚠️ 变异检验的一条更正:去掉 `Array.isArray` 这条**杀不掉**本测试
+        (非数组会在 `.filter` 上抛,被外层 catch 接住)。真正承重的是 try/catch,
+        实测去掉它立刻打红。⇒ 那行是表意不是护栏,代码里已注明。
+        """
+        for bad in ('{"not":"an array"}', 'not json at all', '[1,2,3]'):
+            d = _run_folds("out.n = _openFolds.size;", preload=bad)
+            assert d["n"] == 0, f"脏数据 {bad!r} 没被挡住"
+
+    def test_a_render_echo_does_not_rewrite_storage(self):
+        """回声守卫(抄 `_sweetBoardSaveOpen`:5238)。
+
+        Chrome 对**插入即展开**的 <details> 会补发一次 toggle。状态没变 = 回声,
+        不该写盘 —— 每张卡每次重渲都写一遍 localStorage 是纯浪费,也给竞态留门。
+        """
+        d = _run_folds("""
+_onFoldToggle(el('hc::' + _foldKey(pr1), true));
+const n0 = _LS.writes;
+_onFoldToggle(el('hc::' + _foldKey(pr1), true));   // 同样是 open —— 回声
+_onFoldToggle(el('hc::' + _foldKey(pr2), false));  // 本来就没开 —— 也是回声
+out.extra_writes = _LS.writes - n0;
+""")
+        assert d["extra_writes"] == 0, (
+            f"回声也写盘了({d['extra_writes']} 次) —— 每次重渲都会白写一遍")
 
     def test_both_modes_handicap_folds_are_guarded(self):
         """⛔ 别再只守一半。
