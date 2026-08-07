@@ -512,7 +512,16 @@ class TestCeilingIsMeasuredNotAsserted:
         它的盘面拼法。上限若「静默返回空集」,这条立刻红。"""
         from nutmeg.v4.data.sources.sporttery import _ZH_OVERRIDES
         from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
-        target = "Kyoto Sanga FC"
+        # ⚠️ 2026-08-07 换样本:原来是 `Kyoto Sanga FC`,而那个值本身就是 bug ——
+        # 它是盘面上**不存在**的拼法(odds_snapshots 0 行 vs `Kyoto Sanga` 5 行),
+        # 把「京都」和「京都不死鸟」劈成了两个 canonical。修掉之后本条的前提自然
+        # 不成立,于是这条测试**按设计红了并指出「样本前提变了」** —— 它的前提
+        # 自查做对了,这里就照它说的换一个。
+        # ⭐ 新样本是**实测**挑的(124 个候选里摘键数最少的一档),不是随手选的:
+        # 必须同时满足①在 `_ZH_OVERRIDES.values()` 里 ②词典已有这支队(不在上限里)
+        # ③按 fold_key 摘键时真能摘掉。`Albirex Niigata` 三条都过,且只摘 1 个键
+        # (⇒ 不会连带摘掉别的队,`Sporting CP` 那种会和 `Sporting` 一起被折进去)。
+        target = "Albirex Niigata"
         assert target in _ZH_OVERRIDES.values(), "样本前提变了,换一个 _ZH_OVERRIDES 值"
 
         full = m.new_key_ceiling(TEAM_NAME_ZH)

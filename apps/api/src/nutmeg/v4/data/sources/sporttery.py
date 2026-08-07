@@ -312,7 +312,28 @@ _ZH_OVERRIDES: dict[str, str] = {
     "摩雷伦斯": "Moreirense", "法伦斯": "Farense", "葡国民": "Nacional",
     "里奥阿维": "Rio Ave", "阿马多拉": "Estrela",
     # 日职
-    "东京FC": "FC Tokyo", "京都": "Kyoto Sanga FC", "名古屋鲸": "Nagoya Grampus",
+    # ⚠️ 京都:2026-08-06 更正 `Kyoto Sanga FC` → `Kyoto Sanga`。原值把同一家俱乐部
+    # **劈成两半** —— `TEAM_NAME_ZH` 早有 `Kyoto Sanga: 京都不死鸟`(= 盘面名),而这里
+    # 的竞彩短名解到一个**盘面上不存在**的拼法:v4_observation.db 四张表
+    # (odds_snapshots / match_outcomes / single_predictions / polymarket_gaps)
+    # 只出现 `Kyoto Sanga`,`Kyoto Sanga FC` 出现 **0 次**。join 走的是精确
+    # canonical EN(见 `jingcai_sp` DDL 注释「(home_team, away_team, 日期±1)」),
+    # 竞彩路径上没有任何一层会剥 `FC`(`clv_ledger._norm` 只折大小写+重音,
+    # `resolve_serving_name` 的 `_affix_core` 只在模型 serving 用)⇒ 原值写得进库、
+    # 永远配不上,且不报错。
+    #
+    # 新值是**推**出来的,不是猜的(复用本文件 500-档案块那套 kickoff+已确认对手锚):
+    # 2026-05-30 竞彩侧「京都 vs 柏太阳神」↔ 盘面 JPN_J1「Kyoto Sanga vs Kashiwa Reysol」;
+    # 2026-06-06 「柏太阳神 vs 京都」↔「Kashiwa Reysol vs Kyoto Sanga」。柏太阳神 走
+    # TEAM_NAME_ZH(不经本表)⇒ 锚独立;当日 J1 各只此一场含该对手 ⇒ 0 歧义。
+    #
+    # ⭐ 陷阱记一笔:`jingcai_odds_history`(657 行)和 `crown_close_history`(21 行)里
+    # 满屏 `Kyoto Sanga FC`,看着像铁证 —— 但那两列的定义就是 `zh_to_canonical(*_zh)`,
+    # 是**本词典自己的回流**,不是上游证据(同 [[jingcai-vote-en-side-is-our-own-dict]])。
+    # 真正的独立闭源侧是 `pinnacle_close_history`,它写的是第三种拼法
+    # `Kyoto Purple Sanga`(Odds-API 原名,10 行)—— 印证 MLS 块那句「gather 与 closing
+    # 拼法不一致」,同时说明**三个拼法里原值哪个都不是**。本表按块契约取 gather 侧。
+    "东京FC": "FC Tokyo", "京都": "Kyoto Sanga", "名古屋鲸": "Nagoya Grampus",
     "新泻天鹅": "Albirex Niigata", "札幌冈萨": "Consadole Sapporo", "横滨FC": "Yokohama FC",
     "清水鼓动": "Shimizu S-Pulse", "町田泽维": "Machida Zelvia", "神户胜利": "Vissel Kobe",
     "鸟栖沙岩": "Sagan Tosu",

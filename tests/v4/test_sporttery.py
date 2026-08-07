@@ -552,6 +552,58 @@ def test_every_zh_override_value_maps_to_exactly_one_chinese_name():
         "同一支队两个名字 —— 挑一个,把另一个改成一样的。")
 
 
+def test_no_zh_override_value_is_a_spelling_the_board_never_uses():
+    """⭐ 上一条用 `KnownTeams.lookup`(**会折叠 affix**),对这一类问题**永久失明**。
+
+    ## 为什么两条都要
+
+    上一条问的是「卡片会不会显示英文」——`lookup` 把 `Kyoto Sanga FC` 折成
+    `Kyoto Sanga` 再查,查得到,于是绿。但 join 走的是**精确 canonical EN**,竞彩
+    路径上没有任何一层剥 `FC`(`clv_ledger._norm` 只折大小写+重音;`_affix_core`
+    只在模型 serving 用)⇒ 那个值**写得进库、永远配不上、且不报错**。
+    **折叠正是让死键看起来健康的那一步。**
+
+    这条问的是另一个问题:**这个英文值是不是盘面真在用的那个拼法**。判据用
+    `TEAM_NAME_ZH` 的**精确键** —— 该词典的键按其契约就是盘面拼法,所以
+    「不是精确键」= 「盘面大概率没有这个字符串」。不完美但**零折叠**,正好补上
+    上一条的盲区。
+
+    ## 这条不是凭空加的,是找回来的
+
+    2026-08-06 `d360941` 用带折叠的新规则**替换**了旧的精确键规则,理由是
+    `Almere City FC` 会被迫新造第二个中文名。但那次自己的解法是给词典加
+    `"Almere City FC": "阿尔梅勒城"`(**复用**已有中文名)—— 那完全满足精确键规则。
+    ⇒ 替换掉它是净损失:换来的规则对「override 值是盘面上不存在的拼法」这一整类
+    问题失明,而 `京都 → Kyoto Sanga FC` 从那天起在 main 上活到 2026-08-07,
+    `test_sporttery.py` 全程 exit 0。
+
+    2026-08-07 实测:本规则在修复后的树上 **0 违规**(零误报),把京都改回旧值
+    立刻变红 —— 三种情况(修好/坏着/别的队同病)全对。
+    """
+    from nutmeg.v4.data.sources.sporttery import _ZH_OVERRIDES
+    from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+
+    dead = {zh: en for zh, en in _ZH_OVERRIDES.items() if en not in TEAM_NAME_ZH}
+    assert not dead, (
+        f"这 {len(dead)} 条 override 的英文值不是 TEAM_NAME_ZH 的精确键 —— "
+        f"很可能是盘面上不存在的拼法,join 会静默失败:{dead}\n"
+        "修法:去 odds_snapshots 查这支队盘面上到底怎么写,照抄那个拼法。"
+        "⛔ 不要为了让这条变绿而给长拼法新造一条词典条目 —— 那是把同一支队"
+        "劈成两个中文名,病更重。")
+
+
+def test_kyoto_is_not_split_into_two_canonicals():
+    """一支队 = 一个 canonical。竞彩短名「京都」和词典全名「京都不死鸟」必须解到同一个。
+
+    行为断言,不是数数:曾经 `京都 → Kyoto Sanga FC`(盘面 0 次)而
+    `京都不死鸟 → Kyoto Sanga`(盘面实名,5 行),两个 canonical 劈开 ⇒ 竞彩行
+    写得进库、永远配不上 Pinnacle,且**不报错**。两种写法在真实 feed 里都出现过
+    (`jingcai_odds_history` 用短名、`jingcai_vote` 用全名)⇒ 随 feed 措辞随机中毒。
+    """
+    from nutmeg.v4.data.sources.sporttery import zh_to_canonical
+    assert zh_to_canonical("京都") == zh_to_canonical("京都不死鸟") == "Kyoto Sanga"
+
+
 def test_no_zh_override_value_falls_through_to_english_on_the_card():
     """上一条是服务端的尺子;这条拿**前端真的那段代码**再测一遍显示本身。
 
