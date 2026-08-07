@@ -66,8 +66,13 @@ class TestJingcaiCapture:
         assert "_CUPMKT._freshWins = !!opts.manual;" in html
         assert "const _freshWins = _CUPMKT._freshWins; _CUPMKT._freshWins = false;" in html
         assert "if (!_freshWins) {" in html
-        assert "loadCupMarket({manual:true})" in html                    # 加载 + 🎯 刷新竞彩
-        assert "loadCupMarket({refreshOdds:true, manual:true})" in html  # 🔄 刷新盘口
+        assert "loadCupMarket({manual:true})" in html   # 🎯 刷新竞彩 的 finally
+        # 2026-08-07 — 🔄 刷新盘口 已合并上移到 💴 可投注区块,不再是 onclick 里的
+        # 字面量。守的语义没变(手动刷新必须带 manual:true 才能让新数据胜出),
+        # 所以断言改成贴**合并后那个函数体**里的调用,而不是旧的 onclick 串。
+        fn = html.split("async function refreshBettableOdds(", 1)[1].split("\n}", 1)[0]
+        assert "manual: true" in fn, "合并后的 🔄 没传 manual ⇒ 刷新后手填值会盖住新数据"
+        assert "refreshOdds: true" in fn
 
     def test_cache_bumped(self):
         # Format-based (not pinned to one slug): _FE_VERSION must follow the

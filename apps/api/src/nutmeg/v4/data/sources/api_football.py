@@ -110,6 +110,20 @@ def _client() -> httpx.Client:
         return _CLIENT
 
 
+def _body_says_rate_limited(resp: httpx.Response) -> bool:
+    """API-Football 的每分钟限流:HTTP **200** + body ``errors.rateLimit``。
+
+    只认 ``rateLimit`` 这个键 —— 别的 errors(bug/token/plan…)都不是暂时的,
+    重试它们只是白烧配额。解析失败一律返回 False:**不确定就不重试**,
+    否则一个格式变化会让每个请求都退避 3 次。
+    """
+    try:
+        errs = resp.json().get("errors")
+    except Exception:  # noqa: BLE001 — 非 JSON body 不是限流
+        return False
+    return isinstance(errs, dict) and "rateLimit" in errs
+
+
 def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
     """Back-off before retrying a 429: honor a numeric Retry-After, else the
     linear backoff, capped at ``_RETRY_AFTER_CAP_SECONDS``."""
@@ -177,6 +191,20 @@ def _request(
         # so a burst slows down instead of dropping the fixture. A 500/other 4xx
         # is NOT transient → break and raise below.
         if r.status_code == 429 and attempt + 1 < _MAX_REQUEST_ATTEMPTS:
+            time.sleep(_retry_after_seconds(r, attempt))
+            continue
+        # ⭐ 2026-08-07 — API-Football 的**每分钟**限流不是 429,是
+        # **HTTP 200 + body `errors: {"rateLimit": "Too many requests…"}`**。
+        # 上面那条 429 分支对它完全失明 ⇒ 直接落到下面的 `errs` 检查 raise 掉。
+        # 实测代价(logs/launchd/com.nutmeg.api_server.err.log,2026-08-07):
+        # 一次手动刷新丢了 12 场、35 秒后另一次又丢 3 场,共 15 场 —— 每一场都
+        # 变成 psc=None ⇒ 掉进「待开盘」⇒ **恰好在要下注那一刻从可投注区消失**。
+        # 它和 429 同族(都是「慢一点再来」),所以用同一套退避重试。
+        if (r.status_code == 200 and attempt + 1 < _MAX_REQUEST_ATTEMPTS
+                and _body_says_rate_limited(r)):
+            log.warning("%s hit AF per-minute rate limit (HTTP 200 + errors.rateLimit)"
+                        " — backing off, attempt %d/%d",
+                        endpoint, attempt + 1, _MAX_REQUEST_ATTEMPTS)
             time.sleep(_retry_after_seconds(r, attempt))
             continue
         break
@@ -526,8 +554,23 @@ def fetch_odds(
             fresh = _request("/odds", params, cache_dir=cache_dir, refresh=True)
         except ApiFootballError:
             if stale_due:
-                # 原语义保持:到龄重拉失败 → 回落陈旧缓存;显式 refresh 失败仍上抛
                 return _request("/odds", params, cache_dir=cache_dir)
+            # ⭐ 2026-08-07 — 以前这里是裸 `raise`,理由是「用户明确要求新的,
+            # 拿不到就别假装」。听起来对,实测代价是**反过来的**:
+            # 上抛 → `_fetch_odds_safe` 收成 ('err', exc) → `_gather_rows` 把
+            # odds_payload 置空 → psc=None → 该场掉进「待开盘」⇒
+            # **你点刷新,结果想下注的那场从可投注区消失了。**
+            # 而旧缓存并不是「假装」:卡片上的 odds_update 徽章会如实标线龄
+            # (>2h 显示 ⚠️陈旧),所以回落是**降级可见**,上抛是**静默消失**。
+            # 同一份取舍 2026-07-17 已经在「空响应」那条路上做过一次(见上面
+            # 挪超 Bodo/Glimt 案),这里补齐另一半:失败也别把好线冲掉。
+            if prior is not None:
+                log.warning(
+                    "AF /odds refresh failed for fixture %s — serving prior cache "
+                    "(%d rows); the card's odds_update badge marks it stale",
+                    fixture_id, len(prior),
+                )
+                return prior
             raise
         if prior is not None and not _odds_has_prices(fresh):
             # _request 刚用空响应覆盖了缓存 —— 同款原子写把旧内容恢复回去

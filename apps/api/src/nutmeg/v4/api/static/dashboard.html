@@ -1027,6 +1027,42 @@
         <span class="info-i" style="font-size:0.8em;font-weight:400"
               onclick="showInfo(t('h_jc_bettable'), t('jc_bettable_note'))"
               title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span></h3>
+      <!-- 2026-08-07 — 刷新入口从两块模式板**上移合并**到这里。
+           为什么合并:🎯 两颗本来就是字面同一个函数(refreshJingcai,两处 onclick
+           逐字相同);🔄 两颗共用同一个 `_gather_rows`(15 个参数只差联赛表和日志标签)。
+           ⇒ 界面上 6 颗按钮里只有 3 种不同行为,而它们都作用于**这一张**可投注列表。
+           ⛔ 但**联赛清单一个字都没合并** —— 它不是「板子显示什么」,是「这条腿的
+           1X2 P 从模型来还是从 Pinnacle 去vig 来」的开关,`routes.py:909` 那个消费点
+           在**出注路径**上(POST /recommend/single = 「已下单」记账)。合并清单 =
+           改注单的概率来源,不是改面板。两个 loader 各自的天数窗口也照旧(3 / 7),
+           统一窗口会平白多花 13 次 AF /fixtures 或砍掉待开盘预览深度,两头都不划算。 -->
+      <div class="flex items-center gap-3 flex-wrap mb-3">
+        <button id="jcb-refresh" onclick="refreshBettableOdds()"
+                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
+                title="只刷竞彩可投注联赛/场次的 Pinnacle 盘口(标准+市场一起,省 API 额度)"
+                data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
+        <button id="jcb-jcrefresh" onclick="refreshJingcai()"
+                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
+                title="抓取最新竞彩 SP 写入库 + 重新预填(不消耗 Pinnacle API)"
+                data-i18n="jc_refresh_btn">🎯 刷新竞彩</button>
+        <span id="jcb-status" class="text-xs text-muted ml-auto"></span>
+      </div>
+      <!-- 全刷 = 逃生口,不是日常操作,所以收进折叠区。真实用途只有两个:
+           ① 竞彩晨批(09:24-09:44)之前想提前看某联赛的线;
+           ② 非竞彩赛事(欧战资格赛等)手填 Pinnacle 前先刷一次自动线。
+           ⚠️ 它以前在市场侧**首屏加载后就永久 disabled**(loadCupMarket 开头置灰、
+           finally 只复位另外两颗),坏了没人发现、零测试。现在按钮归本函数自己管,
+           loader 不再碰它 —— 这类 bug 的根因是所有权劈开,不是漏写一行。 -->
+      <details class="mb-3">
+        <summary class="text-xs text-muted cursor-pointer" data-i18n="jcb_escape_summary">刷不到想要的场次?</summary>
+        <div class="mt-2 flex items-center gap-3 flex-wrap">
+          <button id="jcb-refresh-all" onclick="refreshBettableOdds(true)"
+                  class="px-2 py-1 rounded text-xs border shrink-0 text-muted" style="white-space:nowrap"
+                  title="刷新所有联赛盘口(含非竞彩,多耗 API 额度)"
+                  data-i18n="spcalc_refresh_all_btn">全刷</button>
+          <span class="text-xs text-muted" data-i18n="jcb_escape_note">竞彩尚未上架、或想看非竞彩赛事时才用。</span>
+        </div>
+      </details>
       <div id="jc-bettable-hint"></div>
       <div id="jc-bettable-spcalc"></div>
       <div id="jc-bettable-cupmkt"></div>
@@ -1041,19 +1077,10 @@
       <h3 class="font-bold mb-2"><span data-i18n="h_spcalc">📊 标准模式</span>
         <span id="today-spcalc-count" class="text-sm font-normal text-gray-500"></span>
         <span class="info-i" style="font-size:0.8em;font-weight:400" onclick="showInfo(t('info_std_title'), t('spcalc_board_hint'))" title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span></h3>
+      <!-- 2026-08-07 — 三颗刷新按钮已上移到 💴 竞彩可投注区块(见那里的注释)。
+           状态条留在原位:两个 loader 和 refreshJingcai 都往这里写各自的进度/结果,
+           上移的是**操作**,不是**反馈** —— 反馈该贴着它描述的那块列表。 -->
       <div class="flex items-center gap-3 flex-wrap">
-        <button id="today-spcalc-refresh" onclick="_spcalcRefreshOdds()"
-                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
-                title="只刷竞彩可投注联赛的 Pinnacle 盘口 (省 API 额度)"
-                data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
-        <button id="today-spcalc-refresh-all" onclick="_spcalcRefreshOdds(true)"
-                class="px-2 py-1 rounded text-xs border shrink-0 text-muted" style="white-space:nowrap"
-                title="刷新所有联赛盘口(含非竞彩,多耗 API 额度)"
-                data-i18n="spcalc_refresh_all_btn">全刷</button>
-        <button id="spcalc-jcrefresh" onclick="refreshJingcai()"
-                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
-                title="抓取最新竞彩 SP 写入库 + 重新预填(不消耗 Pinnacle API)"
-                data-i18n="jc_refresh_btn">🎯 刷新竞彩</button>
         <span id="spcalc-status" class="text-xs text-muted ml-auto"></span>
       </div>
       <div id="spcalc-empty" class="hidden mt-3 pt-3 text-center text-sm text-muted"
@@ -1070,19 +1097,8 @@
       <h3 class="font-bold mb-2"><span data-i18n="h_cupmkt">💹 市场模式</span>
         <span id="cupmkt-count" class="text-sm font-normal text-gray-500"></span>
         <span class="info-i" style="font-size:0.8em;font-weight:400" onclick="showInfo(t('info_mkt_title'), t('cupmkt_hint'))" title="点击查看说明">ⓘ <span data-i18n="info_link">说明</span></span></h3>
+      <!-- 2026-08-07 — 刷新按钮已上移(同标准模式)。状态条留在原位。 -->
       <div class="flex items-center gap-3 flex-wrap">
-        <button id="cupmkt-refresh" onclick="loadCupMarket({refreshOdds:true, manual:true})"
-                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
-                title="只刷竞彩可投注联赛的最新 Pinnacle 赔率 (省 API 额度)"
-                data-i18n="spcalc_refresh_btn">🔄 刷新盘口</button>
-        <button id="cupmkt-refresh-all" onclick="loadCupMarket({refreshOdds:true, manual:true, allLeagues:true})"
-                class="px-2 py-1 rounded text-xs border shrink-0 text-muted" style="white-space:nowrap"
-                title="刷新所有联赛盘口(含非竞彩,多耗 API 额度)"
-                data-i18n="spcalc_refresh_all_btn">全刷</button>
-        <button id="cupmkt-jcrefresh" onclick="refreshJingcai()"
-                class="px-3 py-1 rounded text-sm border shrink-0" style="white-space:nowrap"
-                title="抓取最新竞彩 SP 写入库 + 重新预填(不消耗 Pinnacle API)"
-                data-i18n="jc_refresh_btn">🎯 刷新竞彩</button>
         <span id="cupmkt-status" class="text-xs text-muted ml-auto"></span>
       </div>
       <div id="cupmkt-list" class="space-y-3 mt-3"></div>
@@ -2351,6 +2367,10 @@ const I18N = {
     cupmkt_hc_toggle:'▸ 让球 (市场反推 · Pinnacle 1X2+大小球)',
     jc_hhad_only:'竞彩本场只售让球(无胜平负盘)— 见下方「让球」',
     jc_refresh_btn:'{ic:target} 刷新竞彩',
+    refresh_busy:'上一次刷新还在跑…',
+    refresh_cooldown:'刚刷过,{s} 秒后可再刷(防连点撞 API 限流)',
+    jcb_escape_summary:'刷不到想要的场次?',
+    jcb_escape_note:'竞彩尚未上架(晨批 09:24-09:44 前)、或想看非竞彩赛事时才用全刷 —— 它会刷所有联赛,多耗 API 额度。',
     ver_new:'{ic:refresh} 新版本已就绪',
     ver_reload:'点此刷新',
     jc_refreshing:'抓取竞彩中…',
@@ -2904,6 +2924,10 @@ const I18N = {
     cupmkt_hc_toggle:'▸ Handicap (market-implied · Pinnacle 1X2+O/U)',
     jc_hhad_only:'竞彩 sells only the handicap for this match (no 1X2) — see 让球 below',
     jc_refresh_btn:'{ic:target} Refresh 竞彩 SP',
+    refresh_busy:'A refresh is still running…',
+    refresh_cooldown:'Just refreshed — {s}s before you can go again (avoids tripping the API rate limit)',
+    jcb_escape_summary:'Not seeing the match you want?',
+    jcb_escape_note:'Use 全刷 only before 竞彩 posts its morning batch (09:24-09:44), or for non-竞彩 fixtures — it refreshes every league and costs more quota.',
     ver_new:'{ic:refresh} New version ready',
     ver_reload:'Reload',
     jc_refreshing:'fetching 竞彩…',
@@ -6284,30 +6308,76 @@ function _spcalcHcRecalc(idx) {
 // 🔄 刷新盘口 — one-off live Pinnacle pull (refresh_odds). Reloads the whole
 // today tab with fresh odds; renderTodaySpCalc preserves any 竞彩 SP already
 // typed and recomputes against the fresh model P.
-async function _spcalcRefreshOdds(allLeagues) {
-  // allLeagues=false (default 🔄): refresh ONLY 竞彩-bettable leagues/fixtures
-  // (bettable_only=true server-side). true (全刷 escape hatch): every league.
-  const btn = $(allLeagues ? '#today-spcalc-refresh-all' : '#today-spcalc-refresh');
-  const label = allLeagues ? 'spcalc_refresh_all_btn' : 'spcalc_refresh_btn';
-  if (!btn || btn.disabled) return;
-  btn.disabled = true;
-  btn.innerHTML = IC('refresh') + ' ' + t('spcalc_refreshing');
+// ⭐ 2026-08-07 — 刷新闸。**零节流曾经真的出事**:当天日志里 15 次 API-Football
+// 每分钟限流丢弃,分属两次相隔 35 秒的手动刷新;每一场被丢的 fixture 都变成
+// psc=None ⇒ 掉进「待开盘」⇒ 恰好在要下注那一刻从可投注区消失。
+// 合并后单击爆发面从 ≤18 个 sport_key 涨到 31,所以闸是**合并的前置条件**,不是配菜。
+// 两道:in-flight 防并发(🔄 与 全刷 以前可以同时在飞,同 4 个 key 拉两次 = 白扔 8 credit)、
+// 冷却防连点。⛔ 只闸**显式刷新**入口 —— 切 tab/轮询那条被动路径不能被它挡住。
+// 按用途分桶:'odds' 管付费的 AF/Odds API 爆发;'jingcai' 管 sporttery ——
+// 后者不花钱,但 403/429 会触发一个**落盘 6 小时、所有 sporttery cron 共享**的
+// 全域熔断,所以它也得有闸,只是理由不同、冷却也不同。
+const _REFRESH_COOLDOWN_MS = { odds: 20000, jingcai: 10000 };
+const _refreshBusy = { odds: false, jingcai: false };
+const _refreshLastAt = { odds: 0, jingcai: 0 };
+
+async function _guardedRefresh(kind, fn, statusEls) {
+  const say = (msg) => statusEls.forEach(s => { if (s) s.textContent = msg; });
+  if (_refreshBusy[kind]) { say(t('refresh_busy')); return false; }
+  const wait = Math.ceil((_REFRESH_COOLDOWN_MS[kind] - (Date.now() - _refreshLastAt[kind])) / 1000);
+  if (wait > 0) { say(t('refresh_cooldown').replace('{s}', wait)); return false; }
+  _refreshBusy[kind] = true;
   try {
-    await loadSpCalc({ refreshOdds: true, allLeagues: !!allLeagues });
+    await fn();
+    return true;
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = _expandIcons(t(label));
+    _refreshBusy[kind] = false;
+    _refreshLastAt[kind] = Date.now();   // 冷却从**结束**起算,不是从开始
   }
+}
+
+// 💴 可投注区块的「🔄 刷新盘口」/「全刷」—— 一次点击同时驱动两块模式板。
+// allLeagues=false(默认 🔄):只刷竞彩可投注的联赛/场次(bettable_only=true,省额度)。
+// true(全刷逃生口):所有联赛。
+// ⭐ 按钮由**本函数**独占 try/finally 管理,两个 loader 一概不碰 ——
+// `#cupmkt-refresh-all` 那个「首屏后永久 disabled」的 bug 根因就是所有权劈开:
+// loader 开头置灰、finally 只复位它认识的两颗。所有权收归一处,这类 bug 结构上不成立。
+async function refreshBettableOdds(allLeagues) {
+  const btn = $(allLeagues ? '#jcb-refresh-all' : '#jcb-refresh');
+  const label = allLeagues ? 'spcalc_refresh_all_btn' : 'spcalc_refresh_btn';
+  const sts = [$('#jcb-status'), $('#spcalc-status'), $('#cupmkt-status')];
+  if (!btn || btn.disabled) return;
+  const ok = await _guardedRefresh('odds', async () => {
+    btn.disabled = true;
+    btn.innerHTML = IC('refresh') + ' ' + t('spcalc_refreshing');
+    if (sts[0]) sts[0].textContent = t('spcalc_refreshing');
+    try {
+      // 两块板串行,不并行:并行会把同一秒的 AF 请求数翻倍,而限流正是按分钟算的。
+      // 慢几秒 vs 卡片消失,选慢几秒。
+      await loadSpCalc({ refreshOdds: true, allLeagues: !!allLeagues });
+      await loadCupMarket({ refreshOdds: true, manual: true, allLeagues: !!allLeagues });
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = _expandIcons(t(label));
+    }
+  }, [sts[0]]);
+  if (ok && sts[0]) sts[0].textContent = '';   // 各板自己的 status 已写好结果
 }
 
 // 🎯 刷新竞彩 — on-demand sporttery harvest into jingcai_sp, then reload the board
 // so cards pick up the latest 竞彩 SP. Cheap: no Pinnacle pull (no Odds API quota).
 async function refreshJingcai() {
-  // V14 — 刷新竞彩 lives on BOTH boards (标准模式 + 市场模式); drive both buttons,
-  // statuses, and re-renders so either button refreshes the shared 竞彩 SP for all.
-  const btns = [$('#cupmkt-jcrefresh'), $('#spcalc-jcrefresh')].filter(Boolean);
-  const sts = [$('#cupmkt-status'), $('#spcalc-status')].filter(Boolean);
+  // 2026-08-07 — 从「两块板各一颗」收成 💴 可投注区块里的**一颗**。
+  // 这一步零行为风险:原来那两颗本来就是字面同一个函数、同一份行为
+  // (两处 onclick 逐字相同、函数体不读 this/event/arguments)——
+  // 界面上是两个入口,系统里从来只有一个动作。
+  const btns = [$('#jcb-jcrefresh')].filter(Boolean);
+  const sts = [$('#jcb-status'), $('#cupmkt-status'), $('#spcalc-status')].filter(Boolean);
   if (btns.some(b => b.disabled)) return;
+  await _guardedRefresh('jingcai', () => _refreshJingcaiInner(btns, sts), sts);
+}
+
+async function _refreshJingcaiInner(btns, sts) {
   btns.forEach(b => { b.disabled = true; b.innerHTML = IC('target') + ' ' + t('jc_refreshing'); });
   try {
     const r = await fetch(API + '/observation/sporttery-refresh', { method: 'POST' });
@@ -6429,7 +6499,11 @@ async function loadSpCalc(opts = {}) {
     // 竞彩可投注刷新过滤:a default 🔄 only pulls odds for 竞彩-bettable matches. If
     // none are on file it spent no API quota — say so, else "nothing happened" reads
     // as a silent failure. (全刷 / opts.allLeagues suppresses the hint.)
-    const bettableN = (body.predictions || []).filter((p) => p && p.jc_home).length;
+    // 2026-08-07 修口径:裸 `p.jc_home` 只数胜平负,而 `_isJcBettable` 和后端
+    // `_load_bettable_pairs` 都是 had ∪ hhad ⇒ 当天只有「让球-only」的可投注场时
+    // (今天就有 3 场),后端**确实花了额度刷新**,面板却说「无竞彩可投注比赛·未刷」。
+    // 用同一个共享判据,别在提示里另立第三套口径。
+    const bettableN = (body.predictions || []).filter((p) => p && _isJcBettable(p)).length;
     if (opts.refreshOdds && !opts.allLeagues && bettableN === 0) {
       if (statusEl) statusEl.innerHTML = `<span style="color:#b45309">${t('spcalc_refresh_no_bettable')}</span>`;
     } else if (statusEl) {
@@ -7615,11 +7689,12 @@ async function loadPolymarket(){
 }
 
 async function loadCupMarket(opts = {}) {
-  const btn = $('#cupmkt-load'), rbtn = $('#cupmkt-refresh'),
-        rabtn = $('#cupmkt-refresh-all'), statusEl = $('#cupmkt-status');
-  if (btn) btn.disabled = true;
-  if (rbtn) rbtn.disabled = true;
-  if (rabtn) rabtn.disabled = true;
+  // ⭐ 2026-08-07 — loader **不再碰任何刷新按钮**。以前它开头把三颗置灰、
+  // finally 只复位两颗,于是 `#cupmkt-refresh-all` 在首屏加载完就永久 disabled,
+  // 坏了半天没人发现、零测试。根因不是漏写一行,是**所有权劈开**:按钮在
+  // 模式板上、生命周期却由 loader 管。现在按钮归 `refreshBettableOdds` 自己的
+  // try/finally 独占,这类 bug 结构上不成立。
+  const statusEl = $('#cupmkt-status');
   if (statusEl) statusEl.textContent = opts.refreshOdds ? t('spcalc_refreshing') : t('today_loading');
   try {
     // refreshOdds → force a live Pinnacle pull (refresh_odds=true, costs API
@@ -7650,7 +7725,11 @@ async function loadCupMarket(opts = {}) {
     renderCupMarket(body.predictions, body.pending_fixtures);   // full board (近期赛事)
     renderMarketPred(body.predictions);                         // lean mirror (今日推荐)
     // 竞彩可投注刷新过滤:a default 🔄 with nothing 竞彩-bettable spent no quota — say so.
-    const bettableN = (body.predictions || []).filter((p) => p && p.jc_home).length;
+    // 2026-08-07 修口径:裸 `p.jc_home` 只数胜平负,而 `_isJcBettable` 和后端
+    // `_load_bettable_pairs` 都是 had ∪ hhad ⇒ 当天只有「让球-only」的可投注场时
+    // (今天就有 3 场),后端**确实花了额度刷新**,面板却说「无竞彩可投注比赛·未刷」。
+    // 用同一个共享判据,别在提示里另立第三套口径。
+    const bettableN = (body.predictions || []).filter((p) => p && _isJcBettable(p)).length;
     if (opts.refreshOdds && !opts.allLeagues && bettableN === 0) {
       if (statusEl) statusEl.innerHTML = `<span style="color:#b45309">${t('spcalc_refresh_no_bettable')}</span>`;
     } else if (statusEl) {
@@ -7659,10 +7738,8 @@ async function loadCupMarket(opts = {}) {
     }
   } catch (err) {
     if (statusEl) statusEl.textContent = (t('today_api_error') || '加载失败') + ': ' + err.message;
-  } finally {
-    if (btn) btn.disabled = false;
-    if (rbtn) rbtn.disabled = false;
   }
+  // 无 finally:本函数不拥有任何按钮(见函数开头的注释)。
 }
 
 // V12 W5 — 💴 竞彩盘口推荐: collect the fixtures the user filled with 竞彩 SP
@@ -7909,7 +7986,14 @@ $('#today-min-ev').addEventListener('input', () => {
 // matching the market-mode 🔄 semantics. Passing the handler bare made opts =
 // the click Event → refreshOdds undefined → the button silently served the
 // same cron cache it claimed to refresh. Auto-polls/slider reloads stay cached.
-$('#today-refresh').addEventListener('click', () => loadTodayRecommendations({ refreshOdds: true }));
+// 2026-08-07 — 这是**第 5 个**花额度的刷新入口(审计时四路汇报都漏了它):
+// 13 个联赛 × 1 天,Odds API 上界 26 credit,以前既无全刷出口也无任何连点保护。
+// 它和 💴 可投注区块的 🔄 打的是同一个 AF 每分钟配额 ⇒ 必须共用同一个 'odds' 桶。
+$('#today-refresh').addEventListener('click', () => _guardedRefresh(
+  'odds',
+  () => loadTodayRecommendations({ refreshOdds: true }),
+  [$('#today-status'), $('#jcb-status')],
+));
 // V11 P1-FE#5 — banner dismiss button
 const _bannerDismiss = $('#today-update-banner-dismiss');
 if (_bannerDismiss) _bannerDismiss.addEventListener('click', _hideUpdateBanner);

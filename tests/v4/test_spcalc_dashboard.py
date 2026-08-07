@@ -93,13 +93,47 @@ class TestSpCalcMarkup:
         assert 'id="cupmkt-section"' in html
         assert 'id="cupmkt-list"' in html
 
-    def test_cup_market_has_refresh_odds_button(self, html):
-        """V13 — 市场模式 gets a 🔄 刷新盘口 button that forces a live Pinnacle
-        pull (refresh_odds=true); the plain 加载 button stays cache-only."""
-        assert 'id="cupmkt-refresh"' in html
-        assert "loadCupMarket({refreshOdds:true" in html  # may carry , manual:true (freshWins)
-        assert "'?days=3&refresh_odds=true'" in html
-        assert "async function loadCupMarket(opts = {})" in html
+    def test_cup_market_refresh_query_is_actually_the_market_one(self, html):
+        """⭐ 2026-08-07 —— 这条以前是**假护栏**。
+
+        原断言 `"'?days=3&refresh_odds=true'" in html` 名字里写着 cup_market,
+        但那个字符串在文件里只出现 1 次,位置是**标准模式**的 loadSpCalc;
+        市场模式真正的串是 `'?days=7&refresh_odds=true'`。实测:把 loadCupMarket
+        的整段 query 打成 TOTALLY_BROKEN,这条测试仍然全绿。
+        ⇒ 现在断言**市场模式自己**那个串,并且贴着 loadCupMarket 的函数体抠。
+        """
+        body = html.split("async function loadCupMarket(opts = {})", 1)
+        assert len(body) == 2, "loadCupMarket 被改名/删了 —— 本护栏失效"
+        fn = body[1].split("\n}", 1)[0]
+        assert "days=7&refresh_odds=true" in fn, "市场模式的刷新 query 变了或没了"
+        assert "bettable_only=false" in fn, "全刷逃生口的参数不在 loadCupMarket 里了"
+
+    def test_refresh_buttons_moved_to_the_bettable_block(self, html):
+        """2026-08-07 —— 6 颗刷新按钮合并上移到 💴 竞彩可投注区块。
+
+        为什么合并:🎯 两颗本来就是字面同一个函数;🔄 两颗共用同一个 `_gather_rows`。
+        ⛔ 但联赛清单没合并 —— 它在出注路径上(见 routes.py:909)。
+        """
+        for gone in ('id="today-spcalc-refresh"', 'id="cupmkt-refresh"',
+                     'id="spcalc-jcrefresh"', 'id="cupmkt-jcrefresh"',
+                     'id="today-spcalc-refresh-all"', 'id="cupmkt-refresh-all"'):
+            assert gone not in html, f"{gone} 还在 —— 按钮没合并干净"
+        for now in ('id="jcb-refresh"', 'id="jcb-jcrefresh"', 'id="jcb-refresh-all"'):
+            assert now in html, f"{now} 不在 —— 合并后的按钮没建出来"
+        # 合并后的 🔄 必须真的驱动**两块**板,否则只是搬了个位置
+        fn = html.split("async function refreshBettableOdds(", 1)[1].split("\n}", 1)[0]
+        assert "loadSpCalc(" in fn and "loadCupMarket(" in fn, "合并的 🔄 只驱动了一块板"
+
+    def test_loaders_no_longer_own_refresh_buttons(self, html):
+        """⭐ `#cupmkt-refresh-all` 首屏后永久 disabled 的**根因是所有权劈开**:
+        按钮在模式板上、生命周期却由 loader 管,loader 置灰三颗、finally 只复位两颗。
+
+        所以这条守的不是「补上那一行」,而是「loader 不许再碰刷新按钮」——
+        补一行只修这一个实例,收归所有权让整类 bug 不成立。
+        """
+        fn = html.split("async function loadCupMarket(opts = {})", 1)[1].split("\n}", 1)[0]
+        code = "\n".join(ln for ln in fn.splitlines() if not ln.strip().startswith("//"))
+        assert "disabled" not in code, "loadCupMarket 又开始动按钮的 disabled 了"
 
     def test_cup_market_label_drops_cups_j1_text(self, html):
         """V13 — 市场模式 now covers J1/J2/cups/WC/10 expansion leagues, so the
@@ -163,8 +197,11 @@ class TestSpCalcMarkup:
 
     def test_refresh_odds_button_wired(self, html):
         # 🔄 刷新盘口: button + handler + client→server flag plumbing.
-        assert 'id="today-spcalc-refresh"' in html
-        assert "function _spcalcRefreshOdds(" in html
+        # 2026-08-07 — 按钮已合并上移;标准模式那颗和它的 _spcalcRefreshOdds
+        # 一起删掉了(留着会变成「按钮没了、函数静默 no-op」的假绿)。
+        assert 'id="jcb-refresh"' in html
+        assert "async function refreshBettableOdds(" in html
+        assert "_spcalcRefreshOdds" not in html, "旧 handler 没删干净"
         assert "refreshOdds: true" in html          # handler → loadToday
         assert "refresh_odds: true" in html          # loadToday → request body
 
