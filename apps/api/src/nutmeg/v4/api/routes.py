@@ -142,6 +142,11 @@ router = APIRouter(prefix="/v4", tags=["v4"])
 #      7. `cli/data_freshness.py` 供应链探针兜底
 #      8. `scripts/run_local_server.sh` 兜底
 #      9. `scripts/setup_local_pipeline.sh` ARTIFACT_DIR
+#     10. `cli/auto_retrain.py` 的 `--artifact-base` 用法示例 + help(Layer B 部署
+#         的落点。⚠️ 这一条 AST 断言逮不到 —— 它在**文档字符串里**,
+#         `ast.Constant` 的值是整段 docstring 而不是那个路径,`startswith` 直接
+#         漏过。另有一条正则断言专门盯它。判闸本身走
+#         `is_expected_serving_base()`,不吃这个字面量。)
 #   豁免:`cli/roi_backtest.py` 的 LINEUP_ARTIFACT 是显式 A/B 的另一臂,故意不同。
 EXPECTED_SERVING_ARTIFACT = "data/v4_model_cat"
 
@@ -265,6 +270,25 @@ def _same_dir(a: str, b: str) -> bool:
         return False
 
 
+def is_expected_serving_base(path: str) -> bool:
+    """Would serving actually *read* a Layer B pointer written at ``path``?
+
+    Same judgment `artifact_is_expected()` makes, but about an arbitrary
+    directory rather than about the configured one — the **write** side needs
+    it too. `cli/auto_retrain.do_deploy` writes `live_artifact_pointer.json`
+    into whatever `--artifact-base` says and used to compare it against
+    nothing; a base serving does not read makes the deploy invisible by
+    construction (`redirected=False`, `artifact_is_expected=True`,
+    health_check.sh §18 a single OK line). That is Layer A's D1 incident
+    (`docs/v12_deep_audit.md`, `tests/v4/test_layer_a_deploy_path.py`)
+    replayed one layer up.
+
+    One function on purpose: two copies of "is this the serving dir" is how
+    read and write drift into disagreeing, and the disagreement is silent.
+    """
+    return _same_dir(path, EXPECTED_SERVING_ARTIFACT)
+
+
 def artifact_is_expected() -> bool:
     """Is serving pointed at the declared production artifact?
 
@@ -272,6 +296,11 @@ def artifact_is_expected() -> bool:
     ``live_artifact_pointer.json`` legitimately redirects away from the base,
     and that pointer file lives *inside* the base — so an expected base is
     precisely what makes the redirect trustworthy.
+
+    ⚠️ That exemption is exactly one hole wide: this says nothing about what
+    the pointer *targets*. Constraining the target is the deploy side's job
+    (`cli/auto_retrain.do_deploy`) plus §18's job of making the target and its
+    age visible (`cli/artifact_identity.disk_rows`) — not this function's.
 
     ⛔ Deliberately does NOT consult whether the directory exists, nor whether
     an artifact loaded. Those are the two proxies that let the stale-default
@@ -282,7 +311,7 @@ def artifact_is_expected() -> bool:
     走 `_artifact_base()` 而不是 `_resolve_artifact()`:这是个纯配置问题,
     不该为了回答它去碰磁盘(原来会,而磁盘一出错它就抛异常而不是给判词)。
     """
-    return _same_dir(_artifact_base()[0], EXPECTED_SERVING_ARTIFACT)
+    return is_expected_serving_base(_artifact_base()[0])
 
 
 def _observation_db_path() -> Optional[str]:
@@ -454,6 +483,11 @@ def health() -> HealthResponse:
         expected_artifact_path=EXPECTED_SERVING_ARTIFACT,
         artifact_base_path=res.base,
         artifact_path_source=res.source,
+        # 「指到哪」必须是个字段,不能让消费方拿 base 和 path 做字符串比较:
+        # `.env` 写相对路径而 run_local_server.sh 导出绝对路径,两者相等时
+        # 字符串也不相等(`_same_dir` 存在就是为了这个)⇒ 字符串比较会把
+        # 「没重定向」读成「重定向了」。
+        artifact_redirected=res.redirected,
     )
     mismatch = None if expected else (
         f"serving artifact base {res.base!r} (source={res.source}) is not the "

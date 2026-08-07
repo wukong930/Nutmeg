@@ -19,7 +19,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -180,7 +179,8 @@ class TestJournal:
 
     def test_record_propose(self, temp_db):
         from nutmeg.v4.observation.auto_retrain import (
-            record_retrain_journal, fetch_latest_journal_entry,
+            fetch_latest_journal_entry,
+            record_retrain_journal,
         )
         jid = record_retrain_journal(
             temp_db,
@@ -213,7 +213,8 @@ class TestJournal:
 
     def test_fetch_filters_by_action(self, temp_db):
         from nutmeg.v4.observation.auto_retrain import (
-            record_retrain_journal, fetch_latest_journal_entry,
+            fetch_latest_journal_entry,
+            record_retrain_journal,
         )
         record_retrain_journal(temp_db, action="propose",
                                artifact_version="v1", artifact_path="/x")
@@ -233,7 +234,8 @@ class TestJournal:
 
     def test_nan_handled(self, temp_db):
         from nutmeg.v4.observation.auto_retrain import (
-            record_retrain_journal, fetch_latest_journal_entry,
+            fetch_latest_journal_entry,
+            record_retrain_journal,
         )
         record_retrain_journal(
             temp_db, action="propose",
@@ -249,7 +251,8 @@ class TestJournal:
 class TestArtifactPointer:
     def test_write_creates_atomic(self, tmp_path):
         from nutmeg.v4.observation.auto_retrain import (
-            write_artifact_pointer, LIVE_ARTIFACT_POINTER_FILENAME,
+            LIVE_ARTIFACT_POINTER_FILENAME,
+            write_artifact_pointer,
         )
         out = write_artifact_pointer(
             tmp_path,
@@ -277,7 +280,8 @@ class TestArtifactPointer:
 
     def test_load_round_trip(self, tmp_path):
         from nutmeg.v4.observation.auto_retrain import (
-            write_artifact_pointer, load_artifact_pointer,
+            load_artifact_pointer,
+            write_artifact_pointer,
         )
         write_artifact_pointer(
             tmp_path, version="v_2026-Q3",
@@ -295,7 +299,8 @@ class TestArtifactPointer:
 
     def test_remove(self, tmp_path):
         from nutmeg.v4.observation.auto_retrain import (
-            write_artifact_pointer, remove_artifact_pointer,
+            remove_artifact_pointer,
+            write_artifact_pointer,
         )
         write_artifact_pointer(
             tmp_path, version="v_x", artifact_path="x",
@@ -308,7 +313,8 @@ class TestArtifactPointer:
 
     def test_remove_layer_a_correction(self, tmp_path):
         from nutmeg.v4.observation.auto_retrain import (
-            remove_layer_a_correction, LAYER_A_CORRECTION_FILENAME,
+            LAYER_A_CORRECTION_FILENAME,
+            remove_layer_a_correction,
         )
         # No file → False
         assert remove_layer_a_correction(tmp_path) is False
@@ -327,7 +333,8 @@ class TestResolveArtifactPath:
 
     def test_with_pointer_returns_target(self, tmp_path):
         from nutmeg.v4.observation.auto_retrain import (
-            write_artifact_pointer, resolve_effective_artifact_path,
+            resolve_effective_artifact_path,
+            write_artifact_pointer,
         )
         target = tmp_path / "target"
         target.mkdir()
@@ -341,7 +348,8 @@ class TestResolveArtifactPath:
 
     def test_pointer_to_missing_dir_falls_back(self, tmp_path):
         from nutmeg.v4.observation.auto_retrain import (
-            write_artifact_pointer, resolve_effective_artifact_path,
+            resolve_effective_artifact_path,
+            write_artifact_pointer,
         )
         # Point to a non-existent target
         write_artifact_pointer(
@@ -355,6 +363,47 @@ class TestResolveArtifactPath:
 
 
 # ============ CLI integration =========================================
+
+#: 生产两个盘的真实训练时间,用来把「候选比 base 更老」写成一个具体的场景
+#: 而不是两个随手编的时间戳。data/v4_model = 2026-05-22(退役 LightGBM),
+#: data/v4_model_cat = 2026-07-15(在服的 CatBoost)。
+STALE_TRAINED_AT = "2026-05-22T06:17:04+00:00"
+LIVE_TRAINED_AT = "2026-07-15T06:19:12+00:00"
+
+
+def _artifact_dir(path: Path, trained_at: str | None) -> Path:
+    """够真实的 artifact 目录:部署路径实际会去读的那一部分。
+
+    只写 `metadata.json` —— 走 `save_artifact()` 要拉 lightgbm 训 40 行数据,
+    只为产出一个 `trained_at_utc`。形状对齐 `persist.save_artifact()`:训练
+    metadata 嵌在 "metadata" 键下(实测生产两个盘都是这个形状,顶层没有)。
+
+    `trained_at=None` → 造一个**空目录**:`is_dir()` 为真但没有 metadata,
+    正是「目录在不在」这个代理放行、而服务加载会失败的那个形状。
+    """
+    path.mkdir(parents=True, exist_ok=True)
+    if trained_at is not None:
+        (path / "metadata.json").write_text(json.dumps({
+            "metadata": {"trained_at_utc": trained_at,
+                         "training_cutoff": trained_at[:10]},
+            "feature_columns": ["f0"],
+        }))
+    return path
+
+
+@pytest.fixture
+def serving_base(tmp_path, monkeypatch):
+    """一个 tmp 目录,在本用例里**就是**声明的生产服务盘。
+
+    monkeypatch 声明值(而不是给测试开 `--override-identity`)是刻意的:
+    这样用例走的是生产那条路,而不是逃生口 —— 否则护栏加上了,而所有测试都
+    绕着它跑。
+    """
+    from nutmeg.v4.api import routes
+    base = _artifact_dir(tmp_path / "base", LIVE_TRAINED_AT)
+    monkeypatch.setattr(routes, "EXPECTED_SERVING_ARTIFACT", str(base))
+    return base
+
 
 class TestCliPropose:
     def test_dry_run_returns_2_when_gate_fails(self, tmp_path):
@@ -425,15 +474,14 @@ class TestCliDeploy:
         ])
         assert rc == 1
 
-    def test_deploy_writes_pointer_and_clears_layer_a(self, tmp_path):
+    def test_deploy_writes_pointer_and_clears_layer_a(self, tmp_path, serving_base):
         from nutmeg.v4.cli.auto_retrain import main
         from nutmeg.v4.observation.auto_retrain import (
-            LIVE_ARTIFACT_POINTER_FILENAME, LAYER_A_CORRECTION_FILENAME,
+            LAYER_A_CORRECTION_FILENAME,
+            LIVE_ARTIFACT_POINTER_FILENAME,
         )
-        base = tmp_path / "base"
-        base.mkdir()
-        candidate = tmp_path / "v_2026-Q3"
-        candidate.mkdir()
+        base = serving_base
+        candidate = _artifact_dir(tmp_path / "v_2026-Q3", "2026-10-01T00:00:00+00:00")
         # Pre-existing Layer A correction
         (base / LAYER_A_CORRECTION_FILENAME).write_text('{"T": 1.05}')
 
@@ -452,7 +500,7 @@ class TestCliDeploy:
         # Layer A correction was cleared
         assert not (base / LAYER_A_CORRECTION_FILENAME).exists()
 
-    def test_deploy_rejected_when_gate_fails(self, tmp_path):
+    def test_deploy_rejected_when_gate_fails(self, tmp_path, serving_base):
         """AUDIT FIX (R4): deploy re-checks the ship gate. A candidate that does
         NOT pass (here log-loss WORSE than production) is refused with rc 2 and
         no pointer is written — propose-passing is no longer assumed at deploy."""
@@ -460,10 +508,8 @@ class TestCliDeploy:
         from nutmeg.v4.observation.auto_retrain import (
             LIVE_ARTIFACT_POINTER_FILENAME,
         )
-        base = tmp_path / "base"
-        base.mkdir()
-        candidate = tmp_path / "v_2026-Q3"
-        candidate.mkdir()
+        base = serving_base
+        candidate = _artifact_dir(tmp_path / "v_2026-Q3", "2026-10-01T00:00:00+00:00")
         rc = main([
             "--db", str(tmp_path / "obs.db"),
             "--action", "deploy", "--apply",
@@ -475,17 +521,15 @@ class TestCliDeploy:
         assert rc == 2
         assert not (base / LIVE_ARTIFACT_POINTER_FILENAME).exists()
 
-    def test_deploy_override_gate_forces_through(self, tmp_path):
+    def test_deploy_override_gate_forces_through(self, tmp_path, serving_base):
         """--override-gate lets an emergency manual deploy proceed despite a
         failing gate — the pointer is written (rc 0)."""
         from nutmeg.v4.cli.auto_retrain import main
         from nutmeg.v4.observation.auto_retrain import (
             LIVE_ARTIFACT_POINTER_FILENAME,
         )
-        base = tmp_path / "base"
-        base.mkdir()
-        candidate = tmp_path / "v_2026-Q3"
-        candidate.mkdir()
+        base = serving_base
+        candidate = _artifact_dir(tmp_path / "v_2026-Q3", "2026-10-01T00:00:00+00:00")
         rc = main([
             "--db", str(tmp_path / "obs.db"),
             "--action", "deploy", "--apply", "--override-gate",
@@ -498,15 +542,210 @@ class TestCliDeploy:
         assert (base / LIVE_ARTIFACT_POINTER_FILENAME).exists()
 
 
+class TestDeployTargetIdentity:
+    """⭐ 指针的**目标**必须被约束 —— `artifact_is_expected()` 判 base 是刻意的,
+    所以「指到哪」是它唯一豁免的那条路,而 2026-08-07 的审查就是从那条路进来的。
+
+    这一整类都是**行为**断言:真跑 `cli/auto_retrain.main()`,看它的退出码和
+    磁盘上落了什么。⛔ 没有一条查「源码里有没有某个字符串」。
+    """
+
+    _GATE_ARGS = ["--log-loss-before", "1.000", "--log-loss-after", "0.995",
+                  "--p-value", "0.02", "--n-train", "10000", "--n-holdout", "200"]
+
+    def _deploy(self, tmp_path, base, candidate, *extra):
+        from nutmeg.v4.cli.auto_retrain import main
+        return main(["--db", str(tmp_path / "obs.db"),
+                     "--action", "deploy", "--apply",
+                     "--candidate", str(candidate), "--artifact-base", str(base),
+                     "--version", "v_2026-Q3", *self._GATE_ARGS, *extra])
+
+    def test_deploy_to_a_base_serving_does_not_read_is_refused(
+            self, tmp_path, serving_base, caplog):
+        """⭐ 承重条 —— Layer A 的 D1 事故在 Layer B 上重演的那一版。
+
+        `do_deploy` 原来是 `base.mkdir(parents=True, exist_ok=True)`,**不和任何
+        东西比较**。部署到一个服务侧根本不读的 base ⇒ 服务继续跑原模型,而
+        `redirected=False`、`artifact_is_expected=True`、§18 只有一行 OK ——
+        完全不可见。ship gate 在这里是过的:这不是「候选不够好」,是「这次部署
+        谁也看不见」,两件事。
+        """
+        wrong = tmp_path / "not_the_serving_dir"
+        candidate = _artifact_dir(tmp_path / "v_2026-Q3", "2026-10-01T00:00:00+00:00")
+
+        rc = self._deploy(tmp_path, wrong, candidate)
+
+        assert rc == 1, "部署到一个没人读的 base 却成功返回了"
+        assert not wrong.exists(), (
+            "把错误的 base **建出来**了 —— 这正是 mkdir(parents=True) 那个洞:"
+            "运行成功、目录也在,而服务永远不会去看它")
+        assert str(serving_base) in caplog.text, "拒了却不说正确的 base 是哪个"
+
+    def test_deploy_pointing_at_an_older_artifact_is_refused(
+            self, tmp_path, serving_base):
+        """⭐ 审查实测的那条路:base 是对的,**目标**是 2026-05 的退役盘。
+
+        身份闸对此全绿(`artifact_is_expected: true` / `status: ok` /
+        `detail: null` / §18 exit 0),因为它判的是 base。所以这一条必须由
+        部署侧拦 —— 拦的依据是两个盘自己的 `trained_at_utc`,不是路径黑名单。
+        """
+        from nutmeg.v4.observation.auto_retrain import LIVE_ARTIFACT_POINTER_FILENAME
+        stale = _artifact_dir(tmp_path / "retired_model", STALE_TRAINED_AT)
+
+        rc = self._deploy(tmp_path, serving_base, stale)
+
+        assert rc == 1
+        assert not (serving_base / LIVE_ARTIFACT_POINTER_FILENAME).exists(), (
+            "拒绝了却还是把指针写下去了")
+
+    def test_a_candidate_dir_with_no_metadata_is_refused(
+            self, tmp_path, serving_base):
+        """`--candidate` 原来只查 `is_dir()` —— 而空目录也是目录。
+
+        训练中途被打断 / rsync 没传完 ⇒ 目录在、metadata.json 不在。服务会照样
+        重定向过去然后加载失败,`/health` 掉 degraded。「目录存在」是这个仓库
+        反复栽的那两个代理之一。
+        """
+        from nutmeg.v4.observation.auto_retrain import LIVE_ARTIFACT_POINTER_FILENAME
+        empty = _artifact_dir(tmp_path / "half_trained", None)
+        assert empty.is_dir(), "前提:它确实是个目录,只是空的"
+
+        rc = self._deploy(tmp_path, serving_base, empty)
+
+        assert rc == 1
+        assert not (serving_base / LIVE_ARTIFACT_POINTER_FILENAME).exists()
+
+    def test_a_newer_candidate_at_the_serving_base_deploys(
+            self, tmp_path, serving_base):
+        """反向:正常那条路必须还能走通,而且指针内容真的指向候选盘。
+
+        没有这一条,上面三条全绿也可能只是因为部署整个坏了 —— 「拦住了」和
+        「谁也过不去」在退出码上长得一样。
+        """
+        from nutmeg.v4.observation.auto_retrain import (
+            LIVE_ARTIFACT_POINTER_FILENAME,
+            load_artifact_pointer,
+        )
+        candidate = _artifact_dir(tmp_path / "v_2026-Q4", "2026-10-01T00:00:00+00:00")
+
+        assert self._deploy(tmp_path, serving_base, candidate) == 0
+        assert (serving_base / LIVE_ARTIFACT_POINTER_FILENAME).exists()
+        assert load_artifact_pointer(serving_base)["artifact_path"] == \
+            str(candidate.resolve())
+
+    def test_override_identity_lets_it_through_and_says_so_in_the_journal(
+            self, tmp_path, serving_base):
+        """逃生口存在,但**留痕**:事后翻 journal 时,「指到一个更旧的盘」
+        和一次正常部署不能长得一模一样。
+
+        顺带钉住:这个逃生口**不是** `--override-gate`。那一个的理由(数字缺失 /
+        紧急)和这里的理由(路径写错)毫不相干,合成一个开关就等于让常规的
+        gate override 顺手把这条检查也关掉。
+        """
+        from nutmeg.v4.observation.auto_retrain import (
+            LIVE_ARTIFACT_POINTER_FILENAME,
+            fetch_latest_journal_entry,
+        )
+        stale = _artifact_dir(tmp_path / "retired_model", STALE_TRAINED_AT)
+
+        # --override-gate 单独给不够 —— 它管的是另一件事
+        assert self._deploy(tmp_path, serving_base, stale, "--override-gate") == 1
+
+        rc = self._deploy(tmp_path, serving_base, stale, "--override-identity")
+        assert rc == 0
+        assert (serving_base / LIVE_ARTIFACT_POINTER_FILENAME).exists()
+        row = fetch_latest_journal_entry(str(tmp_path / "obs.db"), action="deploy")
+        assert "IDENTITY OVERRIDDEN" in row["reason"], (
+            f"绕过了身份检查却没记进 journal:{row['reason']!r}")
+
+    def test_rollback_against_the_wrong_base_is_refused(self, tmp_path, serving_base):
+        """rollback 只删文件 ⇒ base 写错 = 一次**静默的空操作**,还打印一张
+        成功的回滚卡片。而运维跑它的时候,通常已经有东西在烧了。"""
+        from nutmeg.v4.cli.auto_retrain import main
+        wrong = tmp_path / "not_the_serving_dir"
+        rc = main(["--db", str(tmp_path / "obs.db"),
+                   "--action", "rollback", "--apply",
+                   "--artifact-base", str(wrong)])
+        assert rc == 1
+        assert not wrong.exists()
+
+    def test_write_artifact_pointer_refuses_to_invent_a_base(self, tmp_path):
+        """纵深防御:CLI 之外的调用方也不该能凭空建出一个 base。
+
+        `write_artifact_pointer` 里还有第二次无保护的 `mkdir(parents=True)`。
+        指针是写进**生产 artifact 目录**的(模型文件就住在那儿),所以一个不存在
+        的 base 不可能是服务在读的那个 —— 建出来的唯一效果是一个没人读的指针。
+        """
+        from nutmeg.v4.observation.auto_retrain import write_artifact_pointer
+        ghost = tmp_path / "never_existed"
+        with pytest.raises(NotADirectoryError):
+            write_artifact_pointer(
+                ghost, version="v_x", artifact_path=str(tmp_path),
+                previous_version=None, ship_gate_log_loss_delta=0.0,
+                ship_gate_p_value=0.0, n_train=0, n_holdout=0,
+                train_window=("", ""), holdout_window=("", ""))
+        assert not ghost.exists(), "抛异常了,但目录还是被建出来了"
+
+
+class TestTrainedAtReader:
+    """`artifact_trained_at` 必须分得清「读到了」「读不到」——「读不到」既不是
+    新也不是旧,而这个仓库反复栽在「查不了被当成没问题」上。"""
+
+    def test_reads_the_nested_shape_that_save_artifact_writes(self, tmp_path):
+        """⚠️ 生产两个盘实测都是**嵌套**形状(顶层 `trained_at_utc` = None)。
+        `cli/data_freshness.py` 读的是顶层键,所以它对每个盘都静默走了 mtime
+        兜底 —— 单独的一个 bug,这里不复制它。"""
+        from nutmeg.v4.observation.auto_retrain import artifact_trained_at
+        d = _artifact_dir(tmp_path / "a", LIVE_TRAINED_AT)
+        assert artifact_trained_at(d) == LIVE_TRAINED_AT
+
+    def test_flat_shape_also_works(self, tmp_path):
+        from nutmeg.v4.observation.auto_retrain import artifact_trained_at
+        d = tmp_path / "flat"
+        d.mkdir()
+        (d / "metadata.json").write_text(json.dumps({"trained_at_utc": LIVE_TRAINED_AT}))
+        assert artifact_trained_at(d) == LIVE_TRAINED_AT
+
+    @pytest.mark.parametrize("make", [
+        lambda d: None,                                        # 目录不存在
+        lambda d: d.mkdir(),                                   # 空目录
+        lambda d: (d.mkdir(), (d / "metadata.json").write_text("{{{")),   # 坏 JSON
+        lambda d: (d.mkdir(), (d / "metadata.json").write_text("[]")),    # 不是 dict
+        lambda d: (d.mkdir(), (d / "metadata.json").write_text("{}")),    # 没这个键
+    ])
+    def test_unreadable_is_none_not_a_guess(self, tmp_path, make):
+        from nutmeg.v4.observation.auto_retrain import artifact_trained_at
+        d = tmp_path / "x"
+        make(d)
+        assert artifact_trained_at(d) is None
+
+    def test_parse_does_not_rely_on_lexicographic_order(self):
+        """同一时刻、不同 offset 写法 ⇒ 字符串比较会给出**错的**顺序。
+
+        `2026-07-15T06:00:00+00:00` vs `2026-07-15T14:00:00+08:00` 是同一时刻,
+        但字符串上前者更小。护栏拿它判「谁更旧」的话,换个时区写法就翻车。
+        """
+        from nutmeg.v4.observation.auto_retrain import parse_trained_at
+        utc = "2026-07-15T06:00:00+00:00"
+        same_moment_other_offset = "2026-07-15T14:00:00+08:00"
+        assert utc < same_moment_other_offset          # 字符串序:假的
+        assert parse_trained_at(utc) == parse_trained_at(same_moment_other_offset)
+
+    def test_naive_timestamp_is_read_as_utc_not_dropped(self):
+        from nutmeg.v4.observation.auto_retrain import parse_trained_at
+        assert parse_trained_at("2026-07-15T06:00:00") == \
+            parse_trained_at("2026-07-15T06:00:00+00:00")
+
+
 class TestCliRollback:
-    def test_rollback_clears_both_files(self, tmp_path):
+    def test_rollback_clears_both_files(self, tmp_path, serving_base):
         from nutmeg.v4.cli.auto_retrain import main
         from nutmeg.v4.observation.auto_retrain import (
-            LIVE_ARTIFACT_POINTER_FILENAME, LAYER_A_CORRECTION_FILENAME,
+            LAYER_A_CORRECTION_FILENAME,
+            LIVE_ARTIFACT_POINTER_FILENAME,
             write_artifact_pointer,
         )
-        base = tmp_path / "base"
-        base.mkdir()
+        base = serving_base
         # Pre-populate pointer + Layer A correction
         write_artifact_pointer(
             base, version="v_2026-Q3", artifact_path=str(tmp_path / "target"),
@@ -527,11 +766,10 @@ class TestCliRollback:
         assert not (base / LIVE_ARTIFACT_POINTER_FILENAME).exists()
         assert not (base / LAYER_A_CORRECTION_FILENAME).exists()
 
-    def test_rollback_journal_row(self, tmp_path):
+    def test_rollback_journal_row(self, tmp_path, serving_base):
         from nutmeg.v4.cli.auto_retrain import main
         from nutmeg.v4.observation.auto_retrain import fetch_latest_journal_entry
-        base = tmp_path / "base"
-        base.mkdir()
+        base = serving_base
         db = tmp_path / "obs.db"
         main([
             "--db", str(db),

@@ -14,15 +14,23 @@ Usage:
     nutmeg-auto-retrain --db data/v4_observation.db \\
         --apply --action deploy \\
         --candidate data/v4_model_layer_b/v_2026-Q3 \\
-        --artifact-base data/v4_model
+        --artifact-base data/v4_model_cat
 
     # Rollback (delete pointer + reset Layer A's T)
     nutmeg-auto-retrain --db data/v4_observation.db \\
         --apply --action rollback \\
-        --artifact-base data/v4_model
+        --artifact-base data/v4_model_cat
 
     # Mark the verdict in a markdown report
     nutmeg-auto-retrain --out docs/quarterly/retrain_2026-Q3.md
+
+⚠️ `--artifact-base` 是**服务真正读的那个生产 artifact 目录**,不是候选盘
+存放的地方(候选盘走 `--candidate`)。这两行例子在 2026-08-07 之前写的是
+`data/v4_model` —— 也就是这次身份闸认定为「陷阱」的那个陈旧目录,照抄就会把
+指针写进一个服务根本不读的 base:部署静默不可见,而 `/health` 和
+health_check.sh §18 全绿。现在 `--action deploy/rollback` 会先把它和
+`routes.EXPECTED_SERVING_ARTIFACT` 比对再干活,不一致直接拒(见
+`_deploy_target_problems`)。
 
 This is the wrapper / orchestrator. The actual model retraining
 happens by invoking `nutmeg-train` separately — Layer B does not
@@ -52,11 +60,13 @@ from nutmeg.v4.observation.auto_retrain import (
     LAYER_A_CORRECTION_FILENAME,
     LIVE_ARTIFACT_POINTER_FILENAME,
     RetrainProposal,
+    artifact_trained_at,
     current_quarter_version,
     ensure_retrain_journal,
     evaluate_ship_gate,
     fetch_latest_journal_entry,
     load_artifact_pointer,
+    parse_trained_at,
     record_retrain_journal,
     remove_artifact_pointer,
     remove_layer_a_correction,
@@ -236,6 +246,91 @@ def do_propose(args: argparse.Namespace) -> int:
     return 0 if decision else 2  # 2 = "ship gate not passed"
 
 
+def _deploy_target_problems(base: Path,
+                            candidate: Optional[Path]) -> list[str]:
+    """Identity checks on the pointer: **where it lands** and **what it aims at**.
+
+    Distinct from the ship gate, and deliberately NOT behind `--override-gate`.
+    The ship gate asks "is this candidate a better model"; these ask "will this
+    deploy be visible at all, and does it point serving backwards". The reasons
+    to override the first (numbers missing, emergency) have nothing to do with
+    the second (a mistyped path), so one switch for both would let the routine
+    override quietly disable the check that catches typos.
+
+    Two holes this closes, both measured on 2026-08-07 with the factory CLI:
+
+    * **base serving does not read** — `write_artifact_pointer` used to
+      `mkdir(parents=True)` it, so the run reported success while serving
+      never saw the pointer: `redirected=False`, `artifact_is_expected=True`,
+      §18 one OK line. Layer A's D1 incident replayed on Layer B.
+    * **pointer aimed at an older artifact** — a pointer at the *right* base
+      targeting `data/v4_model` (trained 2026-05-22, vs `data/v4_model_cat`'s
+      2026-07-15) loads fine and reads `artifact_is_expected: true`,
+      `status: ok`, `detail: null`. `artifact_is_expected()` judges the base by
+      design, so the target was the one thing nothing constrained.
+
+    Returns the problems found; empty list = clean.
+    """
+    from nutmeg.v4.api.routes import (
+        EXPECTED_SERVING_ARTIFACT,
+        is_expected_serving_base,
+    )
+
+    problems: list[str] = []
+
+    if not is_expected_serving_base(str(base)):
+        problems.append(
+            f"--artifact-base {base} 不是服务读的那个盘(声明值 "
+            f"{EXPECTED_SERVING_ARTIFACT})—— 指针写在这里没人读:服务继续跑原来的"
+            f"模型,而 /health 的 redirected=False、artifact_is_expected=True、"
+            f"§18 只有一行 OK。这次部署会完全不可见。")
+    elif not base.is_dir():
+        problems.append(
+            f"--artifact-base {base} 是声明的生产盘但目录不存在 —— 装机坏了。"
+            f"⛔ 不给你建:凭空建出来的 base 里没有模型,只有一个没人读的指针。")
+
+    if candidate is None:
+        return problems
+
+    cand_raw = artifact_trained_at(candidate)
+    base_raw = artifact_trained_at(base)
+    cand_at, base_at = parse_trained_at(cand_raw), parse_trained_at(base_raw)
+
+    if cand_at is None:
+        problems.append(
+            f"候选盘 {candidate} 读不到 trained_at_utc"
+            f"(metadata.json 缺失 / 损坏 / 训练被打断?)—— `--candidate` 只查了"
+            f"「目录在不在」,而空目录也是目录:服务会重定向过去然后加载失败,"
+            f"/health 掉 degraded。新旧也无从比起。")
+    elif base_at is None:
+        # 「比不了」既不是通过也不是失败 —— 说出来,但别拿它当拒绝的理由。
+        log.warning("当前 base %s 读不到 trained_at_utc(旧格式盘?)—— "
+                    "**跳过了**新旧比较,这次部署没人替你看候选盘是不是更老", base)
+    elif cand_at < base_at:
+        problems.append(
+            f"候选盘比当前 base 更老:候选 trained_at={cand_raw} < base {base_raw}"
+            f" —— 这次部署会把服务指回一个更旧的模型,而身份闸判的是 base、"
+            f"看不见这件事。要退回旧模型请用 --action rollback(删指针),"
+            f"确实想指向更旧的盘请显式加 --override-identity。")
+
+    return problems
+
+
+def _refuse_on_identity(args: argparse.Namespace, problems: list[str],
+                        what: str) -> Optional[int]:
+    """Print the verdict; return an exit code to bail with, or None to proceed."""
+    if not problems:
+        return None
+    if not args.override_identity:
+        for p in problems:
+            log.error("%s 身份检查拒绝:%s", what, p)
+        log.error("确认无误请加 --override-identity(会记进 journal 的 reason)")
+        return 1
+    for p in problems:
+        log.warning("%s 身份检查失败但被 --override-identity 放行:%s", what, p)
+    return None
+
+
 def do_deploy(args: argparse.Namespace) -> int:
     """Atomically swap the production pointer to the candidate dir."""
     if not args.candidate:
@@ -249,7 +344,13 @@ def do_deploy(args: argparse.Namespace) -> int:
     if not candidate.is_dir():
         log.error("candidate dir does not exist: %s", candidate)
         return 1
-    base.mkdir(parents=True, exist_ok=True)
+
+    # ⛔ 这里原来是 `base.mkdir(parents=True, exist_ok=True)` —— 不和任何东西
+    # 比较,愉快地把一个错误的目录建出来。见 `_deploy_target_problems`。
+    identity_problems = _deploy_target_problems(base, candidate)
+    bail = _refuse_on_identity(args, identity_problems, "deploy")
+    if bail is not None:
+        return bail
 
     # Read the prior pointer (if any) to record the rollback target
     prior_pointer = load_artifact_pointer(base)
@@ -320,7 +421,11 @@ def do_deploy(args: argparse.Namespace) -> int:
             holdout_window=holdout_window,
             decision=gate_ok,
             reason=("deployed via CLI — ship gate passed" if gate_ok
-                    else f"deployed via CLI — ship gate OVERRIDDEN: {gate_reason}"),
+                    else f"deployed via CLI — ship gate OVERRIDDEN: {gate_reason}")
+                   # 身份检查被绕过的事实必须落进 journal:否则事后翻账时,
+                   # 「指到一个更旧的盘」和「正常部署」两行长得一模一样。
+                   + ("" if not identity_problems else
+                      " · IDENTITY OVERRIDDEN: " + " | ".join(identity_problems)),
             prior_version=previous_version,
         )
     else:
@@ -344,6 +449,16 @@ def do_rollback(args: argparse.Namespace) -> int:
         log.error("--artifact-base is required for --action rollback")
         return 1
     base = Path(args.artifact_base).resolve()
+
+    # Same base check as deploy, and for a sharper reason: rollback only ever
+    # *deletes*, so a wrong base is a silent no-op that prints a successful
+    # rollback card. `removed: pointer=False` is the only tell, on a run the
+    # operator is doing precisely because something is already on fire.
+    bail = _refuse_on_identity(
+        args, _deploy_target_problems(base, candidate=None), "rollback")
+    if bail is not None:
+        return bail
+
     prior = load_artifact_pointer(base)
     rolled_version = (prior or {}).get("version")
     rollback_target = (prior or {}).get("previous_version")
@@ -401,7 +516,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Path to a freshly-trained artifact dir (for propose / deploy)")
     p.add_argument("--artifact-base", default=None,
                    help="Production artifact base dir where live_artifact_pointer.json "
-                   "lives (e.g. data/v4_model)")
+                   "lives — i.e. the dir SERVING reads, currently "
+                   "data/v4_model_cat. NOT where candidates are stored (that's "
+                   "--candidate). Checked against routes.EXPECTED_SERVING_ARTIFACT; "
+                   "a mismatch is refused because the deploy would be invisible.")
 
     # Numbers the wrapper passes after running training
     p.add_argument("--log-loss-before", type=float, default=None,
@@ -428,6 +546,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--override-gate", action="store_true",
                    help="Deploy even if the ship gate fails — emergency manual "
                    "override, recorded in the journal reason. (audit R4)")
+    p.add_argument("--override-identity", action="store_true",
+                   help="Proceed despite the pointer-target identity checks "
+                   "(base is not the serving dir / candidate is older than the "
+                   "artifact it replaces). Separate from --override-gate on "
+                   "purpose: that one is about model quality, this one is about "
+                   "whether the deploy is even visible. Recorded in the journal "
+                   "reason.")
 
     # Rollback bits
     p.add_argument("--reason", default="",

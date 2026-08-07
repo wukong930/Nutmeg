@@ -69,8 +69,46 @@ def disk_rows() -> list[Row]:
     else:
         rows.append(Row(OK, f"配置盘 = {res.base}(来源 .env,与预期一致)"))
     if res.redirected:
-        rows.append(Row(NOTE, f"Layer B 指针生效: {res.base} -> {res.path}"))
+        rows.extend(_redirect_rows(res.base, res.path))
     return rows
+
+
+def _redirect_rows(base: str, path: str) -> list[Row]:
+    """Layer B 指针生效时,说清**指到哪**和**那个盘多新**。
+
+    ⚠️ 这是身份闸唯一豁免的那条路,而 2026-08-07 的审查从这条路走了进来:
+    用出厂 CLI 把 `data/v4_model_cat/live_artifact_pointer.json` 写成指向
+    `data/v4_model`(2026-05-22 的旧盘),`/health` 回的是
+    `artifact_is_expected: true` / `status: ok` / `detail: null`,§18 exit 0。
+    `artifact_is_expected()` 判 base 是**刻意**的(指针文件就住在 base 里,
+    base 对了才是指针可信的理由),所以补的不是判据而是**目标的可见性**:
+    重定向到哪、目标盘的 `trained_at_utc` 是什么。
+
+    ⭐ 目标比 base 更老 ⇒ **WARN 而不是 NOTE**。⚠️ 两者在 bash 侧**都不改退出码**
+    (只有 `fail()` 设 EXIT_CODE=1),差的是**看得见的程度**:`note()` 是灰色暗字,
+    整段体检里那是背景噪音;`warn()` 是黄色 ⚠。「指针把服务指回一个更旧的模型」
+    不该长得像背景噪音。
+
+    ⛔ 也不判红:部署侧现在会直接拒(`cli/auto_retrain._deploy_target_problems`),
+    所以能走到这里的只剩两种人 —— 显式 `--override-identity` 的(那是**故意**的,
+    判红就是假红)和手搓 JSON 的。这里是事后发现的那一半,拦截在 deploy 侧。
+    """
+    from nutmeg.v4.observation.auto_retrain import (
+        artifact_trained_at,
+        parse_trained_at,
+    )
+
+    base_raw, target_raw = artifact_trained_at(base), artifact_trained_at(path)
+    shown = target_raw or "读不到 trained_at_utc(metadata.json 缺失/损坏?)"
+    line = f"Layer B 指针生效: {base} -> {path}(目标 trained_at={shown})"
+
+    base_at, target_at = parse_trained_at(base_raw), parse_trained_at(target_raw)
+    if target_at is None:
+        return [Row(WARN, line + " — 目标盘看不出是什么,服务可能加载失败")]
+    if base_at is not None and target_at < base_at:
+        return [Row(WARN, line + f" — ⚠️ 比 base 自己的 {base_raw} 更旧:"
+                                 f"指针把服务指回了一个更老的模型")]
+    return [Row(NOTE, line)]
 
 
 # ---------------------------------------------------------------- B. daemon
@@ -118,8 +156,16 @@ def daemon_rows(url: str | None = None, timeout: float = 5.0) -> list[Row]:
         return [Row(FAIL, f"daemon 正在服 {h.get('artifact_base_path')},"
                           f"预期 {EXPECTED_SERVING_ARTIFACT} — .env 改了但 daemon 没热载? "
                           f"修: launchctl kickstart -k gui/$(id -u)/com.nutmeg.api_server")]
-    return [Row(OK, f"daemon 正在服 {h.get('artifact_path')}"
+    rows = [Row(OK, f"daemon 正在服 {h.get('artifact_path')}"
                     f"(trained_at={h.get('trained_at_utc')}, {h.get('model_type')})")]
+    # 磁盘侧的重定向注记量的是**磁盘**;daemon 有自己的 mtime 缓存,可能还没
+    # 跟上。所以这条问的是跑着的进程自己怎么说 —— 用 `artifact_redirected`
+    # 字段而不是拿 base/path 做字符串比较(相对 vs 绝对路径会假阳)。
+    # `is True` 而不是真值判断:旧后端没这个字段,「没告诉我」不等于「重定向了」。
+    if h.get("artifact_redirected") is True:
+        rows.append(Row(NOTE, f"daemon 侧 Layer B 指针生效: "
+                              f"{h.get('artifact_base_path')} -> {h.get('artifact_path')}"))
+    return rows
 
 
 # -------------------------------------------------------------------- 出口

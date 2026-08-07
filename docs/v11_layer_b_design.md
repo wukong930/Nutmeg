@@ -137,6 +137,16 @@ CREATE TABLE IF NOT EXISTS retrain_journal (
 
 ### CLI surface (mirrors `nutmeg-auto-calibration`)
 
+> ⚠️ **2026-08-07 更正(原文保留)** — 下面这几条的 `--artifact-base
+> data/v4_model_layer_b` 是**错的**,和本文档 §1 自己写的架构矛盾:`--artifact-base`
+> 是**服务读的那个生产 artifact 目录**(指针文件写在它里面),当前 =
+> `data/v4_model_cat`;`data/v4_model_layer_b/` 是候选盘**存放**的地方,走
+> `--candidate`。照抄会把指针写进一个服务不读的 base ⇒ 部署静默不可见
+> (`redirected=False`、`artifact_is_expected=True`、health_check.sh §18 一行 OK)。
+> CLI 现在会先和 `routes.EXPECTED_SERVING_ARTIFACT` 比对再干活,不一致直接拒,
+> 所以照抄的后果已经从「静默错」变成「当场红」。可跑的示例见
+> `apps/api/src/nutmeg/v4/cli/auto_retrain.py` 的模块文档字符串。
+
 ```bash
 # Dry-run propose: train a candidate, evaluate, write journal entry
 # but don't swap the live artifact

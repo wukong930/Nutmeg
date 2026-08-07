@@ -604,6 +604,16 @@ class HealthResponse(BaseModel):
     artifact_base_path: Optional[str] = None      # pre-Layer-B dir
     artifact_path_source: Optional[str] = None    # "env" | "default"
 
+    # 2026-08-07 (follow-up) — `artifact_is_expected` judges the BASE, and a
+    # Layer B pointer legitimately redirects away from it. That exemption says
+    # nothing about the *target*: a pointer at the right base aimed at the
+    # 2025-06 LightGBM reads `artifact_is_expected=True`, `status="ok"`.
+    # This field is what makes "a redirect is in effect" reportable at all;
+    # `artifact_path` + `trained_at_utc` then say where to and how fresh.
+    # Required, same reason as above: a branch that forgets it would report
+    # falsy = "no redirect", which is the reassuring answer.
+    artifact_redirected: bool
+
     trained_at_utc: Optional[str] = None
     training_cutoff: Optional[str] = None
     n_teams: Optional[int] = None

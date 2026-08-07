@@ -364,10 +364,20 @@ def write_artifact_pointer(
     cache and redirects to ``artifact_path``.
 
     Atomic: writes to a tempfile + os.replace().
+
+    ⛔ 2026-08-07: `base_dir` **必须已经存在**,不再 `mkdir(parents=True)`。
+    这个指针是写进**生产 artifact 目录**里的(模型文件就住在那儿),所以一个
+    不存在的 base 不可能是服务在读的那个目录 —— 自动建出来的唯一效果是让部署
+    **看起来成功而实际不可见**:服务侧 `redirected=False`、
+    `artifact_is_expected=True`、§18 一行 OK。拼错一个目录名就足够触发,
+    而且没有任何东西会响。宁可在这里抛。
     """
     import os
     base = Path(base_dir)
-    base.mkdir(parents=True, exist_ok=True)
+    if not base.is_dir():
+        raise NotADirectoryError(
+            f"artifact base 不存在: {base} —— 拒绝创建。指针必须写进服务真正读的"
+            f"那个生产 artifact 目录;凭空建一个只会写出没人读的指针。")
     target = base / LIVE_ARTIFACT_POINTER_FILENAME
     tmp = target.with_suffix(".tmp")
     payload = {
@@ -386,6 +396,56 @@ def write_artifact_pointer(
     tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
     os.replace(tmp, target)
     return target
+
+
+def artifact_trained_at(artifact_dir: Path | str) -> Optional[str]:
+    """``trained_at_utc`` out of an artifact dir's metadata.json, or None.
+
+    None means **"could not tell"** — dir missing, no metadata.json, unparsable
+    JSON, or an artifact predating `47435ce` (which had no such key). It does
+    NOT mean "fresh" and it does NOT mean "stale". Callers must keep those
+    three apart: this project's recurring bug is a check whose "can't tell"
+    reads as "fine".
+
+    ⛔ No mtime fallback here on purpose. `cli/data_freshness.py` has one and
+    it is right there — it asks "how long since we retrained", where a rsync'd
+    file date is a usable proxy. Here the question is "which of these two
+    artifacts is older", and a copy date answers a different question: `cp -r`
+    an ancient model into a new dir and it becomes the newest thing on disk.
+    """
+    meta = Path(artifact_dir) / "metadata.json"
+    try:
+        raw = json.loads(meta.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    # Two shapes in the wild: persist.save_artifact() nests the training
+    # metadata under "metadata"; some older/hand-built dirs put it flat.
+    inner = raw.get("metadata")
+    value = (inner or {}).get("trained_at_utc") if isinstance(inner, dict) else None
+    value = value if value is not None else raw.get("trained_at_utc")
+    return str(value) if value else None
+
+
+def parse_trained_at(value: Optional[str]) -> Optional[dt.datetime]:
+    """ISO ``trained_at_utc`` → aware datetime, or None if unparsable.
+
+    Naive timestamps are read as UTC (the key is named `_utc` and
+    `cli/train.py` always writes an offset; this only covers hand-edited dirs).
+
+    ⛔ Exists so nobody compares the raw strings. Lexicographic order is only
+    correct while both sides carry the *same* offset — true for everything
+    `cli/train.py` writes today, which is exactly the shape of guard that
+    passes silently on the one case it was built for.
+    """
+    if not value:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.UTC)
 
 
 def load_artifact_pointer(base_dir: Path | str) -> Optional[dict]:

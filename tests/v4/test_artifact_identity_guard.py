@@ -164,6 +164,119 @@ def test_layer_b_redirect_from_expected_base_stays_expected(monkeypatch, tmp_pat
         "把判据算在生效路径上了 —— Layer B 一部署就会误报红")
 
 
+def _artifact_meta(path: Path, trained_at: str) -> Path:
+    """给一个目录装上 `metadata.json`,形状对齐 `persist.save_artifact()`。
+
+    Layer B 的目标盘是否「更旧」全靠这个文件回答,所以测试里也必须真写文件 ——
+    这些用例问的正是「磁盘上那个盘是什么」。
+    """
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "metadata.json").write_text(json.dumps(
+        {"metadata": {"trained_at_utc": trained_at}, "feature_columns": ["f0"]}))
+    return path
+
+
+class TestRedirectTargetIsVisible:
+    """⭐ 身份闸判 base 是**刻意**的(指针文件就住在 base 里,base 对了才是指针
+    可信的理由)—— 但那条豁免此前对**目标**零约束。
+
+    审查实测(2026-08-07):用出厂 CLI 把 `data/v4_model_cat` 的指针写成指向
+    `data/v4_model`(2026-05-22 的退役 LightGBM),`/health` 回
+    `artifact_is_expected: true` / `status: ok` / `detail: null`,§18 exit 0 并
+    打印一行 OK **点名那个陈旧盘**。判据不改(改了 Layer B 每次部署都误报红,
+    而误报的护栏最后会被删掉),补的是**目标的可见性**。
+    """
+
+    STALE, LIVE = "2026-05-22T06:17:04+00:00", "2026-07-15T06:19:12+00:00"
+
+    def _redirect(self, monkeypatch, tmp_path, target_trained_at):
+        base = _artifact_meta(tmp_path / "serving_base", self.LIVE)
+        target = _artifact_meta(tmp_path / "elsewhere" / "target",
+                                target_trained_at) \
+            if target_trained_at else (tmp_path / "elsewhere" / "target")
+        target.mkdir(parents=True, exist_ok=True)
+        (base / LIVE_ARTIFACT_POINTER_FILENAME).write_text(
+            json.dumps({"version": "v_x", "artifact_path": str(target)}))
+        monkeypatch.setattr(routes, "EXPECTED_SERVING_ARTIFACT", str(base))
+        monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", str(base))
+        routes._pointer_cache.clear()
+        return base, target
+
+    def test_a_pointer_at_an_older_artifact_is_warned_not_noted(
+            self, monkeypatch, tmp_path):
+        """⭐ 承重条。WARN 而不是 NOTE —— 两者在 bash 侧都不改退出码(只有
+        `fail()` 设 EXIT_CODE=1),差的是看得见的程度:`note()` 是灰色暗字,
+        在整段体检里就是背景噪音。也不判红:显式 `--override-identity` 的人是
+        故意的,判红就是假红。拦截在部署侧,这里只负责看得见。
+        """
+        base, target = self._redirect(monkeypatch, tmp_path, self.STALE)
+        rows = ai.disk_rows()
+
+        assert [r.severity for r in rows] == [ai.OK, ai.WARN], rows
+        assert str(target) in rows[1].message, "没说指到哪"
+        assert self.STALE in rows[1].message, "没说目标盘多新 —— 「指到哪」还差一半"
+
+    def test_a_pointer_at_a_newer_artifact_stays_a_note(self, monkeypatch, tmp_path):
+        """反向,防假红:Layer B 正常部署(候选更新)不该让体检变吵。
+
+        没有这一条,上面那条也可能只是因为**一重定向就 WARN** —— 「逮到了」和
+        「见谁咬谁」在单个断言上分不出来。
+        """
+        base, target = self._redirect(monkeypatch, tmp_path, "2026-10-01T00:00:00+00:00")
+        rows = ai.disk_rows()
+
+        assert [r.severity for r in rows] == [ai.OK, ai.NOTE], rows
+        assert str(target) in rows[1].message
+        assert "2026-10-01" in rows[1].message
+
+    def test_a_pointer_at_a_dir_with_no_metadata_is_warned(self, monkeypatch, tmp_path):
+        """目标目录存在但没有 metadata ⇒ 服务会重定向过去然后加载失败。
+        「读不到」既不是新也不是旧,必须说出来,不能沉默成 NOTE。"""
+        base, target = self._redirect(monkeypatch, tmp_path, None)
+        rows = ai.disk_rows()
+
+        assert [r.severity for r in rows] == [ai.OK, ai.WARN], rows
+        assert str(target) in rows[1].message
+
+    def test_health_reports_the_redirect_as_a_field(self, monkeypatch, tmp_path):
+        """`/health` 必须把「重定向了没有」当成**字段**给出来。
+
+        消费方拿 base 和 path 做字符串比较是错的:`.env` 写相对路径而
+        `run_local_server.sh` 导出绝对路径,两者指同一个目录时字符串并不相等
+        (`_same_dir` 存在就是为了这个)⇒ 字符串比较会把「没重定向」读成
+        「重定向了」。
+        """
+        base, target = self._redirect(monkeypatch, tmp_path, self.STALE)
+        body = _client().get("/api/v4-test/v4/health").json()
+
+        assert body["artifact_is_expected"] is True, "判据被改成生效路径了 —— 会假红"
+        assert body["artifact_redirected"] is True
+        assert body["artifact_base_path"] == str(base)
+        assert body["artifact_path"] == str(target)
+
+    def test_health_says_not_redirected_when_there_is_no_pointer(
+            self, monkeypatch, tmp_path):
+        base = _artifact_meta(tmp_path / "serving_base", self.LIVE)
+        monkeypatch.setattr(routes, "EXPECTED_SERVING_ARTIFACT", str(base))
+        monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", str(base))
+        routes._pointer_cache.clear()
+
+        body = _client().get("/api/v4-test/v4/health").json()
+        assert body["artifact_redirected"] is False
+
+    def test_health_response_refuses_to_be_built_without_a_redirect_verdict(self):
+        """`artifact_redirected` 没有默认值 —— 同 `artifact_is_expected` 的理由:
+        漏填会**静默**落成 falsy,而 falsy 读作「没有重定向」,恰好是让人放心的
+        那个答案。"""
+        from pydantic import ValidationError
+
+        from nutmeg.v4.api.schemas import HealthResponse
+
+        with pytest.raises(ValidationError):
+            HealthResponse(status="ok", artifact_loaded=True,
+                           artifact_path="x", artifact_is_expected=True)
+
+
 def test_layer_b_redirect_from_an_unexpected_base_is_still_flagged(
         monkeypatch, tmp_path):
     """反向:base 不对时,指针不能把它「洗白」。"""
@@ -430,10 +543,11 @@ class TestDiskVerdict:
         assert routes.EXPECTED_SERVING_ARTIFACT in rows[0].message
 
     def test_layer_b_redirect_adds_a_note(self, monkeypatch, tmp_path):
-        base = tmp_path / "base"
-        base.mkdir()
-        target = tmp_path / "lb"
-        target.mkdir()
+        # 两个盘都得有 metadata:2026-08-07 起「目标盘读不到 trained_at_utc」
+        # 自己就是一条 WARN(服务会重定向过去然后加载失败)。这条用例问的是
+        # **健康的重定向**不该吵,所以场景要造完整 —— 见 TestRedirectTargetIsVisible。
+        base = _artifact_meta(tmp_path / "base", "2026-07-15T06:19:12+00:00")
+        target = _artifact_meta(tmp_path / "lb", "2026-10-01T00:00:00+00:00")
         (base / LIVE_ARTIFACT_POINTER_FILENAME).write_text(
             json.dumps({"version": "v", "artifact_path": str(target)}))
         monkeypatch.setattr(routes, "EXPECTED_SERVING_ARTIFACT", str(base))
@@ -546,6 +660,40 @@ class TestDaemonVerdict:
             stop()
         assert [r.severity for r in rows] == [ai.OK], rows
 
+    def test_a_live_redirect_gets_its_own_row(self):
+        """daemon 侧也要说清「指到哪」—— 它有自己的 mtime 缓存,磁盘侧的注记
+        量的是磁盘,推不出跑着的进程已经跟上了。"""
+        url, stop = self._json({
+            "status": "ok", "artifact_loaded": True,
+            "artifact_is_expected": True,
+            "artifact_base_path": "data/v4_model_cat",
+            "artifact_path": "data/v4_model_layer_b/v_2026-Q4",
+            "artifact_redirected": True,
+            "trained_at_utc": "2026-10-01T00:00:00+00:00",
+            "model_type": "catboost"})
+        try:
+            rows = ai.daemon_rows(url, timeout=2.0)
+        finally:
+            stop()
+        assert [r.severity for r in rows] == [ai.OK, ai.NOTE], rows
+        assert "data/v4_model_layer_b/v_2026-Q4" in rows[1].message
+        assert "data/v4_model_cat" in rows[1].message
+
+    def test_an_older_backend_without_the_field_does_not_claim_a_redirect(self):
+        """`is True` 而不是真值判断:旧后端没这个字段,「没告诉我」不等于
+        「重定向了」—— 同 dashboard 那条 `!== false` 的理由,方向相反。"""
+        url, stop = self._json({
+            "status": "ok", "artifact_loaded": True,
+            "artifact_is_expected": True,
+            "artifact_path": "data/v4_model_cat",
+            "trained_at_utc": "2026-07-15T06:19:12+00:00",
+            "model_type": "catboost"})
+        try:
+            rows = ai.daemon_rows(url, timeout=2.0)
+        finally:
+            stop()
+        assert [r.severity for r in rows] == [ai.OK], rows
+
 
 class TestModuleEntryPoint:
     def test_exit_code_is_one_when_anything_failed(self, monkeypatch, capsys):
@@ -637,6 +785,45 @@ class TestArtifactLiteralsAgree:
         bad = [m for m in re.findall(r"data/v4_model[A-Za-z0-9_/-]*", code)
                if m != routes.EXPECTED_SERVING_ARTIFACT and m not in self._ALLOWED_OTHERS]
         assert not bad, f"{rel} 里的 {sorted(set(bad))} 与声明的生产盘不一致"
+
+    def test_layer_b_usage_examples_name_the_serving_base(self):
+        """换盘清单第 10 条 —— **补充性**的文本断言,承重的是
+        `test_auto_retrain.py::TestDeployTargetIdentity`(真跑 CLI 看退出码)。
+
+        为什么需要它:上面那条 AST 断言**逮不到**这里。用法示例在模块的文档
+        字符串里,`ast.Constant` 的值是整段 docstring,`startswith("data/v4_model")`
+        直接漏过 —— 把这个文件加进 `_PY_SITES` 只会给出虚假的覆盖。
+
+        2026-08-07 之前这两行写的是 `--artifact-base data/v4_model`:照抄就把
+        Layer B 的指针写进一个服务不读的 base,部署静默不可见。
+        """
+        rel = "apps/api/src/nutmeg/v4/cli/auto_retrain.py"
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        bad = [m for m in re.findall(r"--artifact-base\s+(data/[A-Za-z0-9_/-]+)", text)
+               if m != routes.EXPECTED_SERVING_ARTIFACT]
+        assert not bad, (
+            f"{rel} 的 --artifact-base 用法示例指向 {sorted(set(bad))},"
+            f"而服务读的是 {routes.EXPECTED_SERVING_ARTIFACT!r}")
+
+    def test_the_deploy_path_asks_the_same_question_serving_asks(self):
+        """⭐ 行为断言:`do_deploy` 判「这是不是服务读的那个 base」时,用的必须是
+        `routes` 里那个**同一个**判断,而不是自己抄一份。
+
+        两份拷贝的后果不是「代码重复」,是**读写两侧静默地各判各的** —— 而写侧
+        判错的表现形式恰好是「一切正常」。这里把声明值 monkeypatch 走,再看
+        `_deploy_target_problems` 的判词有没有跟着变:抄了一份的实现不会跟。
+        """
+        from nutmeg.v4.cli.auto_retrain import _deploy_target_problems
+
+        real = Path(routes.EXPECTED_SERVING_ARTIFACT).resolve()
+        assert not any("不是服务读的那个盘" in p
+                       for p in _deploy_target_problems(real, candidate=None))
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(routes, "EXPECTED_SERVING_ARTIFACT", str(REPO_ROOT / "data/nope"))
+            assert any("不是服务读的那个盘" in p
+                       for p in _deploy_target_problems(real, candidate=None)), (
+                "改了声明值,部署侧的判词没变 —— 它没在读 routes 的声明")
 
     def test_the_bet_generating_cli_actually_loads_the_expected_artifact(
             self, monkeypatch, tmp_path):
