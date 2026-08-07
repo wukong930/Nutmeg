@@ -125,6 +125,36 @@ _ZH_OVERRIDES: dict[str, str] = {
     "圣吉尔联合": "Union St. Gilloise",
     "刚果(金)": "Congo DR",
     "刚果（金）": "Congo DR",
+    # 2026-08-07 面板报「竞彩在售、但没进盘面 6/39」。查完 12 支队,**没有一支
+    # 缺在 team_name_zh.py** —— 全是竞彩换了另一种中文写法,所以整批都是 ① 类。
+    # ⭐ 英文值照抄 odds_snapshots 里那条线(join 目标本身),配对靠**赛事身份**:
+    #   长崎航海    ← 2026-08-09 JPN_J1 `V-varen Nagasaki vs Kyoto Sanga`,
+    #                 锚=京都不死鸟(已解析),当日 J1 唯一以它为客的场次。
+    #                 主词典写「V法伦长崎」。
+    #   PSV埃因霍温 ← 2026-08-08 NED_EREDIVISIE `PSV Eindhoven vs Fortuna Sittard`。
+    #   福图纳锡塔德 ↑ 同一场。这场两侧都没解析,靠**排除法**定的:当日荷甲 4 场,
+    #                 另 3 场(AZ/ADO、前进之鹰/威廉二世、奈梅亨/特尔斯达)两侧
+    #                 都已在词典、都进了盘面,只剩这一场。主词典写「埃因霍温」「锡塔德」。
+    #   里斯本竞技  ← 2026-08-08 PRT_PRIMEIRA_LIGA `Estrela vs Sporting CP`,
+    #                 锚=阿马多拉(本表已有 → Estrela)。主词典写「葡萄牙体育」。
+    #                 ⚠️ 别和 `Sporting`/`Sporting Gijon`→希洪竞技 搞混,是不同队。
+    #   德累斯顿    ← 2026-08-09 GER_2_BUNDESLIGA `1. FC Nürnberg vs Dynamo Dresden`,
+    #                 锚=纽伦堡(已解析)。主词典写「德累斯顿迪纳摩」。
+    # 撞车检查:这 5 个中文名在 TEAM_NAME_ZH 值集合与本表里都没被别的队占用(0 冲突)。
+    #
+    # ⛔ 同批**故意不补**日乙那两场(大宫松鼠RB vs 新潟天鹅、山形山神 vs 栃木城):
+    #   1. `JPN_J2` 在 odds_snapshots 里**历史总行数 = 0**(Pinnacle 不覆盖,
+    #      对应体检 §10 的 `JPN_J2 sport_key ✗`)⇒ 无法用赛事身份锚定,
+    #      而且**补了也进不了盘面** —— 没有 psc 就算不出 EV。
+    #   2. `栃木城` 有**真歧义**:词典里 `Tochigi City → 枥木城市` 和
+    #      `Tochigi SC → 枥木` 两条都在,竞彩这个写法两边都能讲通。
+    #      按字面猜正是「错映射=静默污染,比缺映射更坏」那条红线。
+    #   ⇒ 等 J2 有了 sport_key(或竞彩/皇冠档案能提供锚)再补。
+    "长崎航海": "V-varen Nagasaki",
+    "PSV埃因霍温": "PSV Eindhoven",
+    "福图纳锡塔德": "Fortuna Sittard",
+    "里斯本竞技": "Sporting CP",
+    "德累斯顿": "Dynamo Dresden",
     # 芬超 Veikkausliiga — 竞彩 uses descriptive 中文 (坦佩雷山猫=Tampere Lynx=Ilves,
     # 赫尔辛基火花=Helsinki Spark=Gnistan) that TEAM_NAME_ZH lacks. Aligned to the live
     # 市场模式 (cup-market) gather name by pairing each 竞彩 match to its fixture
