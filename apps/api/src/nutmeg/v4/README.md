@@ -97,8 +97,11 @@ PYTHONPATH=apps/api/src python -m pytest tests/v4/
 V4 也通过 FastAPI 暴露 HTTP 接口（挂载在 `/api/v4/*`）：
 
 ```bash
-# 启动 server（自动加载 data/v4_model artifact；artifact 路径可通过
-# NUTMEG_V4_ARTIFACT_PATH 环境变量覆盖）
+# 启动 server（自动加载 data/v4_model_cat artifact；artifact 路径可通过
+# NUTMEG_V4_ARTIFACT_PATH 环境变量覆盖 —— 生产 .env 就是这么设的）
+# ⚠️ 上面第 2 步的 `--out data/v4_model` 是**训练输出**路径，与这里的服务输入
+# 路径不是一回事，别对齐它俩。服务盘是不是预期的那个，看 /api/v4/health 的
+# artifact_is_expected 字段（scripts/health_check.sh §18 会判红）。
 cd /Users/ninoo/Nutmeg && PYTHONPATH=apps/api/src nutmeg-api
 
 # 健康检查

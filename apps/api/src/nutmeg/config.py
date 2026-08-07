@@ -25,7 +25,16 @@ class Settings(BaseSettings):
 
     env: str = "local"
     competition_config_dir: str = "configs/competitions"
-    v4_artifact_path: str = "data/v4_model"
+    # ⚠️ 2026-08-07: nothing reads this field — serving resolves its artifact in
+    # `nutmeg.v4.api.routes` (EXPECTED_SERVING_ARTIFACT / DEFAULT_ARTIFACT_PATH),
+    # not here. It is kept only so `NUTMEG_V4_ARTIFACT_PATH` stays a declared
+    # setting rather than an `extra="ignore"` no-op. The value was
+    # `data/v4_model` — 4,871 fixtures behind production — which was harmless
+    # precisely because it was dead, and would have become a live footgun the
+    # moment someone wired it up believing it was already the real default.
+    # If you make this field load-bearing, delete routes.py's constants and
+    # point them here; do not leave two defaults.
+    v4_artifact_path: str = "data/v4_model_cat"
     v4_observation_db: str = "data/v4_observation.db"
     log_level: str = "INFO"
 

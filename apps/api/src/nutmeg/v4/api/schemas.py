@@ -589,6 +589,21 @@ class HealthResponse(BaseModel):
     status: Literal["ok", "degraded", "error"]
     artifact_loaded: bool
     artifact_path: Optional[str] = None
+
+    # 2026-08-07 — "did an artifact load?" and "is it the one we meant?" are
+    # different questions. `status`/`artifact_loaded` answer the first (can I
+    # serve at all); these four answer the second (am I serving the right
+    # model). The stale-default hole survived because only the first was ever
+    # asked, and the wrong artifact answers it in the affirmative.
+    #
+    # `artifact_is_expected` has NO default on purpose: every construction site
+    # must state a verdict, so a future branch cannot forget it into None and
+    # have a falsy reading pass for "fine".
+    artifact_is_expected: bool
+    expected_artifact_path: Optional[str] = None
+    artifact_base_path: Optional[str] = None      # pre-Layer-B dir
+    artifact_path_source: Optional[str] = None    # "env" | "default"
+
     trained_at_utc: Optional[str] = None
     training_cutoff: Optional[str] = None
     n_teams: Optional[int] = None

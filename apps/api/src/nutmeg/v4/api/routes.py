@@ -16,7 +16,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -110,7 +110,46 @@ router = APIRouter(prefix="/v4", tags=["v4"])
 
 # ---------- Artifact loader (lazy + thread-safe) ------------------------
 
-DEFAULT_ARTIFACT_PATH = "data/v4_model"
+# The ONE declared production artifact. This is a *declaration*, not a knob:
+# `.env`'s NUTMEG_V4_ARTIFACT_PATH is what actually gets served, and this is
+# what we expect that to be. Disagreement is the alarm
+# (`/health.artifact_is_expected=False`, health_check.sh §18 red).
+#
+# 2026-08-07: this replaces a bare `DEFAULT_ARTIFACT_PATH = "data/v4_model"`
+# that was 4,871 fixtures behind production. Two mechanisms (launchd's explicit
+# `source .env` + `load_dotenv()` walking up the tree) kept it from firing, so
+# nothing was ever mis-served — but had `.env` gone missing, serving would have
+# silently dropped to the 2025-06 LightGBM baseline with `artifact_loaded=True`,
+# `status="ok"` and every health signal still green. Same family as the
+# 涓流-END-is-a-constant bug: the check's premise was never itself checked.
+#
+# 🚨 换盘不是「改这一行 + `.env`」两处。审查实测(2026-08-07):这个常量只管
+# **读的那条路**(面板 / `/health` / 所有预测端点)。**真正生成注单的那条路不读它,
+# 也不读环境变量** —— 已安装的 `com.nutmeg.morning_recommend` /
+# `com.nutmeg.daily_recommend` 跑 `python -m nutmeg.v4.cli.recommend` 且**不传
+# `--model`**,吃的是各 CLI 自己的 argparse 默认值;`load_artifact()` 只接 `in_dir`,
+# 不读 env、不读 config、不看 Layer B 指针。只改这里 + `.env` 的结果是:
+# **闸全绿,而 owner 实际下注依据的注单出自退役模型**。绿灯成了错误的背书。
+#
+# ⇒ 换盘的完整清单(`tests/v4/test_artifact_identity_guard.py::TestArtifactLiteralsAgree`
+#    会把它们逐个钉死,漏一处就红):
+#      1. 这一行 `EXPECTED_SERVING_ARTIFACT`
+#      2. `.env` 的 NUTMEG_V4_ARTIFACT_PATH   ← 未提交,须手改
+#      3. `.env.example`                       (装机模板)
+#      4. `cli/recommend.py`  `--model` 默认   ← 💰 出注 cron 吃这个
+#      5. `cli/recommend_pool.py` `--model` 默认
+#      6. `cli/rec.py` 三处交互默认(单关/串关/复式)
+#      7. `cli/data_freshness.py` 供应链探针兜底
+#      8. `scripts/run_local_server.sh` 兜底
+#      9. `scripts/setup_local_pipeline.sh` ARTIFACT_DIR
+#   豁免:`cli/roi_backtest.py` 的 LINEUP_ARTIFACT 是显式 A/B 的另一臂,故意不同。
+EXPECTED_SERVING_ARTIFACT = "data/v4_model_cat"
+
+# Fallback when NUTMEG_V4_ARTIFACT_PATH is unset. Bound to the *same symbol* on
+# purpose — a second literal here is exactly what went stale last time, and one
+# literal cannot drift from itself.
+DEFAULT_ARTIFACT_PATH = EXPECTED_SERVING_ARTIFACT
+
 _artifact_cache: dict[str, V4Artifact] = {}
 _load_lock = Lock()
 
@@ -122,8 +161,25 @@ _load_lock = Lock()
 _pointer_cache: dict[str, tuple[float, str | None]] = {}
 
 
-def _artifact_path() -> str:
-    """Resolve the effective artifact directory.
+class ArtifactResolution(NamedTuple):
+    """How serving arrived at the directory it is about to load.
+
+    ``path`` is what actually gets loaded; ``base`` is the pre-Layer-B dir;
+    ``source`` says whether a human configured it (``"env"``) or we fell back
+    to the compiled-in default (``"default"``). Keeping ``source`` is the
+    point: "which artifact" and "who chose it" are different questions, and
+    only the second one distinguishes a healthy deploy from a `.env` that
+    quietly went missing.
+    """
+
+    path: str
+    base: str
+    source: str          # "env" | "default"
+    redirected: bool     # Layer B pointer took effect
+
+
+def _resolve_artifact() -> ArtifactResolution:
+    """Resolve the effective artifact directory, keeping its provenance.
 
     Precedence:
       1. ``NUTMEG_V4_ARTIFACT_PATH`` env var → that path (existing V5 W11 behavior)
@@ -135,7 +191,13 @@ def _artifact_path() -> str:
     the redirect is mtime-cached so the next request post-deploy
     serves the new artifact without restart.
     """
-    base = os.environ.get("NUTMEG_V4_ARTIFACT_PATH", DEFAULT_ARTIFACT_PATH)
+    env_base = os.environ.get("NUTMEG_V4_ARTIFACT_PATH")
+    base = env_base if env_base else DEFAULT_ARTIFACT_PATH
+    source = "env" if env_base else "default"
+
+    def _res(path: str) -> ArtifactResolution:
+        return ArtifactResolution(path, base, source, path != base)
+
     from nutmeg.v4.observation.auto_retrain import (
         LIVE_ARTIFACT_POINTER_FILENAME,
         load_artifact_pointer,
@@ -145,20 +207,56 @@ def _artifact_path() -> str:
         mtime = pointer_path.stat().st_mtime
     except FileNotFoundError:
         _pointer_cache.pop(base, None)
-        return base
+        return _res(base)
     cached = _pointer_cache.get(base)
     if cached and cached[0] == mtime:
-        return cached[1] or base
+        return _res(cached[1] or base)
     pointer = load_artifact_pointer(base)
     if pointer is None:
         _pointer_cache[base] = (mtime, None)
-        return base
+        return _res(base)
     target = pointer.get("artifact_path")
     if target and Path(target).is_dir():
         _pointer_cache[base] = (mtime, target)
-        return target
+        return _res(target)
     _pointer_cache[base] = (mtime, None)
-    return base
+    return _res(base)
+
+
+def _artifact_path() -> str:
+    """The directory serving will actually load. Thin view of _resolve_artifact()."""
+    return _resolve_artifact().path
+
+
+def _same_dir(a: str, b: str) -> bool:
+    """Compare two directory paths by normalized absolute form.
+
+    Deliberately tolerant of the relative/absolute split we actually ship with:
+    `.env` carries ``data/v4_model_cat`` while ``run_local_server.sh`` exports
+    ``$REPO_ROOT/data/v4_model_cat``. Both name the same directory and both are
+    correct. Does NOT require either path to exist — see artifact_is_expected().
+    """
+    try:
+        return Path(a).expanduser().resolve() == Path(b).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def artifact_is_expected() -> bool:
+    """Is serving pointed at the declared production artifact?
+
+    Judged on the BASE dir, not the effective one: a Layer B
+    ``live_artifact_pointer.json`` legitimately redirects away from the base,
+    and that pointer file lives *inside* the base — so an expected base is
+    precisely what makes the redirect trustworthy.
+
+    ⛔ Deliberately does NOT consult whether the directory exists, nor whether
+    an artifact loaded. Those are the two proxies that let the stale-default
+    hole survive undetected: `data/v4_model` exists and loads perfectly, it is
+    just the wrong model. "It loaded" and "it is the one we meant" are
+    different propositions and only the second one is worth checking.
+    """
+    return _same_dir(_resolve_artifact().base, EXPECTED_SERVING_ARTIFACT)
 
 
 def _observation_db_path() -> Optional[str]:
@@ -290,14 +388,33 @@ def clear_artifact_cache() -> None:
 
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    path = _artifact_path()
+    res = _resolve_artifact()
+    path = res.path
+    expected = artifact_is_expected()
+    # `status` stays a LIVENESS verdict ("can I serve?"). Identity is reported
+    # alongside it rather than folded into it: they fail independently and for
+    # different reasons, and a config that serves the wrong-but-loadable model
+    # is precisely the case where collapsing them loses the signal.
+    # scripts/health_check.sh §18 is what turns artifact_is_expected=False red.
+    identity = dict(
+        artifact_is_expected=expected,
+        expected_artifact_path=EXPECTED_SERVING_ARTIFACT,
+        artifact_base_path=res.base,
+        artifact_path_source=res.source,
+    )
+    mismatch = None if expected else (
+        f"serving artifact base {res.base!r} (source={res.source}) is not the "
+        f"declared production artifact {EXPECTED_SERVING_ARTIFACT!r}"
+    )
     art = get_artifact()
     if art is None:
         return HealthResponse(
             status="degraded",
             artifact_loaded=False,
             artifact_path=path,
-            detail=f"artifact not found at {path}; run `python -m nutmeg.v4.cli.train`",
+            detail=f"artifact not found at {path}; run `python -m nutmeg.v4.cli.train`"
+                   + (f" · {mismatch}" if mismatch else ""),
+            **identity,
         )
     n_teams = sum(len(teams) for teams in art.team_state.values())
     return HealthResponse(
@@ -309,6 +426,8 @@ def health() -> HealthResponse:
         n_teams=n_teams,
         n_leagues=len(art.team_state),
         model_type=art.model_type,
+        detail=mismatch,
+        **identity,
     )
 
 

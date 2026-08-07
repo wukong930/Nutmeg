@@ -480,6 +480,40 @@ else
 fi
 
 
+# ===== 18. 服务盘一致性 (artifact identity — 判闸) =====
+# 起因(2026-08-07):serving 的兜底盘常量是 `data/v4_model`(落后生产 4,871 场的
+# 老 LightGBM),生产靠 .env 的 NUTMEG_V4_ARTIFACT_PATH 顶着。.env 一丢 ⇒ 静默降级:
+# artifact 照样 load、/health 照样 ok、model_type 照样有值 —— **没有任何东西会响**。
+# ⚠️ 与 §1 的分工:§1 问「.env 在不在」,本节问「服务的是不是我们指定的那个盘」。
+# ⛔ 判据**不用**「目录存在」也**不用** artifact_loaded —— 老盘两样都满足,它只是错的盘。
+# 两问独立、都要问:
+#   A. 磁盘上的配置对不对(不需要 server 在跑)
+#   B. **跑着的 daemon** 服的对不对(daemon 不热载 .env,改完不 kickstart 就还是旧的)
+# 与 §13–§17 不同:本节**是判闸**,红了就该拦。
+# ⚠️ 判断逻辑**不在这里** —— 在 `nutmeg.v4.cli.artifact_identity`。
+# 第一版把它写成本节内嵌的 python heredoc,结果它唯一能被测的就只剩「脚本源码里
+# 有没有某个字符串」= 语法代理,实测双向失效(改措辞假红 / 改段号抛 ValueError /
+# 多一个空格假红),而**没有任何测试真的执行过它**。搬进模块后,判断被逐条行为
+# 断言(tests/v4/test_artifact_identity_guard.py),本节只剩「判词 → 严重性」的映射。
+section "18. 服务盘一致性 (artifact identity)"
+ART_OUT="$(PYTHONPATH=apps/api/src .venv/bin/python -m nutmeg.v4.cli.artifact_identity 2>/dev/null)"
+if [[ -z "$ART_OUT" ]]; then
+  # ⛔ 不许静默通过:这一节 import 的就是 API server 自己那份代码,它 import 不起来
+  # 等于 server 也起不来。「查不了」在这里必须红,不能降级成 warn。
+  fail "服务盘一致性检查跑不起来(包未装 / import 失败)— 未验证,按红处理"
+else
+  while IFS=$'\t' read -r sev msg; do
+    [[ -z "$sev" ]] && continue
+    case "$sev" in
+      OK)   ok   "$msg" ;;
+      WARN) warn "$msg" ;;
+      FAIL) fail "$msg" ;;
+      *)    note "$msg" ;;
+    esac
+  done <<< "$ART_OUT"
+fi
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
