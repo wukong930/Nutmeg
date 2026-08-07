@@ -2131,6 +2131,8 @@ const I18N = {
     health_obsdb:     '观测库',
     health_teams:     '球队',
     health_settled:   '已结算',
+    health_wrong_artifact: '服务盘不对',
+    health_expected:  '预期',
     health_off:       '未就绪',
     health_offline:   'API 离线',
     health_offline_tip: '后端服务未连接。等服务恢复后页面会自动刷新。',
@@ -2679,6 +2681,8 @@ const I18N = {
     health_obsdb:     'Obs DB',
     health_teams:     'teams',
     health_settled:   'settled',
+    health_wrong_artifact: 'wrong artifact',
+    health_expected:  'expected',
     health_off:       'not ready',
     health_offline:   'API offline',
     health_offline_tip: 'Backend service not connected. The page will refresh automatically once it comes back.',
@@ -3587,12 +3591,26 @@ async function loadHealth() {
     ]);
     const coreOk = coreRes.status === 'ok';
     const obsOk = obsRes.status === 'ok';
+    // ⚠️ 2026-08-07:身份闸(artifact_is_expected)必须在这里被读。
+    // `status` 是**存活**判词,服务盘换成另一个能 load 的错模型时它照样 'ok'
+    // ——那是后端刻意的设计(两者独立失败)。但只看 status 的后果是:唯一常开的
+    // 界面(这个点)在服错模型时还是绿的,而唯一会判红的 health_check.sh
+    // **不在任何 cron 上**(24 个 plist 里 0 个)⇒ 闸到人的延迟 = 「你什么时候
+    // 想起来跑」。⛔ 别把它折叠进 status,那会丢掉「能服务但服错了」这个区分。
+    // `!== false` 而不是 `=== true`:老后端没这个字段时不该误报红。
+    const idOk = coreRes.artifact_is_expected !== false;
     const tip =
       `${t('health_model')}: ${coreOk ? coreRes.n_teams + ' ' + t('health_teams') : t('health_off')}`
+      + (idOk ? '' : ` · ⚠️ ${t('health_wrong_artifact')}: ${coreRes.artifact_base_path}`
+                     + ` (${t('health_expected')} ${coreRes.expected_artifact_path})`)
       + ` · ${t('health_obsdb')}: ${obsOk ? obsRes.n_settled + '/' + obsRes.n_recommendations + ' ' + t('health_settled') : t('health_off')}`;
-    const ok = coreOk && obsOk;
-    $('#health-pill').innerHTML = _healthDot(ok ? 'ok' : 'warn',
-      ok ? t('health_running') : t('health_degraded'), tip);
+    const ok = coreOk && obsOk && idOk;
+    // 服错盘 = 红,不是黄。黄是「有点降级还能用」,而这个是「所有数字都来自
+    // 另一个模型」—— 比后端起不来更危险,因为它看起来完全正常。
+    $('#health-pill').innerHTML = _healthDot(
+      !idOk ? 'err' : (ok ? 'ok' : 'warn'),
+      !idOk ? t('health_wrong_artifact') : (ok ? t('health_running') : t('health_degraded')),
+      tip);
   } catch (e) {
     // API server down → red dot; raw exception to console only (not the user).
     console.warn('health check failed:', e);

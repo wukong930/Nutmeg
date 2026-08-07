@@ -151,6 +151,9 @@ EXPECTED_SERVING_ARTIFACT = "data/v4_model_cat"
 DEFAULT_ARTIFACT_PATH = EXPECTED_SERVING_ARTIFACT
 
 _artifact_cache: dict[str, V4Artifact] = {}
+#: path → 上次加载失败的原因。让 /health 能区分「盘没配」和「盘配了但坏了」——
+#: 两者都表现为 artifact_loaded=False,但要做的事完全不同。
+_load_errors: dict[str, str] = {}
 _load_lock = Lock()
 
 
@@ -178,6 +181,22 @@ class ArtifactResolution(NamedTuple):
     redirected: bool     # Layer B pointer took effect
 
 
+def _artifact_base() -> tuple[str, str]:
+    """(base, source) —— **纯环境变量读取,零文件系统访问**。
+
+    单独拆出来是因为 `artifact_is_expected()` 只需要 base。原来它绕道
+    `_resolve_artifact()` 拿,而后者必然要 `stat()` 一次指针文件 ⇒ 一个纯粹
+    「配置写的是哪个盘」的问题被绑上了 I/O 失败模式。见下面 `except OSError`
+    的注记:那正是身份闸自己被噎死的路径。
+
+    空串按缺失处理(`.env` 里写 `NUTMEG_V4_ARTIFACT_PATH=` 是缺失不是「空路径」)。
+    """
+    env_base = os.environ.get("NUTMEG_V4_ARTIFACT_PATH")
+    if env_base:
+        return env_base, "env"
+    return DEFAULT_ARTIFACT_PATH, "default"
+
+
 def _resolve_artifact() -> ArtifactResolution:
     """Resolve the effective artifact directory, keeping its provenance.
 
@@ -191,9 +210,7 @@ def _resolve_artifact() -> ArtifactResolution:
     the redirect is mtime-cached so the next request post-deploy
     serves the new artifact without restart.
     """
-    env_base = os.environ.get("NUTMEG_V4_ARTIFACT_PATH")
-    base = env_base if env_base else DEFAULT_ARTIFACT_PATH
-    source = "env" if env_base else "default"
+    base, source = _artifact_base()
 
     def _res(path: str) -> ArtifactResolution:
         return ArtifactResolution(path, base, source, path != base)
@@ -205,7 +222,13 @@ def _resolve_artifact() -> ArtifactResolution:
     pointer_path = Path(base) / LIVE_ARTIFACT_POINTER_FILENAME
     try:
         mtime = pointer_path.stat().st_mtime
-    except FileNotFoundError:
+    except OSError:
+        # ⚠️ 2026-08-07:原来只捕 FileNotFoundError。NotADirectoryError 和
+        # PermissionError 是 OSError 的**兄弟**不是子类 ⇒ base 指到一个文件
+        # (`.env` 打错成 `…/metadata.json`)或目录丢了读权限时,异常会一路穿出
+        # `artifact_is_expected()` 把 /health 打成 500,而 §18 会把 500 误诊成
+        # 「包未装 / import 失败」。这恰恰是身份闸本该**大声说清楚**的那类配置错误,
+        # 它却在这里把自己噎死。没有指针 = 不重定向,这是唯一正确的降级。
         _pointer_cache.pop(base, None)
         return _res(base)
     cached = _pointer_cache.get(base)
@@ -255,8 +278,11 @@ def artifact_is_expected() -> bool:
     hole survive undetected: `data/v4_model` exists and loads perfectly, it is
     just the wrong model. "It loaded" and "it is the one we meant" are
     different propositions and only the second one is worth checking.
+
+    走 `_artifact_base()` 而不是 `_resolve_artifact()`:这是个纯配置问题,
+    不该为了回答它去碰磁盘(原来会,而磁盘一出错它就抛异常而不是给判词)。
     """
-    return _same_dir(_resolve_artifact().base, EXPECTED_SERVING_ARTIFACT)
+    return _same_dir(_artifact_base()[0], EXPECTED_SERVING_ARTIFACT)
 
 
 def _observation_db_path() -> Optional[str]:
@@ -366,22 +392,49 @@ def _attach_jingcai_sp(preds: list) -> None:
             p.jc_hc_single_available = int(h[6])
 
 
-def get_artifact() -> Optional[V4Artifact]:
-    """Returns the loaded artifact, or None if path doesn't exist."""
-    path = _artifact_path()
+def get_artifact(path: str | None = None) -> Optional[V4Artifact]:
+    """Returns the loaded artifact, or None if path doesn't exist.
+
+    ``path`` 可由调用方传入**已经解析好的**目录,避免同一个请求里重复解析。
+    ⚠️ 2026-08-07:`/health` 原来一次请求解析 **3 次**(自己一次、
+    `artifact_is_expected()` 一次、这里一次)。三次之间 Layer B 的
+    `live_artifact_pointer.json` 可能被写入 ⇒ **回包里报的 path 不是它真正
+    加载的那个 artifact** —— 「读出来的路径 ≠ 跑着的路径」出现在专门报告路径的
+    端点里。实测在部署写指针的并发下 1500 次请求有 162 次错位。
+    """
+    path = path if path is not None else _artifact_path()
     if path in _artifact_cache:
         return _artifact_cache[path]
     if not Path(path).exists():
+        _load_errors[path] = "目录不存在"
         return None
     with _load_lock:
         if path not in _artifact_cache:
-            _artifact_cache[path] = load_artifact(path)
+            try:
+                _artifact_cache[path] = load_artifact(path)
+            except Exception as e:                           # noqa: BLE001
+                # ⚠️ 2026-08-07:原来只挡「目录不存在」,`load_artifact` 自己抛的
+                # 异常一路穿出 ⇒ **/health 500**。而 §18 的 daemon 探针会把 500
+                # 正确判红但只能说「服务坏了」,说不出坏在哪。真实触发路径:
+                # `nutmeg-train` 中途被打断 / rsync 没传完 ⇒ 目录在、metadata.json
+                # 不在;或 `.env` 把路径打成一个文件;或目录丢了读权限。
+                #
+                # 所有调用方本来就把 None 处理成 503 + 说明,所以降级成 None 是
+                # **和既有契约一致**的,而且把不透明的 500 traceback 换成能读的 503。
+                # ⛔ 但不许变成静默吞:原因记进 `_load_errors` 并由 /health 透出,
+                # 否则「盘坏了」和「盘没配」在输出上又分不出来。
+                _load_errors[path] = f"{type(e).__name__}: {e}"
+                logging.getLogger(__name__).exception(
+                    "artifact 加载失败 path=%s", path)
+                return None
+            _load_errors.pop(path, None)
         return _artifact_cache[path]
 
 
 def clear_artifact_cache() -> None:
     """Used by tests to force reload."""
     _artifact_cache.clear()
+    _load_errors.clear()
 
 
 # ---------- /v4/health ---------------------------------------------------
@@ -406,14 +459,18 @@ def health() -> HealthResponse:
         f"serving artifact base {res.base!r} (source={res.source}) is not the "
         f"declared production artifact {EXPECTED_SERVING_ARTIFACT!r}"
     )
-    art = get_artifact()
+    # 用**这次**解析出来的路径去加载,而不是让 get_artifact() 自己再解析一遍 ——
+    # 否则回包里的 artifact_path 可能不是它真正加载的那个(见 get_artifact 注记)。
+    art = get_artifact(path)
     if art is None:
         return HealthResponse(
             status="degraded",
             artifact_loaded=False,
             artifact_path=path,
-            detail=f"artifact not found at {path}; run `python -m nutmeg.v4.cli.train`"
-                   + (f" · {mismatch}" if mismatch else ""),
+            detail=(f"artifact 无法加载 at {path}"
+                    + (f" —— {_load_errors[path]}" if path in _load_errors
+                       else "; run `python -m nutmeg.v4.cli.train`")
+                    + (f" · {mismatch}" if mismatch else "")),
             **identity,
         )
     n_teams = sum(len(teams) for teams in art.team_state.values())
@@ -513,7 +570,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v140-fe-board-market-p"
+_FE_VERSION = "nutmeg-v141-fe-artifact-identity"
 
 
 @router.get("/sw.js", include_in_schema=False)

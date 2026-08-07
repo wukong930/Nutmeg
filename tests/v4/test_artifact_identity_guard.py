@@ -290,6 +290,107 @@ def test_health_reports_identity_even_when_artifact_is_missing(
     assert body["artifact_path_source"] == "env"
 
 
+# ------------------------------------------- 身份判定不该被 I/O 噎死 / 不该重复解析
+
+class TestVerdictSurvivesBadPaths:
+    """⚠️ 身份闸必须在**它本该报告的那种配置错误**下still给出判词,而不是自己炸掉。
+
+    原来 `artifact_is_expected()` 绕道 `_resolve_artifact()` 拿 base,后者必然
+    `stat()` 一次指针文件,而那个 `try` 只捕 `FileNotFoundError`。
+    `NotADirectoryError` / `PermissionError` 是 `OSError` 的**兄弟不是子类** ⇒
+    异常一路穿出 ⇒ `/health` 500 ⇒ §18 把 500 误诊成「包未装 / import 失败」。
+    """
+
+    def test_base_pointing_at_a_file_still_gets_a_verdict(self, monkeypatch, tmp_path):
+        """`.env` 打错成 `…/metadata.json` 这种。"""
+        f = tmp_path / "metadata.json"
+        f.write_text("{}")
+        monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", str(f))
+        assert routes.artifact_is_expected() is False       # 不抛异常
+        r = _client().get("/api/v4-test/v4/health")
+        assert r.status_code == 200, "配置写错不该让 /health 500"
+        body = r.json()
+        assert body["artifact_is_expected"] is False
+        assert body["artifact_base_path"] == str(f)
+
+    def test_unreadable_base_still_gets_a_verdict(self, monkeypatch, tmp_path):
+        """目录在 restore/chown 后丢了读权限。"""
+        d = tmp_path / "locked"
+        d.mkdir()
+        d.chmod(0o000)
+        try:
+            monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", str(d))
+            assert routes.artifact_is_expected() is False
+            assert _client().get("/api/v4-test/v4/health").status_code == 200
+        finally:
+            d.chmod(0o755)                                   # 让 tmp_path 能被清掉
+
+    def test_a_half_written_artifact_degrades_loudly_not_a_500(
+            self, monkeypatch, tmp_path):
+        """⭐ `nutmeg-train` 被打断 / rsync 没传完:目录在,metadata.json 不在。
+
+        原来 `load_artifact` 抛的异常穿出 ⇒ /health **500**。§18 的 daemon 探针
+        会正确判红,但只说得出「服务坏了」,说不出坏在哪。
+        现在:200 + degraded + **原因写在 detail 里** ——「盘没配」和「盘配了但坏了」
+        必须能分开,否则又是一个「分不出没有和没去看」。
+        """
+        half = tmp_path / "half_written"
+        half.mkdir()
+        (half / "booster_home.txt").write_text("partial")     # metadata.json 缺失
+        monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", str(half))
+        r = _client().get("/api/v4-test/v4/health")
+        assert r.status_code == 200, "半成品 artifact 把 /health 打成了 500"
+        body = r.json()
+        assert body["status"] == "degraded"
+        assert body["artifact_loaded"] is False
+        assert "FileNotFoundError" in (body["detail"] or ""), (
+            f"没说清为什么加载不了,只说了『没找到』:{body['detail']!r}")
+
+    def test_a_missing_dir_and_a_broken_dir_say_different_things(
+            self, monkeypatch, tmp_path):
+        """反向:两种 degraded 的 detail 必须**不同**,否则区分是假的。"""
+        missing = tmp_path / "never_created"
+        monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", str(missing))
+        d_missing = _client().get("/api/v4-test/v4/health").json()["detail"]
+
+        broken = tmp_path / "broken"
+        broken.mkdir()
+        (broken / "booster_home.txt").write_text("x")
+        monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", str(broken))
+        d_broken = _client().get("/api/v4-test/v4/health").json()["detail"]
+
+        assert d_missing != d_broken, "两种失败给出同一句话 ⇒ 区分是装的"
+
+    def test_the_verdict_needs_no_filesystem_at_all(self, monkeypatch):
+        """⭐ 更强的形式:把 `Path.stat` 整个打掉,判词照样出得来。
+
+        这条钉的是**依赖**而不是症状:只要 `artifact_is_expected()` 还在走
+        指针解析,它就还会被磁盘的失败模式牵连,以后换个 errno 又炸一次。
+        """
+        def _boom(*a, **k):
+            raise AssertionError("身份判定不该碰文件系统")
+        monkeypatch.setattr(Path, "stat", _boom)
+        monkeypatch.setenv("NUTMEG_V4_ARTIFACT_PATH", routes.EXPECTED_SERVING_ARTIFACT)
+        assert routes.artifact_is_expected() is True
+
+
+def test_health_resolves_the_artifact_exactly_once(monkeypatch):
+    """⭐ 一次请求只解析一次,否则报的路径可能不是加载的那个。
+
+    原来是 3 次:`health()` 自己一次、`artifact_is_expected()` 一次、
+    `get_artifact()` 一次。三次之间 Layer B 的指针可能被写入 ⇒
+    **回包里的 artifact_path ≠ 它真正加载的 artifact** —— 「读出来的路径 ≠
+    跑着的路径」出现在专门报告路径的端点里。审查实测:部署写指针并发下
+    1500 次请求有 162 次错位。
+    """
+    calls = []
+    real = routes._resolve_artifact
+    monkeypatch.setattr(routes, "_resolve_artifact",
+                        lambda: (calls.append(1), real())[1])
+    _client().get("/api/v4-test/v4/health")
+    assert len(calls) == 1, f"/health 解析了 {len(calls)} 次 —— 中间可被指针写入插入"
+
+
 # ============================================ §18 的判断逻辑(行为断言,主断言)
 #
 # ⚠️ 这一整段是审查(2026-08-07)的产物。原来这里只有**一条语法断言**
@@ -569,6 +670,92 @@ class TestArtifactLiteralsAgree:
         assert seen["path"] == routes.EXPECTED_SERVING_ARTIFACT, (
             f"出注 CLI 默认加载 {seen['path']!r},而服务侧声明的是 "
             f"{routes.EXPECTED_SERVING_ARTIFACT!r} —— 面板和注单会来自不同模型")
+
+
+# ------------------------------------------------ 面板健康点必须读身份字段(行为)
+
+DASH = REPO_ROOT / "apps/api/src/nutmeg/v4/api/static/dashboard.html"
+
+
+def _js_fn(name: str) -> str:
+    """抠出生产函数**原文**(花括号配平),不重写一份 —— 重写就测不到真代码。
+
+    与 `test_gate_p_source_behavioral.py` 同一手法。
+    """
+    js = DASH.read_text(encoding="utf-8")
+    m = re.search(rf"\n(async )?function {re.escape(name)}\s*\(", js)
+    assert m, f"找不到 {name} —— 被改名或删了,本护栏失效"
+    start, j, depth = m.start() + 1, js.index("{", m.end()), 0
+    while j < len(js):
+        if js[j] == "{":
+            depth += 1
+        elif js[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return js[start:j + 1]
+        j += 1
+    raise AssertionError(name)
+
+
+def _render_health_dot(core: dict) -> str:
+    """喂一份 /health 回包,拿到健康点真正渲染出的 HTML。"""
+    import subprocess
+
+    src = f"""
+{_js_fn('_healthDot')}
+{_js_fn('loadHealth')}
+const API = '/api/v4';
+const t = k => k;
+let captured = '';
+const $ = () => ({{ set innerHTML(v) {{ captured = v; }} }});
+const CORE = {json.dumps(core)};
+const OBS = {{ status: 'ok', n_settled: 1, n_recommendations: 2 }};
+global.fetch = (u) => Promise.resolve(
+  {{ json: () => (u.includes('observation') ? OBS : CORE) }});
+loadHealth().then(() => console.log(captured));
+"""
+    r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[:2000]
+    return r.stdout
+
+
+_HEALTHY = {"status": "ok", "n_teams": 445, "artifact_is_expected": True,
+            "artifact_base_path": "data/v4_model_cat",
+            "expected_artifact_path": "data/v4_model_cat"}
+
+
+def test_dashboard_dot_is_green_when_identity_is_fine():
+    html = _render_health_dot(_HEALTHY)
+    assert "--accent-green" in html, html[:300]
+    assert "health_wrong_artifact" not in html
+
+
+def test_dashboard_dot_goes_red_when_serving_the_wrong_artifact():
+    """⭐ 承重条:唯一**常开**的界面必须能看见身份闸。
+
+    后端**刻意**让 `status` 在服错盘时仍是 'ok'(存活与身份独立失败)。
+    所以只看 status 的后果是:服着另一个模型、所有数字都来自它,而这个点还是绿的。
+    而唯一会判红的 `health_check.sh` **不在任何 cron 上**(24 个 plist 里 0 个)
+    ⇒ 闸到人的延迟 = 「你什么时候想起来跑」。
+
+    红而不是黄:黄是「有点降级还能用」,这个是「所有数字都来自另一个模型」——
+    比后端起不来更危险,因为它看起来完全正常。
+    """
+    html = _render_health_dot({**_HEALTHY, "artifact_is_expected": False,
+                               "artifact_base_path": "data/v4_model"})
+    assert "--accent-rose" in html, f"服错盘却没变红:{html[:300]}"
+    assert "health_wrong_artifact" in html
+    assert "data/v4_model" in html, "没说清在服哪个盘,运维不知道要改什么"
+
+
+def test_dashboard_dot_does_not_false_red_on_an_older_backend():
+    """反向:后端还没升级(回包里没这个字段)时不该误报红。
+
+    `!== false` 而不是 `=== true` —— 「没告诉我」不等于「不对」。
+    """
+    old = {k: v for k, v in _HEALTHY.items() if k != "artifact_is_expected"}
+    html = _render_health_dot(old)
+    assert "--accent-rose" not in html, "旧后端被误判成服错盘 —— 假红"
 
 
 # ------------------------------------------------- health_check.sh 的严重性映射
