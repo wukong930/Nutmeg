@@ -295,13 +295,22 @@ class TestHealthCheckRunsSuccessfully:
     """Actually execute the health check (it returns exit 1 when pipeline
     isn't set up, but should NOT crash on bash errors)."""
 
+    #: health_check.sh 实测 **12.3s**(2026-08-07,§18 服务盘身份只占其中 0.5s;
+    #: 11.8s 花在 §1–§17 的数据库/parquet 扫描上)。15s 预算等于只剩 18% 余量 ⇒
+    #: 全套并发跑时必然间歇性超时:单跑 47/47 绿,和别的测试一起跑就红。
+    #: ⚠️ 调大不是为了让它变绿,是因为**它量的是「脚本会不会病态地慢」而不是
+    #: 「这台机器此刻忙不忙」** —— 一个间歇性假红的护栏最后会被删掉。
+    #: 2026-08-07 起这个脚本挂上了定时(com.nutmeg.daily_health_check,09:45+21:00),
+    #: 所以运行时长开始有运维含义:真涨到 60s 该查,那时这条会红且是**真红**。
+    _HC_TIMEOUT_S = 60
+
     def test_health_check_runs_without_crash(self):
         proc = subprocess.run(
             [str(SCRIPTS_DIR / "health_check.sh")],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=self._HC_TIMEOUT_S,
         )
         # Exit code 0 (healthy) or 1 (not healthy) are both acceptable —
         # the script must NOT crash with bash syntax errors (which would
@@ -317,7 +326,7 @@ class TestHealthCheckRunsSuccessfully:
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=self._HC_TIMEOUT_S,
         )
         out = proc.stdout
         for section in ("API key", "launchd jobs", "Cup odds",

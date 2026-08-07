@@ -663,6 +663,22 @@ install_job "com.nutmeg.score_ev_forward_settle" \
   6 0 "" \
   "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.score_ev_forward --db $SEV_DB --settle || true"
 
+# Job: 定时体检 (2026-08-07)。09:45 + 21:00 —— 两个窗口是为了扛笔记本睡眠
+# (launchd 对错过的 calendar job 只在唤醒后补跑一次,窗口多 ⇒ 漏掉的天数少)。
+# 09:45 紧跟竞彩 09:24–09:44 晨批,顺带能逮到那一批的捕获失败。
+#
+# ⚠️ 调的是 **health_check_cron.sh** 不是 health_check.sh。区别是报警口径:
+# 装它的当天 health_check.sh 就 exit 1(注册表硬缺口,见
+# configs/health_check_known_red.txt 里的理由和退出条件)。按 exit code 报警
+# ⇒ 每天一条同样的弹窗 ⇒ 三天内被关掉 ⇒ 连服务盘告警一起失效。
+# 包装器只报**新增的红**,并让 §18 服务盘身份**永不被基线抑制**(钱路)。
+# 判断逻辑全在包装器里、有行为测试(tests/v4/test_health_check_cron.py);
+# 这里只负责调一次 —— 大段逻辑塞进 plist 就只能靠语法代理来测。
+install_job "com.nutmeg.daily_health_check" \
+  9 45 "" \
+  "$ENV_PREFIX && $REPO_ROOT/scripts/health_check_cron.sh || true" \
+  "21:00"
+
 echo ""
 echo "✓ Done. Jobs are loaded. Logs:"
 echo "    $LOG_DIR/com.nutmeg.api_server.{out,err}.log    ← always-on daemon"
