@@ -28,7 +28,7 @@ class TestMarginBandsFrontend:
 
     def test_wired_into_cup_cards(self, html):
         # 近期赛事(标准模式)+ 市场模式 both render through _cupCardHtml.
-        # (净胜球 fold-persist work added a 3rd arg _cupFoldAttrs — match the
+        # (净胜球 fold-persist work added a 3rd arg _foldAttrs — match the
         # prefix so the assertion survives the signature change.)
         assert "_marginBandsHtml(pr.margin_bands, pr.handicap_home" in html
 

@@ -197,6 +197,98 @@ class TestMarginBands:
             "没把竞彩让球线传进去,净胜球簇不会出现"
 
     def test_fold_state_helper_is_reused_not_reimplemented(self):
-        """⚠️ `_cupFold*` 名字带 cup 但是**通用的**(键=队名+开球时刻)。
-        两个模式的场次集合不相交,不会撞键。另写一套折叠状态只会多一处漂移。"""
-        assert "_cupFoldAttrs('mb', _cupFoldKey(pr))" in _card()
+        """`_fold*` 是**两个模式共用**的折叠状态 sink(键=队名+开球时刻)。
+        两个模式的场次集合不相交,不会撞键。另写一套只会多一处漂移。
+
+        ⭐ 2026-08-07 从 `_cupFold*` 改名 —— 它一直是通用的,但 `_cup` 前缀让它
+        看起来是市场模式专有,于是加标准模式**让球**折叠时没人想到用(见下一条)。
+        """
+        assert "_foldAttrs('mb', _foldKey(pr))" in _card()
+
+    def test_the_handicap_fold_survives_a_rerender(self):
+        """⭐ owner 报的 bug:标准模式展开让球 → 手填实时盘口 → 应用 → 折回去。
+
+        卡片是 innerHTML 重建的,原生 `<details>` 会回到关闭态。市场模式没这问题
+        只因为它那半早就挂了 `_foldAttrs`。让球线选择和已填 SP 本来就保住了
+        (`renderTodaySpCalc` 的 `_entered.hcline`),丢的**只有展开状态** ——
+        但那正是最烦的:每应用一次要重新点开一次。
+        """
+        card = _card()
+        i = card.index("t('spcalc_hc_toggle')")
+        # 往回找这个 summary 所属的 <details> 开标签
+        j = card.rindex("<details", 0, i)
+        tag = card[j:card.index(">", j) + 1]
+        assert "_foldAttrs('hc'" in tag, (
+            f"标准模式让球折叠没有折叠记忆,重渲会关掉它。实际标签:{tag}")
+
+    def test_the_fold_memory_actually_remembers(self):
+        """⭐ 变异检验抓到的洞:上面几条只断言**标签里有没有 `_foldAttrs`**,
+        没断言**机制真的会记住并还原**。把 `_openFolds.add(...)` 改成 no-op,
+        它们照样全绿 —— 接线在、机制死了。又是语法代理测语义属性。
+
+        这条跑**生产函数原文**:模拟用户展开 → 再问 `_foldAttrs` 要不要加 open。
+        """
+        import json
+        import subprocess
+
+        js = _js()
+
+        def fn(name):
+            i = js.index(f"function {name}(")
+            j, depth = js.index("{", i), 0
+            while j < len(js):
+                if js[j] == "{":
+                    depth += 1
+                elif js[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return js[i:j + 1]
+                j += 1
+            raise AssertionError(name)
+
+        src = f"""
+const _openFolds = new Set();
+{fn('_foldKey')}
+{fn('_onFoldToggle')}
+{fn('_foldAttrs')}
+const pr = {{ home_team: 'A', away_team: 'B', kickoff_utc: '2026-08-08T10:00:00Z' }};
+const k = _foldKey(pr);
+const before = _foldAttrs('hc', k);
+// 用户点开 —— 模拟浏览器派发 ontoggle
+_onFoldToggle({{ open: true, getAttribute: () => 'hc::' + k }});
+const after = _foldAttrs('hc', k);
+// ⚠️ 隔离检查必须在**还开着的时候**做:第一版把它放在「用户关上」之后,
+// 那时集合已经空了 ⇒ 键不隔离也测不出来(变异 R6 抓到的)。
+const other = _foldAttrs('hc', _foldKey({{ home_team: 'C', away_team: 'D', kickoff_utc: 'x' }}));
+// 另一个 kind 也不该被连带打开(hc 开了不等于 mb 开了)
+const otherKind = _foldAttrs('mb', k);
+// 再点上
+_onFoldToggle({{ open: false, getAttribute: () => 'hc::' + k }});
+const closed = _foldAttrs('hc', k);
+console.log(JSON.stringify({{ before, after, closed, other, otherKind }}));
+"""
+        r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stderr[:1500]
+        d = json.loads(r.stdout)
+        assert " open" not in d["before"], "还没展开就带 open"
+        assert " open" in d["after"], (
+            "展开后 `_foldAttrs` 没返回 open —— 折叠记忆是死的,"
+            "重渲仍会把面板关掉(标签里有 _foldAttrs 只证明接线在)")
+        assert " open" not in d["closed"], "用户手动关上后仍然记成展开"
+        assert " open" not in d["other"], "一场展开把别的场也带开了(键不隔离)"
+        assert " open" not in d["otherKind"], "让球展开把净胜球也带开了(kind 不隔离)"
+
+    def test_both_modes_handicap_folds_are_guarded(self):
+        """⛔ 别再只守一半。
+
+        这个 bug 的形状是「机制存在、但只接了一个模式」——
+        `_foldAttrs` 从第一天就是通用的,漏的是**接线**。所以断言必须同时覆盖
+        两个模式的让球折叠;只断言标准模式,下次轮到市场模式漏也发现不了。
+        """
+        js = _js()
+        for label, summary_key in (("标准模式", "spcalc_hc_toggle"),
+                                   ("市场模式", "cupmkt_hc_toggle")):
+            i = js.index(f"t('{summary_key}')")
+            j = js.rindex("<details", 0, i)
+            tag = js[j:js.index(">", j) + 1]
+            assert "_foldAttrs('hc'" in tag, f"{label}的让球折叠没有折叠记忆:{tag}"

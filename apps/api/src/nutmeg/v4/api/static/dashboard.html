@@ -5956,7 +5956,13 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
         <div class="flex items-center justify-between gap-2 mt-2 pt-2" style="border-top:1px solid rgba(0,0,0,0.08)">
           <span id="spcalc-verdict-${idx}" class="text-xs text-muted">${t('spcalc_enter_sp')}</span>
         </div>
-        <details class="mt-2">
+        ${/* 2026-08-07 owner 报的 bug:展开让球 → 手填实时盘口 → 应用 → 面板自己折回去。
+              这里以前是**裸** <details>,而卡片是 innerHTML 重建的 ⇒ 原生 details 回到关闭。
+              市场模式没这问题只因为它那半早就挂了 `_foldAttrs`(见 6768)。
+              ⚠️ 让球线选择和已填的让球 SP 本来就保住了(renderTodaySpCalc 的 `_entered`
+              里有 `bucket.hcline`),所以丢的**只有展开状态** —— 但那正好是最烦的那个:
+              每应用一次就要重新点开一次。 */''}
+        <details class="mt-2" ${_foldAttrs('hc', _foldKey(pr))}>
           <summary class="text-xs text-secondary cursor-pointer select-none">${t('spcalc_hc_toggle')}</summary>
           <div class="mt-2">
             <div class="flex items-center gap-2 text-sm mb-1">
@@ -5989,10 +5995,10 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
               sp-calc 的返回里(白发了),`_marginBandsHtml` 也是现成的纯函数。
               hcap 传 `jc_hc_line`:它和 `handicap_home` 同一套符号约定
               (主 −1 ⇒ L=−1,净胜 +1 时 1+(−1)=0 = 走盘),已核对 `b.margin + L` 那段。
-              ⚠️ `_cupFold*` 名字带 cup 但**是通用的**(键 = 队名+开球时刻);
+              ⚠️ `_onFoldToggle*` 名字带 cup 但**是通用的**(键 = 队名+开球时刻);
               两个模式的场次集合不相交(受训联赛走标准/其余走市场),不会撞键。
               没改名 —— 改它会波及市场模式,是另一件事。 */''}
-        ${_marginBandsHtml(pr.margin_bands, pr.jc_hc_line, _cupFoldAttrs('mb', _cupFoldKey(pr)))}
+        ${_marginBandsHtml(pr.margin_bands, pr.jc_hc_line, _foldAttrs('mb', _foldKey(pr)))}
         ${_spcalcManualHtml(pr, idx)}
       </div>`;
   };
@@ -6727,22 +6733,31 @@ function _pinRawHtml(pr) {
 // innerHTML, which resets a native <details> to closed. Keyed by match identity
 // (encoded → attribute-safe) so it also survives a refresh that re-fetches +
 // reorders the slate. (手填 already persists separately via pr._manual.)
-const _cupOpenFolds = new Set();
-function _cupFoldKey(pr) {
+//
+// ⭐ 2026-08-07 改名 `_cupFold*` → `_fold*`。**名字在撒谎,而谎话真的骗到人了**:
+// 这几个函数从一开始就是两个模式共用的(标准模式的净胜球折叠就在调它),
+// 但 `_cup` 前缀让它看起来是市场模式专有 ⇒ 加标准模式**让球**折叠时没人想到用,
+// 于是那个折叠一直是裸 <details>,每次「手填→应用」都被重建成关闭态(owner 报的 bug)。
+// ⚠️ 更该记的是:这个命名问题**早就被发现过** —— test_spcalc_card_not_blind.py
+// 里有一句「`_cupFold*` 名字带 cup 但是通用的」。但那只是一句注释,
+// **注释说「这个名字在撒谎」并不能阻止它继续骗人**,下一个折叠照样漏。
+// ⇒ 发现命名误导时,改名字,别只加注解。
+const _openFolds = new Set();
+function _foldKey(pr) {
   return encodeURIComponent((pr.home_team || '') + '|' + (pr.away_team || '')
     + '|' + (pr.kickoff_utc || pr.date || ''));
 }
-function _cupFold(el) {
+function _onFoldToggle(el) {
   const k = el.getAttribute('data-fold');
   if (!k) return;
-  if (el.open) _cupOpenFolds.add(k); else _cupOpenFolds.delete(k);
+  if (el.open) _openFolds.add(k); else _openFolds.delete(k);
 }
-function _cupFoldAttrs(kind, fk) {
+function _foldAttrs(kind, fk) {
   const key = kind + '::' + fk;
-  return `data-fold="${key}" ontoggle="_cupFold(this)"` + (_cupOpenFolds.has(key) ? ' open' : '');
+  return `data-fold="${key}" ontoggle="_onFoldToggle(this)"` + (_openFolds.has(key) ? ' open' : '');
 }
 function _cupCardHtml(pr, idx) {
-  const _fk = _cupFoldKey(pr);
+  const _fk = _foldKey(pr);
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const rows = ['H', 'D', 'A'].map(o => {
     const fairOdds = P[o] > 0 ? (1 / P[o]) : 0;
@@ -6765,7 +6780,7 @@ function _cupCardHtml(pr, idx) {
   // to the de-vig 1X2 + Pinnacle O/U (validated vs Pinnacle's own AH ~1pp). Pick
   // a 竞彩 让球线, type the 竞彩 让球 SP → live EV, same as the 1X2 rows above.
   const hc = (pr.handicap_lines && pr.handicap_lines.length) ? `
-      <details class="mt-2 pt-2" ${_cupFoldAttrs('hc', _fk)} style="border-top:1px dashed var(--border-subtle)">
+      <details class="mt-2 pt-2" ${_foldAttrs('hc', _fk)} style="border-top:1px dashed var(--border-subtle)">
         <summary class="text-xs text-secondary cursor-pointer select-none">${t('cupmkt_hc_toggle')}</summary>
         <div class="mt-2">
           <div class="flex items-center gap-2 mb-1.5">
@@ -6837,7 +6852,7 @@ function _cupCardHtml(pr, idx) {
       </div>
       ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}
       ${_pinRawHtml(pr)}
-      ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _cupFoldAttrs('mb', _fk))}${manual}
+      ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _foldAttrs('mb', _fk))}${manual}
     </div>`;
 }
 
