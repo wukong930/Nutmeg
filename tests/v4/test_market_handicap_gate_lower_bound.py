@@ -83,7 +83,11 @@ def test_fixture_actually_separates_point_and_lower_bound(truth):
     lo_h, lo_d, lo_a = truth["lo"]
     assert lo_h < ph - 1e-6, f"让胜下界没低于点估({lo_h} vs {ph})—— fixture 失效"
     assert lo_d < pd_ - 1e-6, f"让平下界没低于点估({lo_d} vs {pd_})"
-    assert lo_a == pytest.approx(pa), "让负是 −1 线的锚,下界应 = 点估"
+    # ⭐ 2026-08-08 改:原来断言「让负是 −1 线的锚,下界应 = 点估」。
+    # 那句话描述的是**当时的实现**,而本测试的**目的**是「fixture 要能区分点估和下界」——
+    # 三条腿都分离了,对这个目的是严格变好。锚腿现在吃自己的 SE(δ 测不出、但 SE≠0),
+    # 见 `_C1_THIRD_SE_M1`。⇒ 断言改成和两个兄弟同形。
+    assert lo_a < pa - 1e-6, f"让负下界没低于点估({lo_a} vs {pa})—— 第三腿又退回零收缩了"
 
 
 class TestGateUsesLowerBound:

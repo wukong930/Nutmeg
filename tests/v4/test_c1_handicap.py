@@ -153,12 +153,47 @@ def test_lower_bounds_shift_only_the_two_corrected_legs():
     lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48)
     assert lo[0] == pytest.approx(0.2844, abs=1e-9)   # 让胜(被 C1 减过)→ 再减 k·SE
     assert lo[1] == pytest.approx(0.2044, abs=1e-9)   # 让平(被 C1 加过)→ δ 若更小则更低
-    assert lo[2] == pytest.approx(0.48, abs=1e-9)     # 让负 没被 C1 碰 → 无 δ 误差
-    # 0.22 − 2.0×0.0101 = 0.1998;0.28 − 2.0×0.0101 = 0.2598
+    # ⭐ 2026-08-08 改:第三腿(−1 让负)原来断言 `== 0.48`,即**下界 == 点估**。
+    # 那条断言忠实地钉住了当时的行为,而**行为本身是错的** —— 「没被 C1 碰过」
+    # 被消费者 `_boardLegs` 读成「没有不确定性」,可它自己的 SE 和兄弟一样大
+    # (实测 0.0077 vs 0.0071)。按本文件自己的规矩,这是一次审慎决定,
+    # 所以它红得对、也确实逼人回来改了记录。
+    # 0.48 − 2.0×0.0077 = 0.4646(手算,不引常数)
+    assert lo[2] == pytest.approx(0.4646, abs=1e-9)   # 让负:无 δ 修正,但有自己的 SE
+    # 0.22 − 2.0×0.0101 = 0.1998;0.28 − 2.0×0.0101 = 0.2598;0.50 − 2.0×0.0103 = 0.4794
     lo1 = c1_leg_lower_bounds(+1, 0.50, 0.22, 0.28)
-    assert lo1[0] == pytest.approx(0.50, abs=1e-9)    # +1 的让胜没被碰
+    assert lo1[0] == pytest.approx(0.4794, abs=1e-9)  # +1 让胜:同上,吃自己的 SE
     assert lo1[1] == pytest.approx(0.1998, abs=1e-9)
     assert lo1[2] == pytest.approx(0.2598, abs=1e-9)
+
+
+def test_no_gateable_handicap_leg_gets_a_free_pass():
+    """⭐ **行为**断言:任何会被判闸的让球腿,折扣都必须 > 0。
+
+    `lo == p` 等于断言 **SE = 0**,而 SE=0 是**确定错的** —— 同
+    `onex_calibration.py` 那句话。消费者 `_boardLegs` 拿 `evLo` 当排序键 + 5% 闸,
+    零折扣的腿在与被收 1.5–2pp 的兄弟抢每场 argmax 时**系统性占便宜**。
+    实测(修前):那条零收缩腿六选一拿下 **55.4%** 的 argmax。
+
+    ⛔ 断言的是**性质**不是**数值** —— 任何正的 SE 都能让它绿,所以它不会变成
+    下一个「改常数就误报」的护栏(本文件开头那条病历讲的正是那种)。
+    ⚠️ 线 0 不在判闸集里:竞彩**从不开 0 线**(`jingcai_odds_history` 实测 0 行),
+    而 `_boardLegs` 只取 `pr.jc_hc_line` 那一条线。
+    """
+    offered = (-3, -2, -1, 1, 2, 3)
+    # 三张不同形状的卡:免得某一张的触底钳位偶然遮住失败
+    for fair in ((0.4180, 0.2914, 0.2906), (0.6200, 0.2200, 0.1600),
+                 (0.2500, 0.2600, 0.4900)):
+        for ln, ph, pd_, pa in implied_handicap_lines(*fair, 0.52, c1=True):
+            if ln not in offered:
+                continue
+            legs = c1_leg_lower_bounds(ln, ph, pd_, pa)
+            for cn, pt, bound in zip(("让胜", "让平", "让负"), (ph, pd_, pa), legs,
+                                     strict=True):
+                if bound == 0.0:
+                    continue        # 触底钳位(深线上 p < k·SE)—— 合法的零折扣
+                assert pt - bound > 1e-9, (
+                    f"线{ln:+d} {cn}(p={pt:.4f}):lo == p ⇒ 判闸吃的是点估")
 
 
 def test_conservatism_multiplier_is_pinned_by_value():
@@ -243,7 +278,13 @@ def test_lower_bounds_are_not_a_distribution():
     """
     lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48)
     assert sum(lo) < 1.0
-    assert sum(lo) == pytest.approx(1.0 - 2 * _C1_SE_K * _C1_DELTA_SE)
+    # ⭐ 2026-08-08 改:原式是 `1.0 - 2*k*_C1_DELTA_SE`,把「**只有两条腿**被收缩」
+    # 这个**结构**焊进了一个本来只想说「和 < 1」的测试。第三腿拿到自己的 SE 之后
+    # 它就红了 —— 红得对,但也说明这一行超出了本测试的职责。
+    # 现在按「三条腿各减各的 k·SE」写,并且**每个数都手算**(不引常数),
+    # 遵守本文件开头那条「断言值别连带断言结构」。
+    # 0.30−2×0.0078 + 0.22−2×0.0078 + 0.48−2×0.0077 = 0.2844+0.2044+0.4646
+    assert sum(lo) == pytest.approx(0.2844 + 0.2044 + 0.4646, abs=1e-9)
 
 
 def test_lower_bounds_never_negative():
