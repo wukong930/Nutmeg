@@ -13,7 +13,7 @@
 #   9. com.nutmeg.daily_wc_predict            09:00 daily — V10 W4 WC predictions + record
 #  10. com.nutmeg.daily_wc_settle             02:00 daily — V10 W4 WC outcome settle + report
 #  11. com.nutmeg.daily_predict               15:30 daily — V12 W8j model-board prediction log + settle + accuracy report
-#  12. com.nutmeg.weekly_elo_refresh          Saturday 04:30 — V14 national-team Elo snapshot refresh (eloratings.net → WC model prior)
+#  12. com.nutmeg.monthly_elo_refresh         每月 1 日 04:30 — 国家队 Elo 快照 (eloratings.net → WC 模型先验;WC2026 已完,降频保数据不断档)
 #  13. com.nutmeg.daily_backup                03:30 daily — 体检 A2: sqlite online backup (keep 7) + WAL checkpoint
 #  14. com.nutmeg.sporttery_vote              11:10/17:00/23:20 daily — 竞彩 散户支持比例 (getVoteV1 → jingcai_vote); 3 windows survive a sleeping laptop
 #  15. com.nutmeg.polymarket_gaps             10:00/16:00/23:30 daily — Polymarket 错价缺口时间序列 (只读测量, record+settle); FORCES proxy (外网)
@@ -87,6 +87,12 @@ install_job() {
   local minute="$3"
   local weekday="$4"   # 0-6 (0=Sun); empty for "every day"
   local script="$5"
+  local day_of_month="${7:-}"  # optional 1-31 → **monthly** job (launchd `Day` key).
+                           # 2026-08-08:为 monthly_elo_refresh 加的。加在**共享 sink**里
+                           # 而不是再手写一块 plist —— 手写块已经有两处(closing_odds /
+                           # jingcai_history_trickle),第三处就该收口了。
+                           # 与 weekday 互斥:两个都给 = launchd 要求「同时满足」,
+                           # 「每月 1 号且恰好是周六」几乎永不触发,是个静默的坑 ⇒ 下面会拒。
   local extra_times="${6:-}"   # optional space-separated "H:M" EXTRA daily run times.
                            # When set, StartCalendarInterval becomes an ARRAY (primary +
                            # extras) so the job has several wake-windows per day. This is
@@ -126,9 +132,17 @@ install_job() {
     <dict>
         <key>Hour</key><integer>$hour</integer>
         <key>Minute</key><integer>$minute</integer>"
+    if [[ -n "$weekday" && -n "$day_of_month" ]]; then
+      echo "  ✗ $label: weekday 与 day_of_month 不能同时给(launchd 是 AND,几乎永不触发)" >&2
+      return 1
+    fi
     if [[ -n "$weekday" ]]; then
       calendar_xml="$calendar_xml
         <key>Weekday</key><integer>$weekday</integer>"
+    fi
+    if [[ -n "$day_of_month" ]]; then
+      calendar_xml="$calendar_xml
+        <key>Day</key><integer>$day_of_month</integer>"
     fi
     calendar_xml="$calendar_xml
     </dict>"
@@ -654,9 +668,24 @@ install_job "com.nutmeg.daily_wc_settle" \
 # manual ingest that silently went stale (the only Elo CLI, ingest-national-elo,
 # writes a DIFFERENT clubelo file). A weekly drop keeps the prior current through
 # the tournament; load_elo_snapshot always picks the newest dated snapshot.
-install_job "com.nutmeg.weekly_elo_refresh" \
-  4 30 6 \
-  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_eloratings --quiet || true"
+# ⚠️ 2026-08-08 —— **周更 → 月更,并改名(owner 授权改 cron)。**
+#
+# 世界杯 2026 已结束(我们自己的 `wc_predictions`:103 场,2026-06-11→07-19;
+# 两个 daily_wc_* cron 的日志现在是空的)。国家队 Elo 除 WC 模型外只被
+# cup_ablation / jingcai_staleness 这类离线工具引用,**不在任何 serving 路径上**。
+#
+# 为什么不直接停掉:竞彩常年上架世预赛 141 / 国际赛 94 / 亚洲杯 / 非洲杯,
+# 下一轮世预赛(~2027)它又有用;而「到时候记得重装」是**人类记忆,不是护栏**
+# (同 jingcai_history_trickle 那次的理由)。月更成本同样是零,少一个记忆依赖。
+#
+# ⭐ 顺手改名 `weekly_` → `monthly_`:跑月更却叫 weekly = **名字在撒谎**。
+#   health_check 按 `com.nutmeg.*.plist` 通配枚举,改名不会漏检。
+#   旧 plist 必须**删掉**,否则下次 bootstrap/重启会复活它(2026-07 那次
+#   「plist 移进 retired 防重启复活」就是这个坑)。
+install_job "com.nutmeg.monthly_elo_refresh" \
+  4 30 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_eloratings --quiet || true" \
+  "" 1
 
 # Job 8b: weekly CLUBELO refresh (Monday 05:00) — 2026-07-15, owner 授权改 cron
 # ⚠️ 这是【俱乐部】Elo,和上面 Job 8 的【国家队】eloratings 是两套不同的源/文件:

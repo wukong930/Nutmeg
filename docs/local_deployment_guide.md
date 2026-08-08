@@ -349,7 +349,8 @@ logs/launchd/                    # per-job stdout + stderr (auto-created)
 
 > NOTE: the table above ("7 jobs") is the original set. Later crons also install:
 > `sporttery_vote`, `polymarket_gaps`, `closing_odds`, `daily_backup`,
-> `weekly_elo_refresh` (see the header of `scripts/setup_local_pipeline.sh` for the
+> `monthly_elo_refresh` (renamed from `weekly_` on 2026-08-08 when it dropped to
+> monthly — see the header of `scripts/setup_local_pipeline.sh` for the
 > authoritative list). `launchctl list | grep com.nutmeg` shows what's actually loaded.
 
 ## Operating the Polymarket research board (PM-1..7, 2026-07-02)

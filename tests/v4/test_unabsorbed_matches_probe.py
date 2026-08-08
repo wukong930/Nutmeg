@@ -6,7 +6,8 @@ owner 问「Elo 接下来会不会自动更新」。查下来三条实测:
 
   · 没有任何 train/retrain 的 launchd job(24 个 job grep 零命中);
   · `apply_results`(team_state 增量更新)只存在于 `persist.py:21` 的注释里;
-  · 名字很像的 `weekly_elo_refresh` 跑的是 `ingest_eloratings` = **国家队** Elo,
+  · 名字很像的 `monthly_elo_refresh`(2026-08-08 前叫 weekly_)跑的是
+    `ingest_eloratings` = **国家队** Elo,
     `weekly_clubelo_refresh` 是外部 ClubElo —— **两个都不碰 team_state**。
 
 ⇒ 模型自己的 Elo 是训练期快照,冻在 2026-07-15(cutoff 2026-06-01),不会自己动。
