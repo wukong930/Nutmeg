@@ -403,7 +403,15 @@ def _attach_jingcai_sp(preds: list) -> None:
     # else the SP boxes stay empty, mirroring the fresher-line overlay miss.
     had = {(d, _norm_team(h), _norm_team(a)): v for (d, h, a), v in had.items()}
     hhad = {(d, _norm_team(h), _norm_team(a)): v for (d, h, a), v in hhad.items()}
+    # 🚨 2026-08-08 —— 写回循环原来是**裸的**,而 docstring 写着「a lookup failure
+    # never breaks a card render」。那句话只对 lookup 成立,对写回不成立:喂一个
+    # 没声明 `jc_*` 的 pydantic model(如加字段前的 `PendingFixture`)⇒ 第一场命中
+    # 就抛 ValueError ⇒ 穿出 `predictions_cup_market` ⇒ 整个面板 HTTP 500。
+    # 现在逐场兜住,并**记一次 warning** —— 静默吞掉会让 schema 回归变成
+    # 「竞彩 SP 莫名其妙都没了」,那正是这个项目最难查的一类故障。
+    _failed = 0
     for p in preds:
+      try:
         d = p.date.isoformat() if hasattr(p.date, "isoformat") else str(p.date)
         key = (d, _norm_team(p.home_team), _norm_team(p.away_team))
         r = had.get(key)
@@ -426,6 +434,13 @@ def _attach_jingcai_sp(preds: list) -> None:
             p.jc_single_available = int(r[6])
         if h and len(h) > 6 and h[6] is not None:
             p.jc_hc_single_available = int(h[6])
+      except Exception:  # noqa: BLE001, PERF203 — 一场坏行不该拖垮整块面板
+        _failed += 1
+    if _failed:
+        import logging
+        logging.getLogger(__name__).warning(
+            "_attach_jingcai_sp: %d/%d 场写回失败(多半是消费方 schema 少声明了 jc_* 字段)"
+            " —— 这些卡上不会有竞彩 SP,也就进不了「竞彩可投注」", _failed, len(preds))
 
 
 def get_artifact(path: str | None = None) -> Optional[V4Artifact]:
@@ -2667,6 +2682,27 @@ def predictions_cup_market(
                     kickoff_utc=(r.get("kickoff_utc") or None),
                 ))
     _attach_jingcai_sp(preds)
+    # ⭐ 2026-08-08 —— 待开盘行也挂竞彩 SP,并把「竞彩已经在卖」这件事标出来。
+    #
+    # 为什么以前不挂:待开盘 = 「等 Pinnacle 开盘」,而开盘后它自然会变成 pred
+    # 并在那时拿到 SP ⇒ 挂了也没人用。这个前提对**绝大多数**联赛成立,
+    # 但日乙(JPN_J2)证伪了它:两条 Pinnacle 源都不存在,它**永远**等不到,
+    # 而竞彩确实在卖 ⇒ 「等着」= 永远看不见一场买得到的比赛。
+    #
+    # ⚠️ 判据是「**竞彩在不在卖**」,不是「是不是日乙」——
+    #    对任何联赛都一样,不给 J2 写特例。今天实测:52 场竞彩在售里
+    #    只有日乙 2 场缺 Pinnacle,其余 11 个联赛 0 场。
+    # ⚠️ 也**不是**「待开盘里所有场次」:面板待开盘的 10 场日乙来自 AF **赛程**,
+    #    竞彩只卖其中 2 场 —— 给 10 场都开手填入口 = 8 张永远算不出 EV 的空卡。
+    _attach_jingcai_sp(pending)
+    for pf in pending:
+        # 与前端 `_isJcBettable` 同口径:胜平负三条齐 **或** 让球三条齐。
+        # 单独抽出来是为了两边只有一份定义(前端那份是显示层,这份是数据层)。
+        _had = pf.jc_home is not None and pf.jc_draw is not None and pf.jc_away is not None
+        _hhad = (pf.jc_hc_home is not None and pf.jc_hc_draw is not None
+                 and pf.jc_hc_away is not None)
+        if _had or _hhad:
+            pf.reason = "jingcai_selling_no_pinnacle"
     return SpCalcResponse(
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
         date_start=today.isoformat(),

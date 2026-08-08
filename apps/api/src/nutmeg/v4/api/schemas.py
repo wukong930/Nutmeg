@@ -278,13 +278,45 @@ class PendingFixture(BaseModel):
     probability would be unreliable. Rather than surface a misleading P/EV, the
     近期赛事 tab lists these as '待开盘' cards so the user still sees the full
     slate; each is auto-promoted into `predictions` (full calc) once Pinnacle
-    opens that line."""
+    opens that line.
+
+    ⚠️ 「once Pinnacle opens」这句对**大多数**联赛成立,但不是全部。2026-08-08 实测:
+    日乙(JPN_J2)两条 Pinnacle 源都不存在(Odds API 无 sport key + AF 逐场零家博彩,
+    含 7 天后的未来场)⇒ 它的场次**永远**等不到自动开盘,而竞彩确实在卖。
+    所以 `reason` 从「只有一个取值的装饰字段」变成了真的判据 —— 见下。
+    """
     home_team: str
     away_team: str
     league: str
     date: date
     kickoff_utc: str | None = None
+    #: 为什么这场没有 P。**两个取值语义完全不同,别合并**:
+    #:   · `pinnacle_not_open` —— 上游还没开盘,等就行(绝大多数);
+    #:   · `jingcai_selling_no_pinnacle` —— 竞彩**已经在卖**、而 Pinnacle 这条线
+    #:     可能永远不会有(日乙)⇒ 只有手填 Pinnacle 这一条路。
+    #: 2026-08-08 之前这个字段恒等于默认值(两个构造点都不传),
+    #: 唯一消费者是一条测试 —— 一个**长得像能区分原因、实际不能**的字段。
     reason: str = "pinnacle_not_open"
+    #: 竞彩侧的 SP(由 `_attach_jingcai_sp` 填)。
+    #:
+    #: 🚨 为什么必须先声明再调用:`PendingFixture` 是 pydantic v2 model,未声明的
+    #: 属性赋值会抛 `ValueError`;而 `_attach_jingcai_sp` 的 try 只包到 lookup,
+    #: **写回循环是裸的** ⇒ 先加调用后加字段 = 第一场命中的 pending 就把
+    #: `/predictions/cup-market` 打成 HTTP 500(agent 实跑证明,不是推测)。
+    jc_home: float | None = None
+    jc_draw: float | None = None
+    jc_away: float | None = None
+    jc_source: str | None = None
+    jc_hc_home: float | None = None
+    jc_hc_draw: float | None = None
+    jc_hc_away: float | None = None
+    jc_hc_line: float | None = None
+    jc_captured_at: str | None = None
+    #: PER-MARKET(玩法级)单关可得性 —— 竞彩可以给胜平负开单关、让球不开。
+    #: 日乙这 2 场两个玩法都是 0(竞彩原始 feed 独立核过:`"single":0, "allUp":1`)
+    #: ⇒ 即便手填出 +EV **也只能进串关,买不了单关**。
+    jc_single_available: int | None = None
+    jc_hc_single_available: int | None = None
 
 
 class SpCalcResponse(BaseModel):

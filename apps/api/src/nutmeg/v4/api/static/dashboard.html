@@ -2296,6 +2296,13 @@ const I18N = {
     cupman_err_1x2:   '请先填有效的 1X2 赔率(>1.0)',
     cupman_applied:   '已应用',
     cupman_impossible: '这不可能是一本真盘口(抽水≤0)—— 请核对小数点',
+    cupman_need3: '胜平负三条都要填,且都 > 1.00',
+    pend_jc_badge: '✏️ 竞彩在售 · 需手填 Pinnacle',
+    pend_jc_toggle: '✏️ 手填 Pinnacle(填完这场就进「竞彩可投注」)',
+    pend_jc_hint: '竞彩已经在卖这场,但 Pinnacle 两条源都没有(日乙就是这种)——'
+      + '填一条你看到的实时 Pinnacle 1X2,系统按和自动卡完全相同的口径去vig、'
+      + '反推让球盘、算判闸下界。大小球留空也能算,只是让球盘会用默认 2.5 线锚定。',
+    pend_jc_gone: '这场已经不在待开盘列表里了(面板刚重渲过)—— 请重新展开再填',
     cupman_vig:       '贴水',
     cupman_badge:     '手填实时盘口',
     cupman_just_now:  '刚刚',
@@ -2864,6 +2871,14 @@ const I18N = {
     cupman_err_1x2:   'Enter valid 1X2 odds (>1.0) first',
     cupman_applied:   'Applied',
     cupman_impossible: 'Not a real book (vig ≤ 0) — check the decimal point',
+    cupman_need3: 'All three 1X2 legs are required, each > 1.00',
+    pend_jc_badge: '✏️ on 竞彩 · needs a hand-typed Pinnacle',
+    pend_jc_toggle: '✏️ Type a Pinnacle line (this match then joins the bettable list)',
+    pend_jc_hint: '竞彩 is already selling this match but neither Pinnacle source carries it '
+      + '(J2 is the case) — type the live Pinnacle 1X2 you see. It is de-vigged, '
+      + 'reverse-fitted and lower-bounded by exactly the same server path the auto cards use. '
+      + 'O/U may be left blank; the handicap board then anchors on the default 2.5 line.',
+    pend_jc_gone: 'This fixture is no longer in the pending list (the board just re-rendered) — reopen and retype',
     cupman_vig:       'vig',
     cupman_badge:     'live odds (manual)',
     cupman_just_now:  'just now',
@@ -7666,19 +7681,163 @@ function renderMarketPred(preds) {
 // ⏳ 待开盘赛事 — merged pending from 标准模式 (sp-calc) + 市场模式 (cup-market) into one
 // bottom section. Each board feeds its slice via _setPending; the shared render combines.
 const _pendingByBoard = { spcalc: [], cupmkt: [] };
-function _pendingCardHtml(pf) {
-  return `<div class="flex items-center justify-between gap-2 py-2 px-3 rounded mb-1.5"
-       style="border:1px dashed var(--border-subtle);opacity:.85">
-      <span class="inline-flex items-center gap-1.5 flex-wrap text-sm text-secondary">
-        ${teamLogo(pf.home_team)}<span>${zhTeam(pf.home_team)}</span>
-        <span class="text-muted">vs</span>
-        ${teamLogo(pf.away_team)}<span>${zhTeam(pf.away_team)}</span>
-      </span>
-      <span class="shrink-0 flex items-center gap-2">
-        <span class="text-xs text-muted">${_fmtKickoff(pf)}</span>
-        <span class="chip-outcome chip-outcome-pending text-xs whitespace-nowrap">${_expandIcons(t('spcalc_pending_badge'))}</span>
-      </span>
+let _PEND_ALL = [];   // 扁平后的待开盘行(手填面板按序号回查)
+//: 服务端标记:竞彩**已经在卖**、而 Pinnacle 这条线可能永远不会有。
+//: 与 `pinnacle_not_open`(等就行)语义完全不同 —— 别合并成一个「待开盘」。
+const _PEND_JC_SELLING = 'jingcai_selling_no_pinnacle';
+function _pendIsJcSelling(pf) { return !!pf && pf.reason === _PEND_JC_SELLING; }
+
+//: ⭐ 把一条「竞彩在卖但 Pinnacle 缺席」的待开盘行**升格**成一张真的市场模式卡。
+//:
+//: 为什么是升格而不是「给待开盘加个输入框就地算 EV」:
+//:   · 升格之后它走的是**和别的比赛完全同一条路** —— `_cupCardHtml` 渲染、
+//:     `_isJcBettable` 判可投注、`_boardLegs` 造腿、`_parlayPool` 进池。
+//:     不新建界面、不造第二套 EV 口径(反推计算器就是那第四套,它连下界都没有)。
+//:   · P 和下界**不在这里算** —— 只填身份骨架,`_cupApplyStoredManual` 紧接着
+//:     会用存的手填输入贴回 `p_*_1x2` / `onex_lo_*` / `handicap_lines`,
+//:     而那三个数来自服务端 `/recommend/market-reprice` 的**同一次**回包。
+//:     常数留在服务端,一个字都不许挪进 JS。
+//:
+//: ⛔ **只在已经手填过(localStorage 里有记录)时才升格。** 没填过就升格 = 一张
+//:    `p_*_1x2` 为空的卡,而 `_cupCardHtml` 对 null 会印出「公允 0.0% · @0.00」——
+//:    一个长得像真测量值的假数字,正是「绝不编造 +EV」红线的显示层版本。
+function _pendPromote(preds, pending) {
+  const store = _cupManStore();
+  const promoted = [];
+  (pending || []).forEach((pf) => {
+    if (!_pendIsJcSelling(pf)) return;
+    const m = store[_cupManKey(pf)];
+    if (!m || !Array.isArray(m.P)) return;      // 没手填过 ⇒ 留在待开盘区
+    // 幂等:renderCupMarket 会被 60s 轮询/手填/刷新反复调用。同一场升格两次 =
+    // 页面上两张卡 —— 第二张收得下键盘却永远没反应,而且 📌 会把**另一张**的赔率
+    // 发出去(`test_bettable_first_dashboard.py:164` 记的是实测事故,不是顾虑)。
+    const _k = _cupManKey(pf);
+    if ((preds || []).some((p) => _cupManKey(p) === _k)) return;
+    promoted.push({
+      home_team: pf.home_team, away_team: pf.away_team,
+      league: pf.league, date: pf.date, kickoff_utc: pf.kickoff_utc || null,
+      // 市场模式没有模型 λ;服务端 `_row_to_market_prediction` 也是填 0.0
+      lambda_home: 0.0, lambda_away: 0.0,
+      // 占位:下一行 `_cupApplyStoredManual` 立刻用存的手填值覆盖这三个 + 下界 + 让球板
+      p_home_1x2: m.P[0], p_draw_1x2: m.P[1], p_away_1x2: m.P[2],
+      onex_lo_home: Array.isArray(m.lo) ? m.lo[0] : null,
+      onex_lo_draw: Array.isArray(m.lo) ? m.lo[1] : null,
+      onex_lo_away: Array.isArray(m.lo) ? m.lo[2] : null,
+      handicap_lines: m.hc || [],
+      psc_home: m.h, psc_draw: m.d, psc_away: m.a,
+      psc_over25: (m.o && m.u) ? m.o : null, psc_under25: (m.o && m.u) ? m.u : null,
+      ou_line: m.line,
+      // 竞彩侧原样带过来(服务端 `_attach_jingcai_sp(pending)` 已经挂好)
+      jc_home: pf.jc_home, jc_draw: pf.jc_draw, jc_away: pf.jc_away,
+      jc_source: pf.jc_source,
+      jc_hc_home: pf.jc_hc_home, jc_hc_draw: pf.jc_hc_draw,
+      jc_hc_away: pf.jc_hc_away, jc_hc_line: pf.jc_hc_line,
+      jc_captured_at: pf.jc_captured_at,
+      jc_single_available: pf.jc_single_available,
+      jc_hc_single_available: pf.jc_hc_single_available,
+      market_mode: true,
+      _manual: true, _manualTs: m.ts || null,
+      odds_update: null,
+      // 🚨 必须显式立起来:台账靠它区分「自动抓的线」和「owner 手打的线」。
+      // 前端凭空构造的对象若不写,送出去是 undefined ⇒ 库里 NULL ⇒ 诚实但丢标记。
+      odds_source: 'manual',
+      // 这些市场模式自动卡才有,手填线**天生就没有**,留空是诚实的:
+      //   asian_handicap_lines / margin_bands —— 需要 AF 的国际盘,手填拿不到;
+      //   sharp_flip —— 它是「模型和 sharp 分歧」的标,而这里根本没有模型。
+      asian_handicap_lines: [], margin_bands: [], sharp_flip: false,
+      _promotedFromPending: true,
+    });
+  });
+  if (promoted.length) preds.push(...promoted);
+  return promoted;
+}
+
+function _pendingCardHtml(pf, i) {
+  const sell = _pendIsJcSelling(pf);
+  const badge = sell
+    ? `<span class="chip-outcome text-xs whitespace-nowrap" style="background:#eef2ff;color:#4338ca">${_expandIcons(t('pend_jc_badge'))}</span>`
+    : `<span class="chip-outcome chip-outcome-pending text-xs whitespace-nowrap">${_expandIcons(t('spcalc_pending_badge'))}</span>`;
+  // 竞彩在卖的场次多一块手填 Pinnacle 面板。输入形状与卡内 `cupman-*` 一致
+  // (三腿 + 大小球线/大/小),但 id 前缀不同 —— 两处同时在 DOM 里,撞 id 会静默取错值
+  // (`test_spcalc_manual_pin.py:317` 守的正是这类前缀混用)。
+  const panel = !sell ? '' : `
+      <details id="pendman-${i}" class="mt-2 pt-2" style="border-top:1px dashed var(--border-subtle)">
+        <summary class="text-xs cursor-pointer select-none" style="color:#4338ca">${t('pend_jc_toggle')}</summary>
+        <div class="mt-2 space-y-2">
+          <div class="text-xs text-muted">${t('pend_jc_hint')}</div>
+          <div class="grid grid-cols-3 gap-1.5">
+            <label class="text-xs text-muted">${outcomeLabel('H')}<input id="pendman-h-${i}" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded num-display"></label>
+            <label class="text-xs text-muted">${outcomeLabel('D')}<input id="pendman-d-${i}" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded num-display"></label>
+            <label class="text-xs text-muted">${outcomeLabel('A')}<input id="pendman-a-${i}" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded num-display"></label>
+          </div>
+          <div class="grid grid-cols-3 gap-1.5">
+            <label class="text-xs text-muted">${t('cupman_ouline')}<input id="pendman-line-${i}" type="number" inputmode="decimal" step="0.25" min="0.5" value="2.5" class="w-full px-2 py-1 border rounded num-display"></label>
+            <label class="text-xs text-muted">${t('cupman_over')}<input id="pendman-o-${i}" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded num-display"></label>
+            <label class="text-xs text-muted">${t('cupman_under')}<input id="pendman-u-${i}" type="number" inputmode="decimal" step="0.01" min="1.01" class="w-full px-2 py-1 border rounded num-display"></label>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" onclick="_pendPinApply(${i})" class="text-xs px-3 py-1 rounded" style="background:#4338ca;color:#fff;cursor:pointer">${t('cupman_apply')}</button>
+            <span id="pendman-status-${i}" class="text-xs" aria-live="polite"></span>
+          </div>
+        </div>
+      </details>`;
+  return `<div class="py-2 px-3 rounded mb-1.5"
+       style="border:1px dashed var(--border-subtle);opacity:${sell ? '1' : '.85'}">
+      <div class="flex items-center justify-between gap-2">
+        <span class="inline-flex items-center gap-1.5 flex-wrap text-sm text-secondary">
+          ${teamLogo(pf.home_team)}<span>${zhTeam(pf.home_team)}</span>
+          <span class="text-muted">vs</span>
+          ${teamLogo(pf.away_team)}<span>${zhTeam(pf.away_team)}</span>
+        </span>
+        <span class="shrink-0 flex items-center gap-2">
+          <span class="text-xs text-muted">${_fmtKickoff(pf)}</span>
+          ${badge}
+        </span>
+      </div>${panel}
     </div>`;
+}
+
+//: 手填一条 Pinnacle → 打 `/recommend/market-reprice`(纯计算、零额度、无 DB)
+//: → 存进 localStorage → 重载面板,`_pendPromote` 会把它升格成一张真卡。
+//: P / 下界 / 让球板全部来自**服务端同一次回包**,这里一个数都不自己算。
+async function _pendPinApply(i) {
+  const pf = (_PEND_ALL || [])[i];
+  const st = document.getElementById(`pendman-status-${i}`);
+  const setSt = (msg, col) => { if (st) { st.textContent = msg; st.style.color = col; } };
+  if (!pf) { setSt('⚠️ ' + t('pend_jc_gone'), '#e11d48'); return; }
+  const g = (k) => { const el = document.getElementById(`pendman-${k}-${i}`);
+                     const v = el ? parseFloat(el.value) : NaN; return Number.isFinite(v) ? v : null; };
+  const h = g('h'), d = g('d'), a = g('a'), o = g('o'), u = g('u');
+  const line = g('line') || 2.5;
+  if (![h, d, a].every((x) => x && x > 1.0)) { setSt('⚠️ ' + t('cupman_need3'), '#e11d48'); return; }
+  setSt('…', '#6b7280');
+  try {
+    const resp = await fetch(`${API}/recommend/market-reprice`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ psc_home: h, psc_draw: d, psc_away: a,
+        psc_over25: (o && u) ? o : null, psc_under25: (o && u) ? u : null, ou_line: line }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 100)}`);
+    const data = await resp.json();
+    // ⛔ 物理上不可能的盘口(抽水≤0)**不落盘**:让它存下来就会被升格成一张
+    // 带假 P 的卡,而那张卡进甜区榜、进串关池。手滑的代价见 `is_impossible_book`。
+    if (data.impossible_book) {
+      setSt(`⛔ ${t('cupman_impossible')} · ${t('cupman_vig')} ${(data.overround * 100).toFixed(1)}%`, '#e11d48');
+      return;
+    }
+    _cupManSave(pf, { h, d, a, line, o, u, ts: Date.now(),
+      P: [data.p_home_1x2, data.p_draw_1x2, data.p_away_1x2],
+      lo: [data.onex_lo_home, data.onex_lo_draw, data.onex_lo_away],
+      hc: data.handicap_lines });
+    // 重渲:`_pendPromote` 在 renderCupMarket 之前跑,这场会从待开盘区消失、
+    // 以一张完整卡片出现在「💴 竞彩可投注」里。
+    renderCupMarket(_CUPMKT.preds, _CUPMKT.pending || []);
+    const hiVig = data.overround > 0.08;
+    setSt(`✓ ${t('cupman_applied')} · ${t('cupman_vig')} ${(data.overround * 100).toFixed(1)}%${hiVig ? ' ⚠️' : ''}`,
+          hiVig ? '#b45309' : '#059669');
+  } catch (e) {
+    setSt('⚠️ ' + e.message, '#e11d48');
+  }
 }
 function _setPending(board, list) {
   _pendingByBoard[board] = list || [];
@@ -7698,10 +7857,15 @@ function _renderUpcomingPending() {
     Math.min(...byLg[a].map(_kickoffMs)) - Math.min(...byLg[b].map(_kickoffMs)));
   // 待开盘 联赛组也用可折叠的 _lgGroupHtml(chevron + _collapsedLgs 持久化);
   // 'pend:' 前缀 → 在这里折叠不影响上方计分板里同名联赛。
+  // `_PEND_ALL` = 扁平后的那一份,`_pendPinApply(i)` 按 i 回查。
+  // ⚠️ 用序号而不是队名做句柄,是为了和 `cupman-${idx}` 那套保持同形;
+  // 它只在两次渲染之间有效,所以 `_pendPinApply` 取不到就报错、不猜。
+  _PEND_ALL = [];
   listEl.innerHTML = order.map(lg =>
     _lgGroupHtml(lg, leagueColor(lg), byLg[lg].length,
       byLg[lg].slice().sort((x, y) => _kickoffMs(x) - _kickoffMs(y))
-        .map(_pendingCardHtml).join(''),
+        .map((pf) => { _PEND_ALL.push(pf); return _pendingCardHtml(pf, _PEND_ALL.length - 1); })
+        .join(''),
       'pend:')
   ).join('');
 }
@@ -7737,6 +7901,16 @@ function renderCupMarket(preds, pending) {
       if (lsel && lsel.value !== '' && String(lsel.value) !== String(p.jc_hc_line)) bucket.hcline = lsel.value;
       if (Object.keys(bucket).length) _entered[key] = bucket;
     });
+  }
+  // ⭐ 2026-08-08 —— 「竞彩在卖但 Pinnacle 缺席」且**已经手填过**的场次升格成真卡。
+  // 位置很重要:必须在 `_CUPMKT.preds = preds` **之前**,否则升格出来的卡不在
+  // `_bettableSplit` / `_boardLegs` / `_recordBet` 读的那个数组里 ——
+  // 卡会画出来、却收不到键盘也记不了账(同 `test_bettable_first_dashboard.py:164`
+  // 记的那次「第二张卡」事故的形状)。
+  const _promoted = _pendPromote(preds, pending);
+  if (_promoted.length) {
+    const _up = new Set(_promoted.map(_cupManKey));
+    pending = pending.filter((pf) => !_up.has(_cupManKey(pf)));   // 别两个区都出现
   }
   _CUPMKT.preds = preds;
   _CUPMKT.fetchedAt = Date.now();
