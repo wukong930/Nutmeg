@@ -121,6 +121,21 @@ _ZH_OVERRIDES: dict[str, str] = {
     # ✅ 同时确认过这不是「Pinnacle 没覆盖资格赛」那种情况 —— 两场的 psc 都在
     #   odds_snapshots 里(08-04 03:24Z 抓取,2.08/3.62/3.18 与 2.07/3.8/3.08),
     #   所以补词典**确实能让它们进盘面**。
+    # 葡超 2026-08-08(横幅报「队名解不出 2/52」)—— 同样是 ① 类:
+    #   Academico Viseu → 词典写「维塞乌学院」,竞彩写「维塞乌」
+    #   Nacional        → 词典写「纳西奥纳」,  竞彩写「葡萄牙国民」
+    # ⭐ 英文值取自**两条独立锚且一致**:服务端下发的赛程(Benfica vs Academico Viseu /
+    #   Santa Clara vs Nacional)与 odds_snapshots(各 11 行)。不是按译音写的。
+    #   ⚠️ odds_api 侧还有「Académico de Viseu」带重音的写法,**没用它** ——
+    #   join 目标必须是盘面 `_gather_rows` 真在用的那个拼法。
+    # ⭐ 撞车检查:两个中文名在 TEAM_NAME_ZH / _ZH_OVERRIDES 里都没被别的队占用(0 冲突);
+    #   两个英文值在 odds_snapshots 各出现 11 次(「值必须在盘面出现过」那条断言)。
+    # 📌 顺带记一笔(不改,零影响):TEAM_NAME_ZH 里 `AVS Viseu → 维塞乌学院` 是第三个
+    #   指向同一中文的键,而 AVS 是另一家俱乐部(Vila das Aves)。它在 odds_snapshots
+    #   里从没出现过,反转也没选中它(`zh_to_canonical('维塞乌学院') == 'Academico Viseu'`),
+    #   所以是**惰性**的。哪天 AVS 真上盘面,它会变成一条静默死 join。
+    "维塞乌": "Academico Viseu",
+    "葡萄牙国民": "Nacional",
     "布拉迪斯拉发": "Slovan Bratislava",
     "圣吉尔联合": "Union St. Gilloise",
     "刚果(金)": "Congo DR",

@@ -145,8 +145,18 @@ SPORT_KEYS: dict[str, str] = {
     # 体检 (2026-07-12) — 6 个市场模式联赛缺 sport key(注册表覆盖率警告)。/sports?all=true
     # live 核对:5 个有真 key(丹超/苏超/瑞士超 active=True;澳超/土超 现休赛 active=False,
     # 但 key 存在 → 加了 fetch fail-soft,复赛自激活,与 8 键批次同规律)。JPN_J2 = Odds
-    # API 根本没有(只有 J1 soccer_japan_j_league,已映射到 JPN_J1)→ 故意留空,继续走
-    # AF 镜像(市场模式设计内,registry-coverage 记为 warn 非 gap)。
+    # API 根本没有(只有 J1 soccer_japan_j_league,已映射到 JPN_J1)→ 故意留空。
+    # ⚠️ 2026-08-08 更正 —— 原文接的是「继续走 AF 镜像(市场模式设计内)」,**这半句对
+    # J2 已证伪**:AF 对日乙的赔率也是空的。实测(缓存 90 场 + 两次 live refresh):
+    #   · 带 Pinnacle 的 J2 只有 22 场,开球日全挤在 2026-05-30 → 06-07 那一周;
+    #   · 06-08 之后问过的每一场都是**零家博彩**,含 08-08/09 的 10 场;
+    #   · 探针排除了「临近开赛下架」——7 天后的 fixture 1606606 同样零家。
+    # ⇒ **JPN_J2 是市场模式 20 个联赛里唯一两条路都空的**,它的场次永远停在「待开盘」,
+    #   有竞彩 SP 也算不出 EV。这是数据现实,不是 bug;别去「修」它,更别拿别的书商
+    #   顶替 Pinnacle 凑一个 P 出来(那就是编造 +EV)。
+    # 荷乙那条(见下面 2026-08-05 注)**仍然成立**:同样没 sport key,但 AF 有 Pinnacle
+    # (08-08 当日 3/3 上了可定价区)⇒ 「缺 key ⇒ 走 AF 镜像」是**逐联赛**的经验事实,
+    # 不是一条可以外推的规则。要断言某联赛有覆盖,就去数那个联赛自己的行。
     "DNK_SUPERLIGA":        "soccer_denmark_superliga",
     "SCO_PREMIERSHIP":      "soccer_spl",
     "SUI_SUPER_LEAGUE":     "soccer_switzerland_superleague",

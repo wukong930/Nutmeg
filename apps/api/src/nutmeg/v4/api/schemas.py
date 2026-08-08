@@ -872,11 +872,36 @@ class MarketRepriceResponse(BaseModel):
     p_home_1x2: float
     p_draw_1x2: float
     p_away_1x2: float
-    # market-implied 让球 board across integer lines (same shape the card holds)
+    # δ₁ₓ₂ 逐腿判闸下界 —— 与 `SinglePrediction.onex_lo_*` **同名同源**(都由
+    # `routes._onex_lo(fair)` 算),故意不另起名字:两个名字指同一个量是这个仓库
+    # 反复踩过的坑。
+    #
+    # ⭐ 2026-08-08 补 —— 在此之前这个回包**没有**下界,后果不是「少个字段」:
+    #   · 全新的手填卡(日乙唯一的路)⇒ `_boardLegs` 的 `lo ?? p` 回落成
+    #     `evLo ≡ ev`,1X2 腿**零收缩**,而同一张卡的让球腿照吃 `p_*_lo`
+    #     ⇒ 两类腿在同一个 evLo 排序里抢 argmax,v149 刚消灭的偏置原样复活;
+    #   · 已有的自动卡手填后 ⇒ `p_*_1x2` 换成新盘口、`onex_lo_*` 停在旧盘口
+    #     ⇒ 手填把 P 调低超过 2·SE 时 **evLo > ev**,下界变上界、判闸反而**变松**。
+    #     同 `market_handicap.py` 那条「越不可信越容易变绿」的形状。
+    # 同族病史:`_cupManRefreshDerived` 就是 2026-07-18 为「让球侧 p_*_lo 缺失」
+    # 专门加的重算路径 —— 同一个洞换一条腿又犯了一次。
+    onex_lo_home: float | None = None
+    onex_lo_draw: float | None = None
+    onex_lo_away: float | None = None
+    # market-implied 让球 board across integer lines (same shape the card holds).
+    # 元素 `HandicapLineProb` 自带 `p_*_lo` ⇒ 让球腿的下界一直是通的;
+    # 上面那三个 `onex_lo_*` 补的正是同一个回包里**缺掉的另一半**。
     handicap_lines: list[HandicapLineProb]
     # 1X2 overround the user's typed odds imply — a sanity check the dashboard
     # surfaces so a fat-finger (e.g. swapped 主/客) shows an off vig.
+    #
+    # ⚠️ 只有**上**界有人看(`WIDE_BOOK_VIG=0.08`)。下界没人看,而下界才是手滑的
+    # 指纹:`1.9/33.5/3.3`(小数点丢一位)⇒ overround −14.08%,一本负抽水的「盘」
+    # 物理上不存在 —— 见 `impossible_book` 与 dashboard 的 `_isImpossibleBook`。
     overround: float
+    # True ⇔ overround 落在物理上不可能的区间(见 `devig.is_impossible_book`)。
+    # 服务端算,免得前端自己写一份阈值(同 δ 常数不许挪进 JS 的理由)。
+    impossible_book: bool = False
 
 
 # ---------- /recommend/pool (V8 W6) ----------

@@ -2295,6 +2295,7 @@ const I18N = {
     cupman_revert:    '↩︎ 复原',
     cupman_err_1x2:   '请先填有效的 1X2 赔率(>1.0)',
     cupman_applied:   '已应用',
+    cupman_impossible: '这不可能是一本真盘口(抽水≤0)—— 请核对小数点',
     cupman_vig:       '贴水',
     cupman_badge:     '手填实时盘口',
     cupman_just_now:  '刚刚',
@@ -2862,6 +2863,7 @@ const I18N = {
     cupman_revert:    '↩︎ Revert',
     cupman_err_1x2:   'Enter valid 1X2 odds (>1.0) first',
     cupman_applied:   'Applied',
+    cupman_impossible: 'Not a real book (vig ≤ 0) — check the decimal point',
     cupman_vig:       'vig',
     cupman_badge:     'live odds (manual)',
     cupman_just_now:  'just now',
@@ -5145,7 +5147,13 @@ function _boardLegs(pr, idx, mode) {
     if (!(sp > 1.0) || !(p > 0)) return;
     const tier = _evRelTier(p);
     if (!tier) return;
-    const ev = p * sp - 1, evLo = (lo != null ? lo : p) * sp - 1;
+    // 钳位:下界**永远不许大于点估**。数学上 lo = p − k·SE 天然成立,所以这一行
+    // 在同源时是 no-op —— 它挡的是「两个数来自两条不同的 Pinnacle 线」那种错配
+    // (手填把 P 调低超过 k·SE ⇒ 旧下界反超新点估 ⇒ evLo > ev ⇒ 下界变上界、
+    // 判闸反而**变松**)。同 `market_handicap.py` 那条「越不可信越容易变绿」的形状。
+    // ⚠️ 这是**兜底**不是修法:真正的修法是三个 reprice 调用点把点估和下界一起换。
+    // 它若真的开始生效,说明上游又漂开了。
+    const ev = p * sp - 1, evLo = Math.min((lo != null ? lo : p), p) * sp - 1;
     // A-2 — 显示半宽 = A′ δ 带 ⊕ 冻结带(平方和);evLo/排序/绿灯不动(冻结带不判闸)
     legs.push({ o, label, p, sp, ev, evLo, tier,
                 half: Math.hypot(ev - evLo, _frzHalfEv(pr, o, sp)) });
@@ -6134,6 +6142,29 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
 const _jcCapT = {};
 // Board-generic: called from BOTH 标准模式 (_SPCALC/.spcalc-sp) and 市场模式
 // (_CUPMKT/.cupsp), which share the same H/D/A card shape + pr fields.
+//: 🚨 2026-08-08 —— 捕获竞彩 SP 时**能不能连 Pinnacle 一起写库**的唯一判据。
+//:
+//: `jingcai_sp.psc_*` 的语义是「**采集那一刻观测到的** Pinnacle 线」;模块注释
+//: (`observation/jingcai_sp.py`)明写面板送来的 psc 比事后查表更权威 —— 那句话
+//: 成立的**前提**是面板上的 psc 来自 AF/OA 的自动线。手填把同一条通道换成了一个
+//: 语义完全不同的东西:owner 自己打的数。而表里**没有任何一列**分得出来
+//: (`source` 标的是「哪块屏幕」= market_mode,自动线和手填线一模一样)。
+//:
+//: 谁在读这些 psc:`clv_ledger` / `pair_ev_ledger` / `ev_ranking` /
+//: `jingcai_staleness` / `shadow_a3_threshold` / **`delta_calibration`**。
+//: 最后那个尤其致命 —— **让球腿的判闸下界常数就是从这张表算出来的**
+//: ⇒ 手填值进去 = owner 的手输值参与决定判闸门槛,自我指涉。
+//:
+//: 所以手填时一律送 null:少一条观测,好过多一条**冒充观测的估计**。
+//: (⛔ 别改成「送进去再加一列标记」—— 那需要给 6 个消费者都补过滤,
+//:  漏一个就是静默污染;而 null 对每一个消费者都是天然正确的。)
+function _jcCapturePsc(pr) {
+  if (pr && pr._manual) return { psc_home: null, psc_draw: null, psc_away: null,
+                                 psc_over: null, psc_under: null, ou_line: null };
+  return { psc_home: pr.psc_home ?? null, psc_draw: pr.psc_draw ?? null,
+           psc_away: pr.psc_away ?? null, psc_over: pr.psc_over25 ?? null,
+           psc_under: pr.psc_under25 ?? null, ou_line: pr.ou_line ?? null };
+}
 function _jcStaleCapture(pr, selClass, idx, market) {
   if (!pr) return;
   // 2026-07-19 RCA — 开球 15min 后不再静默捕获:冻结 SP 已定,此后的框值只会是
@@ -6155,14 +6186,16 @@ function _jcStaleCapture(pr, selClass, idx, market) {
   if (_eq(oh, pr.jc_home) && _eq(od, pr.jc_draw) && _eq(oa, pr.jc_away)) return;
   const key = `${selClass}-${idx}`;   // debounce per board+idx (标准/市场 never collide)
   clearTimeout(_jcCapT[key]);
+  const _P = _jcCapturePsc(pr);
   _jcCapT[key] = setTimeout(() => {
     fetch(API + '/observation/jingcai-sp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
       body: JSON.stringify({
         match_date: pr.date, home_team: pr.home_team, away_team: pr.away_team,
         jc_home: oh, jc_draw: od, jc_away: oa,
-        psc_home: pr.psc_home ?? null, psc_draw: pr.psc_draw ?? null,
-        psc_away: pr.psc_away ?? null, ou_line: pr.ou_line ?? null,
+        // 手填的 Pinnacle 一律不写库 —— 见 `_jcCapturePsc` 的注释
+        psc_home: _P.psc_home, psc_draw: _P.psc_draw,
+        psc_away: _P.psc_away, ou_line: _P.ou_line,
         fixture_id: pr.fixture_id ?? null, league: pr.league ?? null, market: market || 'had',
       }),
     }).catch(() => {});   // silent by design
@@ -6194,15 +6227,17 @@ function _jcStaleCaptureHc(pr, hcspClass, lineSelId, idx) {
       && _eq(oa, pr.jc_hc_away)) return;
   const key = `${hcspClass}-${idx}`;
   clearTimeout(_jcCapT[key]);
+  const _P = _jcCapturePsc(pr);
   _jcCapT[key] = setTimeout(() => {
     fetch(API + '/observation/jingcai-sp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
       body: JSON.stringify({
         match_date: pr.date, home_team: pr.home_team, away_team: pr.away_team,
         jc_home: oh, jc_draw: od, jc_away: oa,
-        psc_home: pr.psc_home ?? null, psc_draw: pr.psc_draw ?? null,
-        psc_away: pr.psc_away ?? null, ou_line: pr.ou_line ?? null,
-        psc_over: pr.psc_over25 ?? null, psc_under: pr.psc_under25 ?? null,
+        // 手填的 Pinnacle 一律不写库 —— 见 `_jcCapturePsc` 的注释
+        psc_home: _P.psc_home, psc_draw: _P.psc_draw,
+        psc_away: _P.psc_away, ou_line: _P.ou_line,
+        psc_over: _P.psc_over, psc_under: _P.psc_under,
         fixture_id: pr.fixture_id ?? null, league: pr.league ?? null,
         market: 'hhad', handicap_home: line,
       }),
@@ -7085,8 +7120,16 @@ async function _cupManualReprice(idx) {
       ou_line: pr.ou_line, odds_update: pr.odds_update,
       // ↩︎ 复原要把出处一并还原;漏了 = 撤销手填后台账仍记 'manual'
       odds_source: pr.odds_source ?? null,
+      // 下界也要进快照 —— 否则 ↩︎ 只还原一半,点估回到自动线而下界停在手填线
+      onex_lo_home: pr.onex_lo_home ?? null, onex_lo_draw: pr.onex_lo_draw ?? null,
+      onex_lo_away: pr.onex_lo_away ?? null,
     };
     pr.p_home_1x2 = data.p_home_1x2; pr.p_draw_1x2 = data.p_draw_1x2; pr.p_away_1x2 = data.p_away_1x2;
+    // ⭐ 点估和下界**必须一起换**。分开换 = 两个数来自两条不同的 Pinnacle 线,
+    // 而 `_boardLegs` 的 `evLo` 拿下界、`ev` 拿点估 ⇒ 手填把 P 调低超过 2·SE 时
+    // evLo > ev,下界变上界、判闸反而变松。
+    pr.onex_lo_home = data.onex_lo_home; pr.onex_lo_draw = data.onex_lo_draw;
+    pr.onex_lo_away = data.onex_lo_away;
     pr.handicap_lines = data.handicap_lines;
     pr.psc_home = h; pr.psc_draw = d; pr.psc_away = a;
     pr.psc_over25 = (o && u) ? o : null; pr.psc_under25 = (o && u) ? u : null; pr.ou_line = line;
@@ -7095,15 +7138,24 @@ async function _cupManualReprice(idx) {
     // 2026-07-07 — 持久化手填盘口(输入 + 派生 P/让球线),跨 tab/刷新/重开都活。
     // ts = 用户**应用**的时刻(badge 报真实年龄用);后台重算派生数据时保留不动。
     _cupManSave(pr, { h, d, a, line, o, u, ts: pr._manualTs,
-      P: [data.p_home_1x2, data.p_draw_1x2, data.p_away_1x2], hc: data.handicap_lines });
+      P: [data.p_home_1x2, data.p_draw_1x2, data.p_away_1x2],
+      // 下界与点估**同批**存;分开存 = 贴回时又一次「两个数来自两条线」
+      lo: [data.onex_lo_home, data.onex_lo_draw, data.onex_lo_away],
+      hc: data.handicap_lines });
     renderCupMarket(_CUPMKT.preds, _CUPMKT.pending || []);
     // re-open the freshly-rendered panel + show the overround as a fat-finger check
     const det = document.getElementById(`cupman-${idx}`); if (det) det.open = true;
     const hiVig = data.overround > 0.08;  // typical Pinnacle 1X2 vig ~2-4%; >8% ⇒ likely a typo
     const st2 = document.getElementById(`cupman-status-${idx}`);
     if (st2) {
-      st2.textContent = `✓ ${t('cupman_applied')} · ${t('cupman_vig')} ${(data.overround * 100).toFixed(1)}%${hiVig ? ' ⚠️' : ''}`;
-      st2.style.color = hiVig ? '#b45309' : '#059669';
+      // 🚨 2026-08-08 —— 只有**上**界的时候,这个提示的方向是反的:
+      // `1.9/33.5/3.3`(小数点丢一位)水位 −14.1% ⇒ 一路绿灯「✓ 已应用」,
+      // 而打**对**的 `1.9/3.35/3.3` 水位 12.8% 反而标黄。抽水 ≤0 的盘物理上
+      // 不存在(booksum>1 恒真)⇒ 零误报,判据在服务端 `is_impossible_book`。
+      st2.textContent = data.impossible_book
+        ? `⛔ ${t('cupman_impossible')} · ${t('cupman_vig')} ${(data.overround * 100).toFixed(1)}%`
+        : `✓ ${t('cupman_applied')} · ${t('cupman_vig')} ${(data.overround * 100).toFixed(1)}%${hiVig ? ' ⚠️' : ''}`;
+      st2.style.color = data.impossible_book ? '#e11d48' : (hiVig ? '#b45309' : '#059669');
     }
   } catch (e) {
     const st3 = document.getElementById(`cupman-status-${idx}`);
@@ -7212,6 +7264,10 @@ async function _spcalcManualReprice(idx) {
       // 市场 P 还停在手填值上,两列来自不同盘口。
       p_home_market: pr.p_home_market, p_draw_market: pr.p_draw_market,
       p_away_market: pr.p_away_market,
+      // 2026-08-08 — 同理,下界跟着市场 P 走(`_boardLegs` 在标准模式取
+      // `_mktP(pr)` 当点估、取 `onex_lo_*` 当下界,两者必须同源)。
+      onex_lo_home: pr.onex_lo_home ?? null, onex_lo_draw: pr.onex_lo_draw ?? null,
+      onex_lo_away: pr.onex_lo_away ?? null,
     };
     // ⛔ 这里**故意没有** pr.p_home_1x2 = data.p_home_1x2 —— 标准模式 1X2 = 模型 P。
     //
@@ -7221,6 +7277,13 @@ async function _spcalcManualReprice(idx) {
     pr.p_home_market = data.p_home_1x2;
     pr.p_draw_market = data.p_draw_1x2;
     pr.p_away_market = data.p_away_1x2;
+    // ⭐ 2026-08-08 —— 这一支比市场模式那支更危险:标准模式的卡**可以**本来就没有
+    // Pinnacle(`_calc_predictions` 里 `mkt=None` ⇒ 服务端下发的 onex_lo_* 全 null),
+    // 此时腿因为 `_mktP` 返 null 而**根本不进榜**。手填一填,点估有了、下界还是 null
+    // ⇒ 这条腿从「不可见」直接变成「可见且零收缩」—— 是净新增的绿灯,不是变松而已。
+    pr.onex_lo_home = data.onex_lo_home;
+    pr.onex_lo_draw = data.onex_lo_draw;
+    pr.onex_lo_away = data.onex_lo_away;
     pr.handicap_lines = data.handicap_lines;
     pr.psc_home = h; pr.psc_draw = d; pr.psc_away = a;
     pr.psc_over25 = (o && u) ? o : null; pr.psc_under25 = (o && u) ? u : null; pr.ou_line = line;
@@ -7230,7 +7293,10 @@ async function _spcalcManualReprice(idx) {
     // 那边要用 P。谁用不用由**读的一方**决定(见 `_cupApplyStoredManual` 的
     // keepModelP),不是由写的一方阉割数据。
     _cupManSave(pr, { h, d, a, line, o, u, ts: pr._manualTs,
-      P: [data.p_home_1x2, data.p_draw_1x2, data.p_away_1x2], hc: data.handicap_lines });
+      P: [data.p_home_1x2, data.p_draw_1x2, data.p_away_1x2],
+      // 下界与点估**同批**存;分开存 = 贴回时又一次「两个数来自两条线」
+      lo: [data.onex_lo_home, data.onex_lo_draw, data.onex_lo_away],
+      hc: data.handicap_lines });
     _spcalcRerender();
     const det = document.getElementById(`spman-${idx}`); if (det) det.open = true;
     const hiVig = data.overround > 0.08;   // Pinnacle 1X2 常态 2-4%;>8% ⇒ 多半打错
@@ -7293,7 +7359,14 @@ function _cupApplyStoredManual(preds, rerender, keepModelP) {
       // ↩︎ 复原要把出处一并还原;漏了 = 撤销手填后台账仍记 'manual'
       odds_source: pr.odds_source ?? null,
     };
-    if (!keepModelP) { pr.p_home_1x2 = m.P[0]; pr.p_draw_1x2 = m.P[1]; pr.p_away_1x2 = m.P[2]; }
+    if (!keepModelP) {
+      pr.p_home_1x2 = m.P[0]; pr.p_draw_1x2 = m.P[1]; pr.p_away_1x2 = m.P[2];
+      // 2026-08-08 起一起存了下界;老记录没有 `lo` ⇒ 这一瞬间仍是「新点估 + 旧下界」,
+      // 由紧接着的 `_cupManRefreshDerived` 一个来回补齐(`_boardLegs` 的钳位兜住方向)。
+      if (Array.isArray(m.lo)) {
+        pr.onex_lo_home = m.lo[0]; pr.onex_lo_draw = m.lo[1]; pr.onex_lo_away = m.lo[2];
+      }
+    }
     if (m.hc) pr.handicap_lines = m.hc;
     pr.psc_home = m.h; pr.psc_draw = m.d; pr.psc_away = m.a;
     pr.psc_over25 = (m.o && m.u) ? m.o : null;
@@ -7330,9 +7403,17 @@ async function _cupManRefreshDerived(pairs, rerender, keepModelP) {
       // 一方决定;这里少存一次,同一场比赛哪天进了市场模式板就没 P 可贴了。
       if (!keepModelP) {
         pr.p_home_1x2 = data.p_home_1x2; pr.p_draw_1x2 = data.p_draw_1x2; pr.p_away_1x2 = data.p_away_1x2;
+        // ⭐ 下界只跟着**这一支实际更新的那个点估**走。
+        // keepModelP=true(标准模式)时这里不动 `p_*_market` ⇒ 也**不许**动下界,
+        // 否则就会造出「点估来自自动线、下界来自手填线」的新错配 —— 正是本次要消灭的东西。
+        pr.onex_lo_home = data.onex_lo_home; pr.onex_lo_draw = data.onex_lo_draw;
+        pr.onex_lo_away = data.onex_lo_away;
       }
       pr.handicap_lines = data.handicap_lines;
+      // `lo` 存进 localStorage:下次刷新贴回时点估和下界能**同时**就位,
+      // 不必等这次异步重算(那个窗口里卡是「新点估 + 旧下界」)。
       _cupManSave(pr, { ...m, P: [data.p_home_1x2, data.p_draw_1x2, data.p_away_1x2],
+                        lo: [data.onex_lo_home, data.onex_lo_draw, data.onex_lo_away],
                         hc: data.handicap_lines });
       changed = true;
     } catch (_) { /* 离线/超时 → 保留贴回的旧值 */ }

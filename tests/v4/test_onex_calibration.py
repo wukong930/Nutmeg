@@ -32,9 +32,14 @@ DASH = REPO / "apps/api/src/nutmeg/v4/api/static/dashboard.html"
 
 
 def _fn(name: str) -> str:
-    """抠出一个顶层函数体(行首锚定 —— 注释里出现同名串不算)。"""
+    """抠出一个顶层函数体(行首锚定 —— 注释里出现同名串不算)。
+
+    `async?` 是 2026-08-08 补的:三个 reprice 调用点都是 `async function`,
+    原来的 `^function` 锚一个都抠不出来 —— 而它抛的是 AssertionError
+    「不在 dashboard.html 里」,长得像「函数被删了」而不是「正则没盖住」。
+    """
     s = DASH.read_text(encoding="utf-8")
-    m = re.search(rf"^function {re.escape(name)}\(", s, re.M)
+    m = re.search(rf"^(?:async )?function {re.escape(name)}\(", s, re.M)
     assert m, f"{name} 不在 dashboard.html 里"
     i = m.start()
     d, j = 0, s.index("{", i)
@@ -175,3 +180,138 @@ def test_market_mode_row_carries_the_bound_server_side() -> None:
         assert lo_v is not None, "市场模式没下发下界 —— 前端会退回 evLo≡ev"
         assert lo_v < p_v, "下发的下界没有比点估小"
     assert mp.p_home_1x2 - mp.onex_lo_home == pytest.approx(ONEX_SE_K * ONEX_SE[0])
+
+
+# ---------------------------------------------------------------------------
+# 手填 Pinnacle 那条路(2026-08-08 · v150)
+#
+# 为什么必须单独守:上面那条只覆盖 `_row_to_market_prediction`,而**手填走的是
+# `/recommend/market-reprice`,完全另一条路**。日乙(JPN_J2)两条 Pinnacle 源都
+# 拿不到(Odds API 无 sport key + AF 逐场零家博彩),手填是它**唯一**的路 ⇒
+# 这条路上缺下界 = δ₁ₓ₂ 对日乙形同没上线。
+# ---------------------------------------------------------------------------
+
+def test_reprice_carries_the_same_bound_as_the_auto_card() -> None:
+    """⭐ 判据是「两条路对同一个 Pinnacle 报价给出**逐位相同**的下界」。
+
+    ⛔ 不是「reprice 回包里有三个 onex_lo_* 字段」—— 那个断言被「前端/服务端各写
+    一份 k·SE」的实现照样满足,而那正是 WPO 那次 server↔JS 漂移的形状。
+    """
+    from nutmeg.v4.api.routes import _row_to_market_prediction, recommend_market_reprice
+    from nutmeg.v4.api.schemas import MarketRepriceRequest
+
+    H, D, A = 2.10, 3.50, 3.80
+    auto = _row_to_market_prediction(
+        {"home_team": "A", "away_team": "B", "league": "JPN_J2",
+         "date": "2026-08-08", "psc_home": H, "psc_draw": D, "psc_away": A})
+    man = recommend_market_reprice(MarketRepriceRequest(psc_home=H, psc_draw=D, psc_away=A))
+
+    for got, want in ((man.onex_lo_home, auto.onex_lo_home),
+                      (man.onex_lo_draw, auto.onex_lo_draw),
+                      (man.onex_lo_away, auto.onex_lo_away)):
+        assert got is not None, "手填路径没下发下界 —— 前端会退回 evLo≡ev(零收缩)"
+        assert got == pytest.approx(want, abs=1e-12), "两条路的下界漂开了"
+
+    # 更有牙的不变量:收缩量恒等于 k·SE。一个「照旧盘口算的陈旧下界」也满足
+    # `lo < p`,却过不了这一条 —— 而陈旧下界正是本次修的两种形态之一。
+    for lo, p, se in ((man.onex_lo_home, man.p_home_1x2, ONEX_SE[0]),
+                      (man.onex_lo_draw, man.p_draw_1x2, ONEX_SE[1]),
+                      (man.onex_lo_away, man.p_away_1x2, ONEX_SE[2])):
+        assert p - lo == pytest.approx(ONEX_SE_K * se, abs=1e-12)
+
+
+def test_all_three_reprice_call_sites_write_the_bound_onto_the_card() -> None:
+    """⭐ 服务端送了 ≠ 卡上用了。
+
+    病史同 `test_manual_bet_odds_source.py`:前端送了、后端读了,中间那层静默吞掉。
+    ⛔ 这是**语法**断言,只能证明「三处都往卡上写了下界」,证明不了写的值对 ——
+       值的正确性由上面那条(两条路逐位相同)和下面那条(钳位)行为断言守。
+       之所以还要它:三个调用点里**最容易漏的是 `_cupManRefreshDerived`**,
+       而那个函数正是 2026-07-18 为「让球侧 p_*_lo 缺失」专门加的重算路径 ——
+       同一个洞换一条腿又犯了一次,漏掉它等于修复不覆盖「刷新后贴回」。
+
+    ⚠️ 断言必须贴着**赋值**写(`pr.onex_lo_home =`),不能只查 `onex_lo_home`
+       在不在函数体里 —— 我第一版就是那么写的,空包弹当场证伪:删掉赋值之后
+       函数体里仍有 `lo: [data.onex_lo_home, …]`(存 localStorage 那一行),
+       测试照样绿。**假绿比没有护栏更坏**,因为它让人以为查过了。
+    """
+    for fname in ("_cupManualReprice", "_spcalcManualReprice", "_cupManRefreshDerived"):
+        body = _fn(fname)
+        assert re.search(r"pr\.onex_lo_home\s*=", body), (
+            f"{fname} 没有把 1X2 下界写回卡上 —— 手填后点估换了、下界还停在旧盘口")
+
+
+def test_a_stale_bound_can_no_longer_loosen_the_gate() -> None:
+    """⭐ 行为断言:下界**永远不许大于点估**。
+
+    实测的坏形状(2026-08-08):自动线 P=0.42 ⇒ 下界 0.4084;owner 手填真 Pinnacle
+    得 P=0.39。竞彩 SP=2.60 时点估 EV=+1.4% 过不了 +5% 闸,而**陈旧**下界给出
+    +6.2% —— **下界过闸而点估过不了**,下界变成了上界。同
+    `market_handicap.py` 那条「越不可信越容易变绿」的形状。
+    """
+    pr = {"p_home_1x2": 0.39, "p_draw_1x2": 0.31, "p_away_1x2": 0.30,
+          "jc_home": 2.60, "jc_draw": 3.40, "jc_away": 3.50,
+          # 故意喂一个来自**另一条线**的下界(比点估还大)
+          "onex_lo_home": 0.4084, "onex_lo_draw": 0.2988, "onex_lo_away": 0.2888,
+          "jc_hc_line": None, "handicap_lines": None}
+    got = {lg["o"]: lg for lg in _run_boardlegs(pr)}
+    h = got["H"]
+    assert h["evLo"] <= h["ev"] + 1e-12, (
+        f"下界({h['evLo']:.4%})反超点估({h['ev']:.4%}) —— 判闸被放松了")
+    # 钳位前这条腿会是 +6.18%(过 +5% 闸);钳位后必须回到点估
+    assert h["evLo"] == pytest.approx(0.39 * 2.60 - 1, abs=1e-12)
+    assert h["evLo"] < 0.05, "这条腿本不该过 +5% 闸"
+
+
+def test_an_impossible_book_is_rejected_and_a_real_one_is_not() -> None:
+    """⛔ 手滑闸:抽水 ≤0 的「盘口」物理上不存在。
+
+    实测(2026-08-08)的真实手滑:`1.9 / 33.5 / 3.3`(本该 `1.9 / 3.35 / 3.3`)
+    ⇒ booksum 0.8592、抽水 **−14.08%**。当时**没有任何一道闸会响**,而面板用
+    **绿色**显示「✓ 已应用 · 水位 −14.1%」;打**对**了反而标黄 ⇒ 提示方向是反的。
+    钱的量级:主胜公允 P 0.4837 → 0.5733(+8.96pp),竞彩 SP 2.00 时
+    EV 从 −3.3% 变成 **+14.7%**,穿过 +5% 闸。
+
+    ⚠️ 判据必须**零误报**:booksum>1 对任何真盘口恒成立,所以它不是经验阈值、
+    不会随联赛/季节漂移 —— 这也是它不需要预注册的原因。
+    """
+    from nutmeg.v4.model.devig import is_impossible_book, is_wide_book
+
+    assert is_impossible_book(1.9, 33.5, 3.3), "小数点丢一位没被拦下"
+    assert not is_impossible_book(1.9, 3.35, 3.3), "正常的 12.8% 抽水被冤枉了"
+    # ⭐ 两道闸必须是**两个**函数:`is_wide_book` 判「配不配当 sharp 锚」,有 6 个
+    # 调用点靠它降级;把下界塞进同一个布尔会让那 6 处一起改变行为。
+    assert not is_wide_book(1.9, 33.5, 3.3), (
+        "水位闸不该管这件事 —— 它只有上界,这正是当初漏掉手滑的原因")
+    assert is_wide_book(1.9, 3.35, 3.3), "12.8% > 8% 仍该被判为宽水位"
+    # 算不出水位时两边都不冤枉(与 book_vig 的 None 惯例一致)
+    assert not is_impossible_book(1.9, None, 3.3)
+
+
+def test_hand_typed_pinnacle_never_reaches_the_jingcai_sp_table() -> None:
+    """🚨 `jingcai_sp.psc_*` 的语义是「采集那一刻**观测到的** Pinnacle 线」。
+
+    手填是 owner 自己打的数,不是观测。而表里**没有任何一列**分得出来
+    (`source` 标的是「哪块屏幕」= market_mode,自动线和手填线一模一样)。
+    读它的有 6 个 CLI,其中 **`delta_calibration`** 算的是让球腿的判闸下界常数
+    ⇒ 手填值进去 = owner 的手输值参与决定判闸门槛,自我指涉。
+
+    判据是**行为**:跑真的 `_jcCapturePsc`,`_manual` 卡必须整组送 null。
+    """
+    import json
+    import subprocess
+
+    src = _fn("_jcCapturePsc")
+    probe = (src + "\n"
+             "const auto = _jcCapturePsc({psc_home:2.1, psc_draw:3.5, psc_away:3.8,"
+             " psc_over25:1.9, psc_under25:1.95, ou_line:2.5});\n"
+             "const man  = _jcCapturePsc({psc_home:2.1, psc_draw:3.5, psc_away:3.8,"
+             " psc_over25:1.9, psc_under25:1.95, ou_line:2.5, _manual:true});\n"
+             "console.log(JSON.stringify({auto, man}));")
+    r = subprocess.run(["node", "-e", probe], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr[:1500]
+    out = json.loads(r.stdout)
+    assert out["auto"]["psc_home"] == 2.1, "自动线不该被误伤 —— 那是真观测,要写库"
+    assert out["auto"]["psc_over"] == 1.9
+    assert all(v is None for v in out["man"].values()), (
+        f"手填卡把 Pinnacle 送进观测库了:{out['man']}")

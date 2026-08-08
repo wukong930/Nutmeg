@@ -611,7 +611,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v149-fe-onex-lower-bound"
+_FE_VERSION = "nutmeg-v150-fe-manual-pinnacle-bound"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2390,9 +2390,15 @@ _CUP_MARKET_COMPETITIONS = [
     # 模式。赔率来源实测有别,记在这里免得以后误判「荷乙怎么线这么旧」:
     #   · EFL_CUP  → Odds API 有 `soccer_england_efl_cup`(active=True)+ AF 镜像,
     #                双覆盖,鲜线叠加正常工作;
-    #   · 荷乙     → Odds API **根本没有**这个 sport(只有 eredivisie),同 JPN_J2
-    #                先例:只走 AF 的 Pinnacle 镜像(实测 fixture 1551741 有 Pinnacle),
-    #                线会比有 sport key 的联赛旧一些 —— 这是数据现实,不是 bug。
+    #   · 荷乙     → Odds API **根本没有**这个 sport(只有 eredivisie),只走 AF 的
+    #                Pinnacle 镜像(实测 fixture 1551741 有 Pinnacle;2026-08-08 复核
+    #                当日 3/3 全上了可定价区),线会比有 sport key 的联赛旧一些 ——
+    #                这是数据现实,不是 bug。
+    #                ⚠️ 原文写的是「同 JPN_J2 先例」,2026-08-08 已删:J2 的 AF 镜像
+    #                **也是空的**(06-08 起逐场零家博彩,含 7 天后的未来场),它是这个
+    #                列表里唯一两条路都空的联赛 —— 详见 odds_api.SPORT_KEYS 那条更正。
+    #                ⇒ 「缺 sport key ⇒ 有 AF 镜像兜底」不是规则,是**逐联赛**的事实,
+    #                   每加一个没 key 的联赛都得自己数一遍行,不能靠先例外推。
     "NED_EERSTE_DIVISIE", "EFL_CUP",
 ]
 
@@ -2695,12 +2701,21 @@ def recommend_market_reprice(req: MarketRepriceRequest) -> MarketRepriceResponse
     }
     lines = _market_handicap_lines(fair, r)
     overround = (1.0 / req.psc_home + 1.0 / req.psc_draw + 1.0 / req.psc_away) - 1.0
+    # ⭐ 2026-08-08 —— 逐字复用 `_row_to_market_prediction:2569` 的那一行。
+    # 手填卡和自动卡的 1X2 下界必须是**同一个函数的同一次调用形态**,不是
+    # 「两边各算一份 k·SE」—— 后者正是 WPO 那次 server↔JS 漂移的形状。
+    lo_h, lo_d, lo_a = _onex_lo(fair)
+    from nutmeg.v4.model.devig import is_impossible_book
     return MarketRepriceResponse(
         p_home_1x2=float(fair[0]),
         p_draw_1x2=float(fair[1]),
         p_away_1x2=float(fair[2]),
+        onex_lo_home=lo_h,
+        onex_lo_draw=lo_d,
+        onex_lo_away=lo_a,
         handicap_lines=lines,
         overround=float(overround),
+        impossible_book=is_impossible_book(req.psc_home, req.psc_draw, req.psc_away),
     )
 
 
