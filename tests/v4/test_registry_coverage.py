@@ -10,9 +10,12 @@ import re
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from nutmeg.v4.cli.registry_coverage import (
     CRON_LEAGUES,
     MARKET_MODE_LEAGUES,
+    NO_JINGCAI_ANCHOR,
     check_league,
     run,
 )
@@ -162,7 +165,98 @@ class TestLiveDictCoverage:
                 continue
             miss = [t["team"]["name"] for t in teams
                     if t["team"]["name"] not in reachable
-                    and t["team"]["name"] not in _NO_CHINESE_NAME_EXISTS]
+                    and t["team"]["name"] not in _NO_CHINESE_NAME_EXISTS
+                    and t["team"]["name"] not in NO_JINGCAI_ANCHOR.get(lg, ())]
             if miss:
                 problems.append(f"{lg}: {miss}")
         assert not problems, "dict-unreachable teams reappeared:\n" + "\n".join(problems)
+
+
+def test_every_served_competition_is_either_checked_or_excused() -> None:
+    """🚨 覆盖率工具的**作用域**本身也得有人看着。
+
+    ⭐ 起因(2026-08-09):给解放者杯/欧超杯/沙职接完全部注册表,跑这个工具 ——
+    **全绿,三个联赛一个字没提**。因为它从手写元组 `MARKET_MODE_LEAGUES` 迭代,
+    新赛事它压根**没去看**。`CRON_LEAGUES` 有 tripwire(解析 setup 脚本比对),
+    这条一直没有。
+
+    ⚠️ 这正是本仓最贵的那一族:**「没有缺口」和「没去看那一格」长得一模一样**,
+    而且是往**安全**的方向说谎 —— 体检绿灯 ⇒ 没人会去查。
+    (同族:涓流 END 写成常量 ⇒「零新增」数学上必然;s6 空窗口;δ 无历史。)
+
+    规矩:市场模式会服务、且有 AF id 的赛事,要么进 `MARKET_MODE_LEAGUES`
+    (被真的检查),要么进 `OUT_OF_SCOPE` 并写明**为什么这套单元格对它没意义**。
+    二选一,不许有第三种状态 —— 逼下次加赛事的人做个有意识的选择。
+
+    ⛔ 故意**不**断言「作用域恰好等于某个集合」:那会在任何合理扩容时假红,
+    而假红的护栏最后会被删掉。这里只断言「没有无人认领的」。
+    """
+    from nutmeg.v4.api.routes import _CUP_MARKET_COMPETITIONS
+    from nutmeg.v4.cli.registry_coverage import (
+        CRON_LEAGUES,
+        MARKET_MODE_LEAGUES,
+        OUT_OF_SCOPE,
+    )
+    from nutmeg.v4.data.sources.api_football import API_FOOTBALL_LEAGUE_IDS
+
+    scope = set(CRON_LEAGUES) | set(MARKET_MODE_LEAGUES) | set(OUT_OF_SCOPE)
+    served = {c for c in _CUP_MARKET_COMPETITIONS if API_FOOTBALL_LEAGUE_IDS.get(c)}
+    orphans = sorted(served - scope)
+    assert not orphans, (
+        f"这些赛事会被市场模式服务,但覆盖率工具既不查、也没写明为什么不查:{orphans}。"
+        f"进 MARKET_MODE_LEAGUES,或进 OUT_OF_SCOPE 并写理由。")
+
+    # 理由不许是空串 —— 「写了一个占位符」等于没写
+    blank = sorted(k for k, v in OUT_OF_SCOPE.items() if not str(v).strip())
+    assert not blank, f"OUT_OF_SCOPE 里这些条目没写理由:{blank}"
+
+
+
+
+def test_jingcai_listed_teams_are_fully_reachable() -> None:
+    """🚨 真正会花钱的那条闸:**竞彩上架过的队**必须 100% 可解析。
+
+    `_NO_JINGCAI_ANCHOR` 放行的是 AF 队表里竞彩从没卖过的队 —— 它们解析不出
+    不会掉任何一条腿。但只要竞彩上架过,解析不出就等于**那场比赛的竞彩 SP 挂不上**,
+    进而这场既进不了可投注列表、也不会有人发现(这正是 2026-07-04 瑞超 6 场
+    静默消失的形状)。
+
+    ⭐ 所以这条断言的人口是**会下注的人口**,不是 AF 的花名册 —— 与本仓
+    「统计量必须在会下注的人口上算」「校准必须在真实竞彩线上测」同一条纪律。
+
+    没有竞彩档案库时跳过(CI 上没有这个文件)。
+    """
+    import sqlite3
+
+    from nutmeg.v4.data.sources.sporttery import _ZH_OVERRIDES, _ZH_TO_EN
+
+    db = Path("data/v4_jingcai_history.db")
+    if not db.exists():
+        pytest.skip("没有竞彩档案库 —— 这条断言只在本地有意义")
+
+    resolvable = set(_ZH_TO_EN) | set(_ZH_OVERRIDES)
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        rows = con.execute(
+            """SELECT league_cn, home_zh FROM jingcai_odds_history
+                WHERE home_zh <> ''
+                UNION
+               SELECT league_cn, away_zh FROM jingcai_odds_history
+                WHERE away_zh <> ''""").fetchall()
+    finally:
+        con.close()
+
+    by_league: dict[str, set[str]] = {}
+    for lg, zh in rows:
+        by_league.setdefault(str(lg or "?"), set()).add(zh)
+
+    # 只守本次新上的三个 —— 全库范围是另一件事(存量联赛有历史缺口,
+    # 一次性拉齐会变成一条永远红的护栏,那种最后会被删掉)。
+    watched = {"解放者杯", "沙职", "欧超杯"}
+    gaps = {lg: sorted(t - resolvable)
+            for lg, t in by_league.items()
+            if lg in watched and (t - resolvable)}
+    assert not gaps, (
+        f"这些队竞彩**上架过**却解析不出 ⇒ 它们的竞彩 SP 挂不上、场次静默掉出"
+        f"可投注列表:{gaps}。修法是跑 scripts/anchor_team_names_by_score.py,"
+        f"⛔ 不是往 _NO_JINGCAI_ANCHOR 里加一行。")

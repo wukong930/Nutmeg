@@ -59,7 +59,74 @@ MARKET_MODE_LEAGUES: tuple[str, ...] = (
     # 补(2026-08-05)。荷乙的 sport-key 单元会报 warn —— 那是**预期**的:
     # Odds API 没有这个 sport(见 odds_api.SPORT_KEYS 注释),同 JPN_J2。
     "NED_EERSTE_DIVISIE",
+    # 补(2026-08-09 owner)。三个各带一个**不同**的预期 warn/gap:
+    #   · 解放者杯 → 双源齐(Odds API active=True + AF 14 家含 Pinnacle),但队名字典缺 46;
+    #   · 欧超杯   → sport-key 单元会 warn(Odds API 无此 sport,同 JPN_J2/荷乙),AF 镜像供线;
+    #   · 沙职     → sport key 有但休赛期 active=False;⚠️ AF **不给赔率**(上赛季已完赛
+    #                的 5 场也 0/5)⇒ Odds API 是它唯一的鲜线源,字典缺 18。
+    "COPA_LIBERTADORES", "UEFA_SUPER_CUP", "SAU_PRO_LEAGUE",
 )
+
+#: 已服务但**故意不进**覆盖率检查的赛事 → 理由。
+#:
+#: ⭐ 2026-08-09 加。起因:我给三个新赛事接完线,这个工具照样全绿 ——
+#: 因为它从**手写元组**迭代,新赛事它压根**没去看**。`CRON_LEAGUES` 有 tripwire
+#: (解析 setup 脚本比对),`MARKET_MODE_LEAGUES` 一直**没有** ⇒ 静默漂移。
+#: 本仓同族第 N 次:「分不出『没有缺口』和『没去看那一格』」。
+#:
+#: 现在的规矩:`_CUP_MARKET_COMPETITIONS` 里每一个有 AF id 的赛事,
+#: 要么进 `MARKET_MODE_LEAGUES`,要么在这里写明**为什么不查**。
+#: 测试 `test_registry_coverage.py::test_every_served_competition_is_either_checked_or_excused`
+#: 强制这个二选一 —— 下次加赛事的人必须做一个**有意识**的选择,不能默默漏掉。
+#:
+#: ⚠️ 这里的条目不是「不重要」,是「这个工具的这套单元格对它没意义」:
+#: 洲际/国内杯赛没有固定的赛季队表,`fetch_teams_for_league_season` 对它们
+#: 要么返回一个随轮次变化的集合、要么白烧 AF 额度。解放者杯是**例外**
+#: (小组赛 32 队,是个真队表)所以进了上面的清单。
+OUT_OF_SCOPE: dict[str, str] = {
+    "UCL":  "洲际杯赛,无固定赛季队表",
+    "UEL":  "洲际杯赛,无固定赛季队表",
+    "UECL": "洲际杯赛,无固定赛季队表",
+    "WC":   "国家队赛事,四年一届",
+    "EURO": "国家队赛事,四年一届",
+    "COPA_AMERICA": "国家队赛事",
+    "WC_QUAL_UEFA": "国家队预选赛,队表=会员协会",
+    "FAC":            "国内杯赛,参赛队跨多级联赛",
+    "EFL_CUP":        "国内杯赛,92 家 EFL 俱乐部",
+    "COPA_DEL_REY":   "国内杯赛,参赛队跨多级联赛",
+    "COPPA_ITALIA":   "国内杯赛,参赛队跨多级联赛",
+    "DFB_POKAL":      "国内杯赛,参赛队跨多级联赛",
+    "COUPE_DE_FRANCE": "国内杯赛,参赛队跨多级联赛",
+    # 它**在** MARKET_MODE_LEAGUES 里(sport-key / AF-id 两格有意义),
+    # 只有队表那一格对它无意义 —— 一年一场、两支队。
+    "UEFA_SUPER_CUP": "一年一场两队,队表检查无意义",
+}
+
+#: AF 队表里有、但竞彩**从未上架过**的球队 → 没有任何锚可以拿到它们的中文名。
+#:
+#: ⭐ 2026-08-09 加。给解放者杯/沙职补队名时,`scripts/anchor_team_names_by_score.py`
+#: 用**比分锚定**把竞彩上架过的队全部钉住了(50/50、18/18、4/4,见 team_name_zh.py
+#: 里那段长注释)。剩下的这些队竞彩一场都没卖过 ⇒ 档案里根本没有它们的中文名,
+#: 而本仓红线「绝不照英文猜译名」堵死了唯一剩下的路。
+#:
+#: ⚠️ 它们**不属于** `_NO_CHINESE_NAME_EXISTS` —— 那个白名单是「这支队真的没有中文名」
+#: (荷兰的 Jong 预备队),而这些队当然有中文名,只是**我们的数据里没有**。
+#: 把两者混在一起会让「没有」和「没去看」再一次分不出来。
+#:
+#: 🚨 这个白名单**不是**降低标准:`tests/v4/test_registry_coverage.py` 里的
+#: `test_jingcai_listed_teams_are_fully_reachable` 在**会下注的人口**上断言 100%,
+#: 那才是真正会花钱的那条闸。这里放行的全是不可能出现在竞彩腿上的队。
+#:
+#: ⛔ 往这里加名字前先问:这支队竞彩真的没上架过吗?(去 jingcai_odds_history 数一遍。)
+#: 如果上架过而解析不出,那是**真缺口**,该去跑锚定器,不是往这里加一行。
+NO_JINGCAI_ANCHOR: dict[str, tuple[str, ...]] = {
+    "COPA_LIBERTADORES": (
+        "Argentinos JRS", "Universidad Catolica", "Club Guarani", "2 de Mayo",
+        "O'Higgins", "Huachipato", "Juventud", "Liverpool Montevideo",
+        "Carabobo FC", "Nacional Potosí",   # ⚠️ 带重音 —— 我第一版敲成 Potosi 当场红了
+    ),
+    "SAU_PRO_LEAGUE": ("Al-Faisaly FC", "Abha", "Al Diriyah"),
+}
 
 
 def check_league(league: str, *, refresh: bool = False) -> dict:
@@ -76,7 +143,7 @@ def check_league(league: str, *, refresh: bool = False) -> dict:
     from nutmeg.v4.data.sources.sporttery import _EN_OVERRIDES, _ZH_TO_EN
 
     row: dict = {"league": league, "af_id": None, "sport_key": None,
-                 "n_teams": None, "unreachable": [], "error": None}
+                 "n_teams": None, "unreachable": [], "excused": [], "error": None}
     with contextlib.suppress(Exception):  # missing registry entry IS the finding
         row["af_id"] = league_id(league)
     row["sport_key"] = odds_api.SPORT_KEYS.get(league)
@@ -91,7 +158,13 @@ def check_league(league: str, *, refresh: bool = False) -> dict:
     names = sorted(t["team"]["name"] for t in teams)
     row["n_teams"] = len(names)
     reachable = {_EN_OVERRIDES.get(en, en) for en in _ZH_TO_EN.values()}
-    row["unreachable"] = [n for n in names if n not in reachable]
+    # ⚠️ 白名单里的队竞彩**从没上架过** ⇒ 它们解析不出掉不了任何一条腿。
+    # 报成硬缺口会让这个工具**永远红**,而永远红的体检最后没人看
+    # (「假红比假绿更贵」)。测试 `test_registry_coverage.py` 与本模块共用
+    # 这同一个 `NO_JINGCAI_ANCHOR` —— 单一真相源,两边不会各说各话。
+    excused = set(NO_JINGCAI_ANCHOR.get(league, ()))
+    row["unreachable"] = [n for n in names if n not in reachable and n not in excused]
+    row["excused"] = sorted(n for n in names if n in excused)
     return row
 
 
