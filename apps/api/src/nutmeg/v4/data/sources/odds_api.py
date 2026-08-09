@@ -175,6 +175,17 @@ SPORT_KEYS: dict[str, str] = {
     # 补美职联+巴甲(2026-07-14)— 均 /sports?all=true live 核实 active=True。
     "USA_MLS":              "soccer_usa_mls",
     "BRA_SERIE_A":          "soccer_brazil_campeonato",
+    # 补解放者杯 + 沙职(2026-08-09 owner)— /sports?all=true live 核实(175 个 sport 全表):
+    #   · 解放者杯 `soccer_conmebol_copa_libertadores` **active=True**(南美赛季进行中);
+    #   · 沙职     `soccer_saudi_arabia_pro_league`    active=False(8 月休赛),
+    #     赛季 08-13 开打后按 8 键批次的规律自激活 —— fetch fail-soft 已就位。
+    # 🚨 沙职这条**格外重要**:AF 对沙职**不给赔率**(未来场次 0 家;拿上赛季
+    #    已打完的 5 场复验同样 0/5,所以不是「还没发」)⇒ Odds API 是它**唯一**的鲜线源。
+    # ⛔ **欧超杯故意没有条目**:整个 175 个 sport 里没有 UEFA Super Cup(全表核过)。
+    #    它只走 AF 镜像 —— 2026 那场 fixture 1583664 实测 13 家含 Pinnacle。
+    #    ⚠️ 别把它读成「缺 key ⇒ AF 兜底」的规则(日乙同样缺 key 而 AF 也空)。
+    "COPA_LIBERTADORES":    "soccer_conmebol_copa_libertadores",
+    "SAU_PRO_LEAGUE":       "soccer_saudi_arabia_pro_league",
     # 补英联赛杯(2026-08-05)— /sports?all=true live 核实 active=True。
     # ⚠️ 同批注册的 **NED_EERSTE_DIVISIE(荷乙)故意没有条目**:整个 Odds API 只有
     # `soccer_netherlands_eredivisie`(荷甲),荷乙这个 sport **不存在**(174 个 sport

@@ -626,7 +626,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v150-fe-manual-pinnacle-bound"
+_FE_VERSION = "nutmeg-v151-fe-libertadores-supercup-saudi"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2415,6 +2415,14 @@ _CUP_MARKET_COMPETITIONS = [
     #                不是「没有」。详见 odds_api.SPORT_KEYS 那条(记着错法)。
     #                ⇒ 「缺 sport key ⇒ 有 AF 镜像兜底」不是规则,是**逐联赛**的事实,
     #                   每加一个没 key 的联赛都得自己数一遍行,不能靠先例外推。
+    # 补三个(2026-08-09 owner)。三个都**不在**训练集 ⇒ 只能走市场模式。
+    # 覆盖各不相同(全部 2026-08-09 实测,别外推):
+    #   · 解放者杯 → Odds API active=True + AF 镜像 14 家含 Pinnacle,双覆盖;
+    #   · 欧超杯   → Odds API **无 key**,只走 AF 镜像(那场实测 13 家含 Pinnacle);
+    #                ⚠️ 一年只有一场,别对样本量有幻想;
+    #   · 沙职     → AF **不给赔率**(上赛季已打完的 5 场也 0/5),Odds API 是唯一源;
+    #                key 休赛期 active=False,自激活前会走「竞彩在售+手填」那条路。
+    "COPA_LIBERTADORES", "UEFA_SUPER_CUP", "SAU_PRO_LEAGUE",
     "NED_EERSTE_DIVISIE", "EFL_CUP",
 ]
 

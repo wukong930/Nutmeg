@@ -136,6 +136,47 @@ CUP_COMPETITIONS: dict[str, Competition] = {
             "苏格兰(185)/埃及(895)/泰国(898) 都有,认 id=48 + country=England。"
         ),
     ),
+    # ── 2026-08-09 owner 点名新增三个:解放者杯 / 欧超杯 / 沙职 ────────────
+    # ⚠️ 三个 AF id 全部 **live 核过**(`/leagues?search=`),不是凭印象:
+    # 「Super Cup」一个词搜出 **59 条**(德/土/埃/意/比/智/捷/沙都有),
+    # 认 UEFA 那个必须看 id=531 + country=World。猜名字在这里必错。
+    "COPA_LIBERTADORES": Competition(
+        code="COPA_LIBERTADORES",
+        display_zh="解放者杯 (南美)",
+        display_en="CONMEBOL Copa Libertadores",
+        competition_type="club_cup",
+        api_football_id=13,          # live: "CONMEBOL Libertadores" (Cup/World)
+        has_knockouts=True,
+        has_group_stage=True,
+        has_two_legged_ties=True,    # 淘汰赛两回合(决赛单场)
+        notes=(
+            "竞彩写作「解放者杯」(league_id=49),长档案 124 场 / 2021-08→2026-05。"
+            "2-11 月跑完一个日历年 ⇒ **必须**进 CALENDAR_YEAR_LEAGUES,"
+            "否则 3 月的比赛按欧洲惯例算成 season=去年,AF 返回 0 场。"
+            "数据覆盖(2026-08-09 实测):Odds API `soccer_conmebol_copa_libertadores` "
+            "active=True;AF 未来 21 天 16 场,首场 fixture 1547760 有 14 家含 Pinnacle。"
+            "⚠️ 南美球队队名词典缺 46 个,补完前竞彩 SP 挂不上(只在参考区可见)。"
+        ),
+    ),
+    "UEFA_SUPER_CUP": Competition(
+        code="UEFA_SUPER_CUP",
+        display_zh="欧超杯 (UEFA 超级杯)",
+        display_en="UEFA Super Cup",
+        competition_type="club_cup",
+        api_football_id=531,         # live: "UEFA Super Cup" (Cup/World) —— 59 个同名里的这一个
+        has_knockouts=True,
+        has_group_stage=False,
+        has_two_legged_ties=False,   # 单场决胜
+        notes=(
+            "⚠️ **一年只有一场**。竞彩长档案 5 年里只出现 2 次(2021-08-12 / 2025-08-14),"
+            "所以任何按它做的统计都会是 N≈1 —— 别对它的样本量有幻想。"
+            "⛔ Odds API **没有**这个 sport(2026-08-09 live 核 175 个 sport 全表)"
+            "⇒ 只能走 AF 镜像。这次我核的是**那场比赛本身**:2026 那场 "
+            "(fixture 1583664, PSG vs Aston Villa, 08-12 19:00Z)有 13 家含 Pinnacle。"
+            "⭐ 不要把这条读成「缺 key ⇒ AF 兜底」的又一个例证 —— 那**不是规则**"
+            "(日乙同样缺 key 而 AF 也空),要断言覆盖就去数那个联赛自己的行。"
+        ),
+    ),
     "COPA_DEL_REY": Competition(
         code="COPA_DEL_REY",
         display_zh="国王杯 (西班牙)",

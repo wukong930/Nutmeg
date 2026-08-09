@@ -282,6 +282,19 @@ _DOMESTIC_LEAGUE_IDS: dict[str, int] = {
     # 荷兰另有 Tweede Divisie=492,别串。秋春制 ⇒ **不**进 CALENDAR_YEAR_LEAGUES
     # (实测 season_for_date(2026-08-07) = 2026,与 AF 标的 season 一致)。
     "NED_EERSTE_DIVISIE": 89,   # Eerste Divisie (Netherlands, Aug–May)
+    # 补沙职(2026-08-09 owner)— 竞彩写作「沙职」(league_id=2068446,长档案 154 场
+    # / 2025-10→2026-05)。id=307 对 AF `/leagues?search=Saudi` **live 核过**
+    # (country=Saudi-Arabia, type=League, current season=2026);沙特另有
+    # Division 1=308 / King's Cup=504 / Super Cup=826,别串。
+    # 8 月–5 月跨年 ⇒ 欧洲惯例(season=开赛那年)正确,**不**进 CALENDAR_YEAR_LEAGUES。
+    #
+    # ⭐ 为什么放这里而不是 `CUP_COMPETITIONS`:它是**国内俱乐部联赛**。
+    # 放进那个字典会踩两个真 bug —— `is_cup_competition()` 只看「在不在字典里」、
+    # 不看 `competition_type`(competitions.py:332);而 `classify_league()` 的
+    # `if s in CUP_COMPETITIONS: return "excluded"` 先命中,沙职会被从 δ 拟合的
+    # 「国内联赛」人口里悄悄踢出去。同一段注释里明写着荷乙**不该**被排除,
+    # 理由一模一样。(2026-08-09 我第一版就放错了,写在这里免得下次再犯。)
+    "SAU_PRO_LEAGUE": 307,      # Saudi Pro League (Aug–May, European convention)
     # 体检(2026-06-10)— 国际友谊赛. The user records friendly bets via the
     # manual reverse calculator (e.g. Croatia vs Slovenia 6/7); without this
     # code the settle cron could NEVER fetch their results → permanent 未结算
@@ -331,6 +344,11 @@ CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({
     # World Cup. The WC-specific endpoints already use on_date.year directly;
     # this aligns the generic fixture fetch with them.
     "WC", "EURO", "COPA_AMERICA",
+    # 补(2026-08-09)— 解放者杯 2-11 月跑完一个日历年;欧超杯是 8 月的单场赛事。
+    # ⚠️ 解放者杯**必须**在这里:不然 3 月的比赛按欧洲惯例算成 season=去年,
+    # AF 返回 0 场 —— 与 WC 那条注释记的「6 月落到 year−1 ⇒ 整届世界杯静默消失」同族。
+    # ⛔ 沙职**不在**这里:8 月–5 月跨年,欧洲惯例(season=开赛那年)本来就对。
+    "COPA_LIBERTADORES", "UEFA_SUPER_CUP",
     # 体检(2026-06-10)— friendlies are scheduled year-round; API-Football
     # tags them with the calendar year (cached envelope: season=2026).
     "FRIENDLIES",

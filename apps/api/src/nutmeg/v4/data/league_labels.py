@@ -67,6 +67,14 @@ _EN_TO_CN: dict[str, str] = {
     # 「荷乙」105 行、「英联赛杯」23 行 —— 不是照着联赛全名意译的。
     "NED_EERSTE_DIVISIE": "荷乙",
     "EFL_CUP": "英联赛杯",
+    # 补(2026-08-09 owner)。中文写法**实证**自 `jingcai_odds_history.league_cn`
+    # —— 直接 SELECT DISTINCT 出来的,三个联赛各只有一种写法:
+    # 「解放者杯」(league_id=49, 124 场)、「欧超杯」(71, 2 场)、「沙职」(2068446, 154 场)。
+    # ⭐ 不是照联赛全名意译的(意译会得到「南美解放者杯」「欧洲超级杯」「沙特职业联赛」,
+    #    三个都对不上)—— 同「绝不照英文猜译名」那条红线的联赛版。
+    "COPA_LIBERTADORES": "解放者杯",
+    "UEFA_SUPER_CUP": "欧超杯",
+    "SAU_PRO_LEAGUE": "沙职",
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.
@@ -118,6 +126,11 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     # 把中文轨对齐。⚠️ 同批注册的「荷乙」**不加** —— 它是国内俱乐部**联赛**,
     # 正是 P3 该计数的那种人口(虽然模型没训练它,但训练与否不是本表的判据)。
     "英联赛杯",
+    # 同类第三/四条(2026-08-09):解放者杯=南美洲际杯赛、欧超杯=欧洲洲际杯赛,
+    # 两者 EN 轨都在 `CUP_COMPETITIONS` 里本来就排除,这里把中文轨对齐。
+    # ⚠️ 同批注册的「沙职」**不加** —— 国内俱乐部联赛,与荷乙同理。
+    "解放者杯",
+    "欧超杯",
 })
 
 #: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。
