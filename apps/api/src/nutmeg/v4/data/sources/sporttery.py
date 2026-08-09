@@ -103,6 +103,16 @@ _ZH_TO_EN: dict[str, str] = {}
 for _en, _zh in TEAM_NAME_ZH.items():
     _ZH_TO_EN.setdefault(_zh, _en)
 _ZH_OVERRIDES: dict[str, str] = {
+    # 解放者杯 —— 竞彩的**简写**(2026-08-09,比分锚定产出)。这 5 支队词典里**有**,
+    # 只是竞彩用了更短的写法 ⇒ 属于 ① 类:补 override,**不动** team_name_zh.py。
+    # ⭐ 这 5 条本身就是锚定器的又一层背书:它在不知道词典内容的情况下,
+    #   把「帕梅拉斯」认成了词典里写作「帕尔梅拉斯」的那支队。
+    # 撞车检查:5 个中文名在 TEAM_NAME_ZH 值集合与本表里都没被别的队占用(0 冲突)。
+    "帕梅拉斯": "Palmeiras",                  # ×17 · 词典写作「帕尔梅拉斯」
+    "米竞技": "Atletico-MG",                 # ×10 · 词典写作「米内罗竞技」
+    "巴竞技": "Atletico Paranaense",         # ×6 · 词典写作「巴拉纳竞技」
+    "布拉干RB": "RB Bragantino",             # ×3 · 词典写作「布拉甘蒂诺」
+    "弗鲁米嫩": "Fluminense",                 # ×3 · 词典写作「弗鲁米嫩塞」
     # 竞彩-only Chinese names absent from TEAM_NAME_ZH. value = the LIVE
     # odds_snapshots/gather name. Both paren widths — the 竞彩 feed is inconsistent.
     #

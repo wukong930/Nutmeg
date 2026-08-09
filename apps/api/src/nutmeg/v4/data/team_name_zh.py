@@ -1153,12 +1153,119 @@ TEAM_NAME_ZH.update(_AF_SPELLING_ALIASES_2026_08)
 #
 # 注:这一块用 `dict[str, str]` 而非文件其余部分的 `Dict[str, str]` —— 后者会新增
 # 一条 ruff UP006(存量 17 条不动,但新代码不许再添)。别「统一风格」改回去。
+#: 解放者杯 + 沙职球队 —— 2026-08-09 用**比分锚定**产出,不是翻译。
+#:
+#: ## 来源
+#: `scripts/anchor_team_names_by_score.py`。竞彩档案与 API-Football 各自独立记录了
+#: 同一场比赛的**终场比分**;若某场竞彩比赛在它的北京日窗内、AF 那边恰好只有**一场**
+#: 同比分的比赛,两条记录说的就是同一场 ⇒ 主队对主队、客队对客队。
+#: **比分不是翻译,是事实。**
+#:
+#: ## 为什么必须这么绕
+#: 常规做法是拿竞彩自己的英文列当锚 —— **那条路是死的**:决定性检验显示
+#: `jingcai_odds_history.home_team` 是**我们自己词典的回流**,词典里没有的队那列 100% 为空
+#: (解放者杯 43/43 空、沙职 18/18 空)。它是镜子不是锚。
+#: 而本仓红线「绝不照英文猜译名」堵死了剩下那条路。
+#:
+#: ## 三道闸(全部宁缺勿错方向)
+#: ① 唯一性:窗口内同比分候选恰好 1 场才用,多于 1 场直接丢(丢了 29+14 场)
+#: ② 重复确认:一个中文名要被 ≥2 场独立比赛指向同一英文名;
+#:    或(闸②′)同场对手已被独立确认 —— 需要被确认的是**这场比赛认对了没有**,
+#:    不是每个名字各自被数够次数
+#: ③ 零冲突:同一中文名被指向过两个不同英文名 ⇒ 整条作废,不做多数表决
+#:
+#: ## 验证(这批数据唯一的正确性证据)
+#: · **对照组巴甲**(词典已完整、同为南美、同样的跨日时区):三闸产出 13 条,
+#:   与词典 **13/13 一致、0 冲突**。闸②′ 单独验过:它救回的 6 条也全对。
+#: · 本批产出里有 8 条中文名词典本来就有 ⇒ **8/8 一致、0 冲突**。
+#: · 日窗偏移是**量出来的**不是推的:−1/0/+1 三档唯一命中 4/**29**/3,偏移 0 压倒性胜出
+#:   (顺带证实 `close_date` 就是比赛的北京日期)。
+#: ⇒ 合计 21 条有标准答案的样本,**零错**。
+#:
+#: ⭐ 几条**任何翻译法都必错**、只有比分锚拿得到的:
+#:    `Barcelona SC → 瓜亚基尔`(厄瓜多尔的巴塞罗那,竞彩按城市叫)、
+#:    `Junior → 巴兰基亚`、`UCV → 中央大学`、`Independiente Petrolero → 石油独立`。
+#: ⚠️ `# ×N` = 被多少场**独立比赛**确认。N=1 的 8 条是靠闸②′ 同场传播进来的。
+#: ⛔ 还有 2 条**故意没进来**:`玻利瓦尔 → Bolívar`、`里独立 → Independ. Rivadavia`
+#:    —— 各只 1 次确认,且同场对手也没锚住。未映射横幅会继续点它们的名,**那是对的**。
+_LIBERTADORES_SAUDI_2026_08: dict[str, str] = {
+    # ── 解放者杯(南美)37 支 ────────────────────────────
+    "Boca Juniors": "博卡",                   # ×8
+    "River Plate": "河床",                    # ×8
+    "Cerro Porteno": "波特诺",                 # ×7
+    "Deportes Tolima": "托利马",               # ×6
+    "Estudiantes L.P.": "拉普大学",             # ×6
+    "Emelec": "埃梅莱克",                       # ×5
+    "Always Ready": "时刻准备",                 # ×5
+    "Sporting Cristal": "水晶体育",             # ×5
+    "America Mineiro": "米美洲",               # ×5
+    "Velez Sarsfield": "萨斯菲",               # ×5
+    "Talleres Cordoba": "铁路工场",             # ×5
+    "Libertad Asuncion": "亚自由",             # ×4
+    "Fortaleza EC": "福塔雷萨",                 # ×4
+    "Colon Santa Fe": "科隆竞技",               # ×4
+    "Deportivo Cali": "卡利",                 # ×3
+    "LDU de Quito": "基多体大",                 # ×3
+    "U. Catolica": "天主大学",                  # ×3
+    "Colo Colo": "科洛科洛",                    # ×3
+    "Club Nacional": "蒙国民",                 # ×3
+    "Olimpia": "亚奥林",                       # ×2
+    "Penarol": "佩纳罗尔",                      # ×2
+    "Deportivo Tachira FC": "塔奇拉",          # ×2
+    "Cusco": "库斯科",                         # ×2
+    "Independiente del Valle": "德尔瓦耶",      # ×2
+    "Platense": "普拉滕斯",                     # ×2
+    "The Strongest": "最强者",                 # ×2
+    "Barcelona SC": "瓜亚基尔",                 # ×2
+    "Independiente Petrolero": "石油独立",      # ×2
+    "Rosario Central": "罗萨里奥",              # ×2
+    "Alianza Lima": "利马联盟",                 # ×1
+    "Caracas FC": "加拉加斯",                   # ×1
+    "Santa Fe": "圣菲独立",                     # ×1
+    "Independiente Medellin": "麦独立",        # ×1
+    "UCV": "中央大学",                          # ×1
+    "Universitario": "大学体育",                # ×1
+    "Deportivo La Guaira": "拉瓜伊拉",          # ×1
+    "Junior": "巴兰基亚",                       # ×1
+    # ── 解放者杯 · **第二轮**消歧收的 4 支 ──────────────────────
+    # 第一轮判它们「候选不唯一」而丢掉;拿到上面 46 个名字之后再问同一批数据,
+    # 与已知名字不相容的候选被排除,只剩一个 ⇒ 这场被钉死,名字随之确定。
+    # ⭐ 其中 `玻利瓦尔`/`里独立` 在第一轮的**弱候选**里就出现过同样的答案 ——
+    #   两条独立路径给出同一个结果。`科金博联` 只有 1 次(对手已知锚住了这场)。
+    "Lanus": "拉努斯",                         # ×2
+    "Bolívar": "玻利瓦尔",                     # ×2
+    "Independ. Rivadavia": "里独立",           # ×2
+    "Coquimbo Unido": "科金博联",              # ×1
+    # ── 沙职 18 支 ──────────────────────────────────────
+    "Al-Nassr": "利雅胜利",                     # ×22
+    "Al-Hilal Saudi FC": "利雅新月",            # ×21
+    "Al-Ittihad FC": "吉达联合",                # ×20
+    "Al-Qadisiyah FC": "胡巴卡德",              # ×18
+    "Al-Ahli Jeddah": "吉达国民",               # ×17
+    "NEOM": "新未来SC",                        # ×17
+    "Damac": "达马克",                         # ×17
+    "Al Shabab": "利雅青年",                    # ×16
+    "Al-Fayha": "迈季宽广",                     # ×16
+    "Al Taawon": "布赖合作",                    # ×15
+    "Al Najma": "欧奈纳伊",                     # ×15
+    "Al Okhdood": "奈季沟渠",                   # ×13
+    "Al-Hazm": "拉斯决心",                      # ×13
+    "Al Khaleej Saihat": "赛哈海湾",            # ×13
+    "Al-Ettifaq": "达曼协定",                   # ×13
+    "Al Kholood": "拉斯永恒",                   # ×11
+    "Al-Fateh": "穆拜征服",                     # ×11
+    "Al Riyadh": "利雅得",                     # ×10
+}
+TEAM_NAME_ZH.update(_LIBERTADORES_SAUDI_2026_08)
+
+
 # HARVEST-BEGIN
 _JINGCAI_VOTE_HARVEST: dict[str, str] = {
 }
 # HARVEST-END
 for _harvest_en, _harvest_zh in _JINGCAI_VOTE_HARVEST.items():
     TEAM_NAME_ZH.setdefault(_harvest_en, _harvest_zh)
+
 
 
 def lookup_zh(team_name: str) -> str:
@@ -1230,5 +1337,7 @@ def coverage_by_league() -> Dict[str, int]:
         "AF_SPELLING_ALIASES":     len(_AF_SPELLING_ALIASES_2026_08),
         # 2026-08-06 — 竞彩 vote-feed 收割(nutmeg-harvest-team-zh 维护).
         "JINGCAI_VOTE_HARVEST":    len(_JINGCAI_VOTE_HARVEST),
+        # 2026-08-09 — 解放者杯 + 沙职,**比分锚定**产出(见上方长注释).
+        "LIBERTADORES_SAUDI":      len(_LIBERTADORES_SAUDI_2026_08),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }
