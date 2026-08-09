@@ -102,6 +102,31 @@ OUT_OF_SCOPE: dict[str, str] = {
     "UEFA_SUPER_CUP": "一年一场两队,队表检查无意义",
 }
 
+#: ⛔ 窄豁免:**中文名不存在**,不是「还没补」。
+#:
+#: 2026-08-05 注册荷乙时,本护栏当场逮到 17 支球队没有中文名 —— 正是它该做的。
+#: 其中 13 支从皇冠线史推导出了中文名(见 `team_name_zh._V12_W8_NEW_LEAGUES` 里
+#: 那段)。剩下这 4 支是**预备队**,证据说它们的中文名根本不存在:
+#:
+#:   `crown_close_history` 里 荷乙 105 场、19 个不同的中文队名,**一支预备队都
+#:   没有** ⇒ 竞彩不上架它们 ⇒ 它们永远不会成为一条可投注的腿 ⇒ 没有可抄的
+#:   中文写法。编一个是瞎猜(而错的队名会静默污染 join,比缺名字更坏)。
+#:
+#: ⚠️ 为什么**逐条列名**而不是写 `name.startswith("Jong ")`:那是拿「名字里有
+#: 没有某串字符」代替「它是不是一支竞彩不上架的预备队」—— 同一个反复出现的
+#: 错误(见 [[syntactic-proxy-for-semantic-property]])。前缀规则会顺手放行任何
+#: 未来叫 Jong 开头的**一队**,而这四个名字变了就该重新报警。
+#:
+#: 若哪天竞彩真的上架了预备队,ingest 侧的「整联赛丢失 / 过半未映射」报警会响。
+NO_CHINESE_NAME_EXISTS: frozenset[str] = frozenset({
+    "Jong Ajax", "Jong AZ", "Jong PSV U21", "Jong Utrecht",
+})
+
+#: ⭐ 2026-08-10 从 `tests/v4/test_registry_coverage.py` 搬过来 —— 它原来只有测试认,
+#: CLI 不认 ⇒ **测试绿、体检红**,而红的那条恰恰是早已接受的永久状态。
+#: 这和紧接着的 `NO_JINGCAI_ANCHOR` 是同一个病(白名单只装在一半的消费方上),
+#: 上一批只修了新加的那一半,这次收口。两个白名单现在都是**单一真相源**。
+
 #: AF 队表里有、但竞彩**从未上架过**的球队 → 没有任何锚可以拿到它们的中文名。
 #:
 #: ⭐ 2026-08-09 加。给解放者杯/沙职补队名时,`scripts/anchor_team_names_by_score.py`
@@ -109,7 +134,7 @@ OUT_OF_SCOPE: dict[str, str] = {
 #: 里那段长注释)。剩下的这些队竞彩一场都没卖过 ⇒ 档案里根本没有它们的中文名,
 #: 而本仓红线「绝不照英文猜译名」堵死了唯一剩下的路。
 #:
-#: ⚠️ 它们**不属于** `_NO_CHINESE_NAME_EXISTS` —— 那个白名单是「这支队真的没有中文名」
+#: ⚠️ 它们**不属于**上面的 `NO_CHINESE_NAME_EXISTS` —— 那个白名单是「这支队真的没有中文名」
 #: (荷兰的 Jong 预备队),而这些队当然有中文名,只是**我们的数据里没有**。
 #: 把两者混在一起会让「没有」和「没去看」再一次分不出来。
 #:
@@ -162,7 +187,7 @@ def check_league(league: str, *, refresh: bool = False) -> dict:
     # 报成硬缺口会让这个工具**永远红**,而永远红的体检最后没人看
     # (「假红比假绿更贵」)。测试 `test_registry_coverage.py` 与本模块共用
     # 这同一个 `NO_JINGCAI_ANCHOR` —— 单一真相源,两边不会各说各话。
-    excused = set(NO_JINGCAI_ANCHOR.get(league, ()))
+    excused = set(NO_JINGCAI_ANCHOR.get(league, ())) | set(NO_CHINESE_NAME_EXISTS)
     row["unreachable"] = [n for n in names if n not in reachable and n not in excused]
     row["excused"] = sorted(n for n in names if n in excused)
     return row

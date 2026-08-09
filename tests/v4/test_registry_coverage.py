@@ -15,6 +15,7 @@ import pytest
 from nutmeg.v4.cli.registry_coverage import (
     CRON_LEAGUES,
     MARKET_MODE_LEAGUES,
+    NO_CHINESE_NAME_EXISTS,
     NO_JINGCAI_ANCHOR,
     check_league,
     run,
@@ -92,25 +93,6 @@ class TestCheckLeague:
         assert any("AF league-id" in g for g in gaps)
 
 
-#: ⛔ 窄豁免:**中文名不存在**,不是「还没补」。
-#:
-#: 2026-08-05 注册荷乙时,本护栏当场逮到 17 支球队没有中文名 —— 正是它该做的。
-#: 其中 13 支从皇冠线史推导出了中文名(见 `team_name_zh._V12_W8_NEW_LEAGUES` 里
-#: 那段)。剩下这 4 支是**预备队**,证据说它们的中文名根本不存在:
-#:
-#:   `crown_close_history` 里 荷乙 105 场、19 个不同的中文队名,**一支预备队都
-#:   没有** ⇒ 竞彩不上架它们 ⇒ 它们永远不会成为一条可投注的腿 ⇒ 没有可抄的
-#:   中文写法。编一个是瞎猜(而错的队名会静默污染 join,比缺名字更坏)。
-#:
-#: ⚠️ 为什么**逐条列名**而不是写 `name.startswith("Jong ")`:那是拿「名字里有
-#: 没有某串字符」代替「它是不是一支竞彩不上架的预备队」—— 同一个反复出现的
-#: 错误(见 [[syntactic-proxy-for-semantic-property]])。前缀规则会顺手放行任何
-#: 未来叫 Jong 开头的**一队**,而这四个名字变了就该重新报警。
-#:
-#: 若哪天竞彩真的上架了预备队,ingest 侧的「整联赛丢失 / 过半未映射」报警会响。
-_NO_CHINESE_NAME_EXISTS: frozenset[str] = frozenset({
-    "Jong Ajax", "Jong AZ", "Jong PSV U21", "Jong Utrecht",
-})
 
 
 class TestLiveDictCoverage:
@@ -119,8 +101,8 @@ class TestLiveDictCoverage:
 
         钉死 4 个名字。加第 5 个必须让这条红一次,逼人写清楚证据。
         """
-        assert len(_NO_CHINESE_NAME_EXISTS) == 4
-        assert all(n.startswith("Jong ") for n in _NO_CHINESE_NAME_EXISTS), \
+        assert len(NO_CHINESE_NAME_EXISTS) == 4
+        assert all(n.startswith("Jong ") for n in NO_CHINESE_NAME_EXISTS), \
             "豁免只为荷乙预备队而设 —— 进来别的东西说明范围漂了"
 
     def test_the_derived_eerste_divisie_names_are_present(self):
@@ -165,7 +147,7 @@ class TestLiveDictCoverage:
                 continue
             miss = [t["team"]["name"] for t in teams
                     if t["team"]["name"] not in reachable
-                    and t["team"]["name"] not in _NO_CHINESE_NAME_EXISTS
+                    and t["team"]["name"] not in NO_CHINESE_NAME_EXISTS
                     and t["team"]["name"] not in NO_JINGCAI_ANCHOR.get(lg, ())]
             if miss:
                 problems.append(f"{lg}: {miss}")
