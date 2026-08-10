@@ -43,7 +43,11 @@ from nutmeg.utils.team_canonical import normalize_name as nn
 from nutmeg.utils.team_canonical import to_v4_canonical
 from nutmeg.v4.cli.clv_ledger import _devig3
 from nutmeg.v4.data.league_labels import _EN_TO_CN, canonical_league
-from nutmeg.v4.model.market_handicap import devig_over, implied_handicap_lines
+from nutmeg.v4.model.market_handicap import (
+    devig_over,
+    handicap_outcome,
+    implied_handicap_lines,
+)
 
 #: 中文联赛名 → TEAM_ALIASES 的联赛码(别名表按联赛分桶)。
 _CN_TO_CODE = {v: k for k, v in _EN_TO_CN.items()}
@@ -169,7 +173,11 @@ def build_sample(db: str, fd: dict, pool: list[str]) -> tuple[list[dict], dict]:
             diag["网格拟合失败"] += 1
             continue
         _, ph, pd_, pa = grid[0]
-        gd = m["home_goals"] + ln - m["away_goals"]
+        # ⛔ 唯一实现在 market_handicap.handicap_outcome —— 别再写第四份(2026-08-10 收口)
+        _won = handicap_outcome(m["home_goals"], m["away_goals"], ln)
+        if _won is None:
+            continue
+        gd = 0 if _won == 1 else (1 if _won == 0 else -1)   # 只用于下面的三元判定
         out.append({"line": ln, "date": m["close_date"][:10], "league": m["league_cn"],
                     "p_draw": pd_, "hit_draw": 1.0 if gd == 0 else 0.0,
                     "p_home": ph, "hit_home": 1.0 if gd > 0 else 0.0,

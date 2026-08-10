@@ -147,7 +147,13 @@ CREATE TABLE IF NOT EXISTS jingcai_sp (
     -- (lets us measure 竞彩's own line movement open→freeze; jc_* stays the canonical 终盘)
     jc_open_home REAL, jc_open_draw REAL, jc_open_away REAL, opened_at TEXT,
     -- settle-later (filled by settle_jingcai_sp; never clobbered on re-capture)
+    -- ⚠️ `ft_outcome` **永远是原始 1X2 结果**(0 主胜 / 1 平 / 2 客胜),与 `market` 无关。
+    -- 对让球行它是**真值但不是你要的那个**:列名/类型/值域三样都长得像能直接拿来算
+    -- 让球命中率,真那么用实测 404 行里 217 行(53.7%)结论是反的。让球结果看 `hc_outcome`。
     home_goals   INTEGER, away_goals INTEGER, ft_outcome INTEGER, settled_at TEXT,
+    -- 让球后的结果(0 让胜 / 1 让平 / 2 让负)—— **只对 market='hhad' 的行有值**。
+    -- 由 `market_handicap.handicap_outcome()` 唯一产出;别在别处重算(2026-08-10 收口)。
+    hc_outcome   INTEGER,
     UNIQUE(match_date, home_team, away_team, market)
 );
 CREATE INDEX IF NOT EXISTS idx_jingcai_sp_unsettled
@@ -173,6 +179,8 @@ def ensure_jingcai_sp_table(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE jingcai_sp ADD COLUMN opened_at TEXT")
     if "single_available" not in cols:   # 竞彩 单关可投标记 (per-market, forward-only)
         conn.execute("ALTER TABLE jingcai_sp ADD COLUMN single_available INTEGER")
+    if "hc_outcome" not in cols:   # 让球后结果 —— 2026-08-10 补,见 _DDL 里那段注释
+        conn.execute("ALTER TABLE jingcai_sp ADD COLUMN hc_outcome INTEGER")
 
 
 def record_jingcai_sp(
@@ -474,6 +482,7 @@ def settle_jingcai_sp(
     takes a ``date`` object and is injectable for tests; the default pulls all of
     that day's API-Football fixtures. Returns the number of rows newly settled."""
     from nutmeg.v4.data.national_alias import national_match_key
+    from nutmeg.v4.model.market_handicap import handicap_outcome
     from nutmeg.v4.observation.prediction_log import _ft_outcome
 
     if fetch_fixtures is None:
@@ -487,8 +496,8 @@ def settle_jingcai_sp(
         conn.row_factory = sqlite3.Row
         ensure_jingcai_sp_table(conn)
         rows = conn.execute(
-            "SELECT id, match_date, home_team, away_team FROM jingcai_sp "
-            "WHERE settled_at IS NULL ORDER BY match_date").fetchall()
+            "SELECT id, match_date, home_team, away_team, market, handicap_home "
+            "FROM jingcai_sp WHERE settled_at IS NULL ORDER BY match_date").fetchall()
         if not rows:
             return 0
         by_date: dict[str, list[sqlite3.Row]] = {}
@@ -536,8 +545,14 @@ def settle_jingcai_sp(
                 if res is None:
                     continue
                 hg, ag, outcome = res
+                # 让球行额外落 `hc_outcome`。⚠️ 这里**曾经只写 ft_outcome**(原始 1X2),
+                # 而那个值对让球行是「真值但不是你要的那个」—— 2026-08-10 复盘时
+                # 实测 404 行里 217 行(53.7%)会被读反。⛔ 别在这里手算,调唯一那份。
+                hc = (handicap_outcome(hg, ag, r["handicap_home"])
+                      if (r["market"] or "") == "hhad" else None)
                 conn.execute(
                     "UPDATE jingcai_sp SET home_goals=?, away_goals=?, ft_outcome=?, "
-                    "settled_at=? WHERE id=?", (hg, ag, outcome, now, r["id"]))
+                    "hc_outcome=?, settled_at=? WHERE id=?",
+                    (hg, ag, outcome, hc, now, r["id"]))
                 settled += 1
         return settled

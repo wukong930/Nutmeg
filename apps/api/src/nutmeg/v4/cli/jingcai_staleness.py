@@ -144,8 +144,11 @@ def _hhad_pinn_and_outcome(close: tuple, row: dict) -> tuple | None:
     if not lines:
         return None
     _, ph, pd_, pa = lines[0]
-    m = (row["home_goals"] - row["away_goals"]) + int(line)   # margin after handicap
-    covered = 0 if m > 0 else (1 if m == 0 else 2)
+    # ⛔ 唯一实现在 market_handicap.handicap_outcome —— 别再写第四份(2026-08-10 收口)
+    from nutmeg.v4.model.market_handicap import handicap_outcome
+    covered = handicap_outcome(row["home_goals"], row["away_goals"], int(line))
+    if covered is None:
+        return None
     return (ph, pd_, pa), covered
 
 

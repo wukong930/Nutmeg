@@ -378,6 +378,42 @@ def implied_handicap_lines(
     return out
 
 
+#: 让球腿的三个结果标签,下标与 `implied_handicap_lines` 返回的 (让胜, 让平, 让负) 一致。
+HANDICAP_OUTCOME_LABELS = ("让胜", "让平", "让负")
+
+
+def handicap_outcome(
+    home_goals: int | None,
+    away_goals: int | None,
+    handicap_home: int | None,
+) -> int | None:
+    """让球后的结果下标 —— `0 让胜 / 1 让平 / 2 让负`,算不出返回 None。
+
+    `handicap_home` 是**主队让球数**的带符号值:`-1` = 主让一球、`+1` = 主受让一球。
+    让球后主队净胜球 = `(主进 − 客进) + handicap_home`。
+
+    ## 为什么这条三行规则要单独成函数
+
+    2026-08-10 复盘时发现它在仓库里有**三份独立实现**
+    (`delta_calibration` / `handicap_delta_homogeneity` / `jingcai_staleness`),
+    代数上都对 —— 但**第四个该有它的地方没有**:`settle_jingcai_sp` 结算时
+    对让球行写的是 `_ft_outcome()` 的**原始 1X2 结果**,完全不看 `market` 列。
+
+    ⚠️ 那个值**不是错的**(90′ 的 1X2 结果对让球行也是事实),它是个**陷阱**:
+    列名 `ft_outcome`、类型 INTEGER、值域 {0,1,2} —— 三样都长得像能直接拿来算
+    让球命中率。真那么用的话,实测 **404 行里 217 行(53.7%)结论是反的**。
+
+    ⭐ 教训不是「有人写错了」,是**没人拥有这条规则** —— 三份拷贝各自都对,
+    所以谁也没发现第四处压根没实现。同族:「加列同步补 SET」。
+
+    ⛔ 别再写第四份。要判让球结果就调这里。
+    """
+    if home_goals is None or away_goals is None or handicap_home is None:
+        return None
+    margin = (int(home_goals) - int(away_goals)) + int(handicap_home)
+    return 0 if margin > 0 else (1 if margin == 0 else 2)
+
+
 def implied_margin_bands(
     p_home: float,
     p_draw: float,
@@ -511,6 +547,8 @@ def asian_handicap_board(
 
 
 __all__ = [
+    "handicap_outcome",
+    "HANDICAP_OUTCOME_LABELS",
     "DEFAULT_RHO",
     "DEFAULT_MAX_GOALS",
     "DEFAULT_LINES",

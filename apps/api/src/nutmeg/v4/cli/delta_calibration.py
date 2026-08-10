@@ -144,8 +144,10 @@ def load_lines(db_path: str | Path) -> dict:
             continue
         if not raw or not cor:
             continue
-        gd = r["home_goals"] + ln - r["away_goals"]
-        won = 0 if gd > 0 else (1 if gd == 0 else 2)
+        # ⛔ 唯一实现在 market_handicap.handicap_outcome —— 别再写第四份(2026-08-10 收口)
+        won = MH.handicap_outcome(r["home_goals"], r["away_goals"], ln)
+        if won is None:
+            continue
         pop = "俱乐部" if is_domestic_club_league(r["league"]) else "大赛"
         buckets.setdefault((ln, pop), []).append((raw[0][1:], cor[0][1:], won))
     return buckets
