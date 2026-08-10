@@ -108,11 +108,15 @@ def _extract_team_records(
     return out
 
 
-def _logo_urls_from_fixture_cache(api_cache_dir: Path) -> dict[str, str]:
+def _logo_urls_from_fixture_cache(
+    api_cache_dir: Path, league_ids: set[int] | None = None,
+) -> dict[str, str]:
     """{team name: logo URL} harvested from every cached ``/fixtures`` response.
 
     Covers whoever actually played — including cup qualifiers that ``/teams``
     omits. Reads only; costs no API quota.
+
+    ``league_ids`` 限定只收这些联赛的场次(用于 ``--from-fixture-cache --league``)。
     """
     out: dict[str, str] = {}
     for f in (api_cache_dir / "_fixtures").rglob("*.json"):
@@ -123,6 +127,9 @@ def _logo_urls_from_fixture_cache(api_cache_dir: Path) -> dict[str, str]:
         items = payload if isinstance(payload, list) else (payload.get("response") or [])
         for fx in items:
             if not isinstance(fx, dict):
+                continue
+            if (league_ids is not None
+                    and ((fx.get("league") or {}).get("id")) not in league_ids):
                 continue
             for side in ("home", "away"):
                 t = ((fx.get("teams") or {}).get(side)) or {}
@@ -216,8 +223,26 @@ def main(argv: list[str] | None = None) -> int:
     total_failed = 0
 
     if args.from_fixture_cache:
-        urls = _logo_urls_from_fixture_cache(api_cache_dir)
-        pop = _bettable_team_names(Path(args.observation_db))
+        # ⭐ 2026-08-10 —— `--from-fixture-cache --league X` 走**联赛人口**而不是
+        # 可投注人口。起因:当天注册的解放者杯,`/teams` 队表只给 47 支,而 fixtures
+        # 里真出场过 **115 支**(河床/科洛科洛/竞技会…全在队表外),其中 61 支缺队徽。
+        # 而可投注过滤会把它们**全挡掉** —— 新注册的联赛在 `jingcai_sp` 里还没有行,
+        # 于是「按可投注人口取」对它精确地等于「什么都不取」。
+        #
+        # ⚠️ 这不是可投注过滤写错了(它对存量联赛是对的口径),是**新联赛的冷启动**:
+        # 得先有队徽,等竞彩上架时才不是空circle。给 `--league` 一条独立的路。
+        # ⭐ 发现过程本身值得记:我先按 `/teams` 队表量出「缺 0 支」,然后**走服务端点
+        # 抽查**才发现河床 404 —— 队表端点漏掉的队,我的检查也跟着漏掉了。
+        # 「检查的人口 ≠ 真正上盘面的人口」,同族第 N 次。
+        if args.league:
+            ids = {api_football.league_id(lg) for lg in args.league}
+            urls = _logo_urls_from_fixture_cache(api_cache_dir, league_ids=ids)
+            pop = set(urls)
+            log.info("[fixture-cache] 按联赛取:%s → %d 支出场过的队",
+                     ",".join(args.league), len(pop))
+        else:
+            urls = _logo_urls_from_fixture_cache(api_cache_dir)
+            pop = _bettable_team_names(Path(args.observation_db))
         # Report every narrowing step. A mode that silently drops 7k names
         # would read as "covered everything" when it covered 0.3% of them.
         log.info("[fixture-cache] %d teams with a logo URL", len(urls))
