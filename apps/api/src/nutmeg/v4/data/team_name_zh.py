@@ -1254,6 +1254,29 @@ _LIBERTADORES_SAUDI_2026_08: dict[str, str] = {
     "Bolívar": "玻利瓦尔",                     # ×2
     "Independ. Rivadavia": "里独立",           # ×2
     "Coquimbo Unido": "科金博联",              # ×1
+    # ── 解放者杯 · **第三轮**:闸②(≥2 次确认)对「档案里只出现一次」的队
+    #    永远过不了 —— 那是**数据稀缺的产物,不是锚弱**(2026-08-11)。
+    #
+    # 这三支在 `jingcai_odds_history` 里各只有 1 场,所以工具报「只被确认 1 次」。
+    # 逐条另找了三条独立证据,三条都指同一个答案才收:
+    #
+    # ① **北京日精确唯一**(不是 ±1 窗口)。竞彩 `close_date` 是北京日期:
+    #    03-03 那天 AF 只有 `Millonarios 2:1 Universidad Catolica`(北京 03-03 08:00);
+    #    另一场同为 2:1 的 `Medellin 2:1 El Nacional` 是北京 **03-02** ⇒ 不在同一天。
+    #    ⚠️ 我一开始按 ±1 天看,误以为「两场 2:1、唯一性不成立」——
+    #    窗口取宽了会把本来干净的锚看成脏的。
+    # ② **排除法**:`麦独立 → Independiente Medellin` 已 ×1 在册且被同场对手锚住,
+    #    ⇒ `百万富翁` 不可能也是 Medellin(否则一队两名,即「劈成两个 canonical」)。
+    # ③ **一场同时钉两个**:该场次两侧互为佐证,不是两次独立的巧合。
+    #
+    # 🚨 `Universidad Catolica` 的撞车已单独查过:AF 用**两个不同写法** ——
+    #    `U. Catolica` 出现在 Copa Chile / Primera División(智利那家),
+    #    `Universidad Catolica` 出现在 Copa Ecuador / Liga Pro(厄瓜多尔那家)。
+    #    竞彩写「**基多**天主」= Quito ⇒ 厄瓜多尔,与后者一致。两者不会混。
+    #    ⛔ 若哪天 AF 把两家都写成同一串,这条必须重测,不许沿用。
+    "Millonarios": "百万富翁",                 # ×1 + 证据①②③
+    "Universidad Catolica": "基多天主",        # ×1 + 证据①③(厄瓜多尔那家)
+    "FBC Melgar": "梅尔加",                    # ×1 同场传播(对手 Olimpia 已在册)
     # ── 沙职 18 支 ──────────────────────────────────────
     "Al-Nassr": "利雅胜利",                     # ×22
     "Al-Hilal Saudi FC": "利雅新月",            # ×21

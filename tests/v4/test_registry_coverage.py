@@ -242,3 +242,63 @@ def test_jingcai_listed_teams_are_fully_reachable() -> None:
         f"这些队竞彩**上架过**却解析不出 ⇒ 它们的竞彩 SP 挂不上、场次静默掉出"
         f"可投注列表:{gaps}。修法是跑 scripts/anchor_team_names_by_score.py,"
         f"⛔ 不是往 _NO_JINGCAI_ANCHOR 里加一行。")
+
+
+def test_mapped_english_names_exist_in_real_fixture_data() -> None:
+    """🚨 上一条能被**假修**:随便编一个英文名,横幅和体检立刻双绿,而 join 照样死。
+
+    ⭐ 这是本仓 2026-08-06 记下的形态 ——「补显示别名会让护栏闭嘴而 join 照样死」。
+    上一条只问「这个中文名解不解得出」,从不问「解出来的那串英文**存不存在**」。
+    两条合起来才是完整的:能解析 **且** 解出来的东西在真实数据里出现过。
+
+    这里的「真实数据」取 AF fixture 缓存 —— 因为这批是杯赛历史队,
+    `odds_snapshots` 里未必有(采集窗口比它们的生命周期短,
+    而「历史总行数=0」在那种情况下和「不存在」一模一样,不能当证据)。
+
+    空包弹:把词典里任一条改成 `"Millonarioss"`(多一个 s)⇒ 上一条仍绿,这条红。
+    """
+    import json
+
+    cache = Path("data/external/api_football/_fixtures")
+    if not cache.exists():
+        pytest.skip("没有 AF fixture 缓存 —— 这条只在本地有意义")
+
+    from nutmeg.v4.data.sources.sporttery import zh_to_canonical
+    from nutmeg.v4.data.team_name_zh import _LIBERTADORES_SAUDI_2026_08
+
+    real: set[str] = set()
+    for f in cache.glob("*.json"):
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:                                 # noqa: BLE001, S112
+            continue
+        for r in (doc if isinstance(doc, list) else doc.get("response") or []):
+            if not isinstance(r, dict):
+                continue
+            for side in ("home", "away"):
+                n = ((r.get("teams") or {}).get(side) or {}).get("name")
+                if n:
+                    real.add(n)
+    if not real:
+        pytest.skip("缓存里没解析出任何队名 —— 这条断言此刻没有分母")
+
+    # 🚨 断言的是 `zh_to_canonical()` 的**输出**,不是词典的 key。
+    # ⭐ 08-12 审查抓到:第一版断言 key 存在,而 **join 用的是输出** ——
+    #    别名遮蔽(另一条映射把同一个中文名劫走)和「两个真名张冠李戴」
+    #    这两种形态都能让「查 key」全绿而 join 照样连错队。
+    #    ⇒ 走真正跑着的那个函数,别查它的原料。
+    resolved = {zh: zh_to_canonical(zh)
+                for en, zh in _LIBERTADORES_SAUDI_2026_08.items()}
+    ghosts = sorted(f"{zh}→{out!r}" for zh, out in resolved.items()
+                    if out is None or out not in real)
+    assert not ghosts, (
+        f"这些中文名解出来的英文在 AF 真实赛程里查无此队:{ghosts}。"
+        f"⇒ 横幅/体检会变绿(名字解析得出)但 join 会静默失败。"
+        f"⛔ 修法是重新锚定,不是把它加进豁免名单。")
+
+    # 别名遮蔽:词典里写 en→zh,但 zh 解回去必须是**同一个** en。
+    # 不一致 = 有另一条映射把这个中文名劫走了,而「查 key」永远看不见。
+    hijacked = sorted(f"{zh}: 词典说 {en!r} 但解析成 {resolved[zh]!r}"
+                      for en, zh in _LIBERTADORES_SAUDI_2026_08.items()
+                      if resolved[zh] != en)
+    assert not hijacked, f"中文名被另一条映射劫走:{hijacked}"

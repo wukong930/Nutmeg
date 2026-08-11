@@ -455,6 +455,33 @@ install_job "com.nutmeg.sporttery_evening" \
   "$ENV_PREFIX && if [ \"\$NUTMEG_SPORTTERY_ENABLED\" = \"1\" ]; then $VENV_PY -m nutmeg.v4.cli.ingest_sporttery --db $DB_PATH --phase close --refresh --jitter-seconds 120; else echo sporttery-disabled; fi || true" \
   "17:30 18:00 18:30 19:00 19:30 20:00 20:30 21:00 21:30 22:00 22:30 23:00"
 
+# ── 盘面反事实快照(2026-08-12)—— 5 窗/天 ──────────────────────────────
+# 记的是**整个候选池**,不只被推荐的那几条腿:每场比赛三条腿都会结算,
+# 没买的那两条结果一样白送。真串关票累计 1 张 ⇒ 从票学 = 从 n=1 学;
+# 学习信号必须来自盘面。forward-only:今天不记,这一天永远补不回来。
+#
+# 💸 配额:CLI 从不传 refresh_odds ⇒ 走缓存直到 _SERVING_OA_TTL_SECONDS(6h)。
+#    端点注释原话「Cost is bounded by the TTL, not by call frequency」。
+#    但要诚实 —— 面板整天不开时**本 cron 就是刷新者**,最坏 ≤4 次刷新/天
+#    (≤120 credit,0.18× 计划;实测余额 15,234)。⇒ 窗口按 6h **对齐**而非对抗:
+#      10:00 竞彩晨批(09:24-09:44)之后,抓开盘盘面        ← 可能触发刷新
+#      16:00 晚间窗前基线                                  ← 可能触发刷新
+#      19:00 晚间跟盘窗中段(竞彩改价由 sporttery cron 供,不花 Odds 额度)← 搭便车
+#      22:00 晚间窗尾                                      ← 可能触发刷新
+#      23:30 竞彩 23:00 收窗后的终态(临停售调价才是 EV 杀手)← 搭便车
+#
+# ⚠️ 调用点写**普通 `&&`**:install_job 内部已做 `${script//&/&amp;}`,
+#    这里再写 &amp;&amp; 会被二次转义成 &amp;amp;&amp;amp; —— plist 仍是合法 XML、
+#    setup 照打 ✓,而 job 每次触发 bash 语法错误。(第 107 行那条注释说的是
+#    生成器的责任,不是调用点的。)
+#
+# 失败可见性:`|| true` 防 launchd 节流,真正的探测器是 data_freshness 的
+# `snapshot_provenance` 心跳(2 天不动就红)—— 这条 cron 死了别的表遮不住。
+install_job "com.nutmeg.snapshot_board" \
+  10 0 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.snapshot_board --db $DB_PATH || true" \
+  "16:00 19:00 22:00 23:30"
+
 # 体检(2026-06-30)— 竞彩 散户支持比例 harvest (THREE windows: 11:10 开售后 / 17:00 / 23:20 终盘后).
 # Same PUBLIC uniform endpoint + same NUTMEG_SPORTTERY_ENABLED kill switch as
 # sporttery_ingest, but getVoteV1 → jingcai_vote: forward-only retail 支持比例

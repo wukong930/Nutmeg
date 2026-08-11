@@ -68,6 +68,16 @@ CAPTURE_TABLES: list[tuple[str, str, int, bool, str, str | None, str | None]] = 
      "Polymarket 缺口 (proxy 依赖, 3 窗/天)", None, None),
     ("league_predictions", "recorded_at", 4, False, "模型盘预测日志 (夏歇宽松)", None, None),
     ("wc_predictions", "recorded_at", 3, False, "WC 模型预测 (仅赛会期)", None, None),
+    # 2026-08-12 — 盘面反事实快照。⭐ 它必须进哨兵,理由和上面竞彩线史一模一样:
+    # 这是 **point-in-time**、**forward-only** 的流,cron 死掉那几天补不回来,
+    # 而**没有任何别的表能发现** —— jingcai_sp / odds_snapshots 都由各自的 cron
+    # 独立喂,照常绿。上线前审查把这条列为 high:「四条报警通道全绿」。
+    #
+    # 用 provenance 而不是 leg 表:空盘面的日子 leg 表**本来就该**是 0 行
+    # (夏休期 sp-calc 真的返回 0 场),拿它当心跳会在正确的日子假红;
+    # provenance 则是「跑过就有一行」,正是心跳该有的语义。
+    ("snapshot_provenance", "created_at", 2, True,
+     "盘面快照心跳 (forward-only; 断了补不回来)", None, None),
 ]
 
 # 别库前向捕获 — db 文件与主观测库同目录。文件缺失 = 写它的 cron 生态整体死

@@ -176,6 +176,12 @@ _FRESHNESS_ROWS: tuple[tuple[str, str, str], ...] = (
     # 周任务、量小(9 行),但它是 **artifact 校正路径的唯一心跳**。
     ("calibration_journal", "recorded_at", "周度校准日志 (artifact 校正)"),
     ("recommendation_sessions", "created_at", "推荐会话 (每日/晨间)"),
+    # 2026-08-12 — 盘面反事实快照(snapshot_board cron,5 窗/天)。
+    # ⭐ 与上面 jingcai_sp_snapshots 完全同构的理由:独立 cron、point-in-time、
+    # forward-only,**主表遮不住** —— 它死了,jingcai_sp / odds_snapshots
+    # 照常今天,而没买的那两条腿的盘面就永久没了。
+    # 用 provenance 当心跳(空盘面的日子 leg 表本来就该是 0 行,拿它会假红)。
+    ("snapshot_provenance", "created_at", "盘面快照心跳 (反事实层)"),
 )
 
 #: 「同 cron 的姊妹表」—— 只并进主行的计数说明,**不单独占一行**。
