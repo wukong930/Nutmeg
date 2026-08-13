@@ -79,7 +79,17 @@ def main(argv: list[str] | None = None) -> int:
             fe = None
         for path in _BOARDS:
             try:
-                r = cli.get(f"{a.base_url}{path}", params={"days": a.days})
+                # ⭐ `record_line_history=false` —— 本 cron 是**纯读者**。
+                # serving 默认会把每次取到的 Pinnacle 线追加进 `odds_snapshots`,
+                # 而 `sigma_p_fit`(进行中的预注册测量)按 (比赛, source) 分组、
+                # 用「最近开球的点 ≤1.5h」当入选闸。本 cron 每天 5 个**固定时刻**
+                # 打这两个端点 ⇒ 会把那个闸从「owner 恰好那时候看了」换成
+                # 「开球时刻是否贴着 cron 槽」= 中途改了抽样人口。
+                # 我们自己的 `board_leg_snapshot` 已经存了每条腿的 psc,
+                # 不需要再往共享线史表里写。详见 routes.py 的长注释。
+                r = cli.get(f"{a.base_url}{path}",
+                            params={"days": a.days,
+                                    "record_line_history": "false"})
                 r.raise_for_status()
                 body = r.json()
             except Exception as exc:                      # noqa: BLE001

@@ -339,16 +339,76 @@ class TestCountersPresent:
 
 
 class TestOpsScripts:
-    def test_teardown_keeps_campaign_exclusion_mechanism(self):
-        """2026-07-20 更新:trickle 已退休(209/209 全扫 + 56 轮零新增 = 8,163 场
-        覆盖齐),排除表随之清空 —— 但**机制**必须留着:下个 campaign job
-        (手工装、游离于 setup 体系)误删 = setup 装不回、回填永久中断(F-TRICKLE)。
-        锁机制而非锁那个具体名字,否则退休一个 job 就得改一次断言。"""
-        sh = Path("scripts/teardown_local_pipeline.sh").read_text()
-        assert "TEARDOWN_EXCLUDE=(" in sh
-        assert 'for _ex in "${TEARDOWN_EXCLUDE[@]}"' in sh, (
-            "排除表机制被拆 = 下个 campaign job 会被 teardown 误删(F-TRICKLE)"
-        )
+    def _run_teardown(self, tmp_path, labels, exclude=""):
+        """在**临时 plist 目录**上跑一次 `--dry-run`,返回 (rc, stdout+stderr)。
+
+        ⛔ 绝不碰真的 ~/Library/LaunchAgents:那里装着 26 个生产 job,
+        teardown 跑真了就是把整条流水线拆掉。
+        """
+        import os
+        import subprocess
+
+        d = tmp_path / "LaunchAgents"
+        d.mkdir()
+        for lb in labels:
+            (d / f"{lb}.plist").write_text("<plist/>")
+        env = {**os.environ, "NUTMEG_PLIST_DIR": str(d)}
+        if exclude:
+            env["NUTMEG_TEARDOWN_EXCLUDE"] = exclude
+        r = subprocess.run(
+            ["bash", "scripts/teardown_local_pipeline.sh", "--dry-run"],
+            capture_output=True, text=True, env=env, check=False)
+        return r.returncode, r.stdout + r.stderr
+
+    def test_teardown_survives_an_empty_exclusion_list(self, tmp_path):
+        """🚨 2026-08-13 实测:teardown **一个 job 都卸不掉** ——
+        `TEARDOWN_EXCLUDE=()` 空数组在 bash 3.2(macOS 自带)+ `set -u` 下
+        展开 `"${A[@]}"` 直接 `unbound variable`,脚本第一次循环就退出。
+        排除表 2026-07-31 因涓流并回 setup 体系而清空,bug 从那天起潜伏。
+
+        ⛔ **上一版这条断言是 `'for _ex in "${TEARDOWN_EXCLUDE[@]}"' in sh`** ——
+        它钉死的正是坏掉的那一行:脚本全死而护栏常绿,而且谁修那行谁就把护栏弄红。
+        语法代理测语义属性的最锋利版本 —— 护栏把 bug 焊在了原地。
+        ⇒ 现在**真跑一次**(临时目录 + --dry-run),测它到底能不能列出 job。
+
+        空包弹:把脚本里的 `${TEARDOWN_EXCLUDE[@]+...}` 改回 `"${TEARDOWN_EXCLUDE[@]}"`
+        ⇒ rc=1 + `unbound variable`,这条立刻红。
+        """
+        rc, out = self._run_teardown(
+            tmp_path, ["com.nutmeg.alpha", "com.nutmeg.beta"])
+        assert rc == 0, f"空排除表就把脚本打死了(bash 3.2 + set -u):\n{out}"
+        assert "unbound variable" not in out
+        assert "com.nutmeg.alpha" in out and "com.nutmeg.beta" in out, (
+            f"没列出该卸的 job:\n{out}")
+
+    def test_teardown_actually_skips_an_excluded_campaign_job(self, tmp_path):
+        """排除表**机制**必须真的起作用 —— 不是「源码里有这段字符」。
+
+        下个 campaign job(手工装、游离于 setup 体系)被误删 = setup 装不回、
+        回填永久中断(F-TRICKLE 那次的代价是 4,751 场静默丢失)。
+        """
+        rc, out = self._run_teardown(
+            tmp_path, ["com.nutmeg.alpha", "com.nutmeg.campaign"],
+            exclude="com.nutmeg.campaign")
+        assert rc == 0, out
+        assert "跳过 campaign job com.nutmeg.campaign" in out, out
+        assert "would-uninstall com.nutmeg.campaign" not in out, (
+            f"被排除的 job 仍进了卸载清单:\n{out}")
+        assert "would-uninstall com.nutmeg.alpha" in out, out
+
+    def test_teardown_dry_run_touches_nothing(self, tmp_path):
+        """`--dry-run` 必须**真的**不动东西 —— 否则测试自己就是那个破坏者。"""
+        import os
+        import subprocess
+
+        d = tmp_path / "LaunchAgents"
+        d.mkdir()
+        (d / "com.nutmeg.alpha.plist").write_text("<plist/>")
+        subprocess.run(
+            ["bash", "scripts/teardown_local_pipeline.sh", "--dry-run"],
+            capture_output=True, text=True, check=False,
+            env={**os.environ, "NUTMEG_PLIST_DIR": str(d)})
+        assert (d / "com.nutmeg.alpha.plist").exists(), "dry-run 把 plist 删了"
 
     def test_setup_refuses_when_jobs_disabled(self):
         sh = Path("scripts/setup_local_pipeline.sh").read_text()

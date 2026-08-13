@@ -527,3 +527,84 @@ class TestAppendOnly:
         assert hit == 3, (
             f"竞彩 −1 那条线的三条腿必须 join 上赛果,实际 {hit} —— "
             f"join 不上就没法结算,而这是快照唯一的学习出口")
+
+
+class TestItDoesNotContaminateSigmaP:
+    """🚨 本 cron 每天 5 个固定时刻打 serving 端点,而 serving 会往
+    `odds_snapshots` 追加行。`sigma_p_fit` 按 **(比赛, source)** 分组成轨迹、
+    要求「最近开球的点 ≤1.5h」否则整条丢弃 ⇒ 混进 `cup_market`/`sp_calc`
+    就等于**给一个进行中的预注册测量换了抽样人口**
+    (入选闸从「owner 恰好那时看了」变成「开球时刻是否贴着 cron 槽」)。
+
+    修法是给本 cron 自己的 source 标签,让隔离由**已有的分组**自动成立。
+    """
+
+    def test_serving_writes_no_line_history_when_told_not_to(self) -> None:
+        """⭐ 行为断言:`record_line_history=False` 时,serving 必须把
+        `snapshot_db` 传成 None ⇒ `_gather_rows` 一行都不往 odds_snapshots 写。
+
+        ⛔ 上一版我试过「给 cron 一个自己的 source 标签让 σ_P 分组自动隔离」——
+        **不成立**:去重查的是 (fixture_id) 或 (date,league,home,away),
+        **不带 source**,谁先跑到谁认领,标签只会把同一条线史拆给两个标签、
+        把 cup_market 的轨迹打出洞。所以正解是**根本不写**。
+
+        空包弹:把 routes 里的 `if record_line_history else None` 去掉 ⇒ 这条红。
+        """
+        import inspect
+
+        from nutmeg.v4.api import routes as R
+        for fn in (R.predictions_cup_market, R.predictions_sp_calc):
+            src = inspect.getsource(fn)
+            assert "record_line_history" in src, f"{fn.__name__} 没有这个开关"
+            assert "if record_line_history else None" in src, (
+                f"{fn.__name__} 拿到开关却没用它关掉 snapshot_db ⇒ 纯读者照样在写")
+
+    def test_cli_declares_itself_a_reader(self) -> None:
+        """CLI 必须传 `record_line_history=false`。
+
+        空包弹:把 CLI 里那个 param 去掉 ⇒ 这条红。
+        """
+        import inspect
+
+        from nutmeg.v4.cli import snapshot_board as M
+        assert '"record_line_history": "false"' in inspect.getsource(M.main), (
+            "CLI 没声明自己是纯读者 ⇒ 它的 5 个固定时刻会改掉 σ_P 的抽样人口")
+
+    def test_sigma_p_really_splits_trajectories_by_source(self, tmp_path) -> None:
+        """⭐ 这条钉住**隔离赖以成立的那个前提**:σ_P 真的按 source 分开轨迹。
+
+        它一旦不成立,上面两条依然全绿而污染照旧发生 ——
+        「检查的前提没人检查」正是本仓反复吃亏的那一族。
+
+        ⚠️ 行为断言,不是「源码里有没有 `r["source"]`」:**同一场比赛**分别以
+        `cup_market` 和 `board_snapshot` 写两条线,断言 `load_trajectories`
+        吐出**两条独立轨迹**而不是一条被拼起来的。
+
+        空包弹:把 sigma_p_fit 的分组键 `k` 里的 `r["source"]` 去掉
+        ⇒ 两条并成一条,`len(trajs) == 1`,这条红。
+        """
+        import sqlite3 as _s
+
+        from nutmeg.v4.cli.sigma_p_fit import load_trajectories
+
+        db = tmp_path / "obs.db"
+        con = _s.connect(db)
+        con.execute(
+            "CREATE TABLE odds_snapshots (captured_at TEXT, source TEXT,"
+            " home_team TEXT, away_team TEXT, match_date TEXT, league TEXT,"
+            " kickoff_utc TEXT, psc_home REAL, psc_draw REAL, psc_away REAL)")
+        ko = "2026-09-01T19:00:00+00:00"
+        for src_lbl, (h, d, a) in (("cup_market", (2.00, 3.40, 3.80)),
+                                   ("board_snapshot", (2.05, 3.35, 3.75))):
+            for hrs, bump in ((6.0, 0.0), (1.0, 0.02)):   # 含 ≤1.5h 的近收盘锚
+                ca = (dt.datetime.fromisoformat(ko) - dt.timedelta(hours=hrs))
+                con.execute(
+                    "INSERT INTO odds_snapshots VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (ca.isoformat(), src_lbl, "Alpha FC", "Beta FC", "2026-09-01",
+                     "EPL", ko, h + bump, d, a))
+        con.commit(); con.close()
+
+        trajs = load_trajectories(db)
+        assert len(trajs) == 2, (
+            f"同一场比赛的两个 source 被并成了 {len(trajs)} 条轨迹 ⇒ "
+            f"board_snapshot 的规律采样会污染 cup_market 的 σ_P 人口")

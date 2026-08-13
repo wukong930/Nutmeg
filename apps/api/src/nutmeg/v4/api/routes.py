@@ -1969,6 +1969,30 @@ def _fixture_rows_to_inputs(rows: list[dict]) -> list[FixtureOddsInput]:
 # ages here is mostly fixtures far from kickoff, and a stale line still surfaces
 # to the user via the card's odds_update badge (>2h → ⚠️ 陈旧) rather than
 # passing itself off as fresh. 🔄 is untouched (refresh=True bypasses the TTL).
+#: 观测口:调用方可以声明「我只是来读盘面的,别把我记进线史」。
+#:
+#: 🚨 为什么需要它(2026-08-13):`_gather_rows` 会把每次取到的 Pinnacle 线
+#: 追加进 `odds_snapshots`,而 `sigma_p_fit` 按 **(比赛, source)** 分组成轨迹、
+#: 要求「最靠近开球的点 ≤1.5h」否则整条丢弃。2026-08-12 上线的 `snapshot_board`
+#: cron 每天 5 个固定时刻打这两个端点 ⇒ 它会**改掉那份进行中的预注册测量的
+#: 抽样人口**(入选闸从「owner 恰好那时候看了」变成「开球时刻是否贴着 cron 槽」)。
+#: 实测节奏确实变了:08-11 之前 11–36 个不规则写入时刻/天,08-13 起
+#: 我的 5 个槽 02/08/11/14/15:30 UTC 全部到齐。
+#:
+#: ⛔ 第一版我想「给 cron 一个自己的 source 标签」让 σ_P 的分组自动隔离 ——
+#: **不成立**:`record_row_snapshot` 的去重查的是 `(fixture_id)` 或
+#: `(date, league, home, away)`,**不带 source**(odds_snapshots.py:198-208)。
+#: 谁先跑到谁「认领」这次线变化,另一个被去重掉 ⇒ 标签只会把同一条线史
+#: **拆给两个标签**,把 cup_market 的轨迹打出洞,而不是另开一条。
+#:
+#: ⭐ 正解更简单:快照层**根本不需要**写共享线史表 —— 它自己的
+#: `board_leg_snapshot` 已经存了每条腿的 `psc`。让它当纯读者,
+#: σ_P 的人口就精确地回到 08-12 之前,零波及面、随时可逆。
+#:
+#: 📌 顺带发现(**我没引入、也没修**):跨 source 去重意味着
+#: `cup_market`/`sp_calc`/`predict_log` 本来就在互相抢同一次线变化,
+#: 而 σ_P 却按 source 分组 —— 那份数据地基和分析口径本就不一致。
+#: 改它要动共享表的语义(CLV/freeze-gap/δ 全吃这张表),该由 owner 定。
 _SERVING_OA_TTL_SECONDS = 6 * 3600
 
 # ── V12 W3 — 竞彩 SP calculator data (近期赛事 tab) ─────────────────────
@@ -2164,6 +2188,7 @@ def _utc_today():
 )
 def predictions_sp_calc(
     days: int = 3, refresh_odds: bool = False, bettable_only: bool = True,
+    record_line_history: bool = True,
 ) -> SpCalcResponse:
     import datetime as _dt
     from pathlib import Path as _Path
@@ -2206,7 +2231,9 @@ def predictions_sp_calc(
                 refresh_fixtures=False, refresh_odds=refresh_odds,
                 require_odds=False,
                 min_kickoff_buffer_minutes=5,
-                snapshot_db=_observation_db_path(),
+                # ⭐ `record_line_history=false` 的调用方(snapshot_board cron)
+                # 只读不写 —— 见 `_SERVING_OA_TTL_SECONDS` 上方那段。
+                snapshot_db=(_observation_db_path() if record_line_history else None),
                 snapshot_source="sp_calc",
                 use_odds_api=_odds_api_available(),
                 odds_api_refresh=refresh_odds,
@@ -2617,6 +2644,7 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
 )
 def predictions_cup_market(
     days: int = 3, refresh_odds: bool = False, bettable_only: bool = True,
+    record_line_history: bool = True,
 ) -> SpCalcResponse:
     """市场模式: Tier-1 cups (UCL/UEL/UECL + big domestic cups + WC/EURO) over an
     N-day window, each carrying Pinnacle de-vig fair 1X2 as its probability — NO
@@ -2667,7 +2695,9 @@ def predictions_cup_market(
                 # 体检 A1 — the 市场模式 board (incl. 🔄 refresh) feeds the
                 # odds_snapshots line history; near-KO refreshes are exactly
                 # the closing-line evidence CLV needs.
-                snapshot_db=_observation_db_path(),
+                # ⭐ `record_line_history=false` 的调用方(snapshot_board cron)
+                # 只读不写 —— 见 `_SERVING_OA_TTL_SECONDS` 上方那段。
+                snapshot_db=(_observation_db_path() if record_line_history else None),
                 snapshot_source="cup_market",
                 use_odds_api=_odds_api_available(),
                 odds_api_refresh=refresh_odds,
