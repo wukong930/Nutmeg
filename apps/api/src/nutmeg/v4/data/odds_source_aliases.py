@@ -141,6 +141,61 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('PRT_PRIMEIRA_LIGA', 'Gil Vicente'): 'GIL Vicente',   # 共现 1 场
     ('PRT_PRIMEIRA_LIGA', 'Rio Ave FC'): 'Rio Ave',   # 共现 2 场
     ('PRT_PRIMEIRA_LIGA', 'Sporting Lisbon'): 'Sporting CP',   # 共现 2 场
+    # ── 英超(2026-08-14 预埋,首场 08-21)。⚠️ Coventry City / Leeds United **也出现在
+    # EFL_CUP 的盘面**里 —— 本条只作用于 EPL 键;杯赛要另立条目(见文末 📌)。
+    ('EPL', 'Coventry City'): 'Coventry',
+    ('EPL', 'Leeds United'): 'Leeds',
+    # ── 西甲(2026-08-14 预埋,首场 08-15)。含 4 条**纯重音**:OA 带重音、AF 不带,
+    # NFKD 折叠后逐字相等且当季队表内唯一。不补这几条 = 同一行的另一条腿仍劈着 = 半修。
+    ('ESP_LA_LIGA', 'Alavés'): 'Alaves',
+    ('ESP_LA_LIGA', 'Athletic Bilbao'): 'Athletic Club',
+    ('ESP_LA_LIGA', 'Atlético Madrid'): 'Atletico Madrid',
+    ('ESP_LA_LIGA', 'Deportivo La Coruña'): 'Deportivo La Coruna',
+    ('ESP_LA_LIGA', 'Elche CF'): 'Elche',
+    ('ESP_LA_LIGA', 'Málaga'): 'Malaga',
+    ('ESP_LA_LIGA', 'Real Racing Club de Santander'): 'Racing Santander',
+    # ── 意甲(2026-08-14 预埋,首场 08-22)
+    ('ITA_SERIE_A', 'Inter Milan'): 'Inter',
+    # ── 法甲(2026-08-14 预埋,首场 08-21)。⚠️ Le Mans/Brest 那场是**两侧同时劈**——
+    # 我的初版配对脚本对这种形态静默输出 0 条(判据是「恰好一侧对上」)。
+    ('FRA_LIGUE_1', 'Brest'): 'Stade Brestois 29',
+    ('FRA_LIGUE_1', 'Le Mans FC'): 'Le Mans',
+    ('FRA_LIGUE_1', 'RC Lens'): 'Lens',
+    ('FRA_LIGUE_1', 'Troyes'): 'Estac Troyes',
+    # ── 英冠(2026-08-14 预埋,**今晚 19:00Z 首场**)。⚠️ 5 个名字里 4 个也出现在
+    # EFL_CUP 盘面,本条只作用于英冠键。
+    ('ENG_CHAMPIONSHIP', 'Blackburn Rovers'): 'Blackburn',
+    ('ENG_CHAMPIONSHIP', 'Cardiff City'): 'Cardiff',
+    ('ENG_CHAMPIONSHIP', 'Lincoln City'): 'Lincoln',
+    ('ENG_CHAMPIONSHIP', 'Queens Park Rangers'): 'QPR',
+    ('ENG_CHAMPIONSHIP', 'Swansea City'): 'Swansea',
+    # ── 西乙(2026-08-14 预埋,首场今晚 18:30Z)。🚨 本联赛三件事:
+    # ① `Celta Vigo` → `Celta de Vigo II`:OA 把**塞尔塔 B 队**写成一队的简称。
+    #    一队在西甲(AF league 140)、B 队在西乙(141),两个 league key 天然隔离 ——
+    #    **(联赛,名) 的联赛维度在这里是承重的,不是装饰**。见 test_celta_league_isolation。
+    # ② `Girona FC`:一队**自己降级**到西乙(AF 547 轨迹 140→141),不是 B 队。
+    # ③ 含 4 条纯重音(Almería/Córdoba/Leganés/Sporting Gijón)——
+    #    不补则 11 条别名只修好 7/11 场。
+    ('ESP_SEGUNDA_DIVISION', 'Almería'): 'Almeria',
+    ('ESP_SEGUNDA_DIVISION', 'Andorra CF'): 'FC Andorra',
+    ('ESP_SEGUNDA_DIVISION', 'Burgos CF'): 'Burgos',
+    ('ESP_SEGUNDA_DIVISION', 'CD Castellón'): 'Castellón',
+    ('ESP_SEGUNDA_DIVISION', 'CD Eldense'): 'Eldense',
+    ('ESP_SEGUNDA_DIVISION', 'Celta Vigo'): 'Celta de Vigo II',
+    ('ESP_SEGUNDA_DIVISION', 'Cádiz CF'): 'Cadiz',
+    ('ESP_SEGUNDA_DIVISION', 'Córdoba'): 'Cordoba',
+    ('ESP_SEGUNDA_DIVISION', 'Girona FC'): 'Girona',
+    ('ESP_SEGUNDA_DIVISION', 'Leganés'): 'Leganes',
+    ('ESP_SEGUNDA_DIVISION', 'Real Sociedad B'): 'Real Sociedad II',
+    ('ESP_SEGUNDA_DIVISION', 'Real Valladolid CF'): 'Valladolid',
+    ('ESP_SEGUNDA_DIVISION', 'SD Eibar'): 'Eibar',
+    ('ESP_SEGUNDA_DIVISION', 'Sabadell FC'): 'Sabadell',
+    ('ESP_SEGUNDA_DIVISION', 'Sporting Gijón'): 'Sporting Gijon',
+    # ── 意乙(2026-08-14 预埋,首场 08-22)
+    ('ITA_SERIE_B', 'Cesena FC'): 'Cesena',
+    ('ITA_SERIE_B', 'Südtirol'): 'Sudtirol',
+    ('ITA_SERIE_B', 'US Catanzaro 1929'): 'Catanzaro',
+    ('ITA_SERIE_B', 'Vicenza'): 'Vicenza Virtus',
 }
 
 #: ⛔ 证据不足、**故意留空**的名字(探测器每次会重报)。补它们要有证据 ——

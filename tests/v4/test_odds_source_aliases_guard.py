@@ -35,8 +35,8 @@ def test_no_key_conflicts() -> None:
     dict 字面量天然不会有重复键 —— 但**后写的会静默覆盖先写的**,
     所以这条真正钉的是「条数没有因为重键而缩水」。
     """
-    assert len(A) == 92, (
-        f"表大小 {len(A)},预期 92(旧 61 + 2026-08-13 新增 31)。"
+    assert len(A) == 130, (
+        f"表大小 {len(A)},预期 130(61 + 08-13 的 31 + 08-14 预埋 38)。"
         f"若你有意增删,改这个数并在下面 per-league 表同步。")
 
 
@@ -76,6 +76,9 @@ def test_per_league_counts() -> None:
         # ── 新 31 条(2026-08-13,受训联赛) ──
         "BEL_PRO_LEAGUE": 10, "GER_2_BUNDESLIGA": 1, "JPN_J1": 9,
         "NED_EREDIVISIE": 5, "PRT_PRIMEIRA_LIGA": 6,
+        # ── 新 38 条(2026-08-14,**预埋**:这 8 个联赛 closing 侧当时 0 行) ──
+        "EPL": 2, "ESP_LA_LIGA": 7, "ITA_SERIE_A": 1, "FRA_LIGUE_1": 4,
+        "ENG_CHAMPIONSHIP": 5, "ESP_SEGUNDA_DIVISION": 15, "ITA_SERIE_B": 4,
     }, got
 
 
@@ -158,3 +161,41 @@ def test_no_self_mapping() -> None:
     """源名 == 目标名 = 无作用条目,只会让人以为归一过了。"""
     noop = {k: v for k, v in A.items() if k[1] == v}
     assert not noop, f"自映射(无作用)条目:{noop}"
+
+
+def test_celta_league_isolation_first_team_vs_b_team() -> None:
+    """🚨 塞尔塔一队(西甲)与 B 队(西乙)—— **(联赛,名) 的联赛维度在这里承重**。
+
+    Odds API 在**西乙**盘面里把塞尔塔 B 队写成 `Celta Vigo`(一队的简称),
+    而 API-Football 写 `Celta de Vigo II`。同一个串 `Celta Vigo` 在**西甲**盘面里
+    指的是**一队**(AF league 140),两侧同名、不需要别名。
+
+    ⇒ 别名 `('ESP_SEGUNDA_DIVISION','Celta Vigo') → 'Celta de Vigo II'` 必须
+    **只在西乙桶里开火**。若哪天有人把查表改成不带联赛(或先 fallback 到全局表),
+    西甲一队会被静默改写成 B 队 —— 两支不同的队合并,而且**日志全绿**。
+
+    空包弹:把 `canonical_team` 里的 `(canonical_league(league) or "", name)`
+    改成只用 `name` ⇒ 第二条断言立刻红。
+    """
+    assert canonical_team("ESP_SEGUNDA_DIVISION", "Celta Vigo") == "Celta de Vigo II"
+    # 🚨 承重的那条:西甲的同名串必须**原样穿过**
+    assert canonical_team("ESP_LA_LIGA", "Celta Vigo") == "Celta Vigo"
+    # 别的联赛同理(比如杯赛)
+    assert canonical_team("UCL", "Celta Vigo") == "Celta Vigo"
+
+
+def test_english_names_do_not_leak_into_efl_cup() -> None:
+    """📌 5 个英格兰队名**同时出现在 EFL_CUP 的 OA 盘面**里,本批只作用于联赛键。
+
+    实测(2026-08-14):`league='EFL_CUP'` 的 closing 侧 35 个 (日期,主,客) 键里
+    只有 6 个叠得上 gather ⇒ **29 对收盘行正在流血**(不是预埋,是现在就在丢)。
+    其中 9 对能用本批同一套名字修好 —— **但键必须是 `EFL_CUP`**。
+
+    ⇒ 本测试钉住「补了英冠不会顺带修好杯赛」这个事实,免得有人以为已经好了。
+    杯赛条目要单独立项 + 单独证伪(下一轮)。
+    """
+    for nm in ("Blackburn Rovers", "Cardiff City", "Lincoln City",
+               "Coventry City", "Leeds United"):
+        assert canonical_team("EFL_CUP", nm) == nm, (
+            f"{nm!r} 在 EFL_CUP 键下被改写了 —— 本批不该覆盖杯赛,"
+            f"若要覆盖必须走单独的证伪轮")
