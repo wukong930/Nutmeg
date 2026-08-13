@@ -115,10 +115,23 @@ class TestDashboardWiring:
         assert "hidden" in banner
 
     def test_loader_wired_to_tab_and_refresh(self, html: str):
+        """开页即跑 + 🎯 刷新竞彩 后重算(补完词典要能立刻看到横幅消失)。
+
+        ⚠️ 2026-08-13 放宽:上一版断言的是
+        `"loadJingcaiUnmapped();          // 刚重抓过" in html` ——
+        **逐字符的源码行,连注释和那串空格都算**。修 🎯 的时序 bug 时
+        (把三个 loader 挪进 `await Promise.allSettled([...])`)它立刻假红,
+        而接线**一点没坏**。语法代理测语义属性,今天第三次。
+        ⇒ 改成「刷新函数体里**调了**它」,不锁调用点长什么样。
+        ⭐ 真正的时序(✅ 必须等三个 loader 跑完)由
+        `tests/v4/test_refresh_jingcai_ordering.py` **在 node 里跑真函数**来守。
+        """
         assert "async function loadJingcaiUnmapped()" in html
-        # 开页即跑 + 🎯 刷新竞彩 后重算(补完词典要能立刻看到横幅消失)
         assert "name === 'upcoming' && typeof loadJingcaiUnmapped === 'function'" in html
-        assert "loadJingcaiUnmapped();          // 刚重抓过" in html
+        body = html.split("async function _refreshJingcaiInner(", 1)[1]
+        body = body.split("\n}", 1)[0]
+        assert "loadJingcaiUnmapped(" in body, (
+            "🎯 刷新竞彩 之后不再重算未映射横幅 ⇒ 补完词典横幅不会消失")
 
     def test_external_names_never_reach_innerhtml(self, html: str):
         """竞彩队名是外部数据、本文件没有 HTML 转义器 → 必须走 textContent 建 DOM。"""

@@ -2401,6 +2401,9 @@ const I18N = {
     ver_new:'{ic:refresh} 新版本已就绪',
     ver_reload:'点此刷新',
     jc_refreshing:'抓取竞彩中…',
+    jc_reloading:'已落库,重载盘面中…',
+    jc_done:'盘面已更新',
+    jc_reload_failed:'已落库,但盘面重载失败 —— 屏幕上还是旧数据,请手动刷新页面',
     jc_unmapped_title:'竞彩队名解不出 → SP 挂不上的比赛',
     jc_unmapped_why:'这些场的中文队名对不上词典 ⇒ 竞彩 SP 无法 join 到盘面行。⚠️ 这**不**等于比赛不在盘面上 —— 它很可能就在下面的「待开盘」里(2026-08-07 实测:日乙 2 场上榜,而 10 场日乙全都在待开盘区)。本横幅只知道「名字解没解出」,它**不看**有没有赔率。',
     jc_unmapped_fix:'先查这队在不在 team_name_zh.py。① 在(只是竞彩换了种中文写法)→ 补 sporttery.py 的 _ZH_OVERRIDES。② 整队不在 → 补 team_name_zh.py,那里一处同时修 join 和显示;只补 _ZH_OVERRIDES 会变成「join 通了、卡片仍显示英文名」。英文键照抄盘面真在用的那个拼法(odds_snapshots 或 AF fixture 缓存里的赛程行都可以当锚),别按译音猜 —— 错映射是静默污染,比缺映射更坏。⚠️ 补完必须**重启 API**:词典在进程启动时建表,不重启横幅会继续点名已经修好的队名。⚠️ 反过来也要小心:补完这条横幅就闭嘴了,但比赛能不能算 EV 取决于有没有 Pinnacle 赔率 —— 那是另一条链,横幅看不见它。',
@@ -2974,6 +2977,9 @@ const I18N = {
     ver_new:'{ic:refresh} New version ready',
     ver_reload:'Reload',
     jc_refreshing:'fetching 竞彩…',
+    jc_reloading:'stored — reloading board…',
+    jc_done:'board updated',
+    jc_reload_failed:'stored, but the board reload failed — what you see is still stale; reload the page',
     jc_unmapped_title:'竞彩 name unresolved → SP cannot be attached',
     jc_unmapped_why:'The Chinese team name is not in the dict ⇒ the 竞彩 SP cannot be joined to a board row. ⚠️ This does NOT mean the match is absent from the board — it is most likely sitting in 待开盘 below (measured 2026-08-07: 2 J2 matches listed here while all 10 J2 fixtures were on the board as 待开盘). This banner only knows whether the NAME resolved; it never looks at whether odds exist.',
     jc_unmapped_fix:'First check whether the club is in team_name_zh.py. ① It is (竞彩 just spells the Chinese differently) → add it to _ZH_OVERRIDES in sporttery.py. ② The club is missing entirely → add it to team_name_zh.py, which fixes the join AND the display in one place; an _ZH_OVERRIDES-only fix joins fine but leaves the English name on the card. Copy the English spelling the board actually uses (odds_snapshots, or a fixture row in the API-Football cache, both work as anchors) — never transliterate a guess: a wrong mapping silently poisons joins, which is worse than a missing one. ⚠️ You MUST restart the API afterwards: the dict is built at process start, so without a restart the banner keeps naming clubs you already fixed. ⚠️ And the other way round: fixing the dict silences this banner, but whether the match can be priced depends on Pinnacle odds existing — a separate chain this banner cannot see.',
@@ -6528,14 +6534,39 @@ async function refreshJingcai() {
   const btns = [$('#jcb-jcrefresh')].filter(Boolean);
   const sts = [$('#jcb-status'), $('#cupmkt-status'), $('#spcalc-status')].filter(Boolean);
   if (btns.some(b => b.disabled)) return;
-  await _guardedRefresh('jingcai', () => _refreshJingcaiInner(btns, sts), sts);
+  await _guardedRefresh('jingcai', () => _refreshJingcaiInner(btns), sts);
 }
 
-async function _refreshJingcaiInner(btns, sts) {
+// 🚨 2026-08-13 — 「✅ 在盘面更新之前就亮」的修复。
+//
+// 旧版:POST 一返回就把 `✅ N · 胜平负 X · 让球 Y` 写出去、`finally` 里立刻放开
+// 按钮,然后**不 await** 地甩出三个重载。于是 owner 看到 ✅ 的那一刻,
+// 屏幕上还是旧 SP,三个请求还在飞(loadCupMarket 实测要 8–20s)。
+// 服务端没问题 —— `harvest_to_db` 是同步写完才返回;错的是**前端把
+// 「抓取完成」当成了「你看到的东西已经是新的」**。
+//
+// ⭐ 现在分四相,而且 ✅ 的含义收紧成「**屏幕上这批就是新数据**」:
+//   ① 抓取竞彩中…      ② 已落库 N 场,重载盘面中…
+//   ③ ✅ 盘面已更新 …   ③′ ⚠️ 已落库但重载失败(**不写 ✅**)
+//
+// ⚠️ 两条不能退的:
+// · `Promise.allSettled` 不是 `all` —— 一个 loader 挂了不能让按钮永久置灰,
+//   也不能把「抓取成功」这件事一起吞掉(它是真的成功了)。
+// · 按钮复位留在 `finally` —— `#cupmkt-refresh-all` 那个「首屏后永久 disabled」
+//   的老 bug 根因就是所有权劈开(见上面 refreshBettableOdds 的注释)。
+//
+// 📌 只写 `#jcb-status`,不再往 `#cupmkt-status`/`#spcalc-status` 写:
+// 那两块**归两个 loader 自己所有**,旧版写进去也会被它们立刻覆写掉 ——
+// 写一个必定被冲掉的值,是这个 bug 的门面那一半。
+async function _refreshJingcaiInner(btns) {
+  const say = (m) => { const el = $('#jcb-status'); if (el) el.textContent = m; };
   btns.forEach(b => { b.disabled = true; b.innerHTML = IC('target') + ' ' + t('jc_refreshing'); });
   try {
+    say('⏳ ' + t('jc_refreshing'));
     const r = await fetch(API + '/observation/sporttery-refresh', { method: 'POST' });
     const j = await r.json();
+    if (!j.ok) { say(`⚠️ ${j.reason || '刷新失败'}`); return; }
+
     // 2026-07-09 — name the dropped matches, not just count them: an unmapped
     // zh team name silently skips the WHOLE match (dictionary gap), and "SP 对
     // 不上官网" was the only symptom. Now the gap is visible in 3 seconds.
@@ -6543,15 +6574,21 @@ async function _refreshJingcaiInner(btns, sts) {
     const unTxt = un.length
       ? ` · ⚠️ 未映射${un.length}场: ${un.map(u => `${u.home_cn || '?'}vs${u.away_cn || '?'}`).join('、')}(SP 不更新,需补词典)`
       : '';
-    const msg = j.ok ? `✅ ${j.matches} · 胜平负 ${j.had} · 让球 ${j.hhad}${unTxt}` : `⚠️ ${j.reason || '刷新失败'}`;
-    sts.forEach(s => { s.textContent = msg; });
+    const got = `${j.matches} · 胜平负 ${j.had} · 让球 ${j.hhad}${unTxt}`;
+
+    say(`⏳ ${t('jc_reloading')} (${got})`);
+    const res = await Promise.allSettled([
+      loadCupMarket({manual:true}),   // 市场模式: re-read jingcai_sp + 新数据为主
+      loadSpCalc(),                   // 标准模式: 同步重渲(竞彩 SP 重新预填)
+      loadJingcaiUnmapped(),          // 刚重抓过 → 未映射横幅同步重算
+    ]);
+    const bad = res.filter(x => x.status === 'rejected').length;
+    say(bad ? `⚠️ ${t('jc_reload_failed')} (${got})`
+            : `✅ ${t('jc_done')} · ${got}`);
   } catch (e) {
-    sts.forEach(s => { s.textContent = '⚠️ 竞彩刷新失败(网络)'; });
+    say('⚠️ 竞彩刷新失败(网络)');
   } finally {
     btns.forEach(b => { b.disabled = false; b.innerHTML = _expandIcons(t('jc_refresh_btn')); });
-    loadCupMarket({manual:true});   // 市场模式: re-read jingcai_sp + 新数据为主(竞彩刷新=手动)
-    loadSpCalc();                   // 标准模式: 同步重渲(竞彩 SP 重新预填)
-    loadJingcaiUnmapped();          // 刚重抓过 → 未映射横幅同步重算(补完词典即消失)
   }
 }
 
