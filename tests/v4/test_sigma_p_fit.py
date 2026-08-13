@@ -11,7 +11,10 @@ import pytest
 from nutmeg.v4.cli.sigma_p_fit import (
     _ANCHOR_MAX_H,
     _STRATA,
+    NEXT_EVAL_CLUSTERS,
     NEXT_EVAL_N,
+    _cluster_resample,
+    _clusters,
     _live_coef,
     bucket_points,
     buckets,
@@ -22,10 +25,12 @@ from nutmeg.v4.cli.sigma_p_fit import (
 from nutmeg.v4.model import ev_threshold as ET
 
 
-def _traj(hours, *, league="芬超", stratum=_STRATA[0], trained=False, drift=0.0):
+def _traj(hours, *, league="芬超", stratum=_STRATA[0], trained=False, drift=0.0,
+          matchday="2026-09-01"):
     """造一条轨迹:锚在 hours[0],其余点按 drift×h 线性漂。"""
     pts = [(h, 0.40 + drift * h, 0.30 - drift * h, 0.30) for h in hours]
-    return {"league": league, "stratum": stratum, "trained": trained, "points": pts}
+    return {"league": league, "stratum": stratum, "trained": trained, "points": pts,
+            "matchday": matchday}
 
 
 def test_live_coefficients_are_read_lazily_not_snapshotted(monkeypatch):
@@ -57,6 +62,39 @@ def test_eval_point_threshold_is_a_manual_gate_not_auto_advancing():
     """
     assert isinstance(NEXT_EVAL_N, int)
     assert NEXT_EVAL_N >= 300, "门槛只能由 owner 按 prereg 上调,不能下调"
+    assert isinstance(NEXT_EVAL_CLUSTERS, int)
+    assert NEXT_EVAL_CLUSTERS >= 30, "簇门槛同样只能上调(prereg v2.3 §3③)"
+
+
+def test_bootstrap_resamples_matchdays_not_matches():
+    """⭐ prereg v2.3 §3⑤:自举的单元必须是**比赛日簇**,整天一起进出。
+
+    为什么要紧:2026-08-13 实测,13 训练联赛的 75 场合格比赛全部坐落在**4 个
+    比赛日**上。按比赛重采样 = 把 75 个强相关单元当 75 个独立观测 ⇒ CI 是虚的。
+
+    ⚠️ **行为断言,不是「源码里有没有 matchday」**:造 3 天 × 每天 4 条,
+    重采样若按比赛,同一天的 4 条几乎不可能整齐地同进同出;按簇则**必然**
+    每天的计数都是 4 的倍数。
+
+    空包弹:把 `_cluster_resample` 换成按 traj 重采样 ⇒ 计数出现非 4 倍数,这条红。
+    """
+    import random
+    from collections import Counter
+
+    trajs = [_traj([0.5, 3, 10], matchday=f"2026-09-0{d}")
+             for d in (1, 2, 3) for _ in range(4)]
+    cl = _clusters(trajs)
+    assert len(cl) == 3, f"3 个比赛日应当分成 3 簇,实际 {len(cl)}"
+    assert sorted(len(c) for c in cl) == [4, 4, 4]
+
+    rng = random.Random(7)
+    for _ in range(20):
+        samp = _cluster_resample(cl, rng)
+        assert len(samp) == 12, "簇自举必须保持总量(3 簇 × 每簇 4 条)"
+        for day, n in Counter(t["matchday"] for t in samp).items():
+            assert n % 4 == 0, (
+                f"{day} 出现 {n} 条,不是 4 的倍数 ⇒ 重采样把一天拆开了,"
+                f"那等于把强相关单元当独立观测")
 
 
 def test_render_says_not_at_eval_point_when_no_trained_league_data():

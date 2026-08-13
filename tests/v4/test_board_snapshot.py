@@ -531,12 +531,22 @@ class TestAppendOnly:
 
 class TestItDoesNotContaminateSigmaP:
     """🚨 本 cron 每天 5 个固定时刻打 serving 端点,而 serving 会往
-    `odds_snapshots` 追加行。`sigma_p_fit` 按 **(比赛, source)** 分组成轨迹、
-    要求「最近开球的点 ≤1.5h」否则整条丢弃 ⇒ 混进 `cup_market`/`sp_calc`
-    就等于**给一个进行中的预注册测量换了抽样人口**
+    `odds_snapshots` 追加行。`sigma_p_fit` 要求「最靠近开球的点 ≤1.5h」否则整条
+    轨迹丢弃 ⇒ 混进来就等于**给一个进行中的预注册测量换了抽样人口**
     (入选闸从「owner 恰好那时看了」变成「开球时刻是否贴着 cron 槽」)。
 
-    修法是给本 cron 自己的 source 标签,让隔离由**已有的分组**自动成立。
+    ✅ **隔离机制 = 纯读者**:CLI 传 `record_line_history=false`,serving 把
+    `snapshot_db` 传成 `None` ⇒ **一行都不写**。
+
+    ⛔ 试过但不成立的两版,都记在这里免得有人绕回去:
+    1. 「给 cron 自己的 source 标签」—— 去重键**不带 source**,标签只会把同一条
+       线史拆给两个标签、把 `cup_market` 的轨迹打出洞。
+    2. 「靠 σ_P 按 source 分组自动隔离」—— 那个分组轴本身 2026-08-13 被证伪
+       并已改掉(prereg v2.3)。**把隔离建在一个错的前提上,前提一修隔离就没了。**
+
+    ⚠️ 下面两条是**语法代理**(`inspect.getsource` + 字符串匹配),不是行为断言。
+    它们钉的是「开关有没有被接上」;真正的行为证据是生产库里 cron 那 5 个时刻
+    的写入行数 —— 见 §「上线后核对」,那个只能在真库上看。
     """
 
     def test_serving_writes_no_line_history_when_told_not_to(self) -> None:
@@ -570,18 +580,23 @@ class TestItDoesNotContaminateSigmaP:
         assert '"record_line_history": "false"' in inspect.getsource(M.main), (
             "CLI 没声明自己是纯读者 ⇒ 它的 5 个固定时刻会改掉 σ_P 的抽样人口")
 
-    def test_sigma_p_really_splits_trajectories_by_source(self, tmp_path) -> None:
-        """⭐ 这条钉住**隔离赖以成立的那个前提**:σ_P 真的按 source 分开轨迹。
+    def test_sigma_p_pools_sources_into_one_trajectory_per_match(self, tmp_path) -> None:
+        """⚠️ **本条 2026-08-13 反转了**:σ_P 现在按**比赛**池化,不再按 source 切。
 
-        它一旦不成立,上面两条依然全绿而污染照旧发生 ——
-        「检查的前提没人检查」正是本仓反复吃亏的那一族。
+        旧版断言 `len(trajs) == 2`(两个 source 两条轨迹),理由是「隔离赖以成立的
+        前提就是分组带 source」。**那个理由已经不成立**:隔离靠的是上面两条 ——
+        CLI 声明自己是纯读者、serving 把 `snapshot_db` 传成 None,**一行都不写**。
+        写都不写,按什么分组就与污染无关了。
 
-        ⚠️ 行为断言,不是「源码里有没有 `r["source"]`」:**同一场比赛**分别以
-        `cup_market` 和 `board_snapshot` 写两条线,断言 `load_trajectories`
-        吐出**两条独立轨迹**而不是一条被拼起来的。
+        而按 source 切本身是**错的**(prereg v2.3):线的走势是市场的属性,不是
+        观测者的属性;实测 1544/1544 组各 source 记的价格完全相同,切开只会把
+        同一条市场轨迹打成互相看不见的碎片、把锚推离收盘。
 
-        空包弹:把 sigma_p_fit 的分组键 `k` 里的 `r["source"]` 去掉
-        ⇒ 两条并成一条,`len(trajs) == 1`,这条红。
+        📌 **留下这条(而不是删掉)是有意的** —— 它现在钉的是新轴,
+        并且把「旧断言为什么被推翻」写在原地,免得日后有人照着旧理由改回去。
+
+        空包弹:把 `sigma_p_fit` 的分组键 `k` 加回 `r["source"]`
+        ⇒ 变回两条,`len(trajs) == 2`,这条红。
         """
         import sqlite3 as _s
 
@@ -602,9 +617,81 @@ class TestItDoesNotContaminateSigmaP:
                     "INSERT INTO odds_snapshots VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (ca.isoformat(), src_lbl, "Alpha FC", "Beta FC", "2026-09-01",
                      "EPL", ko, h + bump, d, a))
-        con.commit(); con.close()
+        con.commit()
+        con.close()
 
         trajs = load_trajectories(db)
-        assert len(trajs) == 2, (
-            f"同一场比赛的两个 source 被并成了 {len(trajs)} 条轨迹 ⇒ "
-            f"board_snapshot 的规律采样会污染 cup_market 的 σ_P 人口")
+        assert len(trajs) == 1, (
+            f"同一场比赛被切成了 {len(trajs)} 条轨迹 ⇒ 分组轴还带着 source,"
+            f"锚会被系统性推离收盘、低估国内层 σ_P 约 19%(prereg v2.3 §2③)")
+        assert len(trajs[0]["points"]) == 4, (
+            "池化后应当把两个 source 的 4 个观测点合成一条轨迹,"
+            f"实际 {len(trajs[0]['points'])} 个")
+
+    def test_multiple_kickoffs_take_the_latest_not_the_mode(self, tmp_path) -> None:
+        """prereg v2.3 §3① —— 同一场多个 `kickoff_utc` 取 **max**,不是众数。
+
+        实测 41/41 单调后移:Odds API `commence_time` 会更新成**实际**开球,
+        API-Football `fixture.date` 是**排定**开球、从不更新。
+        ⇒ **众数会系统性选中陈旧的排定时刻**(它出现次数更多)。
+
+        本例:3 行排定 20:00、1 行更新为 20:30。众数 = 20:00(错),max = 20:30(对)。
+        锚那条抓于 20:15 —— 按 20:00 算 h 为负会被丢弃,按 20:30 算 h=0.25 才留下。
+
+        空包弹:把 `max(ks)` 改成 `statistics.mode(ks)` ⇒ 锚被丢,这条红。
+        """
+        import sqlite3 as _s
+
+        from nutmeg.v4.cli.sigma_p_fit import load_trajectories
+
+        db = tmp_path / "obs.db"
+        con = _s.connect(db)
+        con.execute(
+            "CREATE TABLE odds_snapshots (captured_at TEXT, source TEXT,"
+            " home_team TEXT, away_team TEXT, match_date TEXT, league TEXT,"
+            " kickoff_utc TEXT, psc_home REAL, psc_draw REAL, psc_away REAL)")
+        sched, actual = "2026-09-01T20:00:00+00:00", "2026-09-01T20:30:00+00:00"
+        rows = [("2026-09-01T14:00:00+00:00", sched), ("2026-09-01T17:00:00+00:00", sched),
+                ("2026-09-01T19:00:00+00:00", sched), ("2026-09-01T20:15:00+00:00", actual)]
+        for i, (ca, ko) in enumerate(rows):
+            con.execute("INSERT INTO odds_snapshots VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (ca, "closing", "Alpha FC", "Beta FC", "2026-09-01", "EPL", ko,
+                         2.00 + i * 0.01, 3.40, 3.80))
+        con.commit()
+        con.close()
+
+        trajs = load_trajectories(db)
+        assert len(trajs) == 1, f"这一场应当产出一条轨迹,实际 {len(trajs)}"
+        assert abs(trajs[0]["points"][0][0] - 0.25) < 1e-6, (
+            "锚的 h 必须按**实际**开球(20:30)算出 0.25h;"
+            f"实际 {trajs[0]['points'][0][0]:.3f}h ⇒ 用的是陈旧的排定时刻")
+
+    def test_a_wild_kickoff_drops_the_trajectory_and_is_counted(self, tmp_path) -> None:
+        """prereg v2.3 §3① 护栏:开球跨度 >3h ⇒ 整条丢弃,**且计数上仪表**。
+
+        没有这条,上游哪天把某场的时刻写飞,整条轨迹的 h 轴会被静默平移。
+        计数必须可见 —— 静默护栏 = 又一个「零告警所以没问题」的假信号。
+
+        空包弹:删掉 `_KO_SPREAD_MAX_H` 那个 if ⇒ 轨迹留下,这条红。
+        """
+        import sqlite3 as _s
+
+        from nutmeg.v4.cli import sigma_p_fit as M
+
+        db = tmp_path / "obs.db"
+        con = _s.connect(db)
+        con.execute(
+            "CREATE TABLE odds_snapshots (captured_at TEXT, source TEXT,"
+            " home_team TEXT, away_team TEXT, match_date TEXT, league TEXT,"
+            " kickoff_utc TEXT, psc_home REAL, psc_draw REAL, psc_away REAL)")
+        for ca, ko in (("2026-09-01T14:00:00+00:00", "2026-09-01T20:00:00+00:00"),
+                       ("2026-09-01T19:00:00+00:00", "2026-09-02T09:00:00+00:00")):
+            con.execute("INSERT INTO odds_snapshots VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (ca, "closing", "Alpha FC", "Beta FC", "2026-09-01", "EPL", ko,
+                         2.00, 3.40, 3.80))
+        con.commit()
+        con.close()
+
+        assert M.load_trajectories(db) == [], "开球时刻写飞了却没丢弃"
+        assert M._LOAD_STATS["ko_spread_dropped"] == 1, (
+            f"丢弃了却没计数 ⇒ 仪表上看不见,实际 {M._LOAD_STATS['ko_spread_dropped']}")

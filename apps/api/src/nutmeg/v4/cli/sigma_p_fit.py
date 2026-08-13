@@ -1,6 +1,7 @@
 """nutmeg-sigma-p-fit — σ_P(h) 分层拟合常设仪表(只读,永不 gate)。
 
-预注册 v2.1(`docs/sigma_p_stratified_prereg_v2.1_2026-07-29.md`)§7。
+预注册 v2.1(`docs/sigma_p_stratified_prereg_v2.1_2026-07-29.md`)§7
++ **v2.3**(`docs/sigma_p_grouping_axis_prereg_draft_2026-08-13.md`)—— 换分组轴。
 
 ## 它存在的理由
 
@@ -21,6 +22,11 @@ v2.1 的整个设计依赖「到了评估点会被发现」,而在本仪表建�
 
 近收盘锚 ≤1.5h(不满足整条轨迹丢弃)· ΔP 相对锚 · basic 归一化(**不是 WPO**)·
 每轨每桶只取一条增量 · 桶内稳健 σ=1.4826×MAD · 逐腿(H/D/A)。
+
+⚠️ **2026-08-13 v2.3 改了一处口径:轨迹的分组轴** —— (比赛, source) → (比赛)。
+理由与波及面见 `load_trajectories` 的 docstring。**这条改动让本仪表的产出与
+2026-07-29 之前的读数不再逐位可比**;`scripts/sigma_p_refit_floor.py` 那份
+v2.0 冻结记录按旧轴跑,依然有效但**不可直接与新轴比**。
 
 ## ⚠️ 三条纪律
 
@@ -56,15 +62,43 @@ _BUCKETS = ((0.5, 1), (1, 2), (2, 4), (4, 8), (8, 16), (16, 32), (32, 64), (64, 
 _MIN_BUCKET_N = 20          # prereg §3:合格桶的门槛
 _MIN_BUCKETS = 5            # prereg §3:至少 5 个合格桶才到评估点
 _ANCHOR_MAX_H = 1.5         # prereg §3:锚必须 ≤1.5h
+
+#: prereg v2.3 §3① —— 同一场若被记了多个 `kickoff_utc`,跨度超过这个值就整条丢弃。
+#:
+#: 实测(2026-08-13)最大跨度 **1.0h** ⇒ 这是**纯护栏,不是筛子**(今天丢 0 条)。
+#: 它防的是上游哪天把某场的时刻写飞,而那种行会静默把整条轨迹的 h 轴平移。
+_KO_SPREAD_MAX_H = 3.0
+
+#: prereg v2.3 §3① —— 丢弃计数**必须上仪表**。护栏静默生效 = 我们又造了一个
+#: 「零告警所以一定没问题」的假信号(同涓流 END 常量那一族)。
+_LOAD_STATS: dict[str, int] = {"ko_spread_dropped": 0}
 _LEGS = ("H", "D", "A")
 _STRATA = ("国内俱乐部联赛", "杯赛/国际赛")
-_DIAG_MIN_N = 60            # 逐联赛诊断表的最小轨迹数(仅诊断,不挂判据)
+_DIAG_MIN_N = 60            # 逐联赛诊断表的最小比赛数(仅诊断,不挂判据)
 
 #: prereg §3.1 的评估点门槛 —— **13 训练联赛**的合格轨迹数。
 #: ⚠️ 到点评估后若判据未过,prereg §3.2 要求下次门槛**翻倍**;那时 owner 更新
 #: prereg 并同步改这个数。它是有意的手动闸,不自动推进 —— 自动推进 = 无人看管的
 #: 反复检验。
+#:
+#: ⭐ v2.3 换轴(比赛,source)→(比赛)后,这个数的**单位从轨迹变成了比赛**,而池化
+#: 让 13 联赛的计数 93 → 75(**变少**)。按 1.41 条/场换算「应该」降到 ~213。
+#: **⛔ 刻意不降** —— 保持 300 让换轴在数学上**不可能**把评估点提前,把
+#: look-then-write 的风险钉死在保守一侧。代价是比理论上必要的严 1.41 倍,认了。
 NEXT_EVAL_N = 300
+
+#: prereg v2.3 §3③ —— **13 训练联赛的比赛日数**,与 `NEXT_EVAL_N` 取 **AND**。
+#:
+#: 🚨 为什么必须新增:2026-08-13 实测,13 训练联赛的 75 场合格比赛全部坐落在
+#: **4 个比赛日**上(08-07/08/09/10,一个赛程轮,只覆盖 6/13 个联赛)。
+#: 光数轨迹/比赛会在 ~4 周后触发,那时独立簇只有 ~16 个 —— **现行阈值在数一个
+#: 几乎无信息的量**。CI 的真驱动是独立簇数,不是单元数。
+#:
+#: 定值依据(**先验,2026-08-13 在跑新拟合之前写死**):30 是聚类稳健推断的常规
+#: 下界(簇数 <30 时 cluster-robust 方差向下偏、t 检验过度拒绝)。⚠️ 这是**惯例,
+#: 不是本项目的功效计算** —— 如实标注,别当成算出来的。
+#: 欧洲联赛约 3–4 个比赛日/周 ⇒ 30 簇 ≈ 8–10 周,**严格晚于**旧闸的 ~4 周。
+NEXT_EVAL_CLUSTERS = 30
 
 
 def _iso(s):
@@ -75,35 +109,65 @@ def _iso(s):
 
 
 def load_trajectories(db_path: str | Path) -> list[dict]:
-    """→ [{league, stratum, trained, points:[(h,pH,pD,pA)] 升序}];已过近收盘锚闸。"""
+    """→ [{league, matchday, stratum, trained, points:[(h,pH,pD,pA)] 升序}];已过锚闸。
+
+    ## 分组轴 = **(主队, 客队, 日期)**,不带 source(prereg v2.3,2026-08-13)
+
+    线的走势是**市场的属性,不是观测者的属性**。`source` 只是「哪个 CLI/端点发起了
+    这次抓取」,和线怎么动没有关系。实测 **1544/1544 组**里各 source 同一时刻记的
+    价格**完全相同** ⇒「不同 source = 不同测量仪器各有噪声」不成立。
+
+    更要命的是它和地基口径对不上:`record_row_snapshot` 的去重键**不带 source**
+    (谁先抓到一次线变化谁认领),而分析却按 source 切 ⇒ 每条碎片的锚都被打洞、
+    离收盘更远。实测锚中位 h **0.307 → 0.156**(池化后减半),现状因此**系统性
+    低估**国内层 σ_P 约 19%。详见 `docs/odds_snapshot_dedup_vs_sigmap_measurement_
+    2026-08-13.md` 与 `docs/sigma_p_grouping_axis_prereg_draft_2026-08-13.md`。
+
+    ## 多 `kickoff_utc` 取 **max**(prereg v2.3 §3①)
+
+    同一场可能带多个开球时刻(实测 41/1133 = 3.6%)。**不是 bug,是两个上游的两种
+    语义**:Odds API `commence_time` 会在比赛延后时更新成**实际**开球,而
+    API-Football `fixture.date` 是**排定**开球、从不更新。实测 41/41 单调后移
+    ⇒ 取 max = 取最接近实际开球的那个;**取众数会系统性选中陈旧的排定时刻**。
+    """
+    _LOAD_STATS["ko_spread_dropped"] = 0        # 重置 —— 否则多次调用会累加
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     with conn:
         rows = conn.execute(
-            "SELECT home_team, away_team, substr(match_date,1,10) d, source, league, "
+            "SELECT home_team, away_team, substr(match_date,1,10) d, league, "
             "captured_at, kickoff_utc, psc_home, psc_draw, psc_away FROM odds_snapshots "
             "WHERE psc_home>1 AND psc_draw>1 AND psc_away>1 AND kickoff_utc IS NOT NULL "
             "ORDER BY home_team, away_team, d, captured_at").fetchall()
     raw: dict = defaultdict(list)
     meta: dict = {}
+    kos: dict = defaultdict(list)
     for r in rows:
         ca, ko = _iso(r["captured_at"]), _iso(r["kickoff_utc"])
-        if not ca or not ko or ca >= ko:
+        if not ca or not ko:
             continue
-        k = (r["home_team"], r["away_team"], r["d"], r["source"])
+        k = (r["home_team"], r["away_team"], r["d"])
         b = 1 / r["psc_home"] + 1 / r["psc_draw"] + 1 / r["psc_away"]   # basic 归一化
-        raw[k].append(((ko - ca).total_seconds() / 3600.0,
-                       (1 / r["psc_home"]) / b, (1 / r["psc_draw"]) / b,
+        raw[k].append((ca, (1 / r["psc_home"]) / b, (1 / r["psc_draw"]) / b,
                        (1 / r["psc_away"]) / b))
+        kos[k].append(ko)
         meta[k] = r["league"]
     out = []
-    for k, pts in raw.items():
-        pts.sort()
+    for k, obs in raw.items():
+        ks = kos[k]
+        ko = max(ks)
+        # 护栏:跨度过大 ⇒ 上游把时刻写飞了,整条丢弃(不许静默平移整条 h 轴)
+        if (ko - min(ks)).total_seconds() / 3600.0 > _KO_SPREAD_MAX_H:
+            _LOAD_STATS["ko_spread_dropped"] += 1
+            continue
+        pts = sorted([((ko - ca).total_seconds() / 3600.0, ph, pd_, pa)
+                      for ca, ph, pd_, pa in obs if ca < ko])
         if not pts or pts[0][0] > _ANCHOR_MAX_H:
             continue                                    # 无近收盘锚 → 整条丢弃
         lg = meta[k]
         cn = canonical_league(lg)
         out.append({"league": cn or str(lg), "points": pts,
+                    "matchday": k[2],           # 自举的聚类单元(prereg v2.3 §3⑤)
                     "stratum": _STRATA[0] if is_domestic_club_league(lg) else _STRATA[1],
                     # ⚠️ 用 canonical 后的中文比 TRAINED_LEAGUES_CN —— 那张表是中文的
                     "trained": cn in TRAINED_LEAGUES_CN})
@@ -152,13 +216,38 @@ def fit_power(pts: list[tuple[float, float, int]]) -> tuple[float, float]:
     return math.exp(my - b * mx), b
 
 
+def _clusters(trajs: list[dict]) -> list[list[dict]]:
+    """按**比赛日**分簇 —— 自举的重采样单元(prereg v2.3 §3⑤)。"""
+    acc: dict = defaultdict(list)
+    for t in trajs:
+        acc[t.get("matchday") or ""].append(t)
+    return list(acc.values())
+
+
+def _cluster_resample(clusters: list[list[dict]], rng: random.Random) -> list[dict]:
+    """整天一起进出。"""
+    n = len(clusters)
+    return [t for _ in range(n) for t in clusters[rng.randrange(n)]]
+
+
 def bootstrap_coefs(trajs: list[dict], leg: str, n_boot: int, seed: int):
-    """按**轨迹**自举(不是按增量)—— 同一场的多个桶相关,按增量自举会高估精度。"""
+    """按**比赛日簇**自举(prereg v2.3 §3⑤)。
+
+    v2.1 按**轨迹**自举,理由是「同一场的多个桶相关,按增量自举会高估精度」——
+    方向对,但**停早了一层**:2026-08-13 实测,13 训练联赛的 75 场合格比赛全部
+    坐落在 **4 个比赛日**上(08-07/08/09/10,一个赛程轮)。把 75 个强相关单元
+    当 75 个独立观测,报出的 CI 同样是虚的,只是没那么明显。
+
+    ⚠️ 本改动只会让 CI **变宽**,包括支持换轴的那个 +23.7% —— 它削弱我自己的论据,
+    这正是它不构成 look-then-write 后门的证明。
+    """
     rng = random.Random(seed)
-    n = len(trajs)
+    cl = _clusters(trajs)
+    if not cl:
+        return (float("nan"), float("nan")), (float("nan"), float("nan"))
     a_s, b_s = [], []
     for _ in range(n_boot):
-        samp = [trajs[rng.randrange(n)] for _ in range(n)]
+        samp = _cluster_resample(cl, rng)
         pts = bucket_points(buckets(samp)[leg])
         if len(pts) < 4:
             continue
@@ -193,10 +282,11 @@ def homogeneity_z(trajs: list[dict], leg: str, n_boot: int, seed: int) -> float:
             [t for t in trajs if t["stratum"] == _STRATA[1]])
     if len(d) < 40 or len(c) < 40:
         return float("nan")
+    cd, cc = _clusters(d), _clusters(c)          # 层内按比赛日分簇(v2.3 §3⑤)
     diffs = []
     for _ in range(n_boot):
-        sd = [d[rng.randrange(len(d))] for _ in range(len(d))]
-        sc = [c[rng.randrange(len(c))] for _ in range(len(c))]
+        sd = _cluster_resample(cd, rng)
+        sc = _cluster_resample(cc, rng)
         pd_, pc = bucket_points(buckets(sd)[leg]), bucket_points(buckets(sc)[leg])
         if len(pd_) < 4 or len(pc) < 4:
             continue
@@ -212,24 +302,36 @@ def homogeneity_z(trajs: list[dict], leg: str, n_boot: int, seed: int) -> float:
 def render(trajs: list[dict], *, n_boot: int, seed: int) -> str:
     o = ["# σ_P(h) 分层拟合(只读研究 · 永不 gate)", ""]
     if len(trajs) < 40:
-        return "\n".join([*o, f"  (合格轨迹仅 {len(trajs)} 条,样本太小)", ""])
+        return "\n".join([*o, f"  (合格比赛仅 {len(trajs)} 场,样本太小)", ""])
 
     # ── ① 评估点进度(prereg §3)──────────────────────────────────────────
     tr = [t for t in trajs if t["trained"]]
     tr_buckets = sum(1 for _ in bucket_points(buckets(tr)["H"])) if len(tr) >= 10 else 0
-    at_point = len(tr) >= NEXT_EVAL_N and tr_buckets >= _MIN_BUCKETS
-    o += [f"合格轨迹 **{len(trajs)}** 条(近收盘锚 ≤{_ANCHOR_MAX_H}h)", "",
+    tr_cl = len(_clusters(tr))
+    at_point = (len(tr) >= NEXT_EVAL_N and tr_cl >= NEXT_EVAL_CLUSTERS
+                and tr_buckets >= _MIN_BUCKETS)
+    dropped = _LOAD_STATS["ko_spread_dropped"]
+    o += [f"合格比赛 **{len(trajs)}** 场(近收盘锚 ≤{_ANCHOR_MAX_H}h · "
+          f"分组轴 = **(主队,客队,日期)**,prereg v2.3)",
+          f"开球时刻跨度 >{_KO_SPREAD_MAX_H}h 而丢弃:**{dropped}** 场"
+          + ("" if dropped == 0 else " ⚠️"), "",
           "## ① 评估点进度(prereg §3 · 防 optional stopping)", "",
-          f"- **13 训练联赛**轨迹 **{len(tr)} / {NEXT_EVAL_N}**"
-          f"(还差 {max(NEXT_EVAL_N - len(tr), 0)} 条)· 合格桶 {tr_buckets} / {_MIN_BUCKETS}",
+          f"- **13 训练联赛**比赛 **{len(tr)} / {NEXT_EVAL_N}**"
+          f"(还差 {max(NEXT_EVAL_N - len(tr), 0)} 场)",
+          f"- **比赛日聚类 {tr_cl} / {NEXT_EVAL_CLUSTERS}**"
+          f"(还差 {max(NEXT_EVAL_CLUSTERS - tr_cl, 0)} 天)"
+          " ← CI 的真驱动;v2.3 §3③ 新增,与上一条取 **AND**",
+          f"- 合格桶 {tr_buckets} / {_MIN_BUCKETS}",
           "- 状态:" + ("🟢 **已到评估点** — 可按 prereg §4 判定" if at_point
                         else "⏳ **未到评估点,本节以下只报不判**"),
           "", "> ⚠️ 到点前**不得**据下表改任何常数。本仪表按周随体检跑,"
-          "「哪次看到显著就哪次改」= 反复检验,必然早晚看到一次。", ""]
+          "「哪次看到显著就哪次改」= 反复检验,必然早晚看到一次。",
+          "> 📌 CI 按**比赛日簇**自举(v2.3 §3⑤)—— 比按比赛自举更宽,那才是诚实的宽度。",
+          ""]
 
     # ── ② 分层 × 逐腿(prereg §7.1)────────────────────────────────────────
     o += ["## ② 分层拟合 vs 线上值", "",
-          "| 人口 | 轨迹 | 腿 | A 拟合 | A 95%CI | 线上 A | | B 拟合 | B 95%CI | 线上 B | |",
+          "| 人口 | 比赛 | 腿 | A 拟合 | A 95%CI | 线上 A | | B 拟合 | B 95%CI | 线上 B | |",
           "|---|---:|---|---:|---|---:|---|---:|---|---:|---|"]
     for s in _STRATA:
         sub = [t for t in trajs if t["stratum"] == s]
@@ -263,7 +365,7 @@ def render(trajs: list[dict], *, n_boot: int, seed: int) -> str:
 
     # ── ④ 逐联赛诊断(prereg §2:仅诊断,不挂判据)────────────────────────
     o += [f"## ④ 逐联赛诊断(N≥{_DIAG_MIN_N} · **仅诊断,不挂判据**)", "",
-          "| 联赛 | 层 | 轨迹 | A主 | B主 | σ@3h |", "|---|---|---:|---:|---:|---:|"]
+          "| 联赛 | 层 | 比赛 | A主 | B主 | σ@3h |", "|---|---|---:|---:|---:|---:|"]
     any_row = False
     for lg in sorted({t["league"] for t in trajs}):
         sub = [t for t in trajs if t["league"] == lg]
@@ -303,6 +405,18 @@ def main(argv: list[str] | None = None) -> int:
         p = Path(args.out)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding="utf-8")
+        # ⭐ 同时留一份带日期的历史副本。
+        #
+        # 只写 `_latest.md`(每次覆盖、零历史)= δ 仪表 2026-08 踩过的坑:prereg
+        # 写着「连续两周变差才回滚」,而现有产物**根本判不了「上周是多少」**。
+        # 本仪表的 prereg §4 同样有跨期判据(前后半样本外更优),没有历史就是
+        # 到了评估点才发现自己手上只有一个点。历史文件按日期命名、同日覆盖。
+        # ⚠️ 用 removesuffix 而不是裸 `p.stem` —— 默认文件名是 `..._latest.md`,
+        #    直接拼会得到 `sigma_p_fit_latest_history/`(第一版就是这么错的)。
+        base = p.stem.removesuffix("_latest")
+        hist = p.parent / f"{base}_history" / f"{dt.date.today():%Y-%m-%d}{p.suffix}"
+        hist.parent.mkdir(parents=True, exist_ok=True)
+        hist.write_text(text, encoding="utf-8")
     return 0
 
 
