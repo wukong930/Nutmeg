@@ -495,6 +495,16 @@ _ZH_OVERRIDES: dict[str, str] = {
     "胡巴尔卡德西亚": "Al-Qadisiyah FC",
     "基多体育大学": "LDU de Quito",
     "罗萨里奥中央": "Rosario Central",
+    # 2026-08-12 第二轮横幅「解不出 1/10」—— 欧罗巴,同样是 ① 类。
+    # 锚:2026-08-13T17:00:00Z 欧罗巴,AF 同刻 `Pafos vs Red Bull Salzburg`,
+    #     对手 帕福斯→Pafos 已解析 ⇒ 唯一命中。主词典写「萨尔茨堡红牛」。
+    # ⚠️ 撞车检查特别重要:AF 里有**四个** Salzburg —— Red Bull Salzburg(奥甲/欧战)、
+    #    Austria Salzburg(奥乙,**另一家俱乐部**)、Salzburger AK、ASV Salzburg。
+    #    `萨尔茨堡` 这个裸名原则上够不到唯一;之所以现在安全,是因为**后三个
+    #    一个都不在 TEAM_NAME_ZH 里** ⇒ 反查不可能落到它们身上。
+    #    📌 哪天有人补了 Austria Salzburg 的中文名,**必须回来重看这一条**。
+    # 盘面侧佐证:`Red Bull Salzburg` 在 odds_snapshots 有 10 行(join 目标就是它)。
+    "萨尔茨堡": "Red Bull Salzburg",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

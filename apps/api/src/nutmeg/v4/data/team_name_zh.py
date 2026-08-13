@@ -1302,6 +1302,13 @@ _LIBERTADORES_SAUDI_2026_08: dict[str, str] = {
     #    📌 事后一致性(**不是**依据):Patronato 全名 "Patronato de la Juventud
     #    Católica" 字面就是「天主教青年」。锚是赛程数据,这只是读完之后的复核。
     "Patronato": "天主青年",
+    # ── 第五轮(2026-08-13,涓流游标已走到 2023-11)。速率复核:6.8 天/小时,
+    #    剩 989 天 ⇒ 约 145 小时 ≈ 6 天跑完。**仍在那条一周尾巴里,不是回归。**
+    "Deportivo Pereira": "佩雷拉",   # ⭐ 两次独立确认(过闸②):北京 06-30 `Colo Colo 0:0`
+                                     #   + 08-10 `Independiente del Valle 1:1`,两天各自唯一比分
+    "Aucas": "奥卡斯",               # 同场传播(对手已在册)
+    "Nublense": "纽夫莱",            # 同场传播
+    "Monagas SC": "莫纳加斯",        # 同场传播
     # ── 沙职 18 支 ──────────────────────────────────────
     "Al-Nassr": "利雅胜利",                     # ×22
     "Al-Hilal Saudi FC": "利雅新月",            # ×21

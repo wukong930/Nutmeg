@@ -62,6 +62,9 @@ _KNOWN_DIVERGENCE: dict[str, str] = {
     "Tochigi SC": "SC:同上",
     "Vitoria SC": "SC:同上",
     "Barcelona SC": "SC:同上(2026-08-09 随解放者杯队名一起进词典)",
+    "Monagas SC": "SC:同上(2026-08-13 随涓流扫到的解放者杯档案队名进词典)。"
+                  "已查:全词典折叠成 ('monagas',) 的只有它一个 ⇒ 无撞车,"
+                  "不是 Barcelona SC 那种「两家真不同的俱乐部」的情形",
     "Vasteras SK FK": "SK:同上",
     # (b) 记号只在前端词表里 —— 反方向
     "AVS Futebol SAD": "SAD:前端后缀组有,服务端词表没有",
