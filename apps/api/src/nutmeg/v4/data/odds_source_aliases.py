@@ -99,6 +99,48 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('USA_MLS', 'Seattle Sounders FC'): 'Seattle Sounders',   # 证据 12 场
     ('USA_MLS', 'St. Louis City SC'): 'St. Louis City',   # 证据 17 场
     ('USA_MLS', 'Vancouver Whitecaps FC'): 'Vancouver Whitecaps',   # 证据 18 场
+
+    # ── 比甲(2026-08-13):Odds API 多保留 KSV/KV/SV 等法定后缀,AF 用常用名;
+    # Leuven/Westerlo 反向(AF 才带前缀)。⚠️ Club Brugge 与 Cercle Brugge 同城同球场,
+    # 已逐条验证四个串两两不同、赛程集合不相交。
+    ('BEL_PRO_LEAGUE', 'Cercle Brugge KSV'): 'Cercle Brugge',   # 共现 2 场
+    ('BEL_PRO_LEAGUE', 'Club Brugge'): 'Club Brugge KV',   # 共现 2 场
+    ('BEL_PRO_LEAGUE', 'KV Kortrijk'): 'Kortrijk',   # 共现 1 场
+    ('BEL_PRO_LEAGUE', 'Leuven'): 'OH Leuven',   # 共现 2 场
+    ('BEL_PRO_LEAGUE', 'Lommel SK'): 'Lommel United',   # 共现 1 场
+    ('BEL_PRO_LEAGUE', 'Royal Antwerp'): 'Antwerp',   # 共现 1 场
+    ('BEL_PRO_LEAGUE', 'SV Zulte-Waregem'): 'Zulte Waregem',   # 共现 2 场
+    ('BEL_PRO_LEAGUE', 'Sint Truiden'): 'St. Truiden',   # 共现 2 场
+    ('BEL_PRO_LEAGUE', 'Union Saint-Gilloise'): 'Union St. Gilloise',   # 共现 2 场
+    ('BEL_PRO_LEAGUE', 'Westerlo'): 'KVC Westerlo',   # 共现 2 场
+    # ── 德乙(2026-08-13)
+    ('GER_2_BUNDESLIGA', 'Hertha Berlin'): 'Hertha BSC',   # 共现 1 场
+    # ── 日职(2026-08-13):大小写/连字符/词序三类差异。⚠️ Yokohama F Marinos 的
+    # 变异检验证明「目标不在数据窗口里」时碰撞检测全绿 —— 靠「每条至少修好 1 键」兜住。
+    ('JPN_J1', 'FC Machida Zelvia'): 'Machida Zelvia',   # 共现 2 场
+    ('JPN_J1', 'Hiroshima Sanfrecce FC'): 'Sanfrecce Hiroshima',   # 共现 2 场
+    ('JPN_J1', 'Kashima Antlers'): 'Kashima',   # 共现 2 场
+    ('JPN_J1', 'Kyoto Purple Sanga'): 'Kyoto Sanga',   # 共现 1 场
+    ('JPN_J1', 'Mito HollyHock'): 'Mito Hollyhock',   # 共现 2 场
+    ('JPN_J1', 'Shimizu S Pulse'): 'Shimizu S-pulse',   # 共现 2 场
+    ('JPN_J1', 'Urawa Red Diamonds'): 'Urawa',   # 共现 2 场
+    ('JPN_J1', 'V-Varen Nagasaki'): 'V-varen Nagasaki',   # 共现 1 场
+    ('JPN_J1', 'Yokohama F Marinos'): 'Yokohama F. Marinos',   # 共现 2 场
+    # ── 荷甲(2026-08-13):closing 侧多带 FC/SC 前缀
+    ('NED_EREDIVISIE', 'FC Twente Enschede'): 'Twente',   # 共现 1 场
+    ('NED_EREDIVISIE', 'FC Utrecht'): 'Utrecht',   # 共现 2 场
+    ('NED_EREDIVISIE', 'Go Ahead Eagles'): 'GO Ahead Eagles',   # 共现 1 场
+    ('NED_EREDIVISIE', 'SC Cambuur'): 'Cambuur',   # 共现 1 场
+    ('NED_EREDIVISIE', 'SC Telstar'): 'Telstar',   # 共现 2 场
+    # ── 葡超(2026-08-13)。⛔ **Vitória SC → Guimaraes 已否决**:AF 在 2026-08-13
+    # 把 team id 224 从 Guimaraes 改名为 Vitória SC ⇒ 映射它是把正典**回退**到
+    # 已退役拼法,不是归一。同一 fixture_id 1575463 两名同源,队没错、方向错了。
+    ('PRT_PRIMEIRA_LIGA', 'CF Estrela'): 'Estrela',   # 共现 2 场
+    ('PRT_PRIMEIRA_LIGA', 'CS Maritimo'): 'Maritimo',   # 共现 1 场
+    ('PRT_PRIMEIRA_LIGA', 'Famalicão'): 'Famalicao',   # 共现 1 场
+    ('PRT_PRIMEIRA_LIGA', 'Gil Vicente'): 'GIL Vicente',   # 共现 1 场
+    ('PRT_PRIMEIRA_LIGA', 'Rio Ave FC'): 'Rio Ave',   # 共现 2 场
+    ('PRT_PRIMEIRA_LIGA', 'Sporting Lisbon'): 'Sporting CP',   # 共现 2 场
 }
 
 #: ⛔ 证据不足、**故意留空**的名字(探测器每次会重报)。补它们要有证据 ——
