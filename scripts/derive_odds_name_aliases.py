@@ -47,12 +47,39 @@ def _load(db: str = DB):
         names[lg][src].add(h)
         names[lg][src].add(a)
         if ko:
-            side[(lg, ko[:16])].add((h, a))
+            side[(lg, _slot(ko))].add((h, a))
     return g, cl, names
 
 
-def derive(db: str = DB) -> tuple[dict, dict, list]:
-    """→ (别名 {(联赛, closing名): (gather名, 证据数)}, 冲突, 未收敛)。"""
+#: 🚨 **这个截断是承重的,不是格式化。** 见 `docs/kickoff_utc_dual_format_2026-08-14.md`。
+#:
+#: `odds_snapshots.kickoff_utc` 有**三种**字面,同一时刻写法不同:
+#:   A `2026-07-01T16:00:00Z`      ← closing(Odds API commence_time 直抄,4,856 行)
+#:   B `2026-06-13T12:00:00+00:00` ← 其余 5 个生产者(API-Football)
+#:   C `2026-06-30 21:00:00+00`    ← polymarket_gaps(空格分隔;当前不在本表)
+#: ⇒ `a.kickoff_utc = b.kickoff_utc` **永不成立**(实测:同一 join 不带它 144,686 行、
+#:   带它 **0 行**)。本脚本是全仓**仅有的两处**真跨这条边界做等值配对的地方之一。
+#:
+#: ⭐ 安全**完全来自这个截断落在不变区间内**(A/B 共享前 19 位 `YYYY-MM-DDTHH:MM:SS`),
+#:   不来自同源。变异检验(2026-08-14):
+#:       [:16] → 别名 7 条   ·  [:19] → 7 条  ·  裸 ko → **0 条**  ·  [:20] → **0 条**
+#:   悬崖精确落在第 20 位。而裸字面那一栏**不报错**,打印「别名 0 条 · 冲突 0 条」——
+#:   与「两个源本来就同名」**完全同形**。⇒ 一次无辜的重构能静默关掉它,
+#:   而它下游挂着 CLV 锚的 **31.9%**。
+#: ⇒ 护栏是 `tests/v4/test_kickoff_slot_normalisation.py` 的**正负双对照夹具**,
+#:   不是「源码里必须出现 [:16]」那种语法断言(那族会假红,最后被删掉)。
+def _slot(ko: str) -> str:
+    """开球时刻 → 跨三种字面通用的槽位键(分钟精度)。"""
+    return ko.replace(" ", "T")[:16]
+
+
+def derive(db: str = DB) -> tuple[dict, dict, list, list]:
+    """→ (别名 {(联赛, closing名): (gather名, 证据数)}, 冲突, 未收敛, 单侧联赛)。
+
+    ⚠️ 2026-08-14 修:签名与 docstring 此前都写「3 元组」,实际 `return` 了 **4 个**
+    (末位 `one_sided`)。调用方按 3 个解包会 `ValueError` —— 属于「响的」那种漂移,
+    不是静默的,所以危害有限;但既然碰到了就一起修。
+    """
     g, cl, names = _load(db)
     ev: dict = collections.defaultdict(collections.Counter)
 
