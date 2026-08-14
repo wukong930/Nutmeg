@@ -203,3 +203,62 @@ test_handicap_delta2.py::test_uncalibrated_band_is_wider_than_calibrated
 7. 全套 + lint + `/health`
 8. ⚠️ **重启服务需要单独口令**;重启后查 `_SCOPE_STATS`,
    `suppressed_none` 应为 **0**(不为 0 = 有调用点漏传)
+
+---
+
+## §8 2026-08-15 第二次尝试 —— 又回滚,但**捞到一个会静默生效的 bug**
+
+### 🚨 最值钱的发现:白名单用英文键,而 `canonical_league` 归一到**中文**
+
+```python
+canonical_league("EPL")  # → '英超'   ← 不是 'EPL'
+```
+
+⇒ `_DELTA_CALIBRATED_LEAGUES`(英文键)拿去和它比,**永远不匹配**
+⇒ 闸会把 **所有** 联赛判成覆盖外,δ 被**全局静默关掉** —— 包括那 10 个校准过的。
+
+**这个 bug 不会报错、不会红任何测试、面板照常出数**,只是每一条让球腿都少了 δ。
+⭐ 它唯一被抓住的原因是我把 `_delta_in_scope` 的返回值**打出来看了一眼**:
+
+```
+'EPL'  → False      ← 一眼就不对
+```
+
+⇒ **修法**:`_canon()` 两侧都过归一,白名单缓存成正典形。
+   ⛔ 别改成「白名单直接写中文」—— 英文键是尺子加载器的输出形态,
+      写中文会让「白名单从哪来」这条线索断掉。
+
+### 本次做完了什么(全部已回滚,但值得照抄)
+
+· 引擎:`_DELTA_CALIBRATED_LEAGUES` / `_canon` / `_canonical_scope` /
+  `_delta_in_scope` / `_SCOPE_STATS` 三态计数器
+· `implied_handicap_lines(..., league=None)` + `_c1 = bool(c1) and _delta_in_scope(league)`
+· `c1_leg_lower_bounds(..., league=None)`:覆盖外 + `line != 0` ⇒ 吃 `_UNCAL_SE` 地板
+· `_hc_line_prob(..., *, league=None)` 透传给 `bounds_fn`
+· 6 个调用点(routes.py ×5 + delta_calibration.py ×1)全部接上
+· **行为自检通过**:
+    EPL 让胜 0.2700 · 日职/None/c1=False 三者同为 0.3163
+    ⇒ δ 只在覆盖内施加,且尺子(c1=False)不受影响
+
+### ⛔ 为什么还是回滚:**12 条测试红**
+
+按旧语义写的断言(「δ 施加了」)在新语义下必然红:
+`test_c1_handicap` 5 · `test_handicap_delta2` 3 · `test_market_handicap_tracking` 4。
+
+前 8 条只需逐个补 `league="EPL"` 并**各配一条覆盖外对照**;
+🚨 后 4 条要单独想:它们的夹具用 `league="JPN_J1"` —— 覆盖外,
+   所以 δ 被抑制、EV 变了、「恰好一条正 EV 腿」这类断言不再成立。
+   **那是新语义下的正确行为**,断言要重写而不是把夹具改成 EPL
+   (改夹具 = 把「日职不该吃 δ」这个新事实从测试里抹掉)。
+
+⚠️ 我这次用**正则**批量改测试文件,改坏了(`NameError`),已 `git checkout` 回滚。
+   ⇒ 下次:测试改判据用**逐条 Edit**,别在源码上跑正则。
+
+### §9 下次重做的顺序(在 §7 基础上更新)
+
+1. 引擎侧照抄 §8(含 `_canon` 双侧归一 —— **这是新增的必要步骤**)
+2. **先改测试再接调用点**:把 8 条补 `league` + 4 条重写判据,
+   跑一遍确认「只有范围闸相关的红」
+3. 再接 6 个调用点 + `_hc_line_prob`
+4. 空包弹 3 发(白名单清空 / `_delta_in_scope` 恒 True / `_SCOPE_STATS` no-op)
+5. 全套 + lint + `/health`;重启后查 `_SCOPE_STATS["suppressed_none"]` 应为 **0**
