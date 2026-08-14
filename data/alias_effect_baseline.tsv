@@ -1,11 +1,7 @@
 # check_alias_effect 基线:已知合法的零作用条目。
 # ⚠️ 只在**加别名 + 跑完 backfill_odds_names 之后**重写,
 #    否则会把「刚加还没生效」和「错映射」一起洗白。
-ENG_CHAMPIONSHIP	Blackburn Rovers
 ENG_CHAMPIONSHIP	Cardiff City
-ENG_CHAMPIONSHIP	Lincoln City
-ENG_CHAMPIONSHIP	Queens Park Rangers
-ENG_CHAMPIONSHIP	Swansea City
 EPL	Coventry City
 EPL	Leeds United
 ESP_LA_LIGA	Alavés
@@ -16,18 +12,7 @@ ESP_LA_LIGA	Elche CF
 ESP_LA_LIGA	Málaga
 ESP_LA_LIGA	Real Racing Club de Santander
 ESP_SEGUNDA_DIVISION	Almería
-ESP_SEGUNDA_DIVISION	Andorra CF
-ESP_SEGUNDA_DIVISION	Burgos CF
-ESP_SEGUNDA_DIVISION	CD Castellón
 ESP_SEGUNDA_DIVISION	CD Eldense
-ESP_SEGUNDA_DIVISION	Celta Vigo
-ESP_SEGUNDA_DIVISION	Cádiz CF
-ESP_SEGUNDA_DIVISION	Córdoba
-ESP_SEGUNDA_DIVISION	Girona FC
-ESP_SEGUNDA_DIVISION	Leganés
-ESP_SEGUNDA_DIVISION	Real Sociedad B
-ESP_SEGUNDA_DIVISION	Real Valladolid CF
-ESP_SEGUNDA_DIVISION	SD Eibar
 ESP_SEGUNDA_DIVISION	Sabadell FC
 ESP_SEGUNDA_DIVISION	Sporting Gijón
 FRA_LIGUE_1	Brest

@@ -196,6 +196,44 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('ENG_CHAMPIONSHIP', 'Lincoln City'): 'Lincoln',
     ('ENG_CHAMPIONSHIP', 'Queens Park Rangers'): 'QPR',
     ('ENG_CHAMPIONSHIP', 'Swansea City'): 'Swansea',
+    # ── 2026-08-15 首批真实 closing 落盘后暴露的 2 条(08-14 预埋时 closing 侧 0 行,
+    #    这两个名字根本没出现过 ⇒ 预埋不可能覆盖到它们)。
+    # ⚠️ `West Ham United`/`Wolverhampton Wanderers` 我 08-14 只建了 **EFL_CUP** 键 ——
+    #    赛季一开,同样两支队出现在英冠盘面,而 `(联赛,名)` 是精确键 ⇒ 杯赛条目救不了联赛。
+    #    ⭐ 教训:**同一支队每进入一个新赛事,都要单独建键**;
+    #       「已经在别的联赛补过了」不构成覆盖。
+    # ── 08-15 首个英冠比赛日:8 场两侧基数相等,4 场精确相同,
+    #    剩 4 对**两侧同时劈** ⇒ 靠**排除法**唯一配对(3 对前缀唯一 + 第 4 对被迫)。
+    # ⚠️ 「前缀关系」只是**提示不是证据**(`Sheffield Utd` 不是 `Sheffield United` 的前缀,
+    #    第 4 对正是靠排除法而非前缀定的)—— 语法代理测不了语义属性。
+    # 🚨 这 8 条的目标与 EFL_CUP 段落**逐字相同**,却必须重建一遍:
+    #    `(联赛,名)` 是精确键,杯赛条目对联赛零作用。
+    #    ⇒ 见 `test_alias_gap_when_same_name_plays_in_another_league` —— 那条护栏
+    #      就是为了**开赛前**就发现这一族,而不是等首个比赛日的数据丢了才发现。
+    ('ENG_CHAMPIONSHIP', 'Birmingham City'): 'Birmingham',
+    ('ENG_CHAMPIONSHIP', 'Bolton Wanderers'): 'Bolton',
+    ('ENG_CHAMPIONSHIP', 'Charlton Athletic'): 'Charlton',
+    ('ENG_CHAMPIONSHIP', 'Derby County'): 'Derby',
+    ('ENG_CHAMPIONSHIP', 'Norwich City'): 'Norwich',
+    ('ENG_CHAMPIONSHIP', 'Preston North End'): 'Preston',
+    ('ENG_CHAMPIONSHIP', 'Sheffield United'): 'Sheffield Utd',
+    ('ENG_CHAMPIONSHIP', 'West Bromwich Albion'): 'West Brom',
+    ('ENG_CHAMPIONSHIP', 'West Ham United'): 'West Ham',   # 劈开键 + 指纹 1
+    # ⚠️ 本条指纹 = 0(closing 逐次调价、gather 只有少数快照,三元组对不上),
+    #    靠的是**劈开键本身**(对手 `Blackburn` 两侧精确相同)+ 一条独立的开球时刻锚:
+    #    竞彩北京 08-15 03:00 = UTC 08-14T19:00,AF ±90min 内含 `Blackburn` 的恰好 1 场
+    #    `L40 Championship Wolves vs Blackburn`。
+    ('ENG_CHAMPIONSHIP', 'Wolverhampton Wanderers'): 'Wolves',
+    # ── 土超(2026-08-15):**此前 0 条**。5 条全是**变音符**差异
+    #    (OA 用 ASCII 化拼法,AF 用土耳其语正字法)。
+    # ⚠️ 注意不是纯 NFKD 折叠:`Besiktas JK`→`Beşiktaş` 还掉了后缀 `JK`,
+    #    `Gazişehir Gaziantep`→`Gaziantep FK` 是**改名**(俱乐部 2021 年改回 Gaziantep FK)。
+    #    ⇒ 逐条都过了劈开键 + 指纹(5/5 正对照 ≥1、同槽错配 0)。
+    ('TUR_SUPER_LIG', 'Basaksehir'): 'Başakşehir',
+    ('TUR_SUPER_LIG', 'Besiktas JK'): 'Beşiktaş',
+    ('TUR_SUPER_LIG', 'Gazişehir Gaziantep'): 'Gaziantep FK',
+    ('TUR_SUPER_LIG', 'Goztepe'): 'Göztepe',
+    ('TUR_SUPER_LIG', 'Kasimpasa SK'): 'Kasımpaşa',
     # ── 🩸 联赛杯(2026-08-14):**此前 0 条,而它一直在流血**。
     # closing 侧 70 个名字里 **37 个叠不上** gather 侧(交集仅 33/70)——
     # 08-08 那一轮 934 行里有整整两个开球槽的比赛全程双记。
