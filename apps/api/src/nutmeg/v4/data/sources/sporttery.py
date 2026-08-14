@@ -511,6 +511,26 @@ _ZH_OVERRIDES: dict[str, str] = {
     # 再写一条 override 是**冗余**(实测:去掉 override 后 `TEAM_NAME_ZH` 反转
     # 仍给出 `圣洛伦索 → San Lorenzo`)。⇒ 见 `team_name_zh.py` 的解放者杯段落。
     # ⭐ 规矩:**在词典里 → 这里;整队不在 → team_name_zh.py(一处同时修 join 和显示)**。
+    #
+    # ── 2026-08-15 横幅点名的残余 2 条(另 1 条整队不在,见 team_name_zh.py)──
+    # 这两支队**词典里都有**,只是竞彩写了另一种中文 ⇒ 属于① 类,放这里。
+    # ⚠️ 它们是「两个字段都试」之后**仍然**解不出的 —— 全称和简称都不在词典
+    #   (`伍尔弗汉普顿`/`伍尔弗` 双失、`富山胜利` 全称=简称且都失)。
+    #
+    # `伍尔弗汉普顿`(竞彩简称 `伍尔弗`)⇐ 词典写「狼队」。
+    #   ⭐ 锚 = 开球时刻:竞彩北京 2026-08-15 03:00 = UTC 08-14T19:00,
+    #      AF ±90 分钟内 153 场,含**已解出的另一侧** `Blackburn` 的**恰好 1 场**:
+    #      `L40 Championship 2026-08-14T19:00 Wolves vs Blackburn`。
+    #   ⛔ 不是因为「伍尔弗汉普顿听起来像 Wolverhampton」—— 那是猜。
+    #   ⚠️ AF 名册里另有 Chattanooga Red Wolves / Jõgeva Wolves / Tallinna Wolves,
+    #      但 `Wolves` 是精确串且盘面 EFL_CUP+ENG_CHAMPIONSHIP 都在用它,无歧义。
+    "伍尔弗汉普顿": "Wolves",
+    "伍尔弗": "Wolves",
+    # `富山胜利`(全称=简称)⇐ 词典写「富山」。
+    #   ⭐ 锚 = 竞彩北京 2026-08-15 17:00 = UTC 09:00,AF ±90 分钟 144 场,
+    #      含已解出的 `Blaublitz Akita` 的**恰好 1 场**:
+    #      `L99 J2 League 2026-08-15T09:00 Blaublitz Akita vs Kataller Toyama`。
+    "富山胜利": "Kataller Toyama",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
@@ -610,6 +630,30 @@ def zh_to_canonical(zh_name: str | None) -> str | None:
         return None
     en = _ZH_TO_EN.get(zh_name.strip())
     return _EN_OVERRIDES.get(en, en) if en else None
+
+
+def _canonical_from_any(*zh_names: str | None) -> str | None:
+    """按顺序试多个中文写法,**第一个解得出的胜出**;全解不出 → None。
+
+    竞彩每条比赛同时给全称(`*TeamAllName`)与简称(`*TeamAbbName`),而
+    `TEAM_NAME_ZH` 里两种写法都有 —— 只查其中一个必然漏掉另一半。
+
+    实测(2026-08-15 在售 43 场,两侧都要解出才算):
+        只查全称 **37/43** · 只查简称 更差 · **两个都试 40/43**
+    双向的例子各一个:
+        `曼彻斯特城`✗ / `曼城`→Manchester City      (全称缺、简称有)
+        `秋田闪电`✗   / `秋田蓝色闪电`→Blaublitz Akita (简称缺、全称有)
+
+    ⛔ **保持 fail-closed**:全试完仍无 → None,绝不回退成「原样返回中文」。
+       那会让下游把一个中文串当成英文队名去 join,比缺映射更坏
+       —— 同 `canonical_team` 的 fail-open 只在**改写**场景成立,
+       这里是**解析**场景,语义相反。
+    """
+    for zh in zh_names:
+        en = zh_to_canonical(zh)
+        if en:
+            return en
+    return None
 
 
 def _cache_path(pool_codes: str, channel: str, cache_dir: str | Path) -> Path:
@@ -913,6 +957,18 @@ def fetch_lottery_matches(
                         hhad = (*hhad3, line)
                 home_cn = g.get("homeTeamAllName")
                 away_cn = g.get("awayTeamAllName")
+                # 🚨 2026-08-15:竞彩每条**同时**给全称与简称,而词典里两种写法都有 ——
+                # 本处此前只拿全称去解,于是「词典存的是简称」的队一律解不出。
+                # 实测在售 43 场:只查全称 37/43 两侧全解,**两个都试 40/43**。
+                # 典型:`曼彻斯特城`✗ 而 `曼城`→Manchester City;
+                #       `赫拉克勒斯`✗ 而 `赫拉克勒`→Heracles。
+                # ⚠️ 必须是**两个都试**,不是改查简称 —— 方向是双向的:
+                #    `秋田闪电`✗ 而 `秋田蓝色闪电`→Blaublitz Akita。
+                # ⭐ 显示仍用全称(用户看的是「曼彻斯特城」),只有**解析**多试一个候选:
+                #    显示名和 join 键是两件事,不该被同一个字段绑死。
+                # 📌 同族三处三种口径,本次只统一实时路径:
+                #    sporttery_history.py:187 `Abb or All` · jingcai_vote.py:144 `All or Abb`
+                #    · 本处此前 `All` only。历史/投票两处已各自容错,不动。
                 mdate, kickoff_utc = _utc_date_and_kickoff(
                     g.get("matchDate"), g.get("matchTime"))
                 out.append({
@@ -921,8 +977,10 @@ def fetch_lottery_matches(
                     "match_num": g.get("matchNumStr"),
                     "league_cn": g.get("leagueAbbName") or g.get("leagueAllName"),
                     "home_cn": home_cn, "away_cn": away_cn,
-                    "home_en": zh_to_canonical(home_cn),
-                    "away_en": zh_to_canonical(away_cn),
+                    "home_en": _canonical_from_any(
+                        home_cn, g.get("homeTeamAbbName")),
+                    "away_en": _canonical_from_any(
+                        away_cn, g.get("awayTeamAbbName")),
                     "had": had, "hhad": hhad,
                     # 玩法扩展:比分 {结果:SP} + 总进球 {'0'..'7':SP}(pool 缺则空 dict)
                     "crs": _crs_outcomes(g.get("crs")),

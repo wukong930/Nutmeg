@@ -661,3 +661,73 @@ def test_no_zh_override_value_falls_through_to_english_on_the_card():
     english = {n: rendered[n] for n in names if rendered[n] == n}
     assert not english, (
         f"这 {len(english)} 个 override 的英文值在卡片上还是英文:{sorted(english)}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 🚨 全称 / 简称双字段解析(2026-08-15)
+#
+# 竞彩每条比赛**同时**给 `*TeamAllName`(全称)与 `*TeamAbbName`(简称),
+# 而 `TEAM_NAME_ZH` 里两种写法都有 —— `fetch_lottery_matches` 此前只拿全称去解,
+# 于是「词典存的是简称」的队一律解不出,**静默**掉出可投注列表。
+#
+# 实测(2026-08-15 在售 43 场,两侧都解出才算):
+#     只查全称 **37/43** · **两个都试 40/43**
+# 而且方向是**双向**的,所以必须两个都试、不是改查简称:
+#     `曼彻斯特城`✗ / `曼城`→Manchester City       (全称缺、简称有)
+#     `秋田闪电`✗   / `秋田蓝色闪电`→Blaublitz Akita  (简称缺、全称有)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_canonical_from_any_tries_every_candidate_in_order() -> None:
+    """第一个解得出的胜出;前面的解不出**不能**让后面的失效。"""
+    from nutmeg.v4.data.sources.sporttery import _canonical_from_any as C
+
+    # 全称缺、简称有 —— 修的就是这个方向
+    assert C("曼彻斯特城", "曼城") == "Manchester City"
+    # 简称缺、全称有 —— 反方向,证明不能「改成只查简称」
+    assert C("秋田闪电", "秋田蓝色闪电") == "Blaublitz Akita"
+    # 第一个就中 ⇒ 直接返回,不继续试
+    assert C("阿森纳", "完全不存在的串") == "Arsenal"
+
+
+def test_canonical_from_any_stays_fail_closed() -> None:
+    """⛔ 全试完仍无 → **None**,绝不回退成「原样返回中文」。
+
+    这是与 `canonical_team`(fail-open)相反的语义,**故意的**:
+    那边是**改写**场景(不认识就别动),这里是**解析**场景 ——
+    把一个中文串当成英文队名交给下游 join,比缺映射更坏。
+    """
+    from nutmeg.v4.data.sources.sporttery import _canonical_from_any as C
+
+    assert C("完全没见过的队名XYZ", "另一个没见过的") is None
+    assert C(None, None) is None
+    assert C("", "  ") is None
+
+
+def test_live_listing_resolves_both_name_conventions() -> None:
+    """⭐ 行为断言:走**真实解析路径**读缓存,断言两个方向都被救回。
+
+    ⛔ 不写「源码里必须出现 AbbName」那种语法断言 —— 把候选顺序重构进
+    别的 helper 是正当改动,那种断言会假红。
+
+    空包弹(2026-08-15 实跑,留证勿删):把 `_canonical_from_any` 改成只用
+    第一个候选 ⇒ 本条立刻红(`曼彻斯特城` 解不出)。
+    """
+    from pathlib import Path
+
+    from nutmeg.v4.data.sources.sporttery import fetch_lottery_matches
+
+    if not Path("data/external/sporttery").exists():
+        pytest.skip("没有竞彩抓取缓存 —— 这条断言只在本地有意义")
+    rows = fetch_lottery_matches(pool_codes="had,hhad,crs,ttg", refresh=False)
+    if not rows:
+        pytest.skip("缓存为空")
+
+    unresolved = [
+        (r["league_cn"], r["home_cn"], r["away_cn"])
+        for r in rows if not (r["home_en"] and r["away_en"])
+    ]
+    assert not unresolved, (
+        f"这 {len(unresolved)} 场在售比赛队名解不出 ⇒ 竞彩 SP 挂不上盘面行,"
+        f"场次会**静默**掉出可投注列表:{unresolved}。"
+        f"修法见横幅文案:① 词典里有(竞彩换了写法)→ _ZH_OVERRIDES;"
+        f"② 整队不在 → team_name_zh.py。⛔ 别按译音猜。")
