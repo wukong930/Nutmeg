@@ -1239,6 +1239,24 @@ _LIBERTADORES_SAUDI_2026_08: dict[str, str] = {
     #   而那个条件必须**去数**(我数了:1 场),不能因为「看起来只有一场」就假设。
     "Boston River": "波士顿河",
     "Zamora FC": "萨莫拉FC",
+    # ── 解放者杯 · 2026-08-14 涓流(`test_jingcai_listed_teams_are_fully_reachable` 报红)
+    # 锚 = 2024-04-04 `San Lorenzo 1:1 Palmeiras`。⚠️ 闸① **单靠比分不成立**:
+    # ±1 天窗内 L13 有 4 场 1:1。定案靠**已知的另一侧**(Palmeiras 早在词典里)——
+    # 4 个候选只有一个带它 ⇒ 唯一。同 `Boston River` 那条的精神:说清楚
+    # **到底是哪一道闸在承重**,别笼统说「锚定过了」。
+    # ⚠️ 闸②「≥2 场」对它结构上不可能满足 —— 全档案只有这 1 场。
+    # 🚨 留档:AF 名册另有 `Club Sp. San Lorenzo`(巴拉圭)与 `San Lorenzo Res.`。
+    #   本条锚的是打解放者杯正赛那支(阿根廷)。
+    # 📌 当前 0 盘面影响:2026 解放者杯盘面 22 队无一含 Lorenzo。
+    "San Lorenzo": "圣洛伦索",
+    # 同批第 2 条(涓流 cron 在同一次会话里又写了一轮档案,07:14)。
+    # 锚 = 2024-04-11 `Flamengo 2:0 Palestino`。同样**纯比分 4 个候选**
+    # (Independiente del Valle/San Lorenzo、Flamengo/Palestino、Sao Paulo/Cobresal、
+    #  River Plate/Club Nacional),靠已知的 `弗拉门戈 → Flamengo` 收敛到 1 个。
+    # 🚨 近邻是真的:AF 名册有 `Palestine`(**国家队**,词典里已是「巴勒斯坦」)、
+    #   `Palestine U20` / `Palestine W`,而本条是智利俱乐部 `Palestino`。
+    #   中文侧也分得开(巴勒斯坦 vs 巴勒斯人)⇒ 无撞车,但值得留档。
+    "Palestino": "巴勒斯人",
     # ── 欧冠资格赛(2026-08-11 横幅点名)────────────────────────
     # 竞彩把它写作「采列」。⭐ 锚是**开球时刻**:那天竞彩上架 8 场欧冠、7 场已解,
     # AF 有 10 场 ⇒ 未解那场缩到 3 个候选(17:00 / 18:00 / 18:15Z),

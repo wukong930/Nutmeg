@@ -35,8 +35,9 @@ def test_no_key_conflicts() -> None:
     dict 字面量天然不会有重复键 —— 但**后写的会静默覆盖先写的**,
     所以这条真正钉的是「条数没有因为重键而缩水」。
     """
-    assert len(A) == 130, (
-        f"表大小 {len(A)},预期 130(61 + 08-13 的 31 + 08-14 预埋 38)。"
+    assert len(A) == 186, (
+        f"表大小 {len(A)},预期 186(61 + 08-13 的 31 + 08-14 预埋 38 + 08-14 残余 14"
+        f" + 08-14 联赛杯 37 + 08-14 解放者杯/沙特 5)。"
         f"若你有意增删,改这个数并在下面 per-league 表同步。")
 
 
@@ -73,12 +74,19 @@ def test_per_league_counts() -> None:
         "BRA_SERIE_A": 5, "DNK_SUPERLIGA": 6, "FIN_VEIKKAUSLIIGA": 10,
         "KOR_K_LEAGUE_1": 2, "NOR_ELITESERIEN": 9, "SCO_PREMIERSHIP": 6,
         "SUI_SUPER_LEAGUE": 5, "SWE_ALLSVENSKAN": 8, "USA_MLS": 10,
-        # ── 新 31 条(2026-08-13,受训联赛) ──
-        "BEL_PRO_LEAGUE": 10, "GER_2_BUNDESLIGA": 1, "JPN_J1": 9,
-        "NED_EREDIVISIE": 5, "PRT_PRIMEIRA_LIGA": 6,
+        # ── 新 31 条(2026-08-13,受训联赛)+ 08-14 残余孤儿 14 条 ──
+        # GER_2_BUNDESLIGA 1→3 · NED_EREDIVISIE 5→6 · PRT_PRIMEIRA_LIGA 6→9
+        # · FRA_LIGUE_2 **0→8**(该联赛此前一条别名都没有)
+        "BEL_PRO_LEAGUE": 10, "GER_2_BUNDESLIGA": 3, "JPN_J1": 9,
+        "NED_EREDIVISIE": 6, "PRT_PRIMEIRA_LIGA": 9, "FRA_LIGUE_2": 8,
         # ── 新 38 条(2026-08-14,**预埋**:这 8 个联赛 closing 侧当时 0 行) ──
         "EPL": 2, "ESP_LA_LIGA": 7, "ITA_SERIE_A": 1, "FRA_LIGUE_1": 4,
         "ENG_CHAMPIONSHIP": 5, "ESP_SEGUNDA_DIVISION": 15, "ITA_SERIE_B": 4,
+        # ── 🩸 联赛杯 37 条(2026-08-14):**不是预埋,是止血** ──
+        # closing 侧 70 个名字里 37 个叠不上;08-08 整轮双记。
+        "EFL_CUP": 37,
+        # ── 解放者杯 3 + 沙特联 2(2026-08-14):回填后仅存的跨源劈开键 ──
+        "COPA_LIBERTADORES": 3, "SAU_PRO_LEAGUE": 2,
     }, got
 
 
@@ -184,18 +192,44 @@ def test_celta_league_isolation_first_team_vs_b_team() -> None:
     assert canonical_team("UCL", "Celta Vigo") == "Celta Vigo"
 
 
-def test_english_names_do_not_leak_into_efl_cup() -> None:
-    """📌 5 个英格兰队名**同时出现在 EFL_CUP 的 OA 盘面**里,本批只作用于联赛键。
+def test_efl_cup_has_its_own_verified_entries() -> None:
+    """🩸 联赛杯**不是预埋,是止血** —— 08-14 补了 37 条,每条独立证伪过。
 
-    实测(2026-08-14):`league='EFL_CUP'` 的 closing 侧 35 个 (日期,主,客) 键里
-    只有 6 个叠得上 gather ⇒ **29 对收盘行正在流血**(不是预埋,是现在就在丢)。
-    其中 9 对能用本批同一套名字修好 —— **但键必须是 `EFL_CUP`**。
+    取代原来的 `test_english_names_do_not_leak_into_efl_cup`(那条的「下一轮」到了)。
 
-    ⇒ 本测试钉住「补了英冠不会顺带修好杯赛」这个事实,免得有人以为已经好了。
-    杯赛条目要单独立项 + 单独证伪(下一轮)。
+    🚨 **原测试的前提有一半是假的**:它断言 5 个队名「同时出现在 EFL_CUP 盘面」,
+    但实测 `Coventry`/`Leeds` 在杯赛 closing 与 gather **两侧都是 0 行** ⇒
+    对那 2 条,「未被改写」是**空转断言** —— 表里本来就没有,fail-open 必然原样返回。
+    ⭐ 又一例「断言了一件不可能为假的事」,和 08-13 那个被 fail-open 穿透补齐的
+    集合断言同族。
+
+    另更正一个口径:原 docstring 写「35 个键只有 6 个叠得上」,那是 (日期,主,客)
+    **键**;按**队名**数则是 closing 侧 70 个里 37 个叠不上。两个数都对,单位不同。
     """
-    for nm in ("Blackburn Rovers", "Cardiff City", "Lincoln City",
-               "Coventry City", "Leeds United"):
-        assert canonical_team("EFL_CUP", nm) == nm, (
-            f"{nm!r} 在 EFL_CUP 键下被改写了 —— 本批不该覆盖杯赛,"
-            f"若要覆盖必须走单独的证伪轮")
+    # ① 杯赛自己的条目生效(这三条来自同槽指纹,负对照 8/8 通过)
+    assert canonical_team("EFL_CUP", "Leicester City") == "Leicester"
+    assert canonical_team("EFL_CUP", "West Bromwich Albion") == "West Brom"
+    assert canonical_team("EFL_CUP", "Wimbledon") == "AFC Wimbledon"
+
+    # ② 联赛维度仍然承重:同一个串在没有条目的联赛必须原样穿透
+    assert canonical_team("EPL", "Leicester City") == "Leicester City"
+    assert canonical_team("ENG_CHAMPIONSHIP", "Wimbledon") == "Wimbledon"
+
+    # ③ ⛔ 没有证据的联赛不许预埋:Coventry/Leeds 在 EFL_CUP 两侧 0 行
+    #    ⇒ 给它们建杯赛条目 = 凭「英超那边是这么写的」猜,正是本仓红线。
+    for nm in ("Coventry City", "Leeds United"):
+        assert ("EFL_CUP", nm) not in A, (
+            f"{nm!r} 在 EFL_CUP 两侧都没有行,不该有条目 —— "
+            f"要加必须先拿到该联赛自己的共现证据")
+
+
+def test_efl_cup_sheffield_pair_never_merges() -> None:
+    """🚨 谢菲尔德:全库同时存在 Sheffield United / Sheffield Utd / Sheffield Wednesday。
+
+    ⚠️ 这三个串两两**互不为前缀也互不为子串** ⇒ 08-13 那个近邻扫描
+    (`gn in n or n in gn`)**抓不到**这一对。所以单写一条。
+    空包弹:把目标改成 'Sheffield Wednesday' ⇒ 本条立刻红。
+    """
+    assert canonical_team("EFL_CUP", "Sheffield United") == "Sheffield Utd"
+    assert canonical_team("EFL_CUP", "Sheffield Wednesday") == "Sheffield Wednesday"
+    assert A.get(("EFL_CUP", "Sheffield United")) != "Sheffield Wednesday"

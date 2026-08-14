@@ -32,8 +32,26 @@
      劈开键消失 ⇒ 别名从此「零作用」。**实测旧 61 条今天全是这个状态。**
 
 ⇒ 所以本脚本的定位是**加别名时的验收工具**,不是常驻红绿灯。
-   退出码:有零作用条目 → **1**;全部有作用 → 0。
-   `--baseline FILE` 可给一份「已知合法零作用」清单,只对**新增**的报警。
+
+## 🚨 2026-08-14:裸退出码**没有鉴别力**(实测,别再当红绿灯用)
+
+变异检验:把 `('FRA_LIGUE_2','Red Star')` 的目标改成全库 0 行的 `'Paris FC'`。
+
+| | 有作用 | 零作用 | 退出码 |
+|---|---:|---:|---:|
+| 基线 | 2 | 6 | **1** |
+| 变异 | 1 | 7 | **1** |
+
+⇒ **退出码两次都是 1**,因为基线本来就有 6 条合法零作用(刚加、还没回填)。
+真正把变异认出来的是**逐条输出**:`Red Star` 从「有作用」掉进了零作用名单。
+
+⭐ 教训同 [[first-match-is-not-the-population]]:**二元事实用退出码**,
+但前提是那个退出码真的二元 —— 这里它不是。所以加了 `--baseline`(见下)。
+
+   退出码:有**基线之外**的零作用条目 → **1**;否则 0。
+   `--baseline FILE` 给一份「已知合法零作用」清单(每行 `联赛<TAB>名字`),
+   只对**新增**的报警 ⇒ 这才让退出码重新变成可判的二元事实。
+   `--write-baseline FILE` 把当前零作用清单存成基线(**加别名并回填后**再存)。
 
 用法:
     python scripts/check_alias_effect.py                 # 全表
@@ -58,7 +76,12 @@ _CLOSING = "closing"
 def _load(db: str):
     c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = c.execute(
-        "SELECT league, substr(kickoff_utc,1,16), home_team, away_team, source "
+        # 🚨 `replace(' ','T')` + 前 16 位 = **承重的**槽位归一,不是格式化。
+        # `kickoff_utc` 有三种字面(见 derive_odds_name_aliases._slot 的长注释),
+        # 裸字面等值**永不成立** ⇒ 本行若退化成 `kickoff_utc`,本脚本会
+        # **静默**报「有作用 0 · 零作用 186」,和「别名全失效」同形。
+        # 变异实测(2026-08-14):[:16]/[:19] → 148 有作用 / 388 键;裸字面或 [:20] → 0/0。
+        "SELECT league, substr(replace(kickoff_utc,' ','T'),1,16), home_team, away_team, source "
         "FROM odds_snapshots WHERE kickoff_utc IS NOT NULL").fetchall()
     c.close()
     return rows
@@ -115,6 +138,10 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="每条别名是否真的修好过跨源劈开键")
     p.add_argument("--db", default=DB)
     p.add_argument("--league", default=None)
+    p.add_argument("--baseline", default=None,
+                   help="已知合法零作用清单(每行 `联赛<TAB>名字`);只对新增报警")
+    p.add_argument("--write-baseline", default=None,
+                   help="把当前零作用清单写成基线文件(加别名并回填后再用)")
     a = p.parse_args(argv)
 
     from nutmeg.v4.data.odds_source_aliases import ODDS_SOURCE_ALIASES as A
@@ -123,14 +150,39 @@ def main(argv=None) -> int:
     keys = [k for k in A if not a.league or k[0] == a.league]
     zero = sorted(k for k in keys if hits.get(k, 0) == 0)
 
-    print(f"别名 {len(keys)} 条 · 有作用 {len(keys) - len(zero)} · 零作用 {len(zero)}")
+    known: set[tuple[str, str]] = set()
+    if a.baseline:
+        with open(a.baseline, encoding="utf-8") as fh:
+            for ln in fh:
+                ln = ln.rstrip("\n")
+                if not ln or ln.lstrip().startswith("#"):
+                    continue
+                lg, _, nm = ln.partition("\t")
+                if not nm:
+                    raise SystemExit(f"基线文件格式错(要 `联赛<TAB>名字`):{ln!r}")
+                known.add((lg, nm))
+
+    if a.write_baseline:
+        with open(a.write_baseline, "w", encoding="utf-8") as fh:
+            fh.write("# check_alias_effect 基线:已知合法的零作用条目。\n"
+                     "# ⚠️ 只在**加别名 + 跑完 backfill_odds_names 之后**重写,\n"
+                     "#    否则会把「刚加还没生效」和「错映射」一起洗白。\n")
+            for lg, nm in zero:
+                fh.write(f"{lg}\t{nm}\n")
+        print(f"已写基线 {a.write_baseline}({len(zero)} 条)")
+
+    new = [k for k in zero if k not in known]
+    print(f"别名 {len(keys)} 条 · 有作用 {len(keys) - len(zero)} · 零作用 {len(zero)}"
+          + (f"(其中基线已知 {len(zero) - len(new)}、**新增 {len(new)}**)" if a.baseline else ""))
     if zero:
         print("\n⚠️ 零作用条目(**不等于错** —— 可能是预埋或已归一,见 docstring):")
         for lg, nm in zero:
-            print(f"   {lg:<22} {nm!r} → {A[(lg, nm)]!r}")
+            mark = "  " if (lg, nm) in known else "🆕"
+            print(f" {mark} {lg:<22} {nm!r} → {A[(lg, nm)]!r}")
         print("\n🚨 若其中有**刚加的**条目,先查它的目标名在库里有没有行 —— "
               "「目标不在窗口里」的错映射正是本判据存在的理由。")
-    return 1 if zero else 0
+    # ⚠️ 无 --baseline 时退出码**没有鉴别力**(见 docstring 的变异检验表)。
+    return 1 if new else 0
 
 
 if __name__ == "__main__":

@@ -113,8 +113,21 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('BEL_PRO_LEAGUE', 'Sint Truiden'): 'St. Truiden',   # 共现 2 场
     ('BEL_PRO_LEAGUE', 'Union Saint-Gilloise'): 'Union St. Gilloise',   # 共现 2 场
     ('BEL_PRO_LEAGUE', 'Westerlo'): 'KVC Westerlo',   # 共现 2 场
-    # ── 德乙(2026-08-13)
+    # ── 德乙(2026-08-13 + 08-14 残余孤儿)
+    ('GER_2_BUNDESLIGA', 'FC Energie Cottbus'): 'Energie Cottbus',   # 共现 2 场
+    ('GER_2_BUNDESLIGA', 'Greuther Fürth'): 'SpVgg Greuther Fürth',   # 共现 2 场
     ('GER_2_BUNDESLIGA', 'Hertha Berlin'): 'Hertha BSC',   # 共现 1 场
+    # ── 法乙(2026-08-14):**本联赛此前 0 条别名**。8 条全部两侧共现 2 槽。
+    # ⚠️ 我给探测 agent 的线索只列了 2 条(Red Star / Dunkerque),它自己枚举出 8 条 ——
+    # 「照着线索查」会漏 6 条。**枚举优先于线索**。
+    ('FRA_LIGUE_2', 'Annecy FC'): 'Annecy',   # 共现 2 场
+    ('FRA_LIGUE_2', 'Clermont'): 'Clermont Foot',   # 共现 2 场
+    ('FRA_LIGUE_2', 'Pau FC'): 'PAU',   # 共现 2 场
+    ('FRA_LIGUE_2', 'Red Star'): 'RED Star FC 93',   # 共现 2 场
+    ('FRA_LIGUE_2', 'Rodez AF'): 'Rodez',   # 共现 2 场
+    ('FRA_LIGUE_2', 'Stade Lavallois'): 'Laval',   # 共现 2 场
+    ('FRA_LIGUE_2', 'Stade de Reims'): 'Reims',   # 共现 2 场
+    ('FRA_LIGUE_2', 'USL Dunkerque'): 'Dunkerque',   # 共现 2 场
     # ── 日职(2026-08-13):大小写/连字符/词序三类差异。⚠️ Yokohama F Marinos 的
     # 变异检验证明「目标不在数据窗口里」时碰撞检测全绿 —— 靠「每条至少修好 1 键」兜住。
     ('JPN_J1', 'FC Machida Zelvia'): 'Machida Zelvia',   # 共现 2 场
@@ -129,16 +142,30 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     # ── 荷甲(2026-08-13):closing 侧多带 FC/SC 前缀
     ('NED_EREDIVISIE', 'FC Twente Enschede'): 'Twente',   # 共现 1 场
     ('NED_EREDIVISIE', 'FC Utrecht'): 'Utrecht',   # 共现 2 场
+    # ⭐ FC Zwolle → PEC Zwolle 是**改名**不是拼法差异(维基 FC_Zwolle 重定向到
+    # PEC_Zwolle),同 Sangju Sangmu→Gimcheon。同槽共享 6 个逐字相同的 Pinnacle
+    # 三元组,同槽负对照 0 个。
+    ('NED_EREDIVISIE', 'FC Zwolle'): 'PEC Zwolle',   # 共现 2 场
     ('NED_EREDIVISIE', 'Go Ahead Eagles'): 'GO Ahead Eagles',   # 共现 1 场
     ('NED_EREDIVISIE', 'SC Cambuur'): 'Cambuur',   # 共现 1 场
     ('NED_EREDIVISIE', 'SC Telstar'): 'Telstar',   # 共现 2 场
     # ── 葡超(2026-08-13)。⛔ **Vitória SC → Guimaraes 已否决**:AF 在 2026-08-13
     # 把 team id 224 从 Guimaraes 改名为 Vitória SC ⇒ 映射它是把正典**回退**到
     # 已退役拼法,不是归一。同一 fixture_id 1575463 两名同源,队没错、方向错了。
+    # 🚨 `derive_odds_name_aliases.py --emit` 今天对葡超/荷甲的**唯一**建议就是那条
+    # 被否决的 Vitória SC → Guimaraes,而把下面真正该补的 4 条列在「未收敛」里。
+    # ⇒ **推导器的输出不能照抄**,必须逐条过证伪。
+    ('PRT_PRIMEIRA_LIGA', 'Académico de Viseu'): 'Academico Viseu',   # 共现 2 场
+    # ⚠️ Braga 是本批最危险的一条:AF 名册含 braga 词根的有 6 条(含 SC Braga B),
+    # 且**没有一条**字面是 'Braga'。已查 SC Braga B 的实际赛程在 L457(葡四级),
+    # 从不出现在葡超。另:'Braga' 这个串在 OA 缓存里同时出现在欧联(15 场)——
+    # **联赛维度在这里又一次承重**。
+    ('PRT_PRIMEIRA_LIGA', 'Braga'): 'SC Braga',   # 共现 2 场
     ('PRT_PRIMEIRA_LIGA', 'CF Estrela'): 'Estrela',   # 共现 2 场
     ('PRT_PRIMEIRA_LIGA', 'CS Maritimo'): 'Maritimo',   # 共现 1 场
     ('PRT_PRIMEIRA_LIGA', 'Famalicão'): 'Famalicao',   # 共现 1 场
     ('PRT_PRIMEIRA_LIGA', 'Gil Vicente'): 'GIL Vicente',   # 共现 1 场
+    ('PRT_PRIMEIRA_LIGA', 'Moreirense FC'): 'Moreirense',   # 共现 2 场
     ('PRT_PRIMEIRA_LIGA', 'Rio Ave FC'): 'Rio Ave',   # 共现 2 场
     ('PRT_PRIMEIRA_LIGA', 'Sporting Lisbon'): 'Sporting CP',   # 共现 2 场
     # ── 英超(2026-08-14 预埋,首场 08-21)。⚠️ Coventry City / Leeds United **也出现在
@@ -169,6 +196,58 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('ENG_CHAMPIONSHIP', 'Lincoln City'): 'Lincoln',
     ('ENG_CHAMPIONSHIP', 'Queens Park Rangers'): 'QPR',
     ('ENG_CHAMPIONSHIP', 'Swansea City'): 'Swansea',
+    # ── 🩸 联赛杯(2026-08-14):**此前 0 条,而它一直在流血**。
+    # closing 侧 70 个名字里 **37 个叠不上** gather 侧(交集仅 33/70)——
+    # 08-08 那一轮 934 行里有整整两个开球槽的比赛全程双记。
+    # ⚠️ 上面英超/英冠段落的注释早就写着「这些名字也出现在 EFL_CUP 盘面」,
+    # 但**只留了注释没建条目** ⇒ 又一次「警告写在注释里、闸没写在代码里」。
+    #
+    # 证据分两类,**16 条靠指纹的那批各自带了负对照**:
+    #   · 21 条 = 跨源劈开键(同槽恰好一侧对上,另一侧即待补)
+    #   · 16 条 = 同槽**两侧同时劈**,淘汰法够不着,靠共享 Pinnacle 三元组定案。
+    #     ⭐ 负对照 8/8 通过:正对照 1–3 个共享三元组,而同槽全部 19 个错配一律 **0** 个
+    #     ⇒ 该判据既不假绿也不假红。⛔ 只有共享数 >0 且 argmax 唯一才收。
+    # ⚠️ 'Wimbledon' → 'AFC Wimbledon':历史上有两支温布尔登(老温布尔登已迁为
+    #    MK Dons),已查全库仅存 AFC Wimbledon 一支,无撞车。
+    # ⚠️ 'Sheffield United' → 'Sheffield Utd':全库同时存在 Sheffield Wednesday,
+    #    两个串互不为前缀/子串,无歧义。
+    ('EFL_CUP', 'Accrington Stanley'): 'Accrington ST',        # 指纹 3
+    ('EFL_CUP', 'Birmingham City'): 'Birmingham',              # 指纹 2
+    ('EFL_CUP', 'Blackburn Rovers'): 'Blackburn',              # 劈开键
+    ('EFL_CUP', 'Bolton Wanderers'): 'Bolton',                 # 劈开键
+    ('EFL_CUP', 'Bradford City'): 'Bradford',                  # 劈开键
+    ('EFL_CUP', 'Bromley FC'): 'Bromley',                      # 劈开键
+    ('EFL_CUP', 'Cardiff City'): 'Cardiff',                    # 劈开键
+    ('EFL_CUP', 'Charlton Athletic'): 'Charlton',              # 指纹 1
+    ('EFL_CUP', 'Cheltenham Town'): 'Cheltenham',              # 指纹 1
+    ('EFL_CUP', 'Chesterfield FC'): 'Chesterfield',            # 劈开键
+    ('EFL_CUP', 'Colchester United'): 'Colchester',            # 劈开键
+    ('EFL_CUP', 'Crewe Alexandra'): 'Crewe',                   # 指纹 3
+    ('EFL_CUP', 'Derby County'): 'Derby',                      # 指纹 1
+    ('EFL_CUP', 'Doncaster Rovers'): 'Doncaster',              # 指纹 3
+    ('EFL_CUP', 'Grimsby Town'): 'Grimsby',                    # 劈开键
+    ('EFL_CUP', 'Huddersfield Town'): 'Huddersfield',          # 指纹 3
+    ('EFL_CUP', 'Leicester City'): 'Leicester',                # 指纹 1
+    ('EFL_CUP', 'Lincoln City'): 'Lincoln',                    # 指纹 1
+    ('EFL_CUP', 'Northampton Town'): 'Northampton',            # 指纹 1
+    ('EFL_CUP', 'Norwich City'): 'Norwich',                    # 劈开键
+    ('EFL_CUP', 'Oldham Athletic'): 'Oldham',                  # 劈开键
+    ('EFL_CUP', 'Peterborough United'): 'Peterborough',        # 劈开键
+    ('EFL_CUP', 'Plymouth Argyle'): 'Plymouth',                # 劈开键
+    ('EFL_CUP', 'Preston North End'): 'Preston',               # 指纹 3
+    ('EFL_CUP', 'Queens Park Rangers'): 'QPR',                 # 劈开键
+    ('EFL_CUP', 'Rotherham United'): 'Rotherham',              # 指纹 3
+    ('EFL_CUP', 'Sheffield United'): 'Sheffield Utd',          # 劈开键
+    ('EFL_CUP', 'Shrewsbury Town'): 'Shrewsbury',              # 劈开键
+    ('EFL_CUP', 'Stockport County FC'): 'Stockport County',    # 指纹 3
+    ('EFL_CUP', 'Swansea City'): 'Swansea',                    # 指纹 2
+    ('EFL_CUP', 'West Bromwich Albion'): 'West Brom',          # 指纹 3
+    ('EFL_CUP', 'West Ham United'): 'West Ham',                # 劈开键
+    ('EFL_CUP', 'Wigan Athletic'): 'Wigan',                    # 劈开键
+    ('EFL_CUP', 'Wimbledon'): 'AFC Wimbledon',                 # 劈开键
+    ('EFL_CUP', 'Wolverhampton Wanderers'): 'Wolves',          # 劈开键
+    ('EFL_CUP', 'Wrexham AFC'): 'Wrexham',                     # 劈开键
+    ('EFL_CUP', 'Wycombe Wanderers'): 'Wycombe',               # 劈开键
     # ── 西乙(2026-08-14 预埋,首场今晚 18:30Z)。🚨 本联赛三件事:
     # ① `Celta Vigo` → `Celta de Vigo II`:OA 把**塞尔塔 B 队**写成一队的简称。
     #    一队在西甲(AF league 140)、B 队在西乙(141),两个 league key 天然隔离 ——
@@ -191,6 +270,16 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('ESP_SEGUNDA_DIVISION', 'SD Eibar'): 'Eibar',
     ('ESP_SEGUNDA_DIVISION', 'Sabadell FC'): 'Sabadell',
     ('ESP_SEGUNDA_DIVISION', 'Sporting Gijón'): 'Sporting Gijon',
+    # ── 解放者杯(2026-08-14):OA 带巴西州后缀(-RJ/-SP),AF 不带。
+    # 负对照:同槽全部错配一律 0 个共享三元组。
+    ('COPA_LIBERTADORES', 'Corinthians-SP'): 'Corinthians',   # 共现 2 场
+    ('COPA_LIBERTADORES', 'Flamengo-RJ'): 'Flamengo',   # 共现 1 场
+    ('COPA_LIBERTADORES', 'LDU Quito'): 'LDU de Quito',   # 共现 2 场
+    # ── 沙特联(2026-08-14):一条纯大小写、一条纯连字符。
+    # ⚠️ 已专查利雅得族:全库含 'Riyadh' 词根的**只有这两个串**
+    # (`利雅得青年`/Al Shabab 那类不含该词根)⇒ 不构成撞车。
+    ('SAU_PRO_LEAGUE', 'Al-Riyadh'): 'Al Riyadh',   # 共现 1 场
+    ('SAU_PRO_LEAGUE', 'Neom'): 'NEOM',   # 共现 2 场
     # ── 意乙(2026-08-14 预埋,首场 08-22)
     ('ITA_SERIE_B', 'Cesena FC'): 'Cesena',
     ('ITA_SERIE_B', 'Südtirol'): 'Sudtirol',

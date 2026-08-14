@@ -505,6 +505,12 @@ _ZH_OVERRIDES: dict[str, str] = {
     #    📌 哪天有人补了 Austria Salzburg 的中文名,**必须回来重看这一条**。
     # 盘面侧佐证:`Red Bull Salzburg` 在 odds_snapshots 有 10 行(join 目标就是它)。
     "萨尔茨堡": "Red Bull Salzburg",
+    # 📌 2026-08-14:`圣洛伦索` / `巴勒斯人` **不放这里**。
+    # 本表的语义是「竞彩用了**和词典不同**的中文写法」——而这两支队在
+    # `TEAM_NAME_ZH` 里此前**整队缺失**,补进词典后反转即可解析,
+    # 再写一条 override 是**冗余**(实测:去掉 override 后 `TEAM_NAME_ZH` 反转
+    # 仍给出 `圣洛伦索 → San Lorenzo`)。⇒ 见 `team_name_zh.py` 的解放者杯段落。
+    # ⭐ 规矩:**在词典里 → 这里;整队不在 → team_name_zh.py(一处同时修 join 和显示)**。
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
