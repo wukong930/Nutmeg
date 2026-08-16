@@ -75,6 +75,12 @@ _EN_TO_CN: dict[str, str] = {
     "COPA_LIBERTADORES": "解放者杯",
     "UEFA_SUPER_CUP": "欧超杯",
     "SAU_PRO_LEAGUE": "沙职",
+    # 补(2026-08-16)。中文写法**双源实证**,不是意译:
+    #   · 竞彩实抓 `leagueAbbName` = 「英社区盾」(全称是「英格兰社区盾杯」)
+    #   · `jingcai_odds_history.league_cn` 已有 **66 行**「英社区盾」(往年同赛事)
+    # ⭐ 取**缩写**而非全称 —— 同 英联赛杯/解放者杯/欧超杯/沙职 的既有惯例;
+    #   意译会得到「英格兰社区盾杯」,和两个源都对不上。
+    "COMMUNITY_SHIELD": "英社区盾",
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.
@@ -131,6 +137,10 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     # ⚠️ 同批注册的「沙职」**不加** —— 国内俱乐部联赛,与荷乙同理。
     "解放者杯",
     "欧超杯",
+    # 同类第五条(2026-08-16):社区盾是**国内俱乐部杯赛**(英超冠军 vs 足总杯冠军)
+    # ⇒ 不进 δ 的拟合人口(δ 拟合在各国**联赛** CSV 上)。
+    # 它在 `CUP_COMPETITIONS` 里注册为 `club_cup`,EN 轨本来就排除,这里对齐中文轨。
+    "英社区盾",
 })
 
 #: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。

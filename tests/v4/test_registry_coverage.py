@@ -302,3 +302,75 @@ def test_mapped_english_names_exist_in_real_fixture_data() -> None:
                       for en, zh in _LIBERTADORES_SAUDI_2026_08.items()
                       if resolved[zh] != en)
     assert not hijacked, f"中文名被另一条映射劫走:{hijacked}"
+
+
+def test_community_shield_is_registered_end_to_end() -> None:
+    """🏆 社区盾(2026-08-16 注册)—— **注册 ≠ 生效**,四层都要通。
+
+    竞彩 08-16 上架 `英社区盾 阿森纳 vs 曼彻斯特城`,而注册表里没有它。
+    补一个 `Competition` 条目只是第一层;本条钉住它**一路通到采集器**。
+
+    ⚠️ `api_football_id=528` 是从缓存**实证**的,不是查表猜的:
+    AF 缓存里含 "Shield" 的联赛有 **3 个**(528 England / 534 CONCACAF /
+    971 Kenya)⇒ **按名字匹配会撞车**。钉死它的是那场比赛本身
+    (`2026-08-16T14:00Z Arsenal vs Manchester City · round=Final`)。
+
+    ⚠️ 中文名 `英社区盾` 是**双源实证**:竞彩 `leagueAbbName` + 档案库
+    `jingcai_odds_history.league_cn` 已有 66 行(往年同赛事)。
+    ⛔ 不是意译 —— 意译得到「英格兰社区盾杯」,和两个源都对不上。
+    """
+    from nutmeg.v4.data.competitions import (
+        CUP_COMPETITIONS,
+        api_football_id_for_cup,
+        cup_codes,
+        is_club_cup_competition,
+    )
+    from nutmeg.v4.data.league_labels import (
+        TRAINED_LEAGUES_CN,
+        canonical_league,
+        classify_league,
+    )
+    from nutmeg.v4.data.sources.api_football import (
+        API_FOOTBALL_LEAGUE_IDS,
+        CALENDAR_YEAR_LEAGUES,
+    )
+
+    CODE, CN = "COMMUNITY_SHIELD", "英社区盾"
+
+    # ① 注册表
+    assert CODE in CUP_COMPETITIONS
+    assert api_football_id_for_cup(CODE) == 528
+    assert is_club_cup_competition(CODE), "社区盾是俱乐部杯赛"
+    assert CODE in cup_codes()
+
+    # ② 标签双向归一(竞彩写中文,盘面写英文键 —— 两条都得通)
+    assert canonical_league(CODE) == CN
+    assert canonical_league(CN) == CN
+
+    # ③ 🚨 **采集器**真的认得它 —— 这一层是「注册 ≠ 生效」的分界:
+    #    `API_FOOTBALL_LEAGUE_IDS` 由 `_merged_league_ids()` 合并杯赛注册表得来,
+    #    若哪天有人把它改回硬编码,注册表加条目就**不再传导**,而没有任何东西会喊。
+    assert API_FOOTBALL_LEAGUE_IDS.get(CODE) == 528, (
+        "社区盾没进 API_FOOTBALL_LEAGUE_IDS ⇒ 采集器不会去拉它,"
+        "而注册表看起来是好的 —— 典型的「注册了但不生效」")
+
+    # ④ 季口径:**不**进 CALENDAR_YEAR_LEAGUES(8 月 = 英格兰赛季揭幕)
+    #    实测 season_for_date(2026-08-16) = 2026 = AF 缓存标的 season。
+    #    ⛔ 进了会按日历年拉 ⇒ 拉错季 ⇒ **静默返回 0 场**。
+    assert CODE not in CALENDAR_YEAR_LEAGUES
+
+    # ⑤ ⛔ 国内俱乐部杯赛 ⇒ 不进 δ 的拟合人口(δ 拟合在各国**联赛** CSV 上)
+    #
+    # 🚨 **本条 2026-08-16 修过一次,原版是空转断言。**
+    # 原版写的是 `CN not in TRAINED_LEAGUES_CN` —— 但 `英社区盾` **本来就不在**
+    # 那个集合里,所以把它从 `_NON_DOMESTIC_CN`(我真正加的那个集合)删掉之后,
+    # 断言照样绿。空包弹 `into_delta_pop` 当场抓住。
+    # ⭐ 同族:Coventry/Leeds 那条「断言了一件不可能为假的事」。
+    # ⇒ 改成断言**行为出口** `classify_league`:它才是 P3 计数真正读的东西。
+    #   `excluded` = 已知大赛/杯赛,静默排除;`unknown` = 没见过,**必须被报出来**。
+    assert classify_league(CN) == "excluded", (
+        f"{CN} 应被判为 excluded(国内俱乐部杯赛,不进 δ 拟合人口),"
+        f"实际 {classify_league(CN)!r}。若是 'unknown' 说明标签没注册;"
+        f"若是 'domestic' 说明它被当成国内**联赛**混进了 δ 的人口。")
+    assert classify_league(CODE) == "excluded", "EN 轨同样要排除"
+    assert CN not in TRAINED_LEAGUES_CN   # 顺带(本来就不在,留作可读性)

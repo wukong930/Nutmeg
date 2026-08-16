@@ -115,6 +115,31 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         has_two_legged_ties=False,  # FA Cup is single-leg with replays
         notes="Includes lower-division teams not in EPL/Championship train set",
     ),
+    # ── 英格兰社区盾(2026-08-16 注册)──────────────────────────────────
+    # ⚠️ `api_football_id=528` 是**从缓存实证**的,不是查表猜的:
+    #    AF 缓存里含 "Shield" 的联赛有 **3 个**(528 England / 534 CONCACAF
+    #    Caribbean Club Shield / 971 Kenya Shield Cup)⇒ **按名字匹配会撞车**。
+    #    钉死它的是那场比赛本身:`2026-08-16T14:00Z Arsenal vs Manchester City
+    #    · round=Final`,与竞彩记录(北京 22:00)逐字对上。
+    # ⚠️ 三个格式布尔**实测**自同一份缓存(season=2026):
+    #    轮次分布只有 `Final` × 1 ⇒ 无小组阶段;单场 ⇒ 非两回合。
+    #    ⭐ 样本只有缓存里有的季 —— 结论强度以此为限,但社区盾是「上季联赛冠军 vs
+    #      足总杯冠军」的**单场**赛制,与实测一致。
+    "COMMUNITY_SHIELD": Competition(
+        code="COMMUNITY_SHIELD",
+        display_zh="社区盾 (英格兰)",
+        display_en="FA Community Shield",
+        competition_type="club_cup",
+        api_football_id=528,
+        has_knockouts=True,
+        has_group_stage=False,
+        has_two_legged_ties=False,
+        notes=(
+            "单场决赛(上季英超冠军 vs 足总杯冠军)。竞彩缩写「英社区盾」。"
+            "⚠️ **不**进 CALENDAR_YEAR_LEAGUES:实测 season_for_date(2026-08-16) = 2026,"
+            "与 AF 缓存标的 season 逐字一致(拉错季会静默返回 0 场)。同荷乙/沙职的判法。"
+        ),
+    ),
     "EFL_CUP": Competition(
         code="EFL_CUP",
         display_zh="联赛杯 (英格兰)",
