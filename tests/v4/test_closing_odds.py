@@ -46,7 +46,12 @@ def test_capture_writes_aliases_and_dedups(tmp_path, monkeypatch):
     fr = sqlite3.connect(db).execute(
         "SELECT psc_home, ou_line, odds_update, kickoff_utc FROM odds_snapshots "
         "WHERE home_team='France'").fetchone()
-    assert fr == (1.29, 3.5, "2026-06-30T18:43:51Z", "2026-06-30T19:00:00Z")
+    # ⚠️ 2026-08-16:`kickoff_utc` 现在由 sink 归一到正典字面 `…+00:00`。
+    # 输入仍是 Odds API 原样的 `…Z`(第 17 行),**归一发生在写入侧** ——
+    # 这条断言正是那条归一的端到端证据(输入 Z、落库 +00:00)。
+    # 📌 `odds_update`(第 3 位)**不归一**:它是「这条线什么时候更新的」,
+    #    不参与任何跨源 join,没有被两套字面咬到的路径。只归一承重的那一列。
+    assert fr == (1.29, 3.5, "2026-06-30T18:43:51Z", "2026-06-30T19:00:00+00:00")
 
     # re-run with the SAME line = append-only dedup, no new rows
     assert closing_odds.capture_closing_pinnacle(db, ["WC"], now=_BEFORE_KO) == {"WC": 0}

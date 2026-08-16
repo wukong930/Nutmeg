@@ -265,3 +265,64 @@ def test_pre_kickoff_gate_actually_excludes_a_post_kickoff_row(tmp_path: Path) -
     assert kept == 2, (
         f"混格式下 pre-kickoff 闸留下了 {kept} 行,应为 2。"
         f"字典序失效了 —— 检查两侧字面的前 19 位布局是否还相同。")
+
+
+# ── 写入侧归一(2026-08-16 上线,共享 sink) ──────────────────────────
+
+def test_sink_normalises_all_three_literals_to_one_canonical_form() -> None:
+    """三种字面 + 非 UTC 偏移 → **单一正典**;幂等。"""
+    from nutmeg.v4.observation.odds_snapshots import _norm_kickoff as N
+
+    assert N("2026-07-01T16:00:00Z") == "2026-07-01T16:00:00+00:00"        # A
+    assert N("2026-06-13T12:00:00+00:00") == "2026-06-13T12:00:00+00:00"   # B(幂等)
+    assert N("2026-06-30 21:00:00+00") == "2026-06-30T21:00:00+00:00"      # C
+    assert N("2026-07-01T16:00:00+08:00") == "2026-07-01T08:00:00+00:00"   # 换算
+    assert N(N("2026-07-01T16:00:00Z")) == N("2026-07-01T16:00:00Z")       # 幂等
+
+
+def test_sink_never_guesses_a_timezone() -> None:
+    """⛔ 无偏移 / 看不懂 ⇒ **原样返回**,绝不编一个看起来正常的时刻。
+
+    🚨 无偏移是**唯一会吞腿**的形态(JS 按本地时区解释 ⇒ 早 8 小时 ⇒
+    未开赛被判成已开赛 ⇒ 静默剔出可投注列表)。
+    正确处理是**让它保持怪样子**,由 `test_no_kickoff_value_lacks_a_timezone_offset`
+    喊出来 —— 而不是在 sink 里补一个我们没有根据的 `+00:00`。
+    ⭐ 同 `canonical_team` 的 fail-open:缺归一只是难看,**猜一个是造假数据**。
+    """
+    from nutmeg.v4.observation.odds_snapshots import _norm_kickoff as N
+
+    assert N("2026-08-14T16:30:00") == "2026-08-14T16:30:00"   # 无偏移 → 原样
+    assert N("乱七八糟") == "乱七八糟"                             # 看不懂 → 原样
+    assert N(None) is None and N("") is None
+
+
+@pytest.mark.skipif(not _DB.exists(), reason="没有观测库")
+def test_rows_written_after_the_sink_fix_use_the_canonical_literal() -> None:
+    """G2 · **新行**必须是正典字面。⚠️ 必须**时间窗口化**。
+
+    🚨 不带窗口的话:库里有 4,856 行历史 `…Z`,而**回填 odds_snapshots 是红线**
+    ⇒ 这条会**天生红且永远红** ⇒ 按「老误报的护栏最后会被删掉」,它必然被删。
+
+    ⇒ 只看部署时刻之后写入的行。部署当天窗口为空 ⇒ **天生绿**,
+      一天内被真实 cron 填满(closing 实测 12–774 行/日)。
+    """
+    import sqlite3
+
+    c = sqlite3.connect(f"file:{_DB}?mode=ro", uri=True)
+    try:
+        bad = c.execute(
+            "SELECT COUNT(*) FROM odds_snapshots "
+            "WHERE captured_at > ? AND kickoff_utc IS NOT NULL AND kickoff_utc <> '' "
+            "AND kickoff_utc NOT LIKE '%+00:00'",
+            (_SINK_FIX_DEPLOYED_AT,)).fetchone()[0]
+    finally:
+        c.close()
+    assert bad == 0, (
+        f"{_SINK_FIX_DEPLOYED_AT} 之后写入的行里有 {bad} 行不是正典字面。"
+        f"写入侧归一没生效 —— 查 `odds_snapshots._norm_kickoff` 是否还挂在 sink 上,"
+        f"以及服务/cron 是否重启过(词典与 sink 都在进程启动时载入)。")
+
+
+#: 写入侧归一上线时刻(UTC)。⚠️ 之前的行**不回填**(共享表回填是红线),
+#: 所以上面那条断言只对之后的行生效。
+_SINK_FIX_DEPLOYED_AT = "2026-08-16T02:50:00+00:00"

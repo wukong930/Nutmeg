@@ -114,6 +114,43 @@ def _opt_float(v) -> float | None:
     return float(v)
 
 
+#: 正典开球时刻字面 —— UTC + `+00:00` 后缀(B 型)。
+#: 选 B 不选 A(`…Z`)是因为库里 B 是多数、且 `datetime.isoformat()` 天然产 B。
+_KICKOFF_CANON_SUFFIX = "+00:00"
+
+
+def _norm_kickoff(v) -> str | None:
+    """开球时刻 → **单一正典字面**(UTC,`YYYY-MM-DDTHH:MM:SS+00:00`)。
+
+    ⛔ **解析失败原样返回,绝不猜。** 同 `canonical_team` 的 fail-open ——
+    这里宁可留一个怪字面让哨兵
+    (`test_no_kickoff_value_lacks_a_timezone_offset`)喊,
+    也不要把一个我们没看懂的串编成看起来正常的时刻。
+
+    🚨 **只影响新行。** 回填 `odds_snapshots` 是本仓红线 ⇒ 那 4,856 行 `…Z`
+    字面**永久留在库里**。
+    ⇒ **消费方必须永久保持格式容忍**:任何人若因为「写入侧已归一」就开始写
+       `a.kickoff_utc = b.kickoff_utc`,会静默丢掉全部历史 closing 行。
+       这正是本仓最贵的那一族。
+    """
+    if v is None or v == "":
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    try:
+        # `fromisoformat` 认 B 与 C(空格分隔、`+00` 短偏移),Py≥3.11 也认 `Z`。
+        d = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return s          # ⛔ 看不懂 → 原样,交给哨兵
+    if d.tzinfo is None:
+        # 🚨 无偏移的值是**唯一会吞腿**的形态:JS `new Date()` 按本地时区解释它
+        #    (TZ=Asia/Shanghai 时早 8 小时)⇒ 未开赛被判成已开赛 ⇒ 静默剔出可投注列表。
+        #    ⛔ 但**不在这里猜时区** —— 原样返回,让哨兵红。
+        return s
+    return d.astimezone(dt.UTC).isoformat(timespec="seconds")
+
+
 def record_row_snapshot(
     db_path: str | Path,
     row: dict,
@@ -156,6 +193,15 @@ def record_row_snapshot(
         row["league"] = _lg
         row["home_team"] = canonical_team(_lg, row.get("home_team"))
         row["away_team"] = canonical_team(_lg, row.get("away_team"))
+        # 🚨 `kickoff_utc` 同一时刻有**三种字面**(2026-08-14 实测):
+        #     A `2026-07-01T16:00:00Z`      ← closing(Odds API commence_time 直抄)
+        #     B `2026-06-13T12:00:00+00:00` ← 其余 5 个生产者(API-Football)
+        #     C `2026-06-30 21:00:00+00`    ← polymarket 侧(当前不入本表)
+        # ⇒ `a.kickoff_utc = b.kickoff_utc` **永不成立**:同一 join 不带它 144,686 行、
+        #   带它 **0 行**。全仓爆炸半径当时是 0,但那是**运气**不是设计
+        #   —— 见 `tests/v4/test_kickoff_slot_normalisation.py` 的长注释。
+        # 同 league/队名:修在**唯一 sink**,不在 6 个生产者里各打一遍补丁。
+        row["kickoff_utc"] = _norm_kickoff(row.get("kickoff_utc"))
 
         psc_home = row.get("psc_home")
         psc_draw = row.get("psc_draw")
