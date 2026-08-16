@@ -88,3 +88,88 @@ def test_small_slices_are_skipped_not_interpreted():
 
 def test_render_survives_empty_input():
     assert "无已结算" in render({})
+
+
+# ────────────────────────────────────────────────────────────────────
+# δ 范围闸(2026-08-16)之后:「没测」必须和「无害」分开
+# ────────────────────────────────────────────────────────────────────
+
+class TestZeroAppliedIsNotHarmless:
+    """🚨 范围闸让**大多数**竞彩行的 `cor ≡ raw`(人口以杯赛/日职/北欧为主,
+    而 δ 只在 10 个欧洲联赛上校准过)。实测三个「大赛」切片 δ **一行都没生效**。
+
+    那种切片的 log-loss 差**恒为 0** ⇒ 报表原来印「✅ 改善 +0.0000」——
+    和「δ 生效了且无害」**逐字一样**。
+    后果:prereg v2.0 §5.1 的「±1 线连续两周变差 ⇒ 回滚」在这些切片上
+    **数学上永不可能成立** ⇒ 回滚观察窗被静音,而仪表看起来一切正常。
+
+    ⭐ 同族:「检查的前提没人检查」——「δ 在这个切片上生效过吗」从来没人问。
+    """
+
+    @staticmethod
+    def _rows(n_delta: int, n_total: int):
+        """造 n_total 行,其中 n_delta 行 raw≠cor。"""
+        raw = (0.40, 0.30, 0.30)
+        out = []
+        for i in range(n_total):
+            cor = (0.35, 0.32, 0.33) if i < n_delta else raw
+            out.append((raw, cor, i % 3))
+        return out
+
+    def test_n_delta_counts_rows_where_delta_moved_the_number(self):
+        from nutmeg.v4.cli.delta_calibration import _n_delta
+        assert _n_delta(self._rows(0, 10)) == 0
+        assert _n_delta(self._rows(4, 12)) == 4
+        assert _n_delta(self._rows(12, 12)) == 12
+
+    def test_n_delta_is_a_behavioural_test_not_a_whitelist_lookup(self):
+        """判据必须是「数字动了没有」,不是「联赛在不在白名单里」。
+
+        白名单查表会漏掉「在覆盖内、但该线根本没被 C1 碰」的情形(|line| ≥ 3),
+        那种行同样对判定没有贡献。**语法代理测语义属性**在本仓是明令的反模式。
+        """
+        import inspect
+
+        from nutmeg.v4.cli.delta_calibration import _n_delta
+        src = inspect.getsource(_n_delta)
+        assert "_DELTA_CALIBRATED_LEAGUES" not in src and "delta_scope" not in src, \
+            "`_n_delta` 在查白名单 —— 它该问「数字动了没有」"
+
+    def test_report_says_not_measured_not_improved_when_nothing_applied(self):
+        from nutmeg.v4.cli import delta_calibration as DC
+        md = DC.render({(-1, "大赛"): self._rows(0, 40)}, min_n=10)
+        assert "🚫" in md and "未生效" in md, f"零生效切片没被标出来:\n{md}"
+        assert "不是「无害」,是「没测」" in md
+        assert "✅ 改善" not in md, "🚨 零生效切片仍印「改善」—— 和「δ 有效且无害」同形"
+        assert "不可判定" in md, "没说明它不参与 §5.1 判定"
+
+    def test_report_still_judges_when_delta_did_apply(self):
+        """反向 —— 别把闸焊死:真生效过的切片必须照常给判定。"""
+        from nutmeg.v4.cli import delta_calibration as DC
+        md = DC.render({(-1, "俱乐部"): self._rows(40, 40)}, min_n=10)
+        assert "🚫" not in md, "δ 全生效的切片被误标成未生效"
+        assert ("✅ 改善" in md or "变差" in md), "生效切片没有给出判定"
+
+    def test_report_flags_a_thin_applied_sample_behind_a_fat_N(self):
+        """⚠️ `min_n` 卡的是 N,判定站的是 n_delta。
+
+        2026-08-17 实测:`+1 俱乐部` N=106 过闸,δ 生效只有 **14** 场 ——
+        而那正是 §5.1 回滚条件命中的切片。报表必须把这个差距印出来。
+        ⛔ 本条**不**主张改 `min_n`(预注册参数,改它要 owner 口令)。
+        """
+        from nutmeg.v4.cli import delta_calibration as DC
+        md = DC.render({(-1, "俱乐部"): self._rows(3, 40)}, min_n=10)
+        assert "δ 生效只有 3 场" in md, f"薄样本没被点名:\n{md}"
+        assert "不是 40 场" in md
+
+    def test_header_always_reports_how_many_rows_delta_actually_moved(self):
+        """⭐ 这条是**空包弹逼出来的**:我先写的三条只测了 🚫 分支和薄样本警告,
+        把标题里的「δ 实际生效 N 场」整个删掉 ⇒ **全绿**。
+
+        而那个数正是每周人眼要读的东西 —— 「N=106」和「其中 δ 只动了 14 场」
+        是两个完全不同的读数,后者才是判定实际站的地方。
+        """
+        from nutmeg.v4.cli import delta_calibration as DC
+        md = DC.render({(-1, "俱乐部"): self._rows(7, 40)}, min_n=10)
+        assert "δ **实际生效 7 场**" in md, f"标题没报生效行数:\n{md[:400]}"
+        assert "N=40 场" in md, "总行数也得留着 —— 两个数缺一不可"

@@ -157,6 +157,16 @@ def load_lines(db_path: str | Path) -> dict:
     return buckets
 
 
+def _n_delta(rows) -> int:
+    """本切片里 δ **真的动了数字**的行数。
+
+    判据是「修正后 ≠ 裸网格」—— 行为判据,不是「这个联赛在不在白名单里」的
+    语法判据:后者会漏掉「在白名单里但该线没被 C1 碰」的情形(如 |line| ≥ 3)。
+    """
+    return sum(1 for r in rows if any(abs(a - b) > 1e-12
+                                      for a, b in zip(r[0], r[1], strict=True)))
+
+
 def _logloss(rows, idx: int) -> float:
     return st.fmean(-math.log(max(x[idx][x[2]], 1e-9)) for x in rows)
 
@@ -174,6 +184,10 @@ def slice_stats(buckets: dict, *, min_n: int = 10) -> dict:
             continue
         out[slice_key(ln, pop)] = {
             "n": len(rows),
+            # 🚨 δ 范围闸(2026-08-16)之后,**大多数行的 cor 恒等于 raw** ——
+            # 竞彩人口以杯赛/日职/北欧为主,而 δ 只在 10 个欧洲联赛上校准过。
+            # 不记这个数,「N=477」看起来很足,实际参与判定的只有 50 行。
+            "n_delta": _n_delta(rows),
             "raw_ll": _logloss(rows, 0),
             "c1_ll": _logloss(rows, 1),
         }
@@ -205,8 +219,28 @@ def render(buckets: dict, *, min_n: int = 10, prev: dict | None = None) -> str:
             out.append(f"### 让球线 {ln:+d} · {pop} — N={len(rows)} < {min_n},**样本太小,跳过**")
             out.append("")
             continue
-        out.append(f"### 让球线 {ln:+d} · {pop} — N={len(rows)} 场")
+        nd = _n_delta(rows)
+        out.append(f"### 让球线 {ln:+d} · {pop} — N={len(rows)} 场"
+                   f"(δ **实际生效 {nd} 场**,{nd / len(rows):.0%})")
         out.append("")
+        if nd == 0:
+            # 🚨 全切片 cor ≡ raw ⇒ log-loss 差**恒为 0** ⇒ 下面那行会印
+            #    「✅ 改善 +0.0000」,和「δ 生效了且无害」**逐字一样**。
+            # ⇒ prereg v2.0 §5.1 的「连续两周变差」在这种切片上**数学上永不可能成立**
+            #    —— 回滚观察窗被静音,而仪表看起来一切正常。
+            out.append("> 🚫 **本切片 δ 一行都没生效**(联赛全在 δ 覆盖外)——"
+                       " 下面的 log-loss 差恒为 0,**不是「无害」,是「没测」**。")
+            out.append("> ⇒ prereg §5.1 的回滚条件在本切片上不可判定,本次不参与判定。")
+            out.append("")
+        elif nd < min_n:
+            # ⚠️ `min_n` 卡的是 **N**,而判定实际站在 **nd** 上。
+            # 2026-08-17 实测:`+1 俱乐部` N=106 看起来很足,δ 生效只有 14 场 ——
+            # 而那正是 prereg §5.1 回滚条件命中的切片。
+            # ⛔ **不在这里改 `min_n` 的口径** —— 那是预注册参数,改它要 owner 的口令。
+            #    这里只把「判定其实站在多少场上」印出来,让读的人自己看见。
+            out.append(f"> ⚠️ **N={len(rows)} 过闸,但 δ 生效只有 {nd} 场**"
+                       f"(< min_n={min_n})—— 下面的判定实际站在 {nd} 场上,不是 {len(rows)} 场。")
+            out.append("")
         out.append("| 腿 | 裸网格 P | C1 修正后 | 实际命中 | 谁更近 |")
         out.append("|---|---:|---:|---:|---|")
         for i in range(3):
@@ -221,15 +255,23 @@ def render(buckets: dict, *, min_n: int = 10, prev: dict | None = None) -> str:
                 who = "= (δ 未碰)"
             out.append(f"| {_LEGS[i]} | {pr:.1%} | {pc:.1%} | **{act:.1%}** | {who} |")
         lr, lc = _logloss(rows, 0), _logloss(rows, 1)
-        worse = lc > lr
-        verdict = "⚠️ **变差**" if worse else "✅ 改善"
+        # ⚠️ `worse` 只在 δ 真的生效过时才有意义。nd==0 时 lc≡lr ⇒ worse=False
+        #    ⇒ 会被读成「✅ 改善」。三态化:变差 / 改善 / **没测**。
+        worse = (lc > lr) and nd > 0
+        verdict = ("🚫 **未生效**" if nd == 0
+                   else "⚠️ **变差**" if lc > lr else "✅ 改善")
         out.append("")
-        out.append(f"- 3-way log-loss:裸 {lr:.4f} → C1 {lc:.4f} — {verdict} {lr - lc:+.4f}")
+        out.append(f"- 3-way log-loss:裸 {lr:.4f} → C1 {lc:.4f} — {verdict} {lr - lc:+.4f}"
+                   + ("  ← 差值恒 0 是因为 δ 没生效,不是因为它无害" if nd == 0 else ""))
         pv = (prev or {}).get(slice_key(ln, pop))
         if pv:
             was = pv["c1_ll"] > pv["raw_ll"]
-            out.append(f"- 上次({prev_date}, N={pv['n']}):"
-                       f"{pv['raw_ll'] - pv['c1_ll']:+.4f} {'⚠️ 变差' if was else '✅ 改善'}")
+            _pnd = pv.get("n_delta")
+            _pnd_s = "δ 生效未知(旧存档)" if _pnd is None else f"δ 生效 {_pnd} 场"
+            was = was and (_pnd is None or _pnd > 0)
+            out.append(f"- 上次({prev_date}, N={pv['n']}, {_pnd_s}):"
+                       f"{pv['raw_ll'] - pv['c1_ll']:+.4f} "
+                       f"{'⚠️ 变差' if was else '✅ 改善' if _pnd != 0 else '🚫 未生效'}")
             if worse and was and abs(ln) == 1:
                 gap = (prev or {}).get("_gap_days") or 0
                 near = (f"  ⚠️ 但两次间隔仅 {gap} 天,**不足一周** —— "
