@@ -362,20 +362,58 @@ def _canonical_scope() -> frozenset[str]:
     return _CANON_SCOPE
 
 
+#: `delta_scope()` 的三态 → `_SCOPE_STATS` 的键。一处定义,别在两边各写一遍。
+_SCOPE_TO_STAT = {
+    "applied": "applied",
+    "out_of_scope": "suppressed_league",
+    "missing": "suppressed_none",
+}
+
+
+def delta_scope(league: str | None) -> str:
+    """δ 点估对该联赛的**三态**:`applied` / `out_of_scope` / `missing`。
+
+    🚨 **这是 `_delta_in_scope` 的唯一真相来源**,也是回包 `delta_scope` 字段的来源
+    —— 两者同源,不会出现「判闸按 A、显示按 B」。
+
+    ## 为什么要把 `missing` 和 `out_of_scope` 分开(2026-08-17)
+
+    方案 A 把两者都降级成「不施加 δ + 吃 `_UNCAL_SE` 地板」,数值上确实一样。
+    但**成因完全不同**:
+
+    * `out_of_scope` = 日职/杯赛/北欧 —— δ 在那些人口上没测过,**这是预期形态**。
+    * `missing`      = 某个调用点忘了传 —— **这是 bug**,而且 08-16 和 08-17
+      各发生了一次(`market-reprice` 的 handler、`_cupManRefreshDerived`)。
+
+    只有 `_SCOPE_STATS` 时两者分得开但**没人看得见**(进程内计数器、重启归零、
+    全仓零生产读者)。把它放进回包 ⇒ 面板能画徽章、快照能落列、体检能查。
+
+    ⚠️ 空白串(`' '` / `'\\t'`)算 `missing` 不算 `out_of_scope` ——
+    原实现只判 `== ""`,于是「传了但传的是空白」会被记成正常的覆盖外,
+    **把唯一的漏传警报静音**。
+    """
+    if league is None or str(league).strip() == "":
+        return "missing"
+    if _canon(league) in _canonical_scope():
+        return "applied"
+    return "out_of_scope"
+
+
 def _delta_in_scope(league: str | None) -> bool:
     """δ 点估是否适用于该联赛。**方案 A:传 None ⇒ 按未校准处理**(保守方向)。
 
     ⚠️ 内部先过 `canonical_league`,所以中文(`英超`)或英文键都行 ——
     但**传 None 不等于「全局」**,它等于「不知道 ⇒ 不施加」。
+
+    ⚠️ 「保守」只对**吃下界**的消费者成立。δ₋₁ 的方向是**减**让胜 ⇒ 不施加它
+    会让让胜点估**高** 4.6pp ⇒ EV 高 ⇒ **更容易下注**。补偿只发生在 `p_lo` 上。
+    ⇒ 任何只吃点估的消费者(如 `_market_reverse_handicap_probs` → `/recommend/single`)
+    在覆盖外拿到的是**更激进**的数,不是更保守的。实测:同场同赔同 SP=2.20,
+    覆盖内 0 票 / 覆盖外出 ¥16 一票。**别再把方案 A 的代价简写成「保守」。**
     """
-    if league is None or league == "":
-        _SCOPE_STATS["suppressed_none"] += 1
-        return False
-    if _canon(league) in _canonical_scope():
-        _SCOPE_STATS["applied"] += 1
-        return True
-    _SCOPE_STATS["suppressed_league"] += 1
-    return False
+    scope = delta_scope(league)
+    _SCOPE_STATS[_SCOPE_TO_STAT[scope]] += 1
+    return scope == "applied"
 
 
 def c1_leg_lower_bounds(

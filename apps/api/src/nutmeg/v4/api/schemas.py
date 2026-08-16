@@ -245,6 +245,11 @@ class SinglePrediction(BaseModel):
     # calculator computes live 让球 EV for any 竞彩 让球线 without a round-trip.
     # Empty when not computed (e.g. WC predictions).
     handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
+    # 🚨 δ 联赛范围闸三态 —— **自动卡也吃这个闸**,不是只有手填卡。
+    # 标准板(`_model_board_handicap_lines`)与市场板(`_market_handicap_lines`)
+    # 各自按行的 league 判,所以这个字段是**逐场**的,不是全局常量。
+    # 默认 `missing` 是**故意**的:构造点漏填 ⇒ 面板显示⚠️,而不是显示「一切正常」。
+    delta_scope: Literal["applied", "out_of_scope", "missing"] = "missing"
     # V14 — INTERNATIONAL Asian Handicap (half-line, 2-way) for the 让球胜平负
     # PREDICTION: real Pinnacle AH de-vig where quoted, DC-grid cover-prob
     # fallback otherwise. NOT the 竞彩 integer market (that's handicap_lines).
@@ -790,6 +795,8 @@ class SingleTicketResponse(BaseModel):
     # so the 今日推荐 boards can show a 让球胜平负 prediction with a line selector
     # (non-竞彩 / Pinnacle-de-vig handicap rule). Same shape the cup-market preds use.
     handicap_lines: list[HandicapLineProb] = Field(default_factory=list)
+    # δ 范围闸三态 —— 与来源 `SinglePrediction.delta_scope` 逐字同值(直接抄,不重算)。
+    delta_scope: Literal["applied", "out_of_scope", "missing"] = "missing"
     # V14 — international Asian Handicap (half-line, 2-way) board for the 让球
     # PREDICTION display. Real Pinnacle de-vig where quoted, DC fallback else.
     asian_handicap_lines: list[AsianHandicapLineProb] = Field(default_factory=list)
@@ -881,6 +888,22 @@ class MarketHandicapResponse(BaseModel):
     record_failed: bool = False
     # V14 — 净胜球分组 for the reverse-calc card (same grid, READ tool not signal)
     margin_bands: list[MarginBand] = Field(default_factory=list)
+    # 🚨 δ 联赛范围闸的**三态**,2026-08-17 上线。`applied` / `out_of_scope` / `missing`。
+    #
+    # ## 为什么把它放进回包
+    #
+    # 方案 A(覆盖外 ⇒ 不施加点估 δ + 吃 `_UNCAL_SE` 地板)的代价是**静默**:
+    # 数字悄悄变了,没有任何东西喊。08-16 和 08-17 各因此漏了一个调用点,
+    # 症状都是「让球 ± 带宽 10 倍」,而两次都是 owner 看着卡片报出来的。
+    #
+    # 唯一的可观测性曾是 `_SCOPE_STATS` —— **进程内计数器、重启归零、全仓零生产读者**,
+    # 而且它数的是调用次数不是场次。⇒ 它不是可观测性,是自我安慰。
+    #
+    # ⛔ **为什么不改成漏传直接 422**:owner 红线「显示层降级不能 422 掉整张卡」。
+    #    缓存的老 tab 打过来会拿 422 ⇒ 卡显示报错。⇒ 选「可见但不失败」。
+    # ⚠️ 代价老实说:每个消费方多一个**必须被渲染**的字段,漏渲染 = 又一个静默。
+    #    所以护栏 `test_delta_scope_badge.py` 断言前端确实画了它。
+    delta_scope: Literal["applied", "out_of_scope", "missing"] = "missing"
 
 
 class MarketRepriceRequest(BaseModel):
@@ -941,6 +964,22 @@ class MarketRepriceResponse(BaseModel):
     # True ⇔ overround 落在物理上不可能的区间(见 `devig.is_impossible_book`)。
     # 服务端算,免得前端自己写一份阈值(同 δ 常数不许挪进 JS 的理由)。
     impossible_book: bool = False
+    # 🚨 δ 联赛范围闸的**三态**,2026-08-17 上线。`applied` / `out_of_scope` / `missing`。
+    #
+    # ## 为什么把它放进回包
+    #
+    # 方案 A(覆盖外 ⇒ 不施加点估 δ + 吃 `_UNCAL_SE` 地板)的代价是**静默**:
+    # 数字悄悄变了,没有任何东西喊。08-16 和 08-17 各因此漏了一个调用点,
+    # 症状都是「让球 ± 带宽 10 倍」,而两次都是 owner 看着卡片报出来的。
+    #
+    # 唯一的可观测性曾是 `_SCOPE_STATS` —— **进程内计数器、重启归零、全仓零生产读者**,
+    # 而且它数的是调用次数不是场次。⇒ 它不是可观测性,是自我安慰。
+    #
+    # ⛔ **为什么不改成漏传直接 422**:owner 红线「显示层降级不能 422 掉整张卡」。
+    #    缓存的老 tab 打过来会拿 422 ⇒ 卡显示报错。⇒ 选「可见但不失败」。
+    # ⚠️ 代价老实说:每个消费方多一个**必须被渲染**的字段,漏渲染 = 又一个静默。
+    #    所以护栏 `test_delta_scope_badge.py` 断言前端确实画了它。
+    delta_scope: Literal["applied", "out_of_scope", "missing"] = "missing"
 
 
 # ---------- /recommend/pool (V8 W6) ----------

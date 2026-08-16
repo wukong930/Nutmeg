@@ -626,7 +626,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v154-fe-reprice-league"
+_FE_VERSION = "nutmeg-v155-fe-delta-scope-badge"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2155,6 +2155,12 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 ou_line=getattr(f, "ou_line", None),   # 体检 Wave1 — echo real line
                 odds_update=getattr(f, "odds_update", None),   # 体检 P1#10 — snapshot age
                 handicap_lines=hc_lines,
+                # 🚨 用 `f.league`(同行 2142),**不是** `_model_board_handicap_lines`
+                # 里那个 `_lg` —— 那是另一个函数的局部名。我第一版写了 `_lg` ⇒
+                # `NameError`,而它被下面那个 `except Exception` 吞成
+                # 「fixture poisoned, skipped」⇒ **标准板返回 0 场 + HTTP 200**。
+                # ⭐ 又一次「HTTP 200 ≠ 成功」:面板会显示空,而不是显示错误。
+                delta_scope=_delta_scope(f.league),
                 asian_handicap_lines=_model_board_asian_handicap(f, grid),
                 margin_bands=_mk_margin_bands(grid_to_margin_bands(grid)),
             ))
@@ -2457,6 +2463,17 @@ _CUP_MARKET_COMPETITIONS = [
 ]
 
 
+def _delta_scope(league: str | None) -> str:
+    """δ 范围闸三态(`applied`/`out_of_scope`/`missing`)—— 薄封装。
+
+    ⛔ **别在这里重新实现判据。** 它和 `_delta_in_scope`(判闸用的那个)必须
+    走同一个 `market_handicap.delta_scope`,否则就会出现「判闸按 A、徽章按 B」——
+    本仓在 WPO 去vig 上踩过一次(server 一份、JS 一份,漂了 11pp)。
+    """
+    from nutmeg.v4.model.market_handicap import delta_scope
+    return delta_scope(league)
+
+
 def _hc_line_prob(line, ph, pd_, pa, bounds_fn, *, league=None) -> HandicapLineProb:
     """A′(2026-07-17)— 把点估 + δ 的逐腿下界一起打包给前端。
 
@@ -2633,6 +2650,7 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         # (体检 2026-07-03). Server-side 让球反推 already used it (line above).
         ou_line=r.get("ou_line"),
         handicap_lines=_market_handicap_lines(fair, r),
+        delta_scope=_delta_scope(r.get("league")),
         asian_handicap_lines=_market_asian_handicap_lines(fair, r),
         odds_update=r.get("odds_update"),
         # 2026-07-23 — 出处回显。_apply_odds_api_overlay 打过标的是 'odds_api',
@@ -2792,6 +2810,7 @@ def recommend_market_reprice(req: MarketRepriceRequest) -> MarketRepriceResponse
     # 「两边各算一份 k·SE」—— 后者正是 WPO 那次 server↔JS 漂移的形状。
     lo_h, lo_d, lo_a = _onex_lo(fair)
     from nutmeg.v4.model.devig import is_impossible_book
+    from nutmeg.v4.model.market_handicap import delta_scope
     return MarketRepriceResponse(
         p_home_1x2=float(fair[0]),
         p_draw_1x2=float(fair[1]),
@@ -2802,6 +2821,8 @@ def recommend_market_reprice(req: MarketRepriceRequest) -> MarketRepriceResponse
         handicap_lines=lines,
         overround=float(overround),
         impossible_book=is_impossible_book(req.psc_home, req.psc_draw, req.psc_away),
+        # 🚨 和判闸**同源**(都走 `delta_scope`)—— 不许在这里重算一遍口径。
+        delta_scope=delta_scope(req.league),
     )
 
 
@@ -2825,6 +2846,7 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
     from nutmeg.v4.combo.lottery_rules import DEFAULT_MIN_EV_PER_UNIT
     from nutmeg.v4.model.market_handicap import (
         c1_leg_lower_bounds,
+        delta_scope,
         devig_over,
         implied_handicap_lines,
     )
@@ -2941,6 +2963,9 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
         best_ev=(ev[best] if best is not None else None),
         best_stake=best_stake, recorded=recorded, record_failed=record_failed,
         session_id=session_id, margin_bands=margin_bands,
+        # 🚨 和 L2834/L2853 判闸时用的是同一个函数 —— 这个端点会**写台账**,
+        #    所以「这注的 δ 到底施加了没有」必须能被事后看见,不能只活在进程内计数器里。
+        delta_scope=delta_scope(req.league),
     )
 
 
@@ -2984,6 +3009,7 @@ def _argmax_prediction_tickets(
             ou_line=p.ou_line,   # 体检 Wave1 — real total line for the record path
             odds_update=p.odds_update,   # 体检 P1#10 — snapshot age for the card badge
             handicap_lines=p.handicap_lines,   # V14 — market-reverse 让球 board
+            delta_scope=p.delta_scope,
             asian_handicap_lines=p.asian_handicap_lines,  # V14 — international AH (half-line)
         )
         tk.selection_fingerprint = single_ticket_fingerprint(tk)

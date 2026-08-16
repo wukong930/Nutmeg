@@ -1175,7 +1175,10 @@ class TestSharpFlipGuard:
         # 这里只认「_cupHcRecalc 确实把 flag 传下去了」。
         # (A-2 起第 6 参传冻结带半宽,flag 位置不变)
         assert "_hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip," in html
-        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide)" in html
+        # ⚠️ 2026-08-17 放松:原来钉的是**完整签名**(带右括号)⇒ 尾部追加参数就假红。
+        # 本条真正在意的是「frzHalf/wide 确实是参数」,不是「恰好 7 个」——
+        # 「断言值别连带断言结构」。前缀匹配仍能抓住删参/换序。
+        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide" in html
 
     def test_i18n_keys_both_locales(self, html):
         for k in ("rel_flip", "rel_flip_hint"):
@@ -1342,7 +1345,10 @@ class TestFreezeGapBand:
 
     def test_hc_rows_combine_delta_and_freeze_in_quadrature(self, html):
         # 让球行:δ 带 ⊕ 冻结带平方和;两个让球面都传 frzHalf(共用 _hcEvHtml)
-        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide)" in html
+        # ⚠️ 2026-08-17 放松:原来钉的是**完整签名**(带右括号)⇒ 尾部追加参数就假红。
+        # 本条真正在意的是「frzHalf/wide 确实是参数」,不是「恰好 7 个」——
+        # 「断言值别连带断言结构」。前缀匹配仍能抓住删参/换序。
+        assert "function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide" in html
         assert "const half = Math.hypot(dHalf, frzHalf || 0);" in html
         assert "_frzHalfEv(_SPCALC.preds[idx], 'hc' + o, sp)" in html
         assert "_frzHalfEv(_CUPMKT.preds[idx], 'hc' + o, sp)" in html

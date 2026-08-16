@@ -124,6 +124,10 @@ CREATE TABLE IF NOT EXISTS board_leg_snapshot (
     p_market       REAL,   -- 1X2: p_*_market(Pinnacle 去vig);hhad: NULL(网格本就市场反推)
     p_lo           REAL,   -- 判闸下界
     p_lo_of        TEXT,   -- ⭐ 下界是**谁**的下界:'p_market' | 'p_model'
+    -- δ 范围闸三态:'applied' | 'out_of_scope' | 'missing'。
+    -- 常数记在 provenance(全局),这一列记**这条腿**实际落在哪一侧 ——
+    -- 有了它,「哪些腿真吃到了 δ」是一条 SQL,不必靠带宽指纹反推。
+    delta_scope    TEXT,
     -- 盘口
     jc_sp          REAL,              -- 竞彩 SP;没上架就 NULL
     psc            REAL,              -- Pinnacle 1X2 原盘赔率(含 vig)
@@ -164,6 +168,7 @@ _MIGRATIONS: dict[str, list[tuple[str, str]]] = {
         ("line_source", "TEXT"), ("p_model", "REAL"), ("p_market", "REAL"),
         ("p_lo_of", "TEXT"), ("psc_over", "REAL"), ("psc_under", "REAL"),
         ("ou_line", "REAL"), ("jc_captured_at", "TEXT"), ("odds_update", "TEXT"),
+        ("delta_scope", "TEXT"),
     ],
 }
 
@@ -192,6 +197,11 @@ _CONST_SPECS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "_C2_SE_H", "_C2_SE_D", "_C2_SE_A",
         # 网格参数 —— 不记就重算不出 handicap_lines
         "DEFAULT_RHO", "DEFAULT_MAX_GOALS",
+        # 🚨 δ 联赛白名单(2026-08-16 上线)—— 它是 `p_lo` 的**一等决定项**
+        # (在名单里 → 2×0.0078;不在 → 2×0.078,**10 倍**)。
+        # 不记它,闸上线前后两批快照的 `constants_json` **逐字节相同、语义已变**,
+        # 而这是 forward-only,秋季回放时分不出那条腿当时吃的是哪个 SE。
+        "_DELTA_CALIBRATED_LEAGUES",
     )),
     ("onex_calibration", "nutmeg.v4.model.onex_calibration", ("ONEX_SE", "ONEX_SE_K")),
 )
@@ -218,7 +228,14 @@ def live_constants() -> dict[str, Any]:
             err = repr(exc)
         for name in names:
             v = getattr(mod, name, None) if mod is not None else None
-            out[f"{prefix}.{name}"] = list(v) if isinstance(v, tuple) else v
+            if isinstance(v, tuple):
+                v = list(v)
+            elif isinstance(v, frozenset | set):
+                # ⚠️ **必须排序**:PYTHONHASHSEED 让 str 的哈希逐进程变化 ⇒
+                # 集合迭代序不稳定 ⇒ 同一份白名单会写出不同的 JSON,
+                # 「常数变了没有」这个判断会被自己的序抖动淹掉。
+                v = sorted(v)
+            out[f"{prefix}.{name}"] = v
         if err:
             out[f"{prefix}.__error__"] = err
     return out
@@ -333,6 +350,7 @@ def _legs_from_prediction(pred: dict, now: dt.datetime) -> list[dict]:
                          "line_source": None, "leg": i,
                          "p_model": pm[i], "p_market": pk[i],
                          "p_lo": lo[i], "p_lo_of": "p_market",
+                         "delta_scope": pred.get("delta_scope"),
                          "jc_sp": jc[i], "psc": psc[i],
                          "single_available": pred.get("jc_single_available")})
 
@@ -361,6 +379,7 @@ def _legs_from_prediction(pred: dict, now: dt.datetime) -> list[dict]:
                          # 让球网格两模式一律 Pinnacle 反推 ⇒ 点估与下界同族
                          "p_model": ps[i], "p_market": None,
                          "p_lo": los[i], "p_lo_of": "p_model",
+                         "delta_scope": pred.get("delta_scope"),
                          "jc_sp": (jc_hc[i] if is_jc else None),
                          "psc": None,      # 让球没有直接的 Pinnacle 原盘赔率
                          "single_available": (pred.get("jc_hc_single_available")
@@ -371,7 +390,7 @@ def _legs_from_prediction(pred: dict, now: dt.datetime) -> list[dict]:
 _COLS = (
     "provenance_id", "captured_at", "match_date", "league", "home_team", "away_team",
     "kickoff_utc", "market", "handicap_home", "line_source", "leg",
-    "p_model", "p_market", "p_lo", "p_lo_of",
+    "p_model", "p_market", "p_lo", "p_lo_of", "delta_scope",
     "jc_sp", "psc", "psc_over", "psc_under", "ou_line",
     "jc_captured_at", "odds_update", "hours_to_ko", "market_mode", "single_available",
 )
