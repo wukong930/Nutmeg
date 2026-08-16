@@ -324,6 +324,32 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     # (`利雅得青年`/Al Shabab 那类不含该词根)⇒ 不构成撞车。
     ('SAU_PRO_LEAGUE', 'Al-Riyadh'): 'Al Riyadh',   # 共现 1 场
     ('SAU_PRO_LEAGUE', 'Neom'): 'NEOM',   # 共现 2 场
+    # ── 沙特联 +8(2026-08-16)。08-14 只看到 2 条,数据攒够后暴露出**系统性**差异:
+    #    OA 一律 `Al-XXX` 连字符,AF 混用空格 / 加后缀(FC、Saihat、Jeddah)/ 改拼写。
+    # ⭐ 定案靠**开球槽内排除法**:同一 (联赛, 开球分钟) 下把两侧摊开,
+    #    去掉精确相同的,剩 1×1 即被迫配对。4 个槽这样解开,
+    #    其中 2 个还有同槽指纹确认(各 3 个共享 Pinnacle 三元组)。
+    # ⛔ **没用前缀/相似度** —— 那是语法代理。`Al-Hazem`→`Al-Hazm` 与
+    #    `Al-Taawoun`→`Al Taawon` 都不是前缀关系,靠的是槽内唯一。
+    # ✅ 撞车闸 8/8:每个词根在全库**恰好 2 个名字**(closing/gather 各一),
+    #    无第三支队可混;两侧从未在同一行互为对手。
+    ('SAU_PRO_LEAGUE', 'Abha Club'): 'Abha',
+    ('SAU_PRO_LEAGUE', 'Al-Faisaly KSA FC'): 'Al-Faisaly FC',
+    ('SAU_PRO_LEAGUE', 'Al-Hazem'): 'Al-Hazm',
+    ('SAU_PRO_LEAGUE', 'Al-Hilal'): 'Al-Hilal Saudi FC',
+    ('SAU_PRO_LEAGUE', 'Al-Ittihad'): 'Al-Ittihad FC',
+    ('SAU_PRO_LEAGUE', 'Al-Khaleej'): 'Al Khaleej Saihat',
+    ('SAU_PRO_LEAGUE', 'Al-Kholood'): 'Al Kholood',
+    ('SAU_PRO_LEAGUE', 'Al-Taawoun'): 'Al Taawon',
+    # 🚨 `Al-Shabab` / `Al-Qadsiah` **故意留空** —— 判不出。
+    # 2026-08-13T18:00 那个槽:closing 1 场、gather **2** 场
+    # (`Al Shabab/Al-Qadisiyah FC` 与 `Al Diriyah/Al-Ahli Jeddah`),
+    # 同槽指纹对**两个候选都是 0**,且四个 gather 名只在这一个槽出现过
+    # ⇒ 跨日排除法也够不着。
+    # ⚠️ 「`Al-Shabab` 显然对 `Al Shabab`」对人是显然的,**对判据是零证据** ——
+    #    而竞彩/OA 本来就不上架每一场沙特联,「另一场没有 closing 对应」
+    #    和「配错了」在数据上一模一样。补它就是照字面猜。
+    #    ⇒ 等更多快照让指纹撞上,或等某个槽变成 1×1。
     # ── 意乙(2026-08-14 预埋,首场 08-22)
     ('ITA_SERIE_B', 'Cesena FC'): 'Cesena',
     ('ITA_SERIE_B', 'Südtirol'): 'Sudtirol',
