@@ -43,9 +43,19 @@ def _client():
     return TestClient(app)
 
 
-def _body(**over):
+#: δ **覆盖内**(白名单 10 联赛之一)—— 走「δ 已施加」那条分支。
+#: 🚨 2026-08-17 之前本文件只用 `JPN_J1`,而 `truth` 夹具又不传 league ⇒
+#:    被测端点和对照组**同被抑制**、断言恒成立。变异实测:白名单清空 → 全套红 18 条,
+#:    闸改 no-op → 红 6 条,**本文件两种变异下 0 红** —— 它守的是会写台账的钱路端点。
+#:    ⇒ 现在两条分支都跑,且 `test_the_two_parametrisations_actually_differ` 钉住二者不同。
+_IN_SCOPE = "ESP_LA_LIGA"
+#: δ 覆盖外 —— 也是这个端点的**典型人口**(市场模式 = J1/杯赛),所以必须保留。
+_OUT_SCOPE = "JPN_J1"
+
+
+def _body(league: str = _OUT_SCOPE, **over):
     b = {
-        "league": "JPN_J1", "date": "2026-08-10",
+        "league": league, "date": "2026-08-10",
         "home_team": "Kashima", "away_team": "Urawa",
         "handicap_home": _LINE,
         "psc_home": 2.10, "psc_draw": 3.40, "psc_away": 3.60,
@@ -58,19 +68,26 @@ def _body(**over):
     return b
 
 
-@pytest.fixture(scope="module")
-def truth():
-    """独立复算点估与下界 —— 不从被测端点取,否则是自证。"""
+@pytest.fixture(scope="module", params=[_IN_SCOPE, _OUT_SCOPE],
+                ids=["δ覆盖内", "δ覆盖外"])
+def truth(request):
+    """独立复算点估与下界 —— 不从被测端点取,否则是自证。
+
+    🚨 **必须把 league 传下去。** 原版不传 ⇒ 对照组永远算「覆盖外」的数,
+    而端点用 `req.league`;`_body()` 又恰好用覆盖外的 `JPN_J1` ⇒ 两边同被抑制、
+    每条断言恒成立。**对照组和被测对象必须在同一个分支上。**
+    """
     from nutmeg.v4.api.routes import _pinnacle_devig_1x2
     from nutmeg.v4.model.market_handicap import devig_over
-    b = _body()
+    lg = request.param
+    b = _body(lg)
     fair = _pinnacle_devig_1x2(b["psc_home"], b["psc_draw"], b["psc_away"])
     p_over = devig_over(b["psc_over25"], b["psc_under25"])
     lines = implied_handicap_lines(fair[0], fair[1], fair[2], p_over,
-                                   ou_line=b["ou_line"], c1=True)
+                                   ou_line=b["ou_line"], c1=True, league=lg)
     _, ph, pd_, pa = next(ln for ln in lines if ln[0] == _LINE)
-    lo = c1_leg_lower_bounds(_LINE, ph, pd_, pa)
-    return {"point": (ph, pd_, pa), "lo": lo}
+    lo = c1_leg_lower_bounds(_LINE, ph, pd_, pa, league=lg)
+    return {"league": lg, "point": (ph, pd_, pa), "lo": lo}
 
 
 def test_fixture_actually_separates_point_and_lower_bound(truth):
@@ -90,13 +107,57 @@ def test_fixture_actually_separates_point_and_lower_bound(truth):
     assert lo_a < pa - 1e-6, f"让负下界没低于点估({lo_a} vs {pa})—— 第三腿又退回零收缩了"
 
 
+def test_the_two_parametrisations_actually_differ():
+    """⭐⭐ **前提自检:双参数化不能是装饰。**
+
+    覆盖内和覆盖外必须给出**不同**的点估和下界,否则「跑了两遍」等于跑了一遍两次,
+    而本文件从 08-16 到 08-17 正是这个状态(两边同被抑制)。
+
+    两处差异都必须在:
+      · 点估 —— δ₋₁ 只在覆盖内扣掉 4.6pp
+      · 带宽 —— 覆盖内 2×0.0078,覆盖外吃 `_UNCAL_SE` 地板 2×0.078(**10 倍**)
+    ⚠️ 只查带宽会漏掉「δ 点估修正被撤销」那一半 —— 而那一半的方向是**更容易下注**
+       (让胜 P 变高 ⇒ EV 变高),不是保守。
+    """
+    from nutmeg.v4.api.routes import _pinnacle_devig_1x2
+    from nutmeg.v4.model.market_handicap import devig_over
+    b = _body()
+    fair = _pinnacle_devig_1x2(b["psc_home"], b["psc_draw"], b["psc_away"])
+    p_over = devig_over(b["psc_over25"], b["psc_under25"])
+
+    def leg(lg):
+        lines = implied_handicap_lines(fair[0], fair[1], fair[2], p_over,
+                                       ou_line=b["ou_line"], c1=True, league=lg)
+        _, ph, pd_, pa = next(ln for ln in lines if ln[0] == _LINE)
+        return ph, ph - c1_leg_lower_bounds(_LINE, ph, pd_, pa, league=lg)[0]
+
+    p_in, band_in = leg(_IN_SCOPE)
+    p_out, band_out = leg(_OUT_SCOPE)
+    assert p_in < p_out - 1e-4, (
+        f"覆盖内外的**点估**一样({p_in} vs {p_out})—— δ₋₁ 没被施加,"
+        f"或 `_IN_SCOPE={_IN_SCOPE}` 已不在白名单里 ⇒ 本文件退回恒真")
+    assert band_out > band_in * 5, (
+        f"覆盖内外的**带宽**没拉开(内 {band_in:.4f} / 外 {band_out:.4f})—— "
+        f"`_UNCAL_SE` 地板没生效 ⇒ 本文件退回恒真")
+
+
+def test_in_scope_constant_is_really_in_scope():
+    """`_IN_SCOPE` 是个字面量,白名单是另一个字面量 —— 它们会漂。
+
+    上一条依赖 `_IN_SCOPE` 真在覆盖内;这条直接问闸本身,失败信息才指得准。
+    """
+    from nutmeg.v4.model.market_handicap import _delta_in_scope
+    assert _delta_in_scope(_IN_SCOPE), f"{_IN_SCOPE} 不在 δ 白名单里了"
+    assert not _delta_in_scope(_OUT_SCOPE), f"{_OUT_SCOPE} 进白名单了 —— 本文件失去对照组"
+
+
 class TestGateUsesLowerBound:
     def test_reported_ev_comes_from_the_lower_bound(self, truth):
         """EV 必须由下界算出。点估算的 EV 更高,差值就是被修掉的那部分乐观。"""
-        r = _client().post("/api/v4/recommend/market-handicap", json=_body())
+        r = _client().post("/api/v4/recommend/market-handicap", json=_body(truth["league"]))
         assert r.status_code == 200, r.text
         d = r.json()
-        sp = _body()["odds_handicap_H"]
+        sp = _body(truth["league"])["odds_handicap_H"]
         want_lo = truth["lo"][0] * sp - 1.0
         want_pt = truth["point"][0] * sp - 1.0
         got = d["ev_per_unit"][0]
@@ -109,7 +170,7 @@ class TestGateUsesLowerBound:
         下界不是概率分布(三腿和 < 1),`c1_leg_lower_bounds` 的 docstring 明令
         不许展示/归一化。把下界回包会让前端画出一个不存在的统计量。
         """
-        d = _client().post("/api/v4/recommend/market-handicap", json=_body()).json()
+        d = _client().post("/api/v4/recommend/market-handicap", json=_body(truth["league"])).json()
         assert d["market_implied_p"] == pytest.approx(list(truth["point"]), abs=1e-9), \
             "展示侧被换成了下界 —— 违反 c1_leg_lower_bounds 契约"
 
@@ -122,7 +183,7 @@ class TestGateUsesLowerBound:
         lo_h = truth["lo"][0]
         sp = 1.03 / lo_h                       # 下界 EV ≈ +3%,在闸下
         d = _client().post("/api/v4/recommend/market-handicap",
-                           json=_body(odds_handicap_H=round(sp, 4),
+                           json=_body(truth["league"], odds_handicap_H=round(sp, 4),
                                       odds_handicap_D=1.01, odds_handicap_A=1.01)).json()
         ev_h = d["ev_per_unit"][0]
         assert 0 < ev_h < DEFAULT_MIN_EV_PER_UNIT, f"fixture 没落进 (0, 5%):{ev_h}"
@@ -134,7 +195,7 @@ class TestGateUsesLowerBound:
         lo_h = truth["lo"][0]
         sp = 1.20 / lo_h                       # 下界 EV ≈ +20%
         d = _client().post("/api/v4/recommend/market-handicap",
-                           json=_body(odds_handicap_H=round(sp, 4),
+                           json=_body(truth["league"], odds_handicap_H=round(sp, 4),
                                       odds_handicap_D=1.01, odds_handicap_A=1.01)).json()
         assert d["best_outcome"] == "H", d
         assert (d.get("best_stake") or 0) > 0, "下界 +20% 的腿没给注额 —— 闸被焊死了?"
@@ -150,11 +211,11 @@ class TestGateUsesLowerBound:
         这里独立复算一遍 Kelly,逐分对比。
         """
         from nutmeg.v4.combo.kelly import fractional_kelly_stake
-        b = _body()
+        b = _body(truth["league"])
         lo_h = truth["lo"][0]
         sp = round(1.20 / lo_h, 4)
         d = _client().post("/api/v4/recommend/market-handicap",
-                           json=_body(odds_handicap_H=sp,
+                           json=_body(truth["league"], odds_handicap_H=sp,
                                       odds_handicap_D=1.01, odds_handicap_A=1.01)).json()
         ev = lo_h * sp - 1.0
         want = max(float(fractional_kelly_stake(
@@ -181,7 +242,7 @@ class TestGateUsesLowerBound:
         # 让两条腿的点估 EV 相等 ⇒ 差异只来自下界
         sp_h, sp_a = 1.30 / ph, 1.30 / pa
         d = _client().post("/api/v4/recommend/market-handicap",
-                           json=_body(odds_handicap_H=round(sp_h, 4),
+                           json=_body(truth["league"], odds_handicap_H=round(sp_h, 4),
                                       odds_handicap_D=1.01,
                                       odds_handicap_A=round(sp_a, 4))).json()
         ev_lo_h, ev_lo_a = lo_h * sp_h - 1, lo_a * sp_a - 1
