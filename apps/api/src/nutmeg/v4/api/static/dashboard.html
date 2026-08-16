@@ -2312,6 +2312,8 @@ const I18N = {
     sw_single_yes_hint: '竞彩给这场这个玩法开了单关 —— 可以单独买,不必凑串',
     sw_single_no_hint:  '这个玩法只能过关:要下注就必须再配一条腿(实测仅 17% 场次可单关)',
     sw_board_note:    '标准+市场两模式可投注场次合并成一张全局榜;主区只列甜区腿(P 25–67%),每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界);**甜区外已过闸的腿在下方「甜区外 · 已过闸」里另列**(2026-08-01:实测全库 31% 的过闸腿落在甜区外,以前整个看不见)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽)。',
+    dscope_out_tip:   'δ 让球校准**未覆盖该联赛** — δ 只在 10 个欧洲联赛(6,095 场)上实测过。覆盖外一律不施加点估修正,下界改吃未校准地板(±带约为覆盖内的 10 倍)。这是**预期形态**,不是故障。',
+    dscope_miss_tip:  '⚠️ 这张卡的 league 没传到服务端 — 让球线按「未校准」处理(±带 10 倍、点估少扣 δ)。**这是 bug 不是形态**:两次线上事故(2026-08-16 手填重定价、08-17 刷新重算)症状都是它。请报一下。',
     frz_badge_tip:    '距开球时长 — 现在下单,到收盘 Pinnacle 预计还漂 ±2σ(已并入 EV 的 ± 区间);凌晨场停售早、缺口不可压缩(A-1 实测:41% 凌晨场中位缺口 6h)',
     jc_price_age:     '竞彩价',
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
@@ -2891,6 +2893,8 @@ const I18N = {
     sw_single_yes_hint: '竞彩 offers a SINGLE on this pool — bettable on its own',
     sw_single_no_hint:  'parlay-only: you must pair it with another leg (only 17% of matches allow singles)',
     sw_board_note:    'one global board merging bettable matches from both modes; the main list is sweet-tier only (P 25-67%), best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound); gate-clearing legs OUTSIDE sweet are listed separately below (2026-08-01: 31% of archive-wide gate-clearing legs sit outside sweet and used to be invisible here). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff).',
+    dscope_out_tip:   'The delta handicap calibration does NOT cover this league - delta was measured on 10 European leagues (6,095 matches) only. Outside that set no point correction is applied and the lower bound falls back to the uncalibrated floor (band ~10x wider). This is EXPECTED, not a fault.',
+    dscope_miss_tip:  'WARNING: this card did not send its league to the server - the handicap board is treated as uncalibrated (10x band, delta not deducted). This is a BUG, not a mode; both 2026-08-16 and 08-17 incidents looked exactly like this. Please report it.',
     frz_badge_tip:    'Hours to kickoff — commit now and Pinnacle keeps drifting until close (±2σ, folded into the EV ± band); overnight matches freeze early with an incompressible gap (A-1 measured: 41% of matches, median 6h)',
     jc_price_age:     '竞彩 price',
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
@@ -3480,6 +3484,23 @@ function _frzBandHtml(pr, leg, sp) {
   const frz = _frzHalfEv(pr, leg, sp);
   return frz > 1e-9
     ? ` <span class="text-muted" style="font-size:0.9em">±${(frz * 100).toFixed(1)}%</span>` : '';
+}
+// δ 联赛范围闸的三态标记 —— 挂在让球行的 ± 带后面。
+// ⛔ **不在 JS 里判范围**:白名单和 `canonical_league` 都在服务端,前端只渲染
+//    回包里的 `delta_scope`。同 δ 常数不许挪进 JS 的理由(WPO 那次 server↔JS 漂了 11pp)。
+// · applied      → **不画**。正常态画徽章 = 80% 的卡片挂同一个图标 = 噪声,
+//                  最后谁都不看。稀有才有信息量。
+// · out_of_scope → 淡色 `°`,悬停解释为什么 ± 带这么宽。**这是预期形态。**
+// · missing      → ⚠️ 响的。它意味着某个调用点漏传了 league —— **是 bug**。
+function _dscopeHtml(pr) {
+  const sc = pr && pr.delta_scope;
+  if (!sc || sc === 'applied') return '';
+  if (sc === 'missing') {
+    return ` <span style="cursor:help;color:var(--danger,#dc2626);font-weight:600"
+      title="${t('dscope_miss_tip')}">⚠️</span>`;
+  }
+  return ` <span class="text-muted" style="cursor:help;font-size:0.85em"
+    title="${t('dscope_out_tip')}">°</span>`;
 }
 function _frzBadgeHtml(pr) {
   // ⏳ 只在缺口成气候时出现(≥2h:冻结带开始压过 A′ δ 带的量级)。
@@ -6468,7 +6489,9 @@ function _spcalcHcLine(idx) {
 // 两个让球面必须共用本函数 —— 各写各的等于给「区间」留了个只修一半的机会。
 // A-2 — ``frzHalf``(冻结带半宽,_frzHalfEv)与 δ 带独立(一个是让球重构校准误差,
 // 一个是停售→开球的市场漂移)→ 平方和合成显示;判闸仍只看 δ 下界(evLo),不动。
-function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide) {
+// ⚠️ 第 8 个参数 `pr` 是 2026-08-17 加的(δ 三态标记)。它可以是 undefined ——
+//    老调用点不传时不画标记,而**不是**画成「正常」。见 `_dscopeHtml`。
+function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide, pr) {
   const f = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
   const dHalf = evLo != null ? (evHi - evLo) / 2 : 0;
   const half = Math.hypot(dHalf, frzHalf || 0);
@@ -6476,7 +6499,7 @@ function _hcEvHtml(ev, evLo, evHi, p, sharpFlip, frzHalf, wide) {
     ? ` <span class="text-muted" style="font-size:0.9em">±${(half * 100).toFixed(1)}%</span>` : '';
   // A-3 影子:门槛也吃 σ_P(h)(frzHalf=2σ_EV) —— 与上面的 ± 带同源。δ 不进门槛,
   // 它是让球重构的**校准**误差,已由 evLo 下界判闸,再进门槛就重复计一次。
-  return `EV ${f(ev)}${band} ${_evRelTag(p, sharpFlip, (frzHalf || 0) / 2, wide)}`;
+  return `EV ${f(ev)}${band}${_dscopeHtml(pr)} ${_evRelTag(p, sharpFlip, (frzHalf || 0) / 2, wide)}`;
 }
 function _spcalcHcRecalc(idx) {
   const PB = _spcalcHcPB(idx);
@@ -6494,7 +6517,8 @@ function _spcalcHcRecalc(idx) {
     const evHi = ev + (ev - evLo);          // 带宽对称(δ ± k·SE)
     const pass = evLo >= minEv;             // ⭐ 判闸用下界,不是点估
     evSpan.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o], undefined,
-      _frzHalfEv(_SPCALC.preds[idx], 'hc' + o, sp), _isWideBook(_SPCALC.preds[idx]));
+      _frzHalfEv(_SPCALC.preds[idx], 'hc' + o, sp), _isWideBook(_SPCALC.preds[idx]),
+      _SPCALC.preds[idx]);
     evSpan.className = 'flex-1 text-xs';
     evSpan.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
     evSpan.style.fontWeight = pass ? '600' : '';
@@ -7130,7 +7154,8 @@ function _cupHcRecalc(idx) {
       // F3 — green only at ≥+5% (竞彩 rule), not ≥0;A′ — 且判的是**下界**
       const pass = evLo >= _TODAY_REC_GATE;
       evEl.innerHTML = _hcEvHtml(ev, evLo, evHi, P[o], (_CUPMKT.preds[idx] || {}).sharp_flip,
-        _frzHalfEv(_CUPMKT.preds[idx], 'hc' + o, sp), _isWideBook(_CUPMKT.preds[idx]));
+        _frzHalfEv(_CUPMKT.preds[idx], 'hc' + o, sp), _isWideBook(_CUPMKT.preds[idx]),
+        _CUPMKT.preds[idx]);
       evEl.className = 'cuphcev flex-1 text-xs font-medium';
       evEl.style.color = pass ? '#059669' : (ev < 0 ? '#e11d48' : '');
       evEl.style.fontWeight = pass ? '600' : '';
@@ -7247,6 +7272,8 @@ async function _cupManualReprice(idx) {
     pr.onex_lo_home = data.onex_lo_home; pr.onex_lo_draw = data.onex_lo_draw;
     pr.onex_lo_away = data.onex_lo_away;
     pr.handicap_lines = data.handicap_lines;
+    // 🚨 板换了,scope 必须跟着换。不同步 ⇒ 板已按「未校准」重算、徽章还显示上一次的 applied ⇒ **徽章朝最危险的方向撒谎**(看起来正常,实际 10 倍带)。同步之后,徽章本身就是「这次重算漏没漏传 league」的探测器。
+    pr.delta_scope = data.delta_scope;
     pr.psc_home = h; pr.psc_draw = d; pr.psc_away = a;
     pr.psc_over25 = (o && u) ? o : null; pr.psc_under25 = (o && u) ? u : null; pr.ou_line = line;
     pr._manual = true; pr.odds_update = null; pr._manualTs = Date.now();
@@ -7402,6 +7429,8 @@ async function _spcalcManualReprice(idx) {
     pr.onex_lo_draw = data.onex_lo_draw;
     pr.onex_lo_away = data.onex_lo_away;
     pr.handicap_lines = data.handicap_lines;
+    // 同上(见第一处):板与徽章必须来自同一次回包。
+    pr.delta_scope = data.delta_scope;
     pr.psc_home = h; pr.psc_draw = d; pr.psc_away = a;
     pr.psc_over25 = (o && u) ? o : null; pr.psc_under25 = (o && u) ? u : null; pr.ou_line = line;
     pr._manual = true; pr.odds_update = null; pr._manualTs = Date.now();
@@ -7508,9 +7537,15 @@ async function _cupManRefreshDerived(pairs, rerender, keepModelP) {
     try {
       const resp = await fetch(`${API}/recommend/market-reprice`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // 🚨 2026-08-17 —— `league` 是 δ 范围闸的判据,**这里是第 4 个调用点**。
+        // c7034c4 只修了 3 个(_cupManualReprice / _spcalcManualReprice / _pendPinApply),
+        // 漏了这个 ⇒ 前三个算对的板,**下一次页面加载就被这里覆盖回 10 倍带宽**,
+        // 而且 L7532 会把坏板写回 localStorage ⇒ 粘住。
+        // ⭐ 昨天的「计数断言」数的是**我修了几处**(匹配修复写法),不是**存在几处** ——
+        //    分母从来没被建立。护栏见 `test_delta_endpoint_callsites.py`(它钉总数)。
         body: JSON.stringify({ psc_home: m.h, psc_draw: m.d, psc_away: m.a,
           psc_over25: (m.o && m.u) ? m.o : null, psc_under25: (m.o && m.u) ? m.u : null,
-          ou_line: m.line || 2.5 }),
+          ou_line: m.line || 2.5, league: pr && pr.league }),
       });
       if (!resp.ok) return;
       const data = await resp.json();
@@ -7527,6 +7562,8 @@ async function _cupManRefreshDerived(pairs, rerender, keepModelP) {
         pr.onex_lo_away = data.onex_lo_away;
       }
       pr.handicap_lines = data.handicap_lines;
+      // 同上(见第一处):板与徽章必须来自同一次回包。
+      pr.delta_scope = data.delta_scope;
       // `lo` 存进 localStorage:下次刷新贴回时点估和下界能**同时**就位,
       // 不必等这次异步重算(那个窗口里卡是「新点估 + 旧下界」)。
       _cupManSave(pr, { ...m, P: [data.p_home_1x2, data.p_draw_1x2, data.p_away_1x2],
