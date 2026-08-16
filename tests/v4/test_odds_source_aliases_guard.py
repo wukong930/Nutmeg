@@ -35,9 +35,9 @@ def test_no_key_conflicts() -> None:
     dict 字面量天然不会有重复键 —— 但**后写的会静默覆盖先写的**,
     所以这条真正钉的是「条数没有因为重键而缩水」。
     """
-    assert len(A) == 201, (
-        f"表大小 {len(A)},预期 201(186 + 08-15 首个真实比赛日暴露的 15:"
-        f"英冠 10 + 土超 5)。"
+    assert len(A) == 202, (
+        f"表大小 {len(A)},预期 202(186 + 08-15 的 15 + 08-16 由护栏抓出的 1:"
+        f"英冠 Wrexham AFC)。"
         f"若你有意增删,改这个数并在下面 per-league 表同步。")
 
 
@@ -81,9 +81,9 @@ def test_per_league_counts() -> None:
         "NED_EREDIVISIE": 6, "PRT_PRIMEIRA_LIGA": 9, "FRA_LIGUE_2": 8,
         # ── 新 38 条(2026-08-14,**预埋**:这 8 个联赛 closing 侧当时 0 行) ──
         "EPL": 2, "ESP_LA_LIGA": 7, "ITA_SERIE_A": 1, "FRA_LIGUE_1": 4,
-        # ⚠️ 英冠 5→15:08-14 预埋时 closing 侧 0 行,首个比赛日才暴露 9 个名字
+        # ⚠️ 英冠 5→16:08-14 预埋时 closing 侧 0 行,首个比赛日才暴露 9 个名字
         #   (其中 8 个我只建了 EFL_CUP 键)。见 test_alias_gap_when_same_name...
-        "ENG_CHAMPIONSHIP": 15, "ESP_SEGUNDA_DIVISION": 15, "ITA_SERIE_B": 4,
+        "ENG_CHAMPIONSHIP": 16, "ESP_SEGUNDA_DIVISION": 15, "ITA_SERIE_B": 4,
         # ── 🩸 联赛杯 37 条(2026-08-14):**不是预埋,是止血** ──
         # closing 侧 70 个名字里 37 个叠不上;08-08 整轮双记。
         "EFL_CUP": 37,

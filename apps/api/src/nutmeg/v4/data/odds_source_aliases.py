@@ -219,6 +219,12 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('ENG_CHAMPIONSHIP', 'Sheffield United'): 'Sheffield Utd',
     ('ENG_CHAMPIONSHIP', 'West Bromwich Albion'): 'West Brom',
     ('ENG_CHAMPIONSHIP', 'West Ham United'): 'West Ham',   # 劈开键 + 指纹 1
+    # ⭐ 08-16 补:**由昨天新加的那条护栏抓出来的第一条**。
+    # `Wrexham AFC` 08-14 我同样只建了 EFL_CUP 键;08-17 的英冠场次
+    # (`Cardiff vs Wrexham AFC`)gather 侧跟上后,
+    # `test_alias_gap_when_same_name_plays_in_another_league` 当场红。
+    # ⇒ 护栏按设计工作:**数据一变得可判它就响**,不用等我去数。
+    ('ENG_CHAMPIONSHIP', 'Wrexham AFC'): 'Wrexham',
     # ⚠️ 本条指纹 = 0(closing 逐次调价、gather 只有少数快照,三元组对不上),
     #    靠的是**劈开键本身**(对手 `Blackburn` 两侧精确相同)+ 一条独立的开球时刻锚:
     #    竞彩北京 08-15 03:00 = UTC 08-14T19:00,AF ±90min 内含 `Blackburn` 的恰好 1 场
