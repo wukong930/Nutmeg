@@ -139,7 +139,11 @@ def load_lines(db_path: str | Path) -> dict:
         ou = float(r["ou_line"] or 2.5)
         try:
             raw = MH.implied_handicap_lines(*fair, po, ou_line=ou, lines=(ln,), c1=False)
-            cor = MH.implied_handicap_lines(*fair, po, ou_line=ou, lines=(ln,), c1=True)
+            # 🚨 δ 范围闸:**本处最容易漏** —— 它 c1=True,但它是**监控 δ 的东西**。
+            #    不传 league ⇒ 每一行都被当成覆盖外 ⇒ cor == raw ⇒ 残差恒等于
+            #    裸网格 ⇒ **监控静默失去监控对象**,而报表照常出数。
+            cor = MH.implied_handicap_lines(*fair, po, ou_line=ou, lines=(ln,),
+                                            c1=True, league=r["league"])
         except Exception:  # noqa: BLE001 — 网格拟合失败(深线常见)→ 丢该行
             continue
         if not raw or not cor:

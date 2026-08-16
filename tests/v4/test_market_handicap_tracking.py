@@ -19,6 +19,10 @@ from nutmeg.v4.observation.store import init_db, open_db, upsert_outcome
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+#: δ 实测覆盖内的联赛(见 market_handicap._DELTA_CALIBRATED_LEAGUES)。
+#: 需要「有腿过闸」当前置条件的用例用它;⛔ 别把 `_payload` 的默认联赛改掉。
+_IN_SCOPE = "EPL"
+
 
 @pytest.fixture
 def client():
@@ -168,6 +172,12 @@ class TestMarketHandicapEndpoint:
         # 前是 +1.03%,重估后是 **−13.8%**。那个 +EV 从来不是真的:它正是 C1 要杀的
         # 「−1 线让胜虚高」(DC 高估爆盘尾 +4.6pp)。所以这里不是「测试挂了去迁就」,
         # 是 fixture 当初把**错的校准**固化了下来。别把 +EV 腿搬回让胜。
+        # 🚨 2026-08-16 δ 上了**联赛范围闸**:`JPN_J1` 在覆盖**外** ⇒ 不施加点估 δ、
+        #    下界改吃 `_UNCAL_SE` 地板(2×0.078 = 0.156 的扣减,是覆盖内的 **10 倍**)
+        #    ⇒ 这个夹具在日职下**一条腿都过不了闸**(让平要 SP≥16.17 才行)。
+        #    ⇒ 需要「有腿过闸」当前置条件的用例显式传 `league=_IN_SCOPE`。
+        #    ⛔ **不是**把默认联赛改掉 —— 默认留 JPN_J1,
+        #       `test_out_of_scope_league_has_no_passing_leg` 正是靠它钉住新事实。
         p = {
             "league": "JPN_J1", "date": "2026-05-30",
             "home_team": "Vissel Kobe", "away_team": "Kashima",
@@ -187,7 +197,7 @@ class TestMarketHandicapEndpoint:
         δ 若再动而这条先红,说明 fixture 又跟校准脱节了:重挑 SP,别删断言。
         """
         b = client.post("/api/v4/recommend/market-handicap",
-                        json=self._payload()).json()
+                        json=self._payload(league=_IN_SCOPE)).json()
         assert [e > 0 for e in b["ev_per_unit"]].count(True) == 1
         assert b["best_outcome"] == "D"          # 让平 —— 不是让胜(那个是 C1 修掉的假象)
 
@@ -219,7 +229,8 @@ class TestMarketHandicapEndpoint:
         init_db(db)
         monkeypatch.setenv("NUTMEG_V4_OBSERVATION_DB", str(db))
         r = client.post("/api/v4/recommend/market-handicap",
-                        json=self._payload(record_session=True, odds_source="manual"))
+                        json=self._payload(record_session=True, odds_source="manual",
+                                           league=_IN_SCOPE))
         assert r.status_code == 200, r.text
         assert r.json()["recorded"] is True
         with sqlite3.connect(db) as conn:
@@ -234,7 +245,7 @@ class TestMarketHandicapEndpoint:
         init_db(db)
         monkeypatch.setenv("NUTMEG_V4_OBSERVATION_DB", str(db))
         r = client.post("/api/v4/recommend/market-handicap",
-                        json=self._payload(record_session=True))
+                        json=self._payload(record_session=True, league=_IN_SCOPE))
         assert r.status_code == 200, r.text
         with sqlite3.connect(db) as conn:
             got = conn.execute(
@@ -246,7 +257,7 @@ class TestMarketHandicapEndpoint:
         init_db(db)
         monkeypatch.setenv("NUTMEG_V4_OBSERVATION_DB", str(db))
         r = client.post("/api/v4/recommend/market-handicap",
-                        json=self._payload(record_session=True))
+                        json=self._payload(record_session=True, league=_IN_SCOPE))
         assert r.status_code == 200, r.text
         b = r.json()
         assert b["recorded"] is True
@@ -260,7 +271,7 @@ class TestMarketHandicapEndpoint:
     def test_no_record_when_gate_off(self, client, tmp_path, monkeypatch):
         monkeypatch.delenv("NUTMEG_V4_OBSERVATION_DB", raising=False)
         r = client.post("/api/v4/recommend/market-handicap",
-                        json=self._payload(record_session=True))
+                        json=self._payload(record_session=True, league=_IN_SCOPE))
         assert r.status_code == 200, r.text
         assert r.json()["recorded"] is False
 
@@ -350,3 +361,38 @@ class TestMarketRepriceEndpoint:
         with sqlite3.connect(db) as conn:
             n = conn.execute("SELECT COUNT(*) FROM recommendation_sessions").fetchone()[0]
         assert n == 0
+
+
+class TestDeltaScopeAtTheEndpoint:
+    """🚨 δ 范围闸在**端点层**的行为(2026-08-16)。
+
+    上面那些用例把 `league` 显式设成覆盖内(`_IN_SCOPE`)才走得到记录路径 ——
+    本类钉的正是**为什么必须显式设**:同一份 payload 在覆盖外拿不到任何过闸腿。
+
+    ⭐ 两条一起才有意义:只有「覆盖外不过闸」会被「什么都不过闸」冒充;
+       只有「覆盖内过闸」证明不了闸真的按联赛分。
+    """
+
+    def test_out_of_scope_league_has_no_passing_leg(self, client) -> None:
+        """日职(覆盖外)⇒ 点估不施加 δ、下界吃 `_UNCAL_SE` 地板 ⇒ 一条都不过。
+
+        地板 2×0.078 = **0.156** 的扣减,是覆盖内(2×0.0078)的 **10 倍**。
+        实测该夹具让平要 SP ≥ **16.17** 才过闸 —— 现实中不存在。
+        ⇒ 这条红 = 闸对日职失效了(δ 又被施加到没测过的人口上)。
+        """
+        b = client.post("/api/v4/recommend/market-handicap",
+                        json=TestMarketHandicapEndpoint._payload(
+                            self, league="JPN_J1")).json()
+        assert not [e for e in b["ev_per_unit"] if e is not None and e >= 0.05], (
+            f"日职在 δ 覆盖**外**,不该有腿过闸:{b['ev_per_unit']}")
+
+    def test_in_scope_league_does_have_a_passing_leg(self, client) -> None:
+        """反向对照 —— 英超(覆盖内)同一份 payload **必须**有腿过闸。
+
+        没有这条,上一条可能只是「这个夹具本来就没有 +EV 腿」。
+        """
+        b = client.post("/api/v4/recommend/market-handicap",
+                        json=TestMarketHandicapEndpoint._payload(
+                            self, league=_IN_SCOPE)).json()
+        assert [e for e in b["ev_per_unit"] if e is not None and e >= 0.05], (
+            f"英超在 δ 覆盖**内**,应有腿过闸:{b['ev_per_unit']}")

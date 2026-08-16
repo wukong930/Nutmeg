@@ -24,7 +24,7 @@ _FAIR = (0.62, 0.22, 0.16)
 
 
 def _line(n: int, *, c1: bool):
-    out = implied_handicap_lines(*_FAIR, None, lines=(n,), c1=c1)
+    out = implied_handicap_lines(*_FAIR, None, lines=(n,), c1=c1, league="EPL")
     assert out, f"线 {n} 没拟合出来"
     return out[0][1:]          # (让胜, 让平, 让负)
 
@@ -57,7 +57,7 @@ def test_plus2_gets_no_point_correction():
 def test_minus2_bounds_use_per_leg_se():
     """−2 三腿都被碰过 ⇒ 三条下界都必须严格低于点估,且各用自己的 SE。"""
     ph, pd_, pa = _line(-2, c1=True)
-    lo = c1_leg_lower_bounds(-2, ph, pd_, pa)
+    lo = c1_leg_lower_bounds(-2, ph, pd_, pa, league="EPL")
     assert lo[0] < ph and lo[1] < pd_ and lo[2] < pa
     # SE 不同 ⇒ 三条腿被扣掉的量必须互不相等(同一个 d 会是实现退化)
     drops = (ph - lo[0], pd_ - lo[1], pa - lo[2])
@@ -72,7 +72,7 @@ def test_uncalibrated_lines_still_get_a_widened_bound(line):
     ② 判闸 evLo>=minEv 直接拿点估过 ⇒ 越不可信越容易变绿。符号反了。
     """
     ph, pd_, pa = 0.45, 0.28, 0.27
-    lo = c1_leg_lower_bounds(line, ph, pd_, pa)
+    lo = c1_leg_lower_bounds(line, ph, pd_, pa, league="EPL")
     assert lo[0] < ph and lo[1] < pd_ and lo[2] < pa, (
         f"线 {line} 的下界等于点估 —— 「没测过校准」被当成「没有不确定性」")
 
@@ -80,20 +80,20 @@ def test_uncalibrated_lines_still_get_a_widened_bound(line):
 def test_uncalibrated_band_is_wider_than_calibrated():
     """地板必须比 ±1 的 δ 带**宽** —— 不确定性该随「知道得越少」而增大。"""
     p = (0.45, 0.28, 0.27)
-    drop_m1 = p[0] - c1_leg_lower_bounds(-1, *p)[0]
-    drop_unc = p[0] - c1_leg_lower_bounds(3, *p)[0]
+    drop_m1 = p[0] - c1_leg_lower_bounds(-1, *p, league="EPL")[0]
+    drop_unc = p[0] - c1_leg_lower_bounds(3, *p, league="EPL")[0]
     assert drop_unc > drop_m1, "未校准线的带反而比已校准的窄 = 那个反转又回来了"
 
 
 def test_zero_line_is_untouched():
     """0 线没有让球切分偏差可言 —— 下界 = 点估,不该被地板误伤。"""
     p = (0.45, 0.28, 0.27)
-    assert c1_leg_lower_bounds(0, *p) == pytest.approx(p, abs=1e-12)
+    assert c1_leg_lower_bounds(0, *p, league="EPL") == pytest.approx(p, abs=1e-12)
 
 
 def test_bounds_never_go_negative():
     """深线上点估可能小于 δ/地板 —— 截到 0,不许出负概率。"""
-    lo = c1_leg_lower_bounds(-2, 0.01, 0.01, 0.01)
+    lo = c1_leg_lower_bounds(-2, 0.01, 0.01, 0.01, league="EPL")
     assert all(x >= 0.0 for x in lo)
 
 

@@ -292,10 +292,101 @@ _C2_SE_H, _C2_SE_A, _C2_SE_D = 0.025, 0.027, 0.023
 _UNCAL_SE = 0.078
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 🚨 δ 的**联赛适用范围闸**(2026-08-16 上线;方案
+#    `docs/delta_league_scope_gate_plan_2026-08-14.md`,两次回滚后的第三次)
+#
+# 本文件顶部注释从一开始就写着「范围:football-data 覆盖的欧洲联赛;
+# 日职/杯赛/北欧/韩职 **0 覆盖**」—— 但 `grep -n league` 在本文件曾**零命中**:
+# **警告写在注释里,闸没写在代码里。**
+#
+# 预定动作(不是新提案):锚迁移桥接检验判定落在「① 不过」——
+# Pinnacle 与 Betfair 两锚在让胜腿系统性不同(+0.4070pp / t=17.0;
+# −2 线达 ±0.010 等价界的 **178%**)⇒ §2.4 逐字写着
+# 「⛔ 不换锚,且现行 δ 值的适用性存疑 ⇒ **覆盖外一律不施加点估 δ**」。
+# 配套事实(2026-08-13 审计):当日可投注人口只有 **102/2,352 = 4.3%** 在覆盖内,
+# 而**过闸的 8 条腿 0/8 在覆盖内** —— 全系统最大的单常数杠杆,
+# 正被全额施加在一个它从未被测量过的人口上。
+#
+# ⚠️ 白名单**跑尺子自己的加载器取的,不是猜的**(6,095 场合格样本的联赛分布):
+#     英超 1171 / 意甲 1041 / 西甲 1009 / 法甲 646 / 德甲 602
+#     英冠 523 / 荷甲 412 / 葡超 378 / 法乙 284 / 德乙 29
+# 🚨 是 **10 个不是 9 个** —— 我和记忆文件一直写「9 个欧洲联赛」,错的。
+# 🚨 **文件数 ≠ 联赛数**:football-data 有 13 个文件带 Pinnacle 收盘(25,941 行),
+#    但 B1/N1/SP2 三个**从未 join 上竞彩让球** ⇒ 校准人口只有这 10 个。
+# ⚠️ 德乙只有 29 场也进白名单:δ 是**池化**估计(同源性 z=1.40,拒绝不了同源)
+#    ⇒ 白名单 = δ 的实测人口,**不另发明「每联赛最小样本量」**(那是事后加判据)。
+_DELTA_CALIBRATED_LEAGUES = frozenset({
+    "EPL", "ITA_SERIE_A", "ESP_LA_LIGA", "FRA_LIGUE_1", "GER_BUNDESLIGA",
+    "ENG_CHAMPIONSHIP", "NED_EREDIVISIE", "PRT_PRIMEIRA_LIGA",
+    "FRA_LIGUE_2", "GER_2_BUNDESLIGA",
+})
+
+#: 三态计数器 —— 方案 A(`league=None` ⇒ 按未校准处理)的**唯一可观测性**。
+#: `suppressed_none` 不为 0 = **有调用点漏传 league**。
+#: ⛔ 别把它删成 no-op:方案 A 的代价就是「漏传会静默关掉 δ」,
+#:    这个计数器是把「静默」变回可见的那个东西。
+_SCOPE_STATS: dict[str, int] = {
+    "applied": 0,             # 覆盖内,点估已施加
+    "suppressed_league": 0,   # 联赛在覆盖外 ⇒ 不施加(**预期形态**,不是异常)
+    "suppressed_none": 0,     # 没传 league ⇒ 不施加(**可能是漏传,要查**)
+}
+
+_CANON_SCOPE: frozenset[str] | None = None
+
+
+def _canon(league: str) -> str:
+    """联赛标签 → 正典形。⚠️ `canonical_league` 归一到**中文**(`EPL`→`英超`)。"""
+    from nutmeg.v4.data.league_labels import canonical_league
+
+    return canonical_league(league) or ""
+
+
+def _canonical_scope() -> frozenset[str]:
+    """白名单的**正典形**(缓存一次)。
+
+    🚨 2026-08-15 实测踩过:白名单写英文键,而 `canonical_league("EPL")` 返回
+    **`"英超"`** ⇒ 直接拿英文键比,**所有联赛都落在覆盖外**、δ 被全局静默关掉
+    (包括那 10 个校准过的)。**不报错、不红任何测试、面板照常出数。**
+    ⇒ **两侧都必须过归一**。
+    ⭐ 它唯一被抓住的原因是我把 `_delta_in_scope("EPL")` 的返回值**打出来看了一眼**
+       —— 只写「加了闸」就交付的话,它会静默生效成「到处都不施加」,
+       正好和闸的本意相反。
+    ⛔ 别改成「白名单直接写中文」:英文键是尺子加载器的输出形态,
+       写中文会让「白名单从哪来」这条线索断掉。
+    """
+    global _CANON_SCOPE
+    if _CANON_SCOPE is None:
+        _CANON_SCOPE = frozenset(
+            c for x in _DELTA_CALIBRATED_LEAGUES if (c := _canon(x)))
+    return _CANON_SCOPE
+
+
+def _delta_in_scope(league: str | None) -> bool:
+    """δ 点估是否适用于该联赛。**方案 A:传 None ⇒ 按未校准处理**(保守方向)。
+
+    ⚠️ 内部先过 `canonical_league`,所以中文(`英超`)或英文键都行 ——
+    但**传 None 不等于「全局」**,它等于「不知道 ⇒ 不施加」。
+    """
+    if league is None or league == "":
+        _SCOPE_STATS["suppressed_none"] += 1
+        return False
+    if _canon(league) in _canonical_scope():
+        _SCOPE_STATS["applied"] += 1
+        return True
+    _SCOPE_STATS["suppressed_league"] += 1
+    return False
+
+
 def c1_leg_lower_bounds(
     line: int, p_home: float, p_draw: float, p_away: float, *, k: float = _C1_SE_K,
+    league: str | None = None,
 ) -> tuple[float, float, float]:
     """给 **已应用 C1(点估)** 的三元组,返回每条腿在 δ 估计误差下的**自身下界**。
+
+    🚨 `league` 在**覆盖外**(或没传)时,非 0 线一律改吃 `_UNCAL_SE` 地板 ——
+    既然没施加点估 δ,就不能再用「在测过的联赛上 δ 有多准」的那批 SE:
+    那等于把**别人的精度**借给一个未知偏差。与 +2/±3 未校准线同一处理。
 
     保守方向是**逐腿**的 —— 每条腿取「让它自己的 P 更小」的那侧:
       −1 线:让胜 = 点估 − k·SE(δ 若更大 → 让胜更低);让平 = 点估 − k·SE(δ 若更小 → 让平更低)
@@ -306,6 +397,9 @@ def c1_leg_lower_bounds(
     绝不可用于展示/归一化/喂模型。展示请用点估(``implied_handicap_lines(c1=True)``)。
     """
     ln = int(line)
+    if ln != 0 and not _delta_in_scope(league):
+        d = k * _UNCAL_SE    # 覆盖外:点估没施加过 ⇒ 校准 SE 不适用,吃地板
+        return (max(p_home - d, 0.0), max(p_draw - d, 0.0), max(p_away - d, 0.0))
     if ln == -1:             # C1 碰了 让胜 + 让平;让负是锚(无 δ 误差,但**有** SE)
         d = k * _C1_DELTA_SE
         return (max(p_home - d, 0.0), max(p_draw - d, 0.0),
@@ -337,6 +431,7 @@ def implied_handicap_lines(
     rho: float = DEFAULT_RHO,
     max_goals: int = DEFAULT_MAX_GOALS,
     c1: bool = False,
+    league: str | None = None,
 ) -> list[tuple[int, float, float, float]]:
     """Fit the goal grid once, then return ``(line, P让胜, P让平, P让负)`` for
     each integer handicap line.
@@ -355,16 +450,21 @@ def implied_handicap_lines(
         ou_line=ou_line, rho=rho, max_goals=max_goals,
     )
     grid = score_grid(lh, la, rho=rho, max_goals=max_goals)
+    # 🚨 范围闸:`c1=True` **且**联赛在 δ 实测覆盖内才施加点估。
+    # ⚠️ `c1=False`(eval/measurement)**完全不受影响** —— 尺子不该被闸改口径。
+    # ⚠️ 方案 A:`league=None` ⇒ 按未校准处理(保守)。漏传会静默关掉 δ,
+    #    靠 `_SCOPE_STATS["suppressed_none"]` 让它可见。
+    _c1 = bool(c1) and _delta_in_scope(league)
     out: list[tuple[int, float, float, float]] = []
     for line in lines:
         ph, pd_, pa = grid_to_handicap_1x2(grid, handicap_home=int(line))
-        if c1 and int(line) == -1:            # 热门在主:让胜(DC 高估)→ 让平
+        if _c1 and int(line) == -1:            # 热门在主:让胜(DC 高估)→ 让平
             shift = min(_C1_DELTA, ph)         # 守恒 + 不越界(ph 罕见 <δ 时不为负)
             ph, pd_ = ph - shift, pd_ + shift
-        elif c1 and int(line) == 1:           # 热门在客:让负(DC 高估)→ 让平(镜像)
+        elif _c1 and int(line) == 1:           # 热门在客:让负(DC 高估)→ 让平(镜像)
             shift = min(_C1_DELTA_P1, pa)
             pa, pd_ = pa - shift, pd_ + shift
-        elif c1 and int(line) == -2:          # δ₋₂(prereg v1.8):让胜 → 让平 + 让负
+        elif _c1 and int(line) == -2:          # δ₋₂(prereg v1.8):让胜 → 让平 + 让负
             # 守恒:−0.064 + 0.021 + 0.043 = 0。让胜不够扣时按比例缩,保持和为 1
             # 且不越界(ph 罕见 < δ 的深线上,直接扣会出负概率)。
             shift = min(_C2_DELTA_H, ph)

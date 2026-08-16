@@ -861,7 +861,8 @@ def _market_reverse_handicap_probs(row: pd.Series, line: int) -> dict[str, float
         p_over = devig_over(row.get("psc_over25"), row.get("psc_under25"))
         ou_line = float(row.get("ou_line") or 2.5)
         for ln, ph, pd_, pa in implied_handicap_lines(
-            fair[0], fair[1], fair[2], p_over, ou_line=ou_line, c1=True
+            fair[0], fair[1], fair[2], p_over, ou_line=ou_line, c1=True,
+            league=row.get("league"),          # 🚨 δ 范围闸:必须传
         ):
             if ln == int(line):
                 return {"H": float(ph), "D": float(pd_), "A": float(pa)}
@@ -2059,10 +2060,12 @@ def _model_board_handicap_lines(f, model_grid, corr) -> list[HandicapLineProb]:
             )
             p_over = devig_over(getattr(f, "psc_over25", None), getattr(f, "psc_under25", None))
             ou_line = float(getattr(f, "ou_line", None) or 2.5)
+            _lg = getattr(f, "league", None)   # 🚨 δ 范围闸:必须传
             return [
-                _hc_line_prob(ln, ph, pd_, pa, c1_leg_lower_bounds)
+                _hc_line_prob(ln, ph, pd_, pa, c1_leg_lower_bounds, league=_lg)
                 for ln, ph, pd_, pa in implied_handicap_lines(
-                    fair[0], fair[1], fair[2], p_over, ou_line=ou_line, c1=True
+                    fair[0], fair[1], fair[2], p_over, ou_line=ou_line, c1=True,
+                    league=_lg,
                 )
             ]
         except Exception:  # noqa: BLE001
@@ -2454,14 +2457,17 @@ _CUP_MARKET_COMPETITIONS = [
 ]
 
 
-def _hc_line_prob(line, ph, pd_, pa, bounds_fn) -> HandicapLineProb:
+def _hc_line_prob(line, ph, pd_, pa, bounds_fn, *, league=None) -> HandicapLineProb:
     """A′(2026-07-17)— 把点估 + δ 的逐腿下界一起打包给前端。
 
     点估用于**显示 EV**;下界用于**判闸**(绿灯/候选)。两者同源同一次拟合,
     所以面板上「+7.3% [−1.1%, +15.7%] · 下界未过闸」三者自洽 —— 这正是
     B 方案做不到的(它会让绿灯和禁令打架)。
     """
-    lo_h, lo_d, lo_a = bounds_fn(int(line), float(ph), float(pd_), float(pa))
+    # 🚨 δ 范围闸:`league` 必须一路透传到下界函数 —— 否则覆盖内的联赛会被
+    #    当成未校准、吃 `_UNCAL_SE` 地板(判闸过严,方向相反的错)。
+    lo_h, lo_d, lo_a = bounds_fn(
+        int(line), float(ph), float(pd_), float(pa), league=league)
     return HandicapLineProb(
         line=int(line), p_home=float(ph), p_draw=float(pd_), p_away=float(pa),
         p_home_lo=lo_h, p_draw_lo=lo_d, p_away_lo=lo_a,
@@ -2482,11 +2488,12 @@ def _market_handicap_lines(fair, r: dict) -> list[HandicapLineProb]:
         )
         p_over = devig_over(r.get("psc_over25"), r.get("psc_under25"))
         ou_line = float(r.get("ou_line") or 2.5)
+        _lg = r.get("league")                 # 🚨 δ 范围闸:必须传
         return [
-            _hc_line_prob(line, ph, pd_, pa, c1_leg_lower_bounds)
+            _hc_line_prob(line, ph, pd_, pa, c1_leg_lower_bounds, league=_lg)
             for line, ph, pd_, pa in implied_handicap_lines(
                 float(fair[0]), float(fair[1]), float(fair[2]), p_over,
-                ou_line=ou_line, c1=True,
+                ou_line=ou_line, c1=True, league=_lg,
             )
         ]
     except Exception:  # noqa: BLE001
@@ -2819,7 +2826,8 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
     )
     p_over = devig_over(req.psc_over25, req.psc_under25)
     lines = implied_handicap_lines(
-        fair[0], fair[1], fair[2], p_over, ou_line=req.ou_line, c1=True
+        fair[0], fair[1], fair[2], p_over, ou_line=req.ou_line, c1=True,
+        league=getattr(req, "league", None),   # 🚨 δ 范围闸:必须传
     )
     row = next((ln for ln in lines if ln[0] == req.handicap_home), None)
     if row is None:
@@ -2837,7 +2845,8 @@ def recommend_market_handicap(req: MarketHandicapRequest) -> MarketHandicapRespo
     #
     # ⚠️ 下界**不是概率分布**(三腿和 < 1),按 `c1_leg_lower_bounds` 的契约只许判闸,
     #    不许展示/归一化/喂模型 —— 所以 `p_handicap` 落库和回包仍送点估三元组。
-    lo_h, lo_d, lo_a = c1_leg_lower_bounds(req.handicap_home, p_h, p_d, p_a)
+    lo_h, lo_d, lo_a = c1_leg_lower_bounds(
+        req.handicap_home, p_h, p_d, p_a, league=getattr(req, "league", None))
     PLO = {"H": lo_h, "D": lo_d, "A": lo_a}
     odds = {"H": req.odds_handicap_H, "D": req.odds_handicap_D, "A": req.odds_handicap_A}
     ev = {

@@ -1,5 +1,13 @@
 """C1 让球修正 — implied_handicap_lines(c1=True) + A′ δ 下界的不变量。
 
+🚨 2026-08-16:δ 上了**联赛范围闸**,本文件全部判闸调用显式传 `league=_IN`。
+
+在此之前这些不变量隐含「δ 处处适用」,而实测**不适用** ——
+桥接检验判定「两锚系统性不同」⇒ 覆盖外一律不施加点估 δ。
+⇒ 不传 league ⇒ 按未校准处理(方案 A),这些不变量在覆盖外**本来就不该成立**。
+覆盖**外**的对照见文末 `TestDeltaScopeGate`。
+⚠️ `c1=False`(eval/measurement)的调用**一律不传** —— 尺子不该被闸改口径。
+
 C1 在 ±1 线把 δ 从「强队打穿腿」(DC 高估)守恒地挪给让平(DC 低估),第三腿不动;
 其它线与默认(c1=False, eval 路径)完全不变。
 
@@ -30,6 +38,9 @@ from nutmeg.v4.model.market_handicap import (
     implied_handicap_lines,
 )
 
+_IN = "EPL"      # δ 实测覆盖内(见 market_handicap._DELTA_CALIBRATED_LEAGUES)
+_OUT = "JPN_J1"  # 覆盖外 —— 日职从未进过 δ 的校准人口
+
 
 def _by_line(rows):
     return {ln: (ph, pd, pa) for ln, ph, pd, pa in rows}
@@ -38,7 +49,7 @@ def _by_line(rows):
 def test_c1_shifts_line_minus1_conserving():
     args = (0.55, 0.25, 0.20)                      # 主热;−1 线让胜 ≈0.32 > δ(不 clamp)
     raw = _by_line(implied_handicap_lines(*args))
-    c1 = _by_line(implied_handicap_lines(*args, c1=True))
+    c1 = _by_line(implied_handicap_lines(*args, c1=True, league=_IN))
     r, c = raw[-1], c1[-1]
     assert c[0] == pytest.approx(r[0] - _C1_DELTA)   # 让胜 −δ
     assert c[1] == pytest.approx(r[1] + _C1_DELTA)   # 让平 +δ
@@ -49,7 +60,7 @@ def test_c1_shifts_line_minus1_conserving():
 def test_c1_shifts_line_plus1_mirror_conserving():
     args = (0.20, 0.25, 0.55)                      # 客热;+1 线让负 ≈0.32 > δ(不 clamp)
     raw = _by_line(implied_handicap_lines(*args))
-    c1 = _by_line(implied_handicap_lines(*args, c1=True))
+    c1 = _by_line(implied_handicap_lines(*args, c1=True, league=_IN))
     r, c = raw[1], c1[1]
     assert c[2] == pytest.approx(r[2] - _C1_DELTA_P1)   # 让负 −δ(热门在客,DC 高估)
     assert c[1] == pytest.approx(r[1] + _C1_DELTA_P1)   # 让平 +δ
@@ -66,7 +77,7 @@ def test_c1_leaves_other_lines_and_default_untouched():
     """
     args = (0.55, 0.25, 0.20)
     raw = _by_line(implied_handicap_lines(*args))
-    c1 = _by_line(implied_handicap_lines(*args, c1=True))
+    c1 = _by_line(implied_handicap_lines(*args, c1=True, league=_IN))
     calibrated = (-1, 1, -2)
     for ln in raw:
         if ln not in calibrated:
@@ -81,7 +92,7 @@ def test_c1_clamps_when_home_cover_below_delta():
     # 主队巨冷(−1 线让胜 ≈0 < δ)→ shift=min(δ, ph):让胜不为负、仍守恒
     args = (0.05, 0.20, 0.75)
     raw = _by_line(implied_handicap_lines(*args))
-    c1 = _by_line(implied_handicap_lines(*args, c1=True))
+    c1 = _by_line(implied_handicap_lines(*args, c1=True, league=_IN))
     assert c1[-1][0] >= 0.0
     assert sum(c1[-1]) == pytest.approx(sum(raw[-1]))
 
@@ -150,7 +161,7 @@ def test_lower_bounds_shift_only_the_two_corrected_legs():
     数值那半必须是外部算好的常数。
     """
     # 0.30 − 2.0×0.0078 = 0.2844;0.22 − 2.0×0.0078 = 0.2044(手算,不引常数)
-    lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48)
+    lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48, league=_IN)
     assert lo[0] == pytest.approx(0.2844, abs=1e-9)   # 让胜(被 C1 减过)→ 再减 k·SE
     assert lo[1] == pytest.approx(0.2044, abs=1e-9)   # 让平(被 C1 加过)→ δ 若更小则更低
     # ⭐ 2026-08-08 改:第三腿(−1 让负)原来断言 `== 0.48`,即**下界 == 点估**。
@@ -161,7 +172,7 @@ def test_lower_bounds_shift_only_the_two_corrected_legs():
     # 0.48 − 2.0×0.0077 = 0.4646(手算,不引常数)
     assert lo[2] == pytest.approx(0.4646, abs=1e-9)   # 让负:无 δ 修正,但有自己的 SE
     # 0.22 − 2.0×0.0101 = 0.1998;0.28 − 2.0×0.0101 = 0.2598;0.50 − 2.0×0.0103 = 0.4794
-    lo1 = c1_leg_lower_bounds(+1, 0.50, 0.22, 0.28)
+    lo1 = c1_leg_lower_bounds(+1, 0.50, 0.22, 0.28, league=_IN)
     assert lo1[0] == pytest.approx(0.4794, abs=1e-9)  # +1 让胜:同上,吃自己的 SE
     assert lo1[1] == pytest.approx(0.1998, abs=1e-9)
     assert lo1[2] == pytest.approx(0.2598, abs=1e-9)
@@ -184,10 +195,10 @@ def test_no_gateable_handicap_leg_gets_a_free_pass():
     # 三张不同形状的卡:免得某一张的触底钳位偶然遮住失败
     for fair in ((0.4180, 0.2914, 0.2906), (0.6200, 0.2200, 0.1600),
                  (0.2500, 0.2600, 0.4900)):
-        for ln, ph, pd_, pa in implied_handicap_lines(*fair, 0.52, c1=True):
+        for ln, ph, pd_, pa in implied_handicap_lines(*fair, 0.52, c1=True, league=_IN):
             if ln not in offered:
                 continue
-            legs = c1_leg_lower_bounds(ln, ph, pd_, pa)
+            legs = c1_leg_lower_bounds(ln, ph, pd_, pa, league=_IN)
             for cn, pt, bound in zip(("让胜", "让平", "让负"), (ph, pd_, pa), legs,
                                      strict=True):
                 if bound == 0.0:
@@ -245,7 +256,7 @@ def test_the_band_is_actually_wide_enough_to_matter():
     EV 从 +5.0% 掉到 −0.5% ⇒ **足以翻转 +5% 闸**。带若缩到 0.1×,
     差只剩 0.08pp,EV 差 0.3pp,闸基本不动 —— 那才是审查发现的实质放松。
     """
-    lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48)
+    lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48, league=_IN)
     gap = 0.30 - lo[0]
     assert gap > 0.010, f"让胜下界只比点估低 {gap:.4f} —— A′ 保守带塌了"
     sp = 3.50
@@ -264,9 +275,9 @@ def test_lower_bounds_identity_only_on_the_zero_line():
     现在:0 线(无让球切分偏差可言)才是恒等;±1/−2 用各自实测 SE;其余未校准线
     吃地板 SE(借 +2 实测 ±7.82pp),下界一律严格低于点估。
     """
-    assert c1_leg_lower_bounds(0, 0.4, 0.3, 0.3) == pytest.approx((0.4, 0.3, 0.3))
+    assert c1_leg_lower_bounds(0, 0.4, 0.3, 0.3, league=_IN) == pytest.approx((0.4, 0.3, 0.3))
     for ln in (-3, -2, 2, 3):
-        lo = c1_leg_lower_bounds(ln, 0.4, 0.3, 0.3)
+        lo = c1_leg_lower_bounds(ln, 0.4, 0.3, 0.3, league=_IN)
         assert all(x < y for x, y in zip(lo, (0.4, 0.3, 0.3), strict=True)), (
             f"线 {ln} 的下界又等于点估了 —— 那个反转回来了")
 
@@ -276,7 +287,7 @@ def test_lower_bounds_are_not_a_distribution():
 
     谁把它当分布归一化/喂模型,这条测试就是现场的说明书。
     """
-    lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48)
+    lo = c1_leg_lower_bounds(-1, 0.30, 0.22, 0.48, league=_IN)
     assert sum(lo) < 1.0
     # ⭐ 2026-08-08 改:原式是 `1.0 - 2*k*_C1_DELTA_SE`,把「**只有两条腿**被收缩」
     # 这个**结构**焊进了一个本来只想说「和 < 1」的测试。第三腿拿到自己的 SE 之后
@@ -288,15 +299,103 @@ def test_lower_bounds_are_not_a_distribution():
 
 
 def test_lower_bounds_never_negative():
-    lo = c1_leg_lower_bounds(-1, 0.001, 0.002, 0.997)   # δ 的 2SE 大于该腿本身
+    lo = c1_leg_lower_bounds(-1, 0.001, 0.002, 0.997, league=_IN)   # δ 的 2SE 大于该腿本身
     assert all(v >= 0.0 for v in lo)
 
 
 def test_lower_bound_gate_is_stricter_than_point():
     """A′ 的钱学:同一注,按下界判闸只会更严 —— 这是「δ 恰好准」不再是隐含前提的保证。"""
-    pt = implied_handicap_lines(0.55, 0.25, 0.20, c1=True)
+    pt = implied_handicap_lines(0.55, 0.25, 0.20, c1=True, league=_IN)
     line, ph, pd_, pa = next(r for r in pt if r[0] == -1)
-    lo = c1_leg_lower_bounds(line, ph, pd_, pa)
+    lo = c1_leg_lower_bounds(line, ph, pd_, pa, league=_IN)
     sp = 4.2
     assert lo[1] * sp - 1 < pd_ * sp - 1, "让平:下界 EV 必须 < 点估 EV"
     assert lo[0] * sp - 1 < ph * sp - 1, "让胜:同理"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# δ 联赛范围闸(2026-08-16 上线)—— 上面全部不变量都显式传 `league=_IN`,
+# 本节是它们的**覆盖外对照**。没有这一节,上面那些只证明「覆盖内还工作」,
+# 证明不了「覆盖外真的关掉了」。
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDeltaScopeGate:
+    """δ 点估只在**实测覆盖内**施加;覆盖外 = 裸网格 + 未校准地板 SE。"""
+
+    _FAIR = (0.55, 0.25, 0.20)
+
+    def _m1(self, **kw):
+        return implied_handicap_lines(*self._FAIR, 0.52, lines=(-1,), **kw)[0]
+
+    def test_delta_applies_inside_and_not_outside(self) -> None:
+        """⭐ 承重条:同一组输入,覆盖内让胜被扣 δ、覆盖外分毫不动。"""
+        inside = self._m1(c1=True, league=_IN)
+        outside = self._m1(c1=True, league=_OUT)
+        raw = self._m1(c1=False)
+        assert inside[1] < outside[1], f"覆盖内没扣 δ:{inside} vs {outside}"
+        assert outside == pytest.approx(raw, abs=1e-12), (
+            f"覆盖外不该动:{outside} vs 裸 {raw}")
+
+    def test_missing_league_is_treated_as_uncalibrated(self) -> None:
+        """🚨 方案 A:**没传 league ⇒ 按未校准处理**(保守方向)。
+
+        代价是「哪个调用点漏传,δ 就静默关掉」——
+        对策是 `_SCOPE_STATS["suppressed_none"]` 让它可观测,见下一条。
+        """
+        assert self._m1(c1=True) == pytest.approx(self._m1(c1=False), abs=1e-12)
+
+    def test_the_ruler_is_never_gated(self) -> None:
+        """⚠️ `c1=False`(eval/measurement)**完全不受闸影响** —— 尺子不该被闸改口径。
+
+        覆盖内/外/不传,三者在 `c1=False` 下必须逐字相同。
+        """
+        a = self._m1(c1=False, league=_IN)
+        b = self._m1(c1=False, league=_OUT)
+        c = self._m1(c1=False)
+        # ⚠️ 别写成链式 `a == approx(b) == approx(c)` —— Python 会拆成
+        #    `(a==approx(b)) and (approx(b)==approx(c))`,后半是 approx 比 approx。
+        assert a == pytest.approx(b, abs=1e-12)
+        assert a == pytest.approx(c, abs=1e-12)
+
+    def test_chinese_and_english_league_labels_both_resolve(self) -> None:
+        """🚨 白名单写英文键,而 `canonical_league("EPL")` 返回 **"英超"**。
+
+        2026-08-15 第一次实现时两侧没都过归一 ⇒ **所有联赛都落在覆盖外**、
+        δ 被全局静默关掉(包括那 10 个校准过的)。不报错、不红任何测试。
+        这条红 = `_canon` 双侧归一又断了。
+        """
+        assert self._m1(c1=True, league="EPL") == pytest.approx(
+            self._m1(c1=True, league="英超"), abs=1e-12)
+        assert self._m1(c1=True, league="英超")[1] < self._m1(c1=False)[1]
+
+    def test_out_of_scope_bounds_fall_back_to_the_uncalibrated_floor(self) -> None:
+        """覆盖外的**下界**改吃 `_UNCAL_SE` 地板,不借用校准 SE。
+
+        既然没施加点估 δ,就不能再用「在测过的联赛上 δ 有多准」的那批 SE ——
+        那等于把**别人的精度**借给一个未知偏差。地板更宽 ⇒ 判闸更严(保守)。
+        """
+        p = (0.30, 0.22, 0.48)
+        drop_in = p[0] - c1_leg_lower_bounds(-1, *p, league=_IN)[0]
+        drop_out = p[0] - c1_leg_lower_bounds(-1, *p, league=_OUT)[0]
+        assert drop_out > drop_in, f"覆盖外的带没变宽:{drop_out} vs {drop_in}"
+
+    def test_zero_line_is_never_gated(self) -> None:
+        """0 线无让球偏差可言 ⇒ 闸对它是 no-op,覆盖内外都返回点估。"""
+        p = (0.4, 0.3, 0.3)
+        assert c1_leg_lower_bounds(0, *p, league=_OUT) == pytest.approx(p, abs=1e-12)
+        assert c1_leg_lower_bounds(0, *p, league=_IN) == pytest.approx(p, abs=1e-12)
+
+    def test_scope_stats_make_a_missing_league_observable(self) -> None:
+        """⛔ 三态计数器是方案 A 的**唯一**可观测性,别把它删成 no-op。
+
+        `suppressed_none` 不为 0 = 有调用点漏传 league。
+        """
+        from nutmeg.v4.model.market_handicap import _SCOPE_STATS
+
+        before = dict(_SCOPE_STATS)
+        self._m1(c1=True, league=_IN)
+        self._m1(c1=True, league=_OUT)
+        self._m1(c1=True)
+        assert _SCOPE_STATS["applied"] > before["applied"]
+        assert _SCOPE_STATS["suppressed_league"] > before["suppressed_league"]
+        assert _SCOPE_STATS["suppressed_none"] > before["suppressed_none"]
