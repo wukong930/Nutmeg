@@ -897,6 +897,13 @@ class MarketRepriceRequest(BaseModel):
     psc_over25: float | None = None
     psc_under25: float | None = None
     ou_line: float = Field(2.5, gt=0.0)
+    # 🚨 2026-08-16 —— δ 联赛范围闸**必需**。缺了它 `_market_handicap_lines` 里
+    # `r.get("league")` 得 None ⇒ 按未校准处理 ⇒ ±1/−2 线改吃 `_UNCAL_SE` 地板
+    # (2×0.078 = 0.156,是覆盖内的 **10 倍**)⇒ 手填卡的让球 ± 带宽 10 倍、
+    # 点估也少扣了 δ。**不报错、不红测试**,只是数字悄悄变了。
+    # ⚠️ 可选(None)是**故意**的:老前端/老脚本不传时仍按方案 A 保守处理
+    #    (不施加点估 δ + 宽带),而不是 422 掉整张卡。
+    league: str | None = None
 
 
 class MarketRepriceResponse(BaseModel):

@@ -626,7 +626,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v153-fe-1x2-gate-lower-bound"
+_FE_VERSION = "nutmeg-v154-fe-reprice-league"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2780,6 +2780,10 @@ def recommend_market_reprice(req: MarketRepriceRequest) -> MarketRepriceResponse
         "psc_over25": req.psc_over25,
         "psc_under25": req.psc_under25,
         "ou_line": req.ou_line,
+        # 🚨 δ 范围闸:`_market_handicap_lines` 读 `r["league"]`。
+        # 这个 dict 是**就地字面量**,不是 DB 行 —— 少一个键不会有任何东西喊,
+        # 而后果是手填卡的让球带宽 10 倍(2026-08-16 线上实测,截图复现)。
+        "league": req.league,
     }
     lines = _market_handicap_lines(fair, r)
     overround = (1.0 / req.psc_home + 1.0 / req.psc_draw + 1.0 / req.psc_away) - 1.0

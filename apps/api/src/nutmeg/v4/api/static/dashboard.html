@@ -7217,8 +7217,15 @@ async function _cupManualReprice(idx) {
   try {
     const resp = await fetch(`${API}/recommend/market-reprice`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
+      // 🚨 `league` 必传 —— δ 联赛范围闸靠它判「这个联赛的 δ 测过没有」。
+      //    漏了 ⇒ 后端 `r.get("league")` 得 None ⇒ 按未校准处理 ⇒ ±1/−2 线
+      //    改吃 `_UNCAL_SE` 地板(2×0.078,是覆盖内的 **10 倍**)
+      //    ⇒ 让球 ± 带宽 10 倍 + 点估少扣 δ,而且**不报错、不红任何测试**。
+      //    2026-08-16 线上实测:西甲手填卡 ±80.9% / ±59.1% / ±24.8%,
+      //    正确值是 ±7.8% / ±5.7% / ±2.4%。
       body: JSON.stringify({ psc_home: h, psc_draw: d, psc_away: a,
-        psc_over25: (o && u) ? o : null, psc_under25: (o && u) ? u : null, ou_line: line }),
+        psc_over25: (o && u) ? o : null, psc_under25: (o && u) ? u : null,
+        ou_line: line, league: pr && pr.league }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 100)}`);
     const data = await resp.json();
@@ -7357,7 +7364,8 @@ async function _spcalcManualReprice(idx) {
     const resp = await fetch(`${API}/recommend/market-reprice`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ psc_home: h, psc_draw: d, psc_away: a,
-        psc_over25: (o && u) ? o : null, psc_under25: (o && u) ? u : null, ou_line: line }),
+        psc_over25: (o && u) ? o : null, psc_under25: (o && u) ? u : null,
+        ou_line: line, league: pr && pr.league }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 100)}`);
     const data = await resp.json();
@@ -7909,7 +7917,8 @@ async function _pendPinApply(i) {
     const resp = await fetch(`${API}/recommend/market-reprice`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ psc_home: h, psc_draw: d, psc_away: a,
-        psc_over25: (o && u) ? o : null, psc_under25: (o && u) ? u : null, ou_line: line }),
+        psc_over25: (o && u) ? o : null, psc_under25: (o && u) ? u : null,
+        ou_line: line, league: pf && pf.league }),   // PendingFixture schema 有 league、无 league_cn
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 100)}`);
     const data = await resp.json();

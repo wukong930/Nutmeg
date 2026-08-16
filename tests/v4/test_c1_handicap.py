@@ -399,3 +399,100 @@ class TestDeltaScopeGate:
         assert _SCOPE_STATS["applied"] > before["applied"]
         assert _SCOPE_STATS["suppressed_league"] > before["suppressed_league"]
         assert _SCOPE_STATS["suppressed_none"] > before["suppressed_none"]
+
+
+class TestNoServingPathDropsLeague:
+    """🚨 **方案 A 的代价:哪个调用点漏传 league,δ 就静默关掉。**
+
+    2026-08-16 线上实测到这个 bug:手填重定价端点(`/recommend/market-reprice`)
+    构造的 `r` 字面量只有三个键,**没有 `league`** ⇒ `r.get("league")` 得 None
+    ⇒ 按未校准处理 ⇒ 让球 ±1/−2 线改吃 `_UNCAL_SE` 地板。
+    owner 截图上的西甲手填卡:**±80.9% / ±59.1% / ±24.8%**,
+    正确值是 **±7.8% / ±5.7% / ±2.4%** —— 整整 10 倍;
+    而且**点估也错**(让胜 0.1975 vs 正确的 0.1512,少扣了 δ 该扣的 4.6pp)。
+
+    ⚠️ **它不报错、不红任何测试** —— 上线当天全套 3,200+ 测试全绿。
+
+    ## 我当时的"验证"为什么没抓住
+
+    重启后我查了 `_SCOPE_STATS["suppressed_none"] == 0` 并报「无调用点漏传」。
+    但那是在**新进程里重放 `_market_handicap_lines`**,`r` 用的是 `sp-calc`
+    端点返回的行(**带** league)。
+    ⇒ 我测的是**同一个函数被另一个调用者调用**的情形。
+       **六个调用点只验了一个,却报了「全部」** —— [[first-match-is-not-the-population]]。
+
+    ## 所以本类驱动**端点**,不是函数
+
+    每个能出让球线的服务端点各打一次,断言全程 `suppressed_none` **不增长**。
+    ⭐ 判据是**计数器增量**而不是「有没有 δ」—— 后者会被「这条线本来就不吃 δ」冒充。
+    """
+
+    @staticmethod
+    def _client():
+        import os
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from nutmeg.v4.api import v4_router
+        os.environ.setdefault("NUTMEG_V4_ARTIFACT_PATH", "data/v4_model_cat_lineups")
+        app = FastAPI()
+        app.include_router(v4_router, prefix="/api")
+        return TestClient(app)
+
+    _BODY = {"psc_home": 2.34, "psc_draw": 3.03, "psc_away": 3.64,
+             "psc_over25": 2.04, "psc_under25": 1.85, "ou_line": 2.25}
+
+    def test_market_reprice_passes_league_through(self) -> None:
+        """手填重定价 —— **就是 2026-08-16 漏掉的那条**。"""
+        from nutmeg.v4.model.market_handicap import _SCOPE_STATS
+
+        c = self._client()
+        before = _SCOPE_STATS["suppressed_none"]
+        r = c.post("/api/v4/recommend/market-reprice",
+                   json={**self._BODY, "league": _IN})
+        assert r.status_code == 200, r.text
+        assert _SCOPE_STATS["suppressed_none"] == before, (
+            "传了 league 却仍有调用记为 suppressed_none ⇒ "
+            "端点内部有一处没把它透传下去(2026-08-16 就是这个形态)")
+
+    def test_market_reprice_actually_applies_delta_when_in_scope(self) -> None:
+        """⭐ 行为对照:同一份盘口,覆盖内 vs 覆盖外,**点估和带宽都必须不同**。
+
+        只断言「计数器没涨」会被「端点根本没算让球线」冒充,所以要这条。
+        """
+        c = self._client()
+
+        def m1(**extra):
+            r = c.post("/api/v4/recommend/market-reprice", json={**self._BODY, **extra})
+            assert r.status_code == 200, r.text
+            x = next(v for v in r.json()["handicap_lines"] if v["line"] == -1)
+            return x["p_home"], x["p_home"] - x["p_home_lo"]
+
+        p_in, band_in = m1(league=_IN)
+        p_out, band_out = m1(league=_OUT)
+        p_none, band_none = m1()
+        assert p_in < p_out, f"覆盖内没扣 δ:{p_in} vs {p_out}"
+        assert band_out > band_in * 5, (
+            f"覆盖外的带没变宽:{band_out:.4f} vs {band_in:.4f} —— "
+            f"`_UNCAL_SE` 地板是校准 SE 的 10 倍,差距应该很显眼")
+        # 方案 A:不传 == 覆盖外
+        assert (p_none, band_none) == pytest.approx((p_out, band_out), abs=1e-12)
+
+    def test_market_handicap_endpoint_passes_league_through(self) -> None:
+        """另一条出让球线的端点 —— 一起钉,别再只验一个。"""
+        from nutmeg.v4.model.market_handicap import _SCOPE_STATS
+
+        c = self._client()
+        before = _SCOPE_STATS["suppressed_none"]
+        r = c.post("/api/v4/recommend/market-handicap", json={
+            "league": _IN, "date": "2026-08-17",
+            "home_team": "A", "away_team": "B",
+            "psc_home": 2.34, "psc_draw": 3.03, "psc_away": 3.64,
+            "psc_over25": 2.04, "psc_under25": 1.85, "ou_line": 2.25,
+            "handicap_home": -1,
+            "odds_handicap_H": 5.0, "odds_handicap_D": 3.65, "odds_handicap_A": 1.53,
+        })
+        assert r.status_code == 200, r.text
+        assert _SCOPE_STATS["suppressed_none"] == before, (
+            "market-handicap 端点有一处没透传 league")
