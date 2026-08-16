@@ -116,6 +116,7 @@ const _sweetBoardScheduleRefresh = () => {{}};
 
 {_const('_PMKT_DIVERGE_PP')}
 {_fn('_mktP')}
+{_fn('_onexLoP')}
 {_fn('_modelPStale')}
 
 const _SPCALC = {{ preds: [{json.dumps(pr)}], minEv: {min_ev}, bankroll: 10000, kelly: 0.5 }};
@@ -144,6 +145,15 @@ def _pred(*, pm, pk, **kw) -> dict:
          "jc_home": None, "jc_draw": None, "jc_away": None}
     if pk is not None:
         d.update(p_home_market=pk[0], p_draw_market=pk[1], p_away_market=pk[2])
+        # 🚨 2026-08-16:判闸从**点估**改成 δ₁ₓ₂ **下界**(三处口径统一)。
+        # 夹具必须带上生产真下发的 `onex_lo_*`,否则 `_onexLoP` 返回 null
+        # ⇒ 闸永不开 ⇒ 本类的「反向对照」会假红。
+        # ⭐ 默认 lo == pk(下界=点估)是**有意**的:本类要守的性质是
+        #   「判闸跟**市场**不跟**模型**」,与「点估 vs 下界」是两件正交的事。
+        #   把 lo 设成 pk 就把后者从等式里消掉,让这几条只测前者。
+        #   点估/下界那条轴由 `test_gate_p_source_behavioral.py` 专门守。
+        lo = kw.pop("lo", pk)
+        d.update(onex_lo_home=lo[0], onex_lo_draw=lo[1], onex_lo_away=lo[2])
     d.update(kw)
     return d
 
@@ -180,6 +190,25 @@ class TestGateFollowsTheMarket:
         """
         out = _run(_pred(pm=(0.30, 0.30, 0.40), pk=(0.50, 0.25, 0.25)), {"H": 2.40})
         assert "CNY500.00" in (out["verdict"] or ""), out["verdict"]   # .50×1000,不是 .30
+
+    def test_stake_follows_the_lower_bound_not_the_point_estimate(self):
+        """🚨 2026-08-16 补 —— **注额与判闸同源**,而判闸现在走下界。
+
+        上一条用 `lo == pk` 的夹具,分不出注额取的是哪一个;空包弹实测:
+        把 `_spcalcStake(LoP[o], …)` 改回 `Mkt[o]` **一条测试都没红**。
+        ⇒ 必须让 lo ≠ 点估才测得出来。
+
+        点估 .50 / 下界 .46,SP=2.40:
+            闸: .46×2.40−1 = +10.4% ⇒ 过
+            注额: .46×1000 = **CNY460**(不是点估的 CNY500)
+        ⭐ 让球卡(`:6498`)一直是 `PB.lo[o]`;1X2 卡此前是点估 ——
+           「用点估的仓位 + 下界的闸」两边都不自洽,而且方向是**下多了**。
+        """
+        out = _run(_pred(pm=(0.30, 0.30, 0.40), pk=(0.50, 0.25, 0.25),
+                         lo=(0.46, 0.25, 0.25)), {"H": 2.40})
+        assert out["passed"] is True, out["verdict"]
+        assert "CNY460.00" in (out["verdict"] or ""), (
+            f"注额没走下界(应 .46×1000=CNY460):{out['verdict']}")
 
 
 class TestNoMarketLineMeansNoGate:

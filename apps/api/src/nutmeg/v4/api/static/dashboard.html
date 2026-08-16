@@ -4336,6 +4336,46 @@ function _mktP(pr) {
   return ok ? m : null;
 }
 
+/** 🚨 1X2 判闸的**唯一** P 源:δ₁ₓ₂ 逐腿下界。null = 判不了 ⇒ 不判闸。
+ *
+ * ## 2026-08-16:三处口径统一到这里
+ *
+ * 在此之前判闸有**三个**不同口径,而它们本该是同一件事:
+ *   · 甜区榜  `_boardLegs`     → `onex_lo_*`(**下界**)          ✅
+ *   · 卡片·标准 `_spcalcRecalc` → `p_*_market`(**点估**)         ❌ 更宽松
+ *   · 卡片·市场 `_cupRecalc`    → `p_*_1x2`(**点估**)            ❌ 更宽松
+ * ⇒ 同一条腿在榜上不绿、点进卡片却绿。实测差(2026-08-16 在售 28 场 × 3 腿):
+ *   **中位 3.49pp、最大 11.42pp** —— 而 +5% 闸的分辨率就在这个量级。
+ *
+ * ⭐ 改的时机是**今天 0 条腿会变**(39 条可判腿两口径下都不过闸)。
+ *   零行为变化时统一口径,而不是等某天它真的放行一条不该放的腿。
+ *
+ * ## 服务端保证:`onex_lo_*` 与市场 P **同源同一次去vig**
+ *
+ * `routes.py` 三处(2143 标准 / 2616 市场 / 2784 手填)都是
+ * `_onex_lo(fair)` 紧跟着同一个 `_pinnacle_devig_1x2` ⇒ 不可能漂开。
+ * ⚠️ 标准模式里 `p_*_1x2` 是**模型 P**、`p_*_market` 才是市场 P;
+ *    市场模式里 `p_*_market` 是 **null**、点估在 `p_*_1x2`。
+ *    但两种模式的 `onex_lo_*` **都是市场 P 的下界** —— 这正是能统一的原因。
+ *    ⛔ 别拿 `p_*_1x2` 当判闸源:标准模式下那是模型 P,会把已经移出判闸的
+ *       模型从后门放回来。[[model-leg-equals-market-leg]]
+ *
+ * ## 钳位:下界永远不许大于点估
+ *
+ * 数学上 lo = p − k·SE 天然成立,所以同源时是 no-op。它挡的是「两个数来自
+ * 两条不同的 Pinnacle 线」那种错配(手填把 P 调低超过 k·SE ⇒ 旧下界反超新点估
+ * ⇒ 下界变上界、判闸反而**变松**)。同 `market_handicap.py` 那条
+ * 「越不可信越容易变绿」的形状。⚠️ 它是**兜底**不是修法。
+ */
+function _onexLoP(pr, pointP) {
+  const lo = { H: pr && pr.onex_lo_home, D: pr && pr.onex_lo_draw, A: pr && pr.onex_lo_away };
+  const ok = ['H', 'D', 'A'].every((k) => typeof lo[k] === 'number' && lo[k] > 0 && lo[k] < 1);
+  if (!ok) return null;
+  if (!pointP) return lo;
+  return { H: Math.min(lo.H, pointP.H), D: Math.min(lo.D, pointP.D),
+           A: Math.min(lo.A, pointP.A) };
+}
+
 /** 模型 P 是不是「基于比当前盘口更旧的赔率」。
  *
  * 手填过(`_manual`)就一定是 —— 手填只重算让球和市场 P,模型 P 原地不动。
@@ -6304,7 +6344,14 @@ function _spcalcRecalc(idx) {
     const evMkt = Mkt ? Mkt[o] * sp - 1.0 : null;
     // ⛔ 没有 Pinnacle 线 ⇒ **不判闸**,而不是回退到模型 EV。回退等于把刚移出
     //    判闸的东西从后门放回来,而且是静默的。宁可这条腿永远不变绿。
-    const evGate = evMkt;
+    // 🚨 2026-08-16 —— **判闸改走下界**,显示仍是点估(与甜区榜同口径)。
+    // 之前这里是 `evGate = evMkt`(点估)⇒ 同一条腿在榜上不绿、点进卡片却绿。
+    // 显示/判闸分离是**故意的**:点估比下界好看,所以它必须带着 ± 带一起出现,
+    // 而绿灯只认下界。见 `_onexLoP` 的长注释。
+    const LoP = _onexLoP(pr, Mkt);
+    const evGate = LoP ? LoP[o] * sp - 1.0 : null;
+    // ⛔ 没有下界 ⇒ **不判闸**,而不是回退到点估。回退等于把刚移出判闸的东西
+    //    从后门放回来,而且是静默的。宁可这条腿永远不变绿。
     const pass = evGate !== null && evGate >= minEv;
     const jcImplied = (100 / sp).toFixed(0);
     const dPP = Mkt ? (P[o] - Mkt[o]) * 100 : null;
@@ -6327,7 +6374,10 @@ function _spcalcRecalc(idx) {
     if (pass && (!best || evGate > best.ev)) {
       // 注额也按**判闸用的**那个 P 下 Kelly —— 用模型 P 下注、用市场 P 判闸
       // 会得到一个两边都不自洽的仓位。
-      best = { o, ev: evGate, sp, stake: _spcalcStake(Mkt[o], sp, bankroll, kelly) };
+      // 🚨 2026-08-16 —— 注额也走下界,与判闸**同源**。
+      // 让球卡(:6498)早就是 `_spcalcStake(PB.lo[o], ...)`;1X2 卡这里一直是点估,
+      // 于是「用点估的仓位 + 下界的闸」—— 两边都不自洽,而且方向是**下多了**。
+      best = { o, ev: evGate, sp, stake: _spcalcStake(LoP[o], sp, bankroll, kelly) };
     }
   });
   const verdict = $(`#spcalc-verdict-${idx}`);
@@ -7016,7 +7066,13 @@ function _cupRecalc(idx) {
     const sp = el ? parseFloat(el.value) : NaN;
     if (sp && sp > 1.0) {
       const ev = P[o] * sp - 1;
-      const pass = ev >= _TODAY_REC_GATE;   // F3 — green only at ≥+5% (竞彩 rule), not ≥0
+      // 🚨 2026-08-16 —— 判闸改走下界(第三处口径统一)。
+      // ⚠️ 市场模式下 `p_*_market` 是 null、点估在 `P`(= `p_*_1x2` = 市场 P),
+      //    但 `onex_lo_*` **仍是市场 P 的下界** ⇒ 可以和另两处走同一个源。
+      const LoP = _onexLoP(pr, P);
+      const evGate = LoP ? LoP[o] * sp - 1 : null;
+      // ⛔ 无下界 ⇒ 不判闸(同卡片·标准),不回退到点估。
+      const pass = evGate !== null && evGate >= _TODAY_REC_GATE;
       evEl.innerHTML = 'EV ' + (ev >= 0 ? '+' : '') + (ev * 100).toFixed(1) + '%'
         + _frzBandHtml(pr, o, sp) + ' '
         + _evRelTag(P[o], pr && pr.sharp_flip, _frzHalfEv(pr, o, sp) / 2,

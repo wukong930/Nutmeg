@@ -55,6 +55,21 @@ def _fn(name: str) -> str:
     raise AssertionError(name)
 
 
+def _consts(*names: str) -> str:
+    """把生产源码里那几行 `const _X = <字面量>;` **原文**取过来。
+
+    ⛔ 不在测试里照抄一个数 —— 那样测试和生产各拿一个门槛,
+       门槛改了测试照样绿(2026-08-07 那次 `_TODAY_REC_GATE` 就是这么处理的)。
+    """
+    js = DASH.read_text(encoding="utf-8")
+    out = []
+    for n in names:
+        m = re.search(rf"^const {re.escape(n)} = [0-9.]+;", js, re.M)
+        assert m, f"找不到常数 {n} —— 它被改名或删了,本 harness 失效"
+        out.append(m.group(0))
+    return "\n".join(out)
+
+
 def _node(src: str) -> dict:
     r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[:2500]
@@ -237,3 +252,165 @@ console.log(JSON.stringify(_out));
         out = self._gate(fn, pr)
         assert "spcalc_pick" in json.dumps(out, ensure_ascii=False), \
             f"{fn} 下界 +20% 的腿没过闸 —— 闸被焊死了?{json.dumps(out, ensure_ascii=False)[:400]}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1X2 判闸的第三次收口(2026-08-16)—— 上面那两条盯的是**让球**面,
+# 这一节盯 **1X2** 面。改之前它有**三个**互不相同的口径:
+#     甜区榜  `_boardLegs`     → `onex_lo_*`(下界)      ✅
+#     卡片·标准 `_spcalcRecalc` → `p_*_market`(点估)     ❌ 更宽松
+#     卡片·市场 `_cupRecalc`    → `p_*_1x2`(点估)        ❌ 更宽松
+# 实测差(2026-08-16 在售 28 场 × 3 腿):**中位 3.49pp、最大 11.42pp**,
+# 而 +5% 闸的分辨率就在这个量级 ⇒ 同一条腿榜上不绿、点进卡片却绿。
+#
+# ⭐ 统一的时机是**今天 0 条腿会变**(39 条可判腿两口径下都不过闸):
+#    零行为变化时改口径,而不是等某天它真的放行一条不该放的腿。
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestOnexLoPIsTheSingleGateSource:
+    """`_onexLoP` 是三处 1X2 判闸的**唯一** P 源。抠真函数用 node 跑。"""
+
+    def _call(self, pr: dict, point=None) -> dict:
+        src = _fn("_onexLoP") + f"""
+const pr = {json.dumps(pr)};
+const point = {json.dumps(point)};
+console.log(JSON.stringify({{ out: _onexLoP(pr, point) }}));
+"""
+        return _node(src)["out"]
+
+    def test_returns_the_lower_bound_not_any_point_estimate(self) -> None:
+        """基本形:三腿下界原样返回(不传点估时不钳位)。"""
+        out = self._call({"onex_lo_home": 0.30, "onex_lo_draw": 0.25, "onex_lo_away": 0.40})
+        assert out == {"H": 0.30, "D": 0.25, "A": 0.40}
+
+    def test_clamps_a_lower_bound_that_exceeds_the_point_estimate(self) -> None:
+        """🚨 承重条:下界**永远不许大于点估**。
+
+        手填把 P 调低超过 k·SE ⇒ 旧下界反超新点估 ⇒ **下界变上界、判闸反而变松**。
+        这条红 = 钳位没了,而它的失效方向是「越不可信越容易变绿」。
+        """
+        out = self._call(
+            {"onex_lo_home": 0.55, "onex_lo_draw": 0.25, "onex_lo_away": 0.40},
+            {"H": 0.30, "D": 0.25, "A": 0.40})   # 点估 H 比下界低
+        assert out["H"] == 0.30, f"下界 0.55 没被钳到点估 0.30:{out}"
+        assert out["D"] == 0.25 and out["A"] == 0.40, out
+
+    def test_missing_lower_bound_returns_null_so_the_gate_cannot_fire(self) -> None:
+        """⛔ 缺下界 ⇒ **null ⇒ 不判闸**,而不是回退到点估。
+
+        回退等于把刚移出判闸的东西从后门放回来,而且是静默的
+        —— 这正是 `d2b3950` 那次「改完全系统口径统一」外推失败的形状。
+        """
+        assert self._call({"onex_lo_home": 0.30, "onex_lo_draw": 0.25}) is None
+        assert self._call({}) is None
+        # 🚨 空包弹补的:**同时传点估**时也必须 null。
+        #    2026-08-16 变异 `if (!ok) return pointP || null;` 一开始**没被抓住**,
+        #    因为原用例都没传点估 ⇒ `pointP || null` 恰好也是 null。
+        #    ⇒ 「缺下界」的用例必须把最诱人的回退目标摆在桌上。
+        assert self._call({"onex_lo_home": 0.30}, {"H": 0.9, "D": 0.9, "A": 0.9}) is None
+        assert self._call({}, {"H": 0.9, "D": 0.9, "A": 0.9}) is None
+        assert self._call({"onex_lo_home": 0, "onex_lo_draw": 0.25,
+                           "onex_lo_away": 0.40}) is None      # 0 不是合法 P
+        assert self._call({"onex_lo_home": 1.0, "onex_lo_draw": 0.25,
+                           "onex_lo_away": 0.40}) is None      # 1.0 也不是
+
+    def test_market_mode_shape_still_works(self) -> None:
+        """市场模式:`p_*_market` 为 null、点估在 `p_*_1x2`,但下界照样在。
+
+        ⚠️ 这是三处能统一的**原因** —— 两种模式的 `onex_lo_*` 都是
+        **市场 P** 的下界(服务端 `routes.py` 三处都是 `_onex_lo(fair)`
+        紧跟同一次 `_pinnacle_devig_1x2`)。
+        """
+        out = self._call(
+            {"p_home_market": None, "p_draw_market": None, "p_away_market": None,
+             "onex_lo_home": 0.5479, "onex_lo_draw": 0.25, "onex_lo_away": 0.20},
+            {"H": 0.5595, "D": 0.25, "A": 0.20})   # 点估来自 p_*_1x2
+        assert out["H"] == 0.5479, out
+
+
+class TestOneX2CardGatesReadTheLowerBound:
+    """🚨 **判闸点**本身,不只是 helper。
+
+    2026-08-16 空包弹发现:只测 `_onexLoP` 抓不到「把判闸行改回点估」——
+    而那正是 2026-08-06 线上**真发生过**的变异(当时 3,182 个测试一个没红)。
+    ⇒ 这一节真跑 `_spcalcRecalc` / `_cupRecalc`,断言它们写进 DOM 的绿灯。
+
+    夹具刻意造成「点估过闸、下界不过」:
+        点估 0.60 × SP 2.00 − 1 = **+20%** ⇒ 若判闸用点估就会变绿
+        下界 0.45 × SP 2.00 − 1 = **−10%** ⇒ 正确行为是不绿
+    """
+
+    _PR_1X2 = {
+        "p_home_1x2": 0.60, "p_draw_1x2": 0.25, "p_away_1x2": 0.15,
+        "p_home_market": 0.60, "p_draw_market": 0.25, "p_away_market": 0.15,
+        "onex_lo_home": 0.45, "onex_lo_draw": 0.20, "onex_lo_away": 0.10,
+        "jc_home": 2.00, "jc_draw": 2.00, "jc_away": 2.00,
+    }
+
+    def _run(self, fn: str, pr: dict) -> dict:
+        # ⚠️ 不按函数名分支选择器 —— harness 的 querySelector 是**通配**的
+        #    (按 class 名后缀 'sp' 判输入框),两个面共用同一套。
+        return _node(f"""
+const _out = {{ green: [] }};
+const _mk = (id) => ({{ _id: id, textContent: '', innerHTML: '', className: '',
+  value: '', style: {{ color: '', fontWeight: '' }}, removeAttribute() {{}},
+  setAttribute() {{}} }});
+const _els = {{}};
+const _PRED = {json.dumps(pr)};
+const _KEY = {{ H: 'home', D: 'draw', A: 'away' }};
+const _get = (id) => _els[String(id)] || (_els[String(id)] = _mk(String(id)));
+const $ = (s) => _get(String(s).replace('#', ''));
+const document = {{
+  getElementById: _get,
+  querySelector: (sel) => {{
+    const s = String(sel);
+    const m = s.match(/^\.([\w-]+)\[data-idx="(\d+)"\]\[data-outcome="([HDA])"\]$/);
+    // ⛔ 认不出的选择器直接炸,绝不 return null —— 生产代码对 null 的反应是
+    //    `if (!inp) return;`,判闸一行没跑而测试全绿(假绿)。
+    if (!m) throw new Error('harness 不认识的选择器: ' + s);
+    const cls = m[1], o = m[3], key = cls + '-' + m[2] + '-' + o;
+    const el = _els[key] || (_els[key] = _mk(key));
+    if (cls.endsWith('sp')) el.value = String(_PRED['jc_' + _KEY[o]]);
+    return el;
+  }},
+}};
+const t = (k) => k, outcomeLabel = (o) => o, fmtMoney = (x) => 'CNY' + Number(x).toFixed(2);
+// 纯显示桩(读过源码:返回值不回流到 evGate / pass / 注额)
+const _frzBandHtml = () => '', _frzHalfEv = () => 0, _evRelTag = () => '';
+const _isWideBook = () => false, _modelPStale = () => false;
+const _jcStaleCapture = () => '', _sweetBoardScheduleRefresh = () => {{}};
+const _parlayRender = undefined, _spcalcSaveManual = () => {{}};
+{_consts('_TODAY_REC_GATE', '_PMKT_DIVERGE_PP')}
+{_fn('_mktP')}
+{_fn('_onexLoP')}
+{_fn('_spcalcStake')}
+const _CUPMKT = {{ preds: [_PRED], minEv: 0.05, bankroll: 10000, kelly: 0.25 }};
+const _SPCALC = _CUPMKT;
+{_fn(fn)}
+{fn}(0);
+Object.keys(_els).forEach((k) => {{
+  const e = _els[k];
+  if (e.style && e.style.color === '#059669') _out.green.push(k);
+}});
+console.log(JSON.stringify(_out));
+""")
+
+    @pytest.mark.parametrize("fn", ["_spcalcRecalc", "_cupRecalc"])
+    def test_gate_does_not_fire_when_only_the_point_estimate_clears(self, fn) -> None:
+        """⭐ 承重条:点估 +20% / 下界 −10% ⇒ **不许变绿**。
+
+        这条红 = 有人把判闸行换回了点估(`evMkt` 或 `P[o]`)。
+        """
+        out = self._run(fn, self._PR_1X2)
+        assert not out["green"], (
+            f"{fn} 让下界 −10% 的腿变绿了 ⇒ 判闸疑似改回点估。绿的格:{out['green']}")
+
+    @pytest.mark.parametrize("fn", ["_spcalcRecalc", "_cupRecalc"])
+    def test_gate_still_fires_when_the_lower_bound_clears(self, fn) -> None:
+        """反向对照 —— 别把闸焊死。下界 0.60 × 2.00 − 1 = +20% ⇒ **应该**绿。
+
+        没有这条,上一条可能只是「什么都不过闸」。
+        """
+        pr = {**self._PR_1X2, "onex_lo_home": 0.60}
+        out = self._run(fn, pr)
+        assert out["green"], f"{fn} 下界 +20% 的腿没变绿 —— 闸被焊死了?{out}"
