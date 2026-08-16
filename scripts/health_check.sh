@@ -514,6 +514,117 @@ else
 fi
 
 
+# ===== 19. 涓流进度 + 结算积压(2026-08-16 — 两条差点误报的教训) =====
+# 本节存在的理由是**两次差点报错的故障**,它们的共同点:
+# **一个「落后」的读数,在没量过它自己的进度之前,分不出「坏了」和「还没走到」。**
+#
+# ① 涓流(jingcai_history_trickle)看起来**死了**:
+#      归档 close_date 停在 15 天前 · 近 14 个比赛日全缺 · 每天只新增 1–3 行
+#    实际:游标在 2025-05-25,每小时推 7 天(BEGIN=2021-08-01 → END=今天−2),
+#      离终点 446 天 ⇒ **约 64 小时(2.7 天)扫到今天**。它在正常工作。
+#    ⭐ 规矩(同 [[measure-cadence-before-changing-a-guard]]):
+#       ①红得对吗 ②**还要红多久** ③才谈重设计 —— 这里连①都不成立。
+#    ⇒ 所以本节**不看归档新鲜度**,看**游标 + ETA**。
+#
+# ② 结算积压 3 行,我先报「共同点是 fixture_id = None」——
+#    而 `league_predictions` **根本没有 fixture_id 这一列**。
+#    `d.get('fixture_id')` 缺键返回 `None`,和「值是 None」**长得一模一样**。
+#    ⭐ 同族:[[curl-404-masquerades-as-empty-result]]。
+#    ⇒ 本节下面那段 Python **先断言列存在**,再谈值。
+#    真实原因是三个不同的:改期孤儿 / 比赛推迟(AF status=NS) / AF 根本没这场。
+#    ⇒ 积压**必须分因**,不然「结算器坏了」会被三种无害情况冒充。
+section "19. 涓流进度 + 结算积压(分因)"
+if [[ -f data/v4_jingcai_history.db ]]; then
+  TRICKLE_OUT=$(.venv/bin/python - <<'PYEOF' 2>/dev/null || true
+import datetime as dt, pathlib, sqlite3
+
+ROOT = pathlib.Path(".")
+cur = ROOT / "data/jingcai_history_cursor.txt"
+BEGIN, LAG, WINDOW, EVERY_H = dt.date(2021, 8, 1), 2, 7, 1   # 与 trickle 脚本同源
+
+if not cur.exists():
+    print("WARN|涓流游标文件不存在 ⇒ 它没跑过,或路径变了")
+else:
+    try:
+        d = dt.date.fromisoformat(cur.read_text().strip()[:10])
+    except Exception as e:                     # noqa: BLE001
+        print(f"WARN|游标解析失败:{e}")
+    else:
+        end = dt.date.today() - dt.timedelta(days=LAG)
+        left = (end - d).days
+        if left <= 0:
+            print(f"OK|涓流已扫到终点({d})—— 归档跟上今天")
+        else:
+            hours = left / WINDOW * EVERY_H
+            print(f"OK|涓流游标 {d} · 离终点 {left} 天 ⇒ 约 {hours:.0f}h "
+                  f"({hours/24:.1f} 天)扫到今天")
+            # ⛔ 这里**故意不报**「归档落后 N 天」—— 那是游标的函数,不是故障。
+            #    只有当 ETA 本身异常(远超一轮 sweep)才值得喊。
+            if hours > 24 * 20:
+                print(f"WARN|ETA {hours/24:.0f} 天 > 一轮 sweep 的量级 ⇒ 查游标有没有卡住")
+
+obs = ROOT / "data/v4_observation.db"
+if obs.exists():
+    c = sqlite3.connect(f"file:{obs}?mode=ro", uri=True)
+    cols = {r[1] for r in c.execute("PRAGMA table_info(league_predictions)")}
+    # 🚨 先断言列存在 —— 见本节 ② 的教训。少了这行,下面每个 `.get()`
+    #    都会安静地返回 None,而「列不存在」会被读成「值是 None」。
+    need = {"match_date", "settled_at", "home_goals", "league",
+            "home_team", "away_team", "kickoff_utc"}
+    missing = need - cols
+    if missing:
+        print(f"FAIL|league_predictions 缺列 {sorted(missing)} ⇒ "
+              f"本节的结论会全部失真,先修 schema 再看数")
+    else:
+        tot, done = c.execute(
+            "SELECT COUNT(*), SUM(CASE WHEN settled_at IS NOT NULL THEN 1 ELSE 0 END) "
+            "FROM league_predictions WHERE match_date >= date('now','-7 day') "
+            "AND match_date < date('now','-2 day')").fetchone()
+        done = done or 0
+        rate = (done / tot * 100) if tot else 100.0
+        sev = "OK" if rate >= 90 else ("WARN" if rate >= 75 else "FAIL")
+        print(f"{sev}|结算率(近 7 天已过赛) {done}/{tot} = {rate:.1f}%")
+
+        # ⭐ 分因:积压本身不是故障信号,**未分因的积压**才是。
+        stuck = c.execute(
+            "SELECT match_date, league, home_team, away_team FROM league_predictions "
+            "WHERE settled_at IS NULL AND match_date < date('now','-2 day')").fetchall()
+        if not stuck:
+            print("OK|无历史积压")
+        else:
+            reschedule = 0
+            for md, lg, h, a in stuck:
+                # 改期孤儿:同队同联赛在别的日子有**已结算**的行
+                n = c.execute(
+                    "SELECT COUNT(*) FROM league_predictions WHERE league=? AND home_team=? "
+                    "AND away_team=? AND match_date<>? AND settled_at IS NOT NULL",
+                    (lg, h, a, md)).fetchone()[0]
+                reschedule += bool(n)
+            other = len(stuck) - reschedule
+            print(f"OK|积压 {len(stuck)} 行:改期孤儿 {reschedule} · 其它 {other}")
+            if other:
+                # ⛔ 「其它」**不等于**结算器坏了 —— 实测另两类是「比赛推迟
+                #    (AF status=NS)」和「AF 缓存根本没这场」。两者结算器都无从下手。
+                print(f"WARN|{other} 行需人看:先查 AF 有没有该 fixture / status "
+                      f"是不是 NS(推迟),⛔ 别默认是结算器坏了")
+    c.close()
+PYEOF
+)
+  while IFS='|' read -r sev msg; do
+    [[ -z "$sev" ]] && continue
+    case "$sev" in
+      OK)   ok   "$msg" ;;
+      WARN) warn "$msg" ;;
+      FAIL) fail "$msg" ;;
+      *)    note "$msg" ;;
+    esac
+  done <<< "$TRICKLE_OUT"
+else
+  note "无竞彩档案库 — 跳过"
+fi
+
+
+
 # ===== Summary =====
 section "Summary"
 if [[ $EXIT_CODE -eq 0 ]]; then
