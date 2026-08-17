@@ -83,9 +83,9 @@ _CALLSITES: dict[tuple[str, str], str] = {
     ("market-handicap", "_todayRecRecord"):      "local",
     ("market-handicap", "_cupHcRecord"):         "inline",
     # 这两个共用 `_mrevBuildBody`(手动反推计算器)。
-    # ⚠️ 该构造器**故意**在「算一遍」时送 'MANUAL' 而在「记一笔」时送下拉值 ——
-    #    见 `test_mrev_builder_sends_a_sentinel_not_a_real_league`,那是**已知的
-    #    潜伏形状**,不是本护栏要修的东西。
+    # ⚠️ 它曾经在「算一遍」时送哨兵 'MANUAL'、只在「记一笔」时送下拉值 ——
+    #    2026-08-17 已修成两条路同源,不变式钉在
+    #    `test_mrev_calc_and_record_send_the_same_league`。
     ("market-handicap", "manualReverseCalc"):    "upstream:_mrevBuildBody",
     ("market-handicap", "manualReverseRecord"):  "upstream:_mrevBuildBody",
 }
@@ -385,45 +385,49 @@ def test_schema_league_optionality_is_pinned():
 # 5. 已知潜伏形状 —— 记下来,别假装它不存在
 # ────────────────────────────────────────────────────────────────────
 
-def test_mrev_builder_sends_a_sentinel_not_a_real_league():
-    """🚨 手动反推计算器:「算一遍」送 `'MANUAL'`,「记一笔」才送下拉值。
+def test_mrev_calc_and_record_send_the_same_league():
+    """🚨 手动反推:「算一遍」和「记一笔」必须用**同一个** league。
 
-        league: record ? leagueSel : 'MANUAL',
+    2026-08-17 之前是 `league: record ? leagueSel : 'MANUAL'`。
+    原注释的理由是「league 只在记一笔时用于自动结算 join」——
+    **那在 δ 上线之前是对的**。现在 `league` 多了第二个身份:**δ 范围闸的判据**。
+    ⇒ 屏幕上看到的数和按下记一笔入账的数来自两个不同的 league。
 
-    注释写的理由是「league 只在记一笔时用于自动结算 join」—— 那在 δ 上线**之前**
-    是对的。现在 `league` 多了一个身份:**判闸键**。⇒ 展示与落库用两个不同的 league。
+    当时数值差为 0(下拉 8 个 option 全在覆盖外),所以它是潜伏的。
+    实测潜伏的量级(同盘口,−1 让负腿 SP=2.45):
+        MANUAL      ⇒ EV **+3.57%**  不过闸,不下注
+        ESP_LA_LIGA ⇒ EV **+38.02%** 过闸,下注 ¥50
 
-    **今天数值差为 0**,因为 `mrev-league` 下拉的 8 个 option 无一在 δ 白名单里
-    (下一条测试钉住这一点)。⇒ 这是潜伏形状,不是活 bug。
-    ⛔ 所以这条测试**断言现状**而不是要求修复 —— 真正的雷在下拉表的内容,
-       修法是那条测试红的时候一起处理。
+    ⛔ **本条替代了原来的两条测试**(「哨兵仍在」+「下拉不许有覆盖内联赛」)。
+       那两条是「等它红再修」的写法 —— 而往下拉里加联赛的人没有理由预期一条
+       δ 校准测试会红,他多半会去放宽那条测试,而不是回来修这一行。
+       ⇒ 直接修掉根因,并把不变式钉在这里。
     """
     src = _fn_source("_mrevBuildBody")
-    assert "record ? leagueSel : 'MANUAL'" in src, (
-        "`_mrevBuildBody` 的 league 表达式变了 —— 如果你修好了它,请删掉本测试;"
-        "如果你换了别的写法,请确认「算一遍」和「记一笔」现在用同一个 league。")
+    m = re.search(r"league:\s*([^,\n]+)", src)
+    assert m, "`_mrevBuildBody` 里找不到 league —— 前提没了"
+    expr = m.group(1).strip()
+    assert "record ?" not in expr and "MANUAL" not in expr, (
+        f"🚨 league 表达式又按 `record` 分叉了:`{expr}`\n"
+        f"   ⇒ 「算一遍」和「记一笔」会用不同的 league,δ 判闸因此不一致。")
+    assert expr == "leagueSel", f"league 表达式变成了 `{expr}` —— 请确认两条路仍同源"
 
 
-def test_mrev_dropdown_has_no_delta_calibrated_league():
-    """⭐ **真正的雷在这里。** 往 `mrev-league` 下拉里加一条白名单联赛 ⇒ 上一条的
-    潜伏形状当场发作:同一张卡「算一遍」显示未校准带宽(0.156),「记一笔」按
-    校准带宽(0.0156)入账,两者相差 10 倍。
+def test_mrev_dropdown_values_are_all_resolvable():
+    """下拉里每个 value 都必须能被服务端的 `delta_scope` 认出三态之一。
 
-    实测(2026-08-17,SP=2.45 的 −1 让负腿):MANUAL ⇒ EV +3.57% 不过闸;
-    ESP_LA_LIGA ⇒ EV +38.02% 过闸并下注 ¥50。**同一副盘口。**
+    ⚠️ 这条**不再**要求「不许有覆盖内联赛」—— 那条限制的存在理由(上一条描述的
+    分叉写法)已经在 2026-08-17 修掉了。现在加英超进来是安全的。
+    这里只保证下拉的值是**服务端认得的形态**,而不是随手写的字符串。
     """
-    from nutmeg.v4.model.market_handicap import _delta_in_scope
+    from nutmeg.v4.model.market_handicap import delta_scope
     m = re.search(r'<select id="mrev-league".*?</select>', _src(), re.S)
     assert m, "找不到 mrev-league 下拉 —— 本测试的前提没了"
     opts = re.findall(r'<option value="([^"]+)"', m.group(0))
     assert opts, "下拉里一个 option 都没扫到 —— 提取器坏了"
-    in_scope = [o for o in opts if _delta_in_scope(o)]
-    assert not in_scope, (
-        f"🚨 `mrev-league` 下拉里出现了 δ 覆盖内联赛 {in_scope} ——\n"
-        f"   `_mrevBuildBody` 的 `record ? leagueSel : 'MANUAL'` 会让「算一遍」和\n"
-        f"   「记一笔」用不同的 league(带宽差 10 倍)。**先修那一行,再加这个联赛。**")
-
-
+    for v in opts:
+        assert delta_scope(v) in ("applied", "out_of_scope"), (
+            f"下拉值 {v!r} 被判成 {delta_scope(v)!r} —— 空值/空白会被当成漏传")
 # ────────────────────────────────────────────────────────────────────
 # 6. 行为断言 —— 在 node 里跑**真的** shipped 函数
 # ────────────────────────────────────────────────────────────────────

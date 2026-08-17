@@ -464,9 +464,18 @@ class TestManualReverseCalc:
         assert "function _mrevBuildBody(record)" in html
         assert "async function manualReverseRecord()" in html
         assert "record_session: record" in html
-        # records the real league (not the throwaway 'MANUAL' compute sentinel);
-        # 体检 — league now comes from the settle-able <select> (leagueSel)
-        assert "league: record ? leagueSel : 'MANUAL'" in html
+        # league 来自可结算的 <select>(leagueSel)。
+        # ⚠️ 2026-08-17 契约更新:原来断言的是 `record ? leagueSel : 'MANUAL'` ——
+        # 「算一遍」送哨兵、只有「记一笔」送真值。**那在 δ 上线之前是对的**
+        # (league 当时只用于自动结算 join)。现在 league 还是 δ 范围闸的判据 ⇒
+        # 分叉写法会让屏幕上看到的数和入账的数来自两个不同的 league。
+        # 不变式已改为「两条路同源」,钉在
+        # `test_delta_endpoint_callsites.test_mrev_calc_and_record_send_the_same_league`。
+        assert "league: leagueSel," in html
+        # ⚠️ 否定断言必须贴着**代码形态**(`league: record ?`),不能只写
+        # `record ? leagueSel` —— 后者会匹配到上面那段解释旧写法的**注释**,
+        # 于是这条恒红。(源码文本匹配连注释一起匹配,这是语法断言的常见假红。)
+        assert "league: record ?" not in html, "league 又按 record 分叉了"
         # honest feedback when the server-side gate is off
         assert "data.recorded" in html
 

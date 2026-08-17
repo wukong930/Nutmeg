@@ -185,9 +185,28 @@ def test_every_board_replacement_syncs_the_scope():
         f"少的那处会让徽章停在旧值。")
 
 
+def test_out_of_scope_marker_is_readable_text_not_a_bare_symbol():
+    """⭐ 这条是 **owner 的提问**逼出来的,不是我想出来的。
+
+    第一版用一个上标 `°` 做覆盖外标记。owner 看着带 `°` 的芬超卡**还是来问了**
+    「为什么市场模式的 ± 这么高」—— 那就是它没做到工作的直接证据:
+    在 ±72.4% 这么大的数字旁边,一个点看不见。
+
+    ⇒ 标记必须是**能读出来的文字**(走 i18n),不是裸符号。
+    ⚠️ 但仍必须**淡色 + 单行**:覆盖外占了盘面约 80%,做成醒目色就是满屏噪声,
+       最后和 `°` 一样没人看 —— 只是换了个方式失效。
+    """
+    m = re.search(r"function _dscopeHtml\(pr\)\s*\{.*?\n\}", _src(), re.S)
+    assert m, "找不到 _dscopeHtml"
+    body = m.group(0)
+    assert "t('dscope_out_tag')" in body, "覆盖外标记不是走 i18n 的文字"
+    assert ">°<" not in body, "🚨 覆盖外标记退回成了裸符号 `°`"
+    assert "text-muted" in body, "覆盖外标记必须是淡色 —— 它占盘面 80%"
+
+
 def test_i18n_keys_in_both_locales():
     s = _src()
-    for k in ("dscope_out_tip", "dscope_miss_tip"):
+    for k in ("dscope_out_tag", "dscope_out_tip", "dscope_miss_tip"):
         assert s.count(k + ":") >= 2, f"i18n 键 {k!r} 缺了一个语种"
 
 

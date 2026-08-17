@@ -2312,6 +2312,7 @@ const I18N = {
     sw_single_yes_hint: '竞彩给这场这个玩法开了单关 —— 可以单独买,不必凑串',
     sw_single_no_hint:  '这个玩法只能过关:要下注就必须再配一条腿(实测仅 17% 场次可单关)',
     sw_board_note:    '标准+市场两模式可投注场次合并成一张全局榜;主区只列甜区腿(P 25–67%),每场取最高+次高,按判闸 EV 排序(±1 让球=A′ 下界);**甜区外已过闸的腿在下方「甜区外 · 已过闸」里另列**(2026-08-01:实测全库 31% 的过闸腿落在甜区外,以前整个看不见)。手填 SP / 实时盘口应用后自动重算,↻ 手动兜底。榜=扫描辅助,下注仍看 +5% 闸。点行跳卡片。± = A′ δ 带 ⊕ 冻结带(距开球越久越宽)。',
+    dscope_out_tag:   'δ未校准',
     dscope_out_tip:   'δ 让球校准**未覆盖该联赛** — δ 只在 10 个欧洲联赛(6,095 场)上实测过。覆盖外一律不施加点估修正,下界改吃未校准地板(±带约为覆盖内的 10 倍)。这是**预期形态**,不是故障。',
     dscope_miss_tip:  '⚠️ 这张卡的 league 没传到服务端 — 让球线按「未校准」处理(±带 10 倍、点估少扣 δ)。**这是 bug 不是形态**:两次线上事故(2026-08-16 手填重定价、08-17 刷新重算)症状都是它。请报一下。',
     frz_badge_tip:    '距开球时长 — 现在下单,到收盘 Pinnacle 预计还漂 ±2σ(已并入 EV 的 ± 区间);凌晨场停售早、缺口不可压缩(A-1 实测:41% 凌晨场中位缺口 6h)',
@@ -2893,6 +2894,7 @@ const I18N = {
     sw_single_yes_hint: '竞彩 offers a SINGLE on this pool — bettable on its own',
     sw_single_no_hint:  'parlay-only: you must pair it with another leg (only 17% of matches allow singles)',
     sw_board_note:    'one global board merging bettable matches from both modes; the main list is sweet-tier only (P 25-67%), best + runner-up per match, ranked by gate EV (±1 handicap = A′ lower bound); gate-clearing legs OUTSIDE sweet are listed separately below (2026-08-01: 31% of archive-wide gate-clearing legs sit outside sweet and used to be invisible here). Recomputes as you type SP / apply a live line; ↻ to force. Scanning aid — the +5% gate still decides. Click a row to jump. ± = A′ δ band ⊕ freeze-gap band (wider further from kickoff).',
+    dscope_out_tag:   'delta n/a',
     dscope_out_tip:   'The delta handicap calibration does NOT cover this league - delta was measured on 10 European leagues (6,095 matches) only. Outside that set no point correction is applied and the lower bound falls back to the uncalibrated floor (band ~10x wider). This is EXPECTED, not a fault.',
     dscope_miss_tip:  'WARNING: this card did not send its league to the server - the handicap board is treated as uncalibrated (10x band, delta not deducted). This is a BUG, not a mode; both 2026-08-16 and 08-17 incidents looked exactly like this. Please report it.',
     frz_badge_tip:    'Hours to kickoff — commit now and Pinnacle keeps drifting until close (±2σ, folded into the EV ± band); overnight matches freeze early with an incompressible gap (A-1 measured: 41% of matches, median 6h)',
@@ -3499,8 +3501,11 @@ function _dscopeHtml(pr) {
     return ` <span style="cursor:help;color:var(--danger,#dc2626);font-weight:600"
       title="${t('dscope_miss_tip')}">⚠️</span>`;
   }
-  return ` <span class="text-muted" style="cursor:help;font-size:0.85em"
-    title="${t('dscope_out_tip')}">°</span>`;
+  // ⚠️ 2026-08-17 改:原来是一个上标 `°`。owner 看着它**还是来问了**「为什么市场模式
+  //    的 ± 这么高」—— 那就是它没做到工作的直接证据(在 ±72.4% 旁边一个点看不见)。
+  //    换成文字标签:仍然一行内、仍然淡色,但读得出来。
+  return ` <span class="text-muted" style="cursor:help;font-size:0.85em;white-space:nowrap"
+    title="${t('dscope_out_tip')}">${t('dscope_out_tag')}</span>`;
 }
 function _frzBadgeHtml(pr) {
   // ⏳ 只在缺口成气候时出现(≥2h:冻结带开始压过 A′ δ 带的量级)。
@@ -8709,9 +8714,22 @@ function _mrevBuildBody(record) {
   return {
     ok: true, p1, px, p2, hcap, ouline, over, under, jh, jd, ja, j1, jx, j2,
     body: {
-      // 记一笔 needs a real league so auto-settle can fetch the result; a bare
-      // compute call stays 'MANUAL' (it's never recorded anyway).
-      league: record ? leagueSel : 'MANUAL',
+      // 🚨 2026-08-17 —— **算一遍和记一笔必须用同一个 league**。
+      //
+      // 原来是 `record ? leagueSel : 'MANUAL'`,注释写的理由是「league 只在记一笔时
+      // 用于自动结算 join,算一遍反正不落库」。**那在 δ 上线之前是对的** ——
+      // 现在 `league` 多了第二个身份:**δ 范围闸的判据**。
+      // ⇒ 旧写法让「屏幕上看到的数」和「按下记一笔入账的数」来自两个不同的 league。
+      //
+      // 今天数值差为 0(下拉 8 个 option 全在 δ 覆盖外),所以这是**潜伏**修复:
+      // 谁往那个下拉里加一条白名单联赛,旧写法当场炸(实测同盘同 SP=2.45 的 −1 让负腿:
+      // MANUAL ⇒ EV +3.57% 不过闸;ESP_LA_LIGA ⇒ EV +38.02% 过闸下注 ¥50)。
+      // ⛔ 不留「等它红再修」—— 加联赛的人没有理由预期一条 δ 校准测试会红,
+      //    他多半会去把测试的白名单放宽,而不是回来修这一行。
+      //
+      // `record_session:false` 时 league 只走判闸与回显(实测 handler 里另两处
+      // `req.league` 都在 record 分支内),所以送真值没有副作用。
+      league: leagueSel,
       date: new Date().toISOString().slice(0, 10),
       home_team: homeT, away_team: awayT,
       psc_home: p1, psc_draw: px, psc_away: p2,
