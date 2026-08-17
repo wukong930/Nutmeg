@@ -48,6 +48,16 @@ _EN_TO_CN: dict[str, str] = {
     # 会把它报成 unknown/劈开,那时照证据补进 `_CN_SYNONYM`。
     "BEL_PRO_LEAGUE": "比甲",
     "JPN_J1": "日职",
+    # 🚨 2026-08-17 补 —— **它一直缺着**,而缺的后果不是「少个显示名」:
+    # `DOMESTIC_LEAGUES_CN` 是从 `_EN_TO_CN.values()` **推导**出来的 ⇒ 中文轨的
+    # `日乙` 落进 `unknown` ⇒ `is_domestic_club_league("日乙")` = False,
+    # 而 `is_domestic_club_league("JPN_J2")` = True(EN 轨走竞赛注册表,判 league)。
+    # **同一个联赛按写法落进不同层**,校准报表把日乙的行归进「大赛」。
+    # 与 docstring 里那个 丹超 活例**同族**,只是这个有活数据(库里 8 行)。
+    # 证据(不照名字猜):这 8 行的队伍是 Omiya Ardija / Albirex Niigata /
+    # Montedio Yamagata / Tochigi City / Tokushima Vortis / Sagan Tosu /
+    # Blaublitz Akita / Kataller Toyama —— **全是 J2 俱乐部**。
+    "JPN_J2": "日乙",
     # non-trained labels OBSERVED in jingcai_sp (exploratory-only leagues)
     "WC": "世界杯",
     "FIN_VEIKKAUSLIIGA": "芬超",
@@ -141,6 +151,13 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     # ⇒ 不进 δ 的拟合人口(δ 拟合在各国**联赛** CSV 上)。
     # 它在 `CUP_COMPETITIONS` 里注册为 `club_cup`,EN 轨本来就排除,这里对齐中文轨。
     "英社区盾",
+    # 同类第六条(2026-08-17):亚冠精英 = AFC Champions League Elite,**洲际**俱乐部
+    # 杯赛 ⇒ 不进 δ 的拟合人口(δ 拟合在各国**联赛** CSV 上),与 解放者杯/欧超杯 同理。
+    # 证据:库里那 2 行是 `Gangwon FC`(韩)vs `Gamba Osaka`(日)—— **跨国俱乐部对阵**,
+    # 不可能是任何一国的国内联赛。
+    # ⚠️ 它没有对应的 EN 键(我们不采集这项赛事),所以只在中文轨登记;
+    #    若将来 EN 轨也出现,`CUP_COMPETITIONS` 要同步注册。
+    "亚冠精英",
 })
 
 #: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。

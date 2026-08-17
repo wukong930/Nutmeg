@@ -308,3 +308,117 @@ class TestBackfill:
             assert [c[3] for c in plan(conn)] == [canonical_league("UEL")]
         finally:
             conn.close()
+
+
+class TestEveryServedLeagueHasBothTracks:
+    """🚨 **分母护栏**(2026-08-17)。
+
+    `TestEnToCnCoverage` 已经存在,而且它守的正是这个族(比甲)——
+    但它的分母是 `_SP_CALC_LEAGUES`(**标准模式板**)。
+    `JPN_J2` 是**市场模式**赛事,压根不在它的视野里 ⇒ 缺了 `JPN_J2 → 日乙` 这条映射
+    整整没人发现,后果是:
+
+        is_domestic_club_league("JPN_J2") = True   (EN 轨走竞赛注册表)
+        is_domestic_club_league("日乙")    = False  (CN 轨走 allowlist,落 unknown)
+
+    **同一个联赛按写法落进不同层**,校准报表把日乙的行归进「大赛」。
+
+    ⭐ 这是本会话第三次栽在**分母**上:
+      ① 计数断言数「我修了几处」而不是「存在几处」
+      ② 调用点分母键用 (端点, 函数名) ⇒ 同函数第二个 fetch 折叠
+      ③ 本条 —— 护栏的分母只有一块板
+    ⇒ 分母必须是「**我们实际会拿到数据的全部联赛**」= 两块板的并集。
+    """
+
+    @staticmethod
+    def _served():
+        from nutmeg.v4.api.routes import _CUP_MARKET_COMPETITIONS, _SP_CALC_LEAGUES
+        return sorted(set(_SP_CALC_LEAGUES) | set(_CUP_MARKET_COMPETITIONS))
+
+    def test_the_denominator_is_both_boards_not_one(self):
+        """前提自检:并集必须**真的大于**任一块板,否则本类退化成已有的那条。"""
+        from nutmeg.v4.api.routes import _CUP_MARKET_COMPETITIONS, _SP_CALC_LEAGUES
+        served = set(self._served())
+        assert len(served) > len(set(_SP_CALC_LEAGUES)), "并集没比标准板大 —— 分母没扩展"
+        assert len(served) > len(set(_CUP_MARKET_COMPETITIONS)), "并集没比市场板大"
+
+    #: 已知缺中文映射的赛事(2026-08-17 钉)。**潜伏,今天零实害。**
+    #:
+    #: 实测:这 13 项在 `jingcai_sp` 里**一条中文行都没有** —— 竞彩从没上架过
+    #: (或我们没以中文捕获过)。阳性对照确认查询有效:同一 join 对
+    #: JPN_J1→日职(484 行)、FIN_VEIKKAUSLIIGA→芬超(5,926)、
+    #: KOR_K_LEAGUE_1→韩职(2,932)全部命中。⇒「空」是真的空,不是查询坏了。
+    #:
+    #: ⛔ **为什么不现在补上**:补中文名必须有证据。这 13 项拿不到任何中文侧样本,
+    #:    照英文猜译名是本仓红线(**错映射是静默污染,比缺映射更坏**)。
+    #: ⭐ 正确的补法是**等它自己送上门**:竞彩首次上架时,`check_league_labels`
+    #:    探针会以 `unknown` 报出**真实的中文串** —— 那才是证据。
+    #:    这和「forward-only 源识别当天就建」是同一条纪律的两面。
+    #: ⚠️ 注意 `DNK_SUPERLIGA` 在列 —— 它正是 `classify_league` docstring 里点名的
+    #:    那个活例,存在至少三个月没人补,因为老护栏的分母看不见它。
+    _KNOWN_CN_GAPS = frozenset({
+        "AUS_A_LEAGUE", "COPA_DEL_REY", "COPPA_ITALIA", "COUPE_DE_FRANCE",
+        "DFB_POKAL", "DNK_SUPERLIGA", "EURO", "FAC", "SCO_PREMIERSHIP",
+        "SUI_SUPER_LEAGUE", "TUR_SUPER_LIG", "UECL", "WC_QUAL_UEFA",
+    })
+
+    def test_no_new_league_loses_its_cn_mapping(self):
+        """每个会拿到数据的联赛都必须有中文映射 —— 没有 ⇒ CN 轨落 unknown。
+
+        已知缺口见 `_KNOWN_CN_GAPS`(带证据与理由)。**新增**的缺口打红。
+        """
+        from nutmeg.v4.data.league_labels import _EN_TO_CN
+        missing = {lg for lg in self._served() if lg not in _EN_TO_CN}
+        new = sorted(missing - self._KNOWN_CN_GAPS)
+        assert not new, (
+            f"🚨 新增赛事没有中文映射:{new}\n"
+            f"   ⇒ cron 写中文的那些行会在 CN 轨落 `unknown`,掉出 P3 计数/校准分层。\n"
+            f"   补映射**必须有中文侧证据**(⛔ 绝不照英文猜译名);拿不到证据就登记进"
+            f" `_KNOWN_CN_GAPS` 并写明为什么。")
+
+    def test_the_known_gap_list_does_not_go_stale(self):
+        """清单里已经补上的要删掉 —— 陈旧的豁免名单会掩护真缺口。
+
+        (老护栏留了三个月的 `DNK_SUPERLIGA` 就是这么活下来的,只是换了个机制。)
+        """
+        from nutmeg.v4.data.league_labels import _EN_TO_CN
+        missing = {lg for lg in self._served() if lg not in _EN_TO_CN}
+        stale = sorted(self._KNOWN_CN_GAPS - missing)
+        assert not stale, f"这些已经有中文映射了,请从 `_KNOWN_CN_GAPS` 删掉:{stale}"
+
+    def test_both_tracks_classify_every_served_league_the_same(self):
+        """⭐ **真正的不变式**:同一个联赛,两种写法必须落进同一层。
+
+        这条比「有没有映射」更强 —— 映射存在但两轨判定不同,同样会让一个联赛
+        按写法分裂(而且更难发现,因为没有 `unknown` 可以报)。
+        """
+        from nutmeg.v4.data.league_labels import _EN_TO_CN, classify_league
+        bad = []
+        for en in self._served():
+            cn = _EN_TO_CN.get(en)
+            if cn is None:
+                continue                       # 上一条负责报它
+            if classify_league(en) != classify_league(cn):
+                bad.append(f"{en}={classify_league(en)} vs {cn}={classify_league(cn)}")
+        assert not bad, "🚨 两轨判定不一致(同一联赛按写法分裂):\n  " + "\n  ".join(bad)
+
+    def test_j2_specifically(self):
+        """2026-08-17 的那个活例 —— 留个具名的锚,便于回归时一眼认出。
+
+        证据(不照名字猜):库里 8 行的队伍是 Omiya Ardija / Albirex Niigata /
+        Montedio Yamagata / Tochigi City / Tokushima Vortis / Sagan Tosu /
+        Blaublitz Akita / Kataller Toyama —— 全是 J2 俱乐部。
+        """
+        from nutmeg.v4.data.league_labels import classify_league, is_domestic_club_league
+        assert classify_league("JPN_J2") == "domestic"
+        assert classify_league("日乙") == "domestic"
+        assert is_domestic_club_league("日乙") is True
+
+    def test_afc_elite_is_excluded_not_unknown(self):
+        """亚冠精英 = 洲际俱乐部杯赛 ⇒ `excluded`(不是 `unknown`,也不是 `domestic`)。
+
+        证据:库里那 2 行是 Gangwon FC(韩)vs Gamba Osaka(日)—— 跨国俱乐部对阵,
+        不可能是任何一国的国内联赛。与 解放者杯 / 欧超杯 同族。
+        """
+        from nutmeg.v4.data.league_labels import classify_league
+        assert classify_league("亚冠精英") == "excluded"
