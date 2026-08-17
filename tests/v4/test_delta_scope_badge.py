@@ -185,28 +185,64 @@ def test_every_board_replacement_syncs_the_scope():
         f"少的那处会让徽章停在旧值。")
 
 
-def test_out_of_scope_marker_is_readable_text_not_a_bare_symbol():
-    """⭐ 这条是 **owner 的提问**逼出来的,不是我想出来的。
+def test_out_of_scope_marker_is_visible_and_compact():
+    """⭐ 这条完全是 **owner 的两次实际反应**定出来的,不是我设计的。
 
-    第一版用一个上标 `°` 做覆盖外标记。owner 看着带 `°` 的芬超卡**还是来问了**
-    「为什么市场模式的 ± 这么高」—— 那就是它没做到工作的直接证据:
-    在 ±72.4% 这么大的数字旁边,一个点看不见。
+    v1 上标 `°`(0.85em 字符)  → owner 看着带 `°` 的芬超卡**还是来问**
+                                「为什么市场模式的 ± 这么高」= **它看不见**
+    v2 文字 `δ未校准`          → owner:**太占地方**(让平那行被挤换行了)
+    v3 图标 `ic-target-off`    → `.ic` 渲染在 1.05em + stroke-width 2,
+                                比 `°` 显著可见,又只占一个字宽
 
-    ⇒ 标记必须是**能读出来的文字**(走 i18n),不是裸符号。
-    ⚠️ 但仍必须**淡色 + 单行**:覆盖外占了盘面约 80%,做成醒目色就是满屏噪声,
-       最后和 `°` 一样没人看 —— 只是换了个方式失效。
+    ⇒ 两个约束必须**同时**成立,顾一头就会回到前两版:
+      · 可见 —— 走 `IC()`(仓库图标系统),不是裸文字字符
+      · 紧凑 —— 不带文字标签(会把行挤换行)
+    ⚠️ 且必须 `text-muted`:覆盖外占盘面约 80%,做成醒目色就是满屏噪声,
+       那只是换一种方式失效。
     """
     m = re.search(r"function _dscopeHtml\(pr\)\s*\{.*?\n\}", _src(), re.S)
     assert m, "找不到 _dscopeHtml"
     body = m.group(0)
-    assert "t('dscope_out_tag')" in body, "覆盖外标记不是走 i18n 的文字"
-    assert ">°<" not in body, "🚨 覆盖外标记退回成了裸符号 `°`"
-    assert "text-muted" in body, "覆盖外标记必须是淡色 —— 它占盘面 80%"
+    assert "IC(" in body, "覆盖外标记不是图标 —— 裸文字字符已被证明看不见(v1)"
+    assert ">°<" not in body, "🚨 退回成了裸符号 `°`(v1,owner 实测看不见)"
+    assert "dscope_out_tag" not in body, "🚨 退回成了文字标签(v2,owner 实测太占地方)"
+    # ⚠️ 必须写成 `class="text-muted"`(代码形态),不能只写 `text-muted` ——
+    # 后者会匹配到上面 docstring/注释里那句「仍必须 `text-muted`」⇒ 断言恒真。
+    # ⭐ 2026-08-17 一天内**第二次**踩这个:源码文本匹配连注释一起匹配。
+    #    空包弹④(把 class 换成 color:red)第一次**没打红**,就是被自己的注释兜住了。
+    assert 'class="text-muted"' in body, "覆盖外标记必须是淡色 —— 它占盘面 80%"
+    assert "dscope_out_tip" in body, "解释必须留在 tooltip 里 —— 图标本身说不了话"
+
+
+def test_the_marker_icon_exists_in_the_sprite():
+    """🚨 `IC('x')` 引用一个 sprite 里**不存在**的 id ⇒ 渲染成**空**。
+
+    不报错、不留痕 —— 徽章直接消失,而这正是 v1 那个失效模式(标记看不见),
+    只是换了个成因。⇒ 图标名必须和 sprite 对账。
+    """
+    src = _src()
+    m = re.search(r"function _dscopeHtml\(pr\)\s*\{.*?\n\}", src, re.S)
+    names = re.findall(r"IC\('([a-z0-9-]+)'\)", m.group(0))
+    assert names, "`_dscopeHtml` 里没找到 IC() 调用 —— 上一条应该已经红了"
+    have = set(re.findall(r'<symbol id="ic-([a-z0-9-]+)"', src))
+    missing = [n for n in names if n not in have]
+    assert not missing, (
+        f"🚨 `_dscopeHtml` 引用了 sprite 里没有的图标 {missing} —— 会渲染成空。\n"
+        f"   sprite 现有:{sorted(have)}")
+
+
+def test_dead_i18n_key_was_removed_with_the_text_label():
+    """v2 的 `dscope_out_tag` 已随文字标签一起删掉。
+
+    留着不用 = 死常量,本仓的反模式(同 `_PARLAY_SHOW`、`LEGAL_FORM` 那类)——
+    下一个人会以为它还在起作用。
+    """
+    assert "dscope_out_tag" not in _src(), "文字标签的 i18n 键还在,但已无人使用"
 
 
 def test_i18n_keys_in_both_locales():
     s = _src()
-    for k in ("dscope_out_tag", "dscope_out_tip", "dscope_miss_tip"):
+    for k in ("dscope_out_tip", "dscope_miss_tip"):
         assert s.count(k + ":") >= 2, f"i18n 键 {k!r} 缺了一个语种"
 
 
