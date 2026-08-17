@@ -276,8 +276,20 @@ def render(buckets: dict, *, min_n: int = 10, prev: dict | None = None) -> str:
                 gap = (prev or {}).get("_gap_days") or 0
                 near = (f"  ⚠️ 但两次间隔仅 {gap} 天,**不足一周** —— "
                         "「连续两周」不该由同周两跑凑" if gap < 5 else "")
+                # 🚨 2026-08-17 —— 这句话必须自带「它站在多少场上」。
+                # 实测:`+1 俱乐部` N=106 场看起来很足,δ **实际生效只有 14 场**,
+                # 而 `min_n` 卡的是 N ⇒ 薄样本警告不会触发 ⇒ 这句「回滚条件成立」
+                # 印出来时读者拿不到唯一要紧的那个数。
+                # ⛔ 我**没有**改 `min_n` 的口径 —— 那是预注册参数,改判据来迁就一个
+                #    不喜欢的读数正是本仓明令的「事后加判据」。这里只是把数摆出来。
+                _pnd = pv.get("n_delta")
+                _basis = (f"本次 δ 生效 **{nd}** 场"
+                          + (f" · 上次 **{_pnd}** 场" if _pnd is not None
+                             else " · 上次未知(旧存档)"))
                 out.append(f"- ⛔ **连续两次变差** ⇒ prereg v2.0 §5.1 的回滚条件成立"
                            f"(±1 线,回滚到 v1.9:`_C1_DELTA_P1` → 0.03220)。{near}")
+                out.append(f"  - ⚠️ **判定实际站在**:{_basis}(本次 N={len(rows)})——"
+                           f" `min_n` 卡的是 N,判定站的是 δ 生效场数,两者不是一个量。")
         elif prev_date:
             out.append(f"- 上次({prev_date}):该切片当时 N 不足,无可比读数")
         out.append("")

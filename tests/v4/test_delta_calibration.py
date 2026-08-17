@@ -107,14 +107,18 @@ class TestZeroAppliedIsNotHarmless:
     """
 
     @staticmethod
-    def _rows(n_delta: int, n_total: int):
-        """造 n_total 行,其中 n_delta 行 raw≠cor。"""
+    def _rows(n_delta: int, n_total: int, *, worse: bool = False):
+        """造 n_total 行,其中 n_delta 行 raw≠cor。
+
+        ⚠️ `worse=True` 才能触发 §5.1 的回滚判定。**这不是可以随便写的数** ——
+        实际命中是 `i % 3`(近似均匀),所以「修正后更差」= cor 比 raw **更远离**
+        均匀。我第一版的 cor=(0.35,0.32,0.33) 其实比 raw **更接近**均匀 ⇒
+        log-loss 反而改善 ⇒ 回滚分支永远不进,而失败信息只说「夹具没触发」。
+        ⭐ 夹具造不出被测条件时,测试是**假红**不是真红 —— 得先看懂夹具在造什么。
+        """
         raw = (0.40, 0.30, 0.30)
-        out = []
-        for i in range(n_total):
-            cor = (0.35, 0.32, 0.33) if i < n_delta else raw
-            out.append((raw, cor, i % 3))
-        return out
+        bad = (0.70, 0.15, 0.15) if worse else (0.35, 0.32, 0.33)
+        return [(raw, bad if i < n_delta else raw, i % 3) for i in range(n_total)]
 
     def test_n_delta_counts_rows_where_delta_moved_the_number(self):
         from nutmeg.v4.cli.delta_calibration import _n_delta
@@ -173,3 +177,35 @@ class TestZeroAppliedIsNotHarmless:
         md = DC.render({(-1, "俱乐部"): self._rows(7, 40)}, min_n=10)
         assert "δ **实际生效 7 场**" in md, f"标题没报生效行数:\n{md[:400]}"
         assert "N=40 场" in md, "总行数也得留着 —— 两个数缺一不可"
+
+    def test_rollback_line_states_how_many_rows_it_rests_on(self):
+        """🚨 §5.1「回滚条件成立」这句话必须自带 δ 生效场数。
+
+        实测(2026-08-17):`+1 俱乐部` N=106 场触发了回滚条件,δ **实际生效 14 场**。
+        14 > min_n=10 ⇒ 薄样本警告**不会**触发 ⇒ 这句话印出来时,读者拿不到
+        唯一要紧的那个数。owner 要据此决定回不回滚。
+
+        ⛔ 本条**不**主张改 `min_n` —— 改判据来迁就一个不喜欢的读数是
+           「事后加判据」,本仓明令禁止。只主张把数摆出来。
+        """
+        from nutmeg.v4.cli import delta_calibration as DC
+        rows = self._rows(14, 106, worse=True)
+        prev = {DC.slice_key(1, "俱乐部"): {"n": 100, "n_delta": 12,
+                                            "raw_ll": 1.0, "c1_ll": 1.2},
+                "_gap_days": 14, "_date": "2026-08-03"}
+        md = DC.render({(1, "俱乐部"): rows}, min_n=10, prev=prev)
+        assert "回滚条件成立" in md, f"夹具没触发回滚判定:\n{md}"
+        assert "本次 δ 生效 **14** 场" in md, f"回滚那句没带本次生效场数:\n{md}"
+        assert "上次 **12** 场" in md, "没带上次的生效场数"
+        assert "N=106" in md, "总场数也得留着 —— 两个数缺一不可"
+
+    def test_rollback_line_says_unknown_for_a_legacy_archive(self):
+        """旧存档没有 `n_delta` 键 ⇒ 明写「未知」,**不许当 0**。
+
+        「这一版没记」和「记了是 0」是两件事 —— 后者会让人以为上次也没生效。
+        """
+        from nutmeg.v4.cli import delta_calibration as DC
+        prev = {DC.slice_key(1, "俱乐部"): {"n": 100, "raw_ll": 1.0, "c1_ll": 1.2},
+                "_gap_days": 14, "_date": "2026-08-03"}
+        md = DC.render({(1, "俱乐部"): self._rows(14, 106, worse=True)}, min_n=10, prev=prev)
+        assert "上次未知(旧存档)" in md, f"旧存档没被标成未知:\n{md}"
