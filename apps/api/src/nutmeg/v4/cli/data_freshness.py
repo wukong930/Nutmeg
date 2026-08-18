@@ -53,9 +53,42 @@ CAPTURE_TABLES: list[tuple[str, str, int, bool, str, str | None, str | None]] = 
      "Pinnacle 收盘锚 (closing 子流; --sports auto 随赛程自选联赛)",
      "source='closing'", "odds_snapshots[closing]"),
     ("jingcai_sp", "captured_at", 2, True, "竞彩 SP 捕获 (软水)", None, None),
-    ("jingcai_sp", "opened_at", 2, True,
-     "竞彩 初盘 SP (jc_open 子流, 开→收位移)",
+    # 🚨 2026-08-18 —— 这条**曾经既报错人又报错事**,拆成两条。
+    #
+    # 病根:`opened_at` 是 **set-once**(COALESCE,记的是竞彩把这场**开出来**的时刻)
+    # ⇒ `max(opened_at)` 量的是「**竞彩最近一次上新场**是几天前」,
+    #   **不是**「我们的 jc_open cron 活没活」。而它的告警文案写的正是后者
+    #   (「捕获 cron 可能静默死了」)—— 于是 2026-08-18 那次红灯的诊断是**错的**:
+    #   cron 一直在跑(日志连续、HTTP 200、逐轮写入),只是周日周一竞彩没上新场。
+    #
+    # ⚠️ 这正是本文件下面 `snapshot_provenance` 那条注释已经写明的错法:
+    #   「空盘面的日子 leg 表本来就该是 0 行,拿它当心跳会在**正确的日子假红**」。
+    #   那条为快照层做对了,这条没做。
+    #
+    # 实测节律(N=47 个间隔,2026-06-22~08-18):间隔 1 天 41 次 / 2 天 2 次 / **3 天 4 次**,
+    #   最大 3。按星期:周一只有 3 天上新、周日 4 天,而周二~周六各 8-9 天
+    #   ⇒ **周六→周二 3 天空档是常态**。旧阈值 2 ⇒ **4/47 = 9% 的间隔必假红**,
+    #   实算近 5 个周二红了 4 个。且 `daily_health_check`(09:45)结构性地跑在
+    #   `sporttery_open`(09:50 / 11:05)**之前** 5 分钟,更放大了它。
+    #
+    # ⇒ 拆法:
+    #   ① 本条改量它**真正在量**的东西(竞彩上新场),阈值按实测放到 4(0% 假红),
+    #      并降为 **WARN** —— 竞彩不上新场是**外部市场行为**,不是我们的管道漏数据,
+    #      按本文件开头的分类它不该 gate。
+    #   ② 下面新增 `[open-heartbeat]` 才是漏数据探测器,CRITICAL,阈值 2。
+    ("jingcai_sp", "opened_at", 4, False,
+     "竞彩**上新场**节律 (非心跳;周六→周二 3 天空档是常态,见代码注释)",
      "opened_at IS NOT NULL", "jingcai_sp[open]"),
+    # ⭐ jc_open cron 的**真心跳**,零新增管道:open 阶段每次跑都 UPSERT 这批行,
+    # 刷新它们的 `captured_at`,**与竞彩有没有上新场无关**。
+    # 实测(2026-08-18):08-10 / 08-16 / 08-17 三天「上新场 = 0」,而 captured_at
+    # 分别触达 6 / 56 / 11 行 ⇒ 它能在正确的日子保持绿,而 cron 真死时 2 天内变红。
+    # ⚠️ 过滤必须是 `jc_open_home IS NOT NULL`(open 阶段写的那一列),**不能**用整表
+    #    `jingcai_sp` —— 那条被 ingest/evening 两个 cron 一起喂,活着的会把死的顶绿
+    #    (本文件开头 P0-1 记的那个病根)。
+    ("jingcai_sp", "captured_at", 2, True,
+     "竞彩 初盘 cron 心跳 (jc_open 子流真在跑吗)",
+     "jc_open_home IS NOT NULL", "jingcai_sp[open-heartbeat]"),
     # 2026-07-25 — 竞彩线史 (append-only)。jingcai_sp 是 UPSERT 只留最新,
     # 这条流才是冻结缺口/临停售调价的前向地基。它死了 = 我们又回到「13 次抓、
     # 1 次留」,而且**没有任何别的表能发现** (jingcai_sp 照常绿)。

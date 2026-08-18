@@ -42,8 +42,14 @@ def _mk_db(tmp_path, rows: dict[str, list[str]], name: str = "obs.db"):
     for table, col, _maxd, _crit, _note, where, nm in CAPTURE_TABLES:
         key = _entry_key(table, where, nm)
         extra = dict(re.findall(r"(\w+)\s*=\s*'([^']*)'", where or ""))
+        # 2026-08-18 — 支持 `X IS NOT NULL` 形态的子流过滤(如 open 心跳的
+        # `jc_open_home IS NOT NULL`)。不塞非空值 ⇒ 该子流在合成库里**恒 0 行**,
+        # 条目会被当成「表里没有数据」而不是「新鲜」⇒ `_all_today()` 造不出全绿。
+        for _c in re.findall(r"(\w+)\s+IS\s+NOT\s+NULL", where or "", re.I):
+            extra.setdefault(_c, "1")
         for v in rows.get(key, []):
-            data = {col: v, **extra}
+            # ⚠️ `col` 必须**最后**赋值 —— 它才是这条被量的时间戳,不能被 extra 盖掉
+            data = {**extra, col: v}
             conn.execute(
                 f"INSERT INTO {table} ({','.join(data)}) "
                 f"VALUES ({','.join('?' * len(data))})",
@@ -125,15 +131,60 @@ def test_closing_substream_stale_behind_fresh_table(tmp_path):
 
 
 def test_jc_open_substream_tracked_separately(tmp_path):
-    # jingcai_sp fresh (capture cron alive) but opened_at stalled (open-SP
-    # sub-flow dead) must flag the [open] stream only.
+    """整表活着时,open 子流仍能被单独看见(P0-1 的原意)。
+
+    ⚠️ 2026-08-18 改写。本条原来的注释写着:
+        「jingcai_sp fresh (capture cron alive) but opened_at stalled
+          (**open-SP sub-flow dead**) must flag the [open] stream only」
+    —— 那句 `opened_at stalled ⇒ sub-flow dead` **正是被本次改动推翻的推断**。
+    `opened_at` 是 set-once,它停 = 竞彩没上新场,而 cron 可能一直活着
+    (2026-08-18 实测:那天红灯诊断「cron 可能静默死了」是错的)。
+    ⇒ 子流可见性这个原意保留,但「哪一条才是 CRITICAL」交给下面两条专门的测试。
+    """
     rows = _all_today()
     rows["jingcai_sp"] = ["2026-06-17"]
     rows["jingcai_sp[open]"] = ["2026-06-01"]
     db = _mk_db(tmp_path, rows)
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
-    assert not by["jingcai_sp"].stale
-    assert by["jingcai_sp[open]"].stale and by["jingcai_sp[open]"].critical
+    assert not by["jingcai_sp"].stale, "整表被子流的陈旧带红了 —— 子流没切开"
+    assert by["jingcai_sp[open]"].stale, "子流停了却没被看见 —— P0-1 的病根回来了"
+
+
+def test_listing_gap_alone_does_not_fail_the_gate(tmp_path):
+    """🚨 **2026-08-18 那次假红的回归测试。**
+
+    竞彩三天没上新场(周六→周二是常态)+ cron 一直在跑
+    ⇒ `[open]` 报 warn,`[open-heartbeat]` 绿 ⇒ **体检整体不该失败**。
+
+    旧设计在这个场景下 CRITICAL 红,并把原因写成「捕获 cron 可能静默死了」——
+    诊断和事实相反。
+    """
+    rows = _all_today()
+    rows["jingcai_sp[open]"] = ["2026-06-14"]          # 上新场停 3 天(常态空档)
+    rows["jingcai_sp[open-heartbeat]"] = ["2026-06-17"]  # cron 今天还在跑
+    db = _mk_db(tmp_path, rows)
+    by = {s.table: s for s in check_freshness(db, today=TODAY)}
+    assert not by["jingcai_sp[open-heartbeat]"].stale, "心跳不该红 —— cron 活着"
+    assert not by["jingcai_sp[open]"].critical, "上新场那条又变回 CRITICAL 了"
+    assert main(["--db", str(db), "--today", "2026-06-17",
+                 "--no-quota", "--no-supply"]) == 0, (
+        "🚨 常态空档让体检失败了 —— 这正是 2026-08-18 的假红")
+
+
+def test_a_truly_dead_open_cron_still_fails_the_gate(tmp_path):
+    """⭐ 阳性对照:放松了上新场那条之后,**真的 cron 死亡仍必须红**。
+
+    没有这条,上一条就只是「把护栏关小」。
+    """
+    rows = _all_today()
+    rows["jingcai_sp[open]"] = ["2026-06-17"]            # 竞彩照常上新场
+    rows["jingcai_sp[open-heartbeat]"] = ["2026-06-10"]  # 但我们 7 天没抓了
+    db = _mk_db(tmp_path, rows)
+    by = {s.table: s for s in check_freshness(db, today=TODAY)}
+    assert by["jingcai_sp[open-heartbeat]"].stale
+    assert by["jingcai_sp[open-heartbeat]"].critical, "心跳必须 CRITICAL,否则不 gate"
+    assert main(["--db", str(db), "--today", "2026-06-17",
+                 "--no-quota", "--no-supply"]) == 1, "cron 真死了却没让体检失败"
 
 
 def test_sister_db_missing_is_critical_stale(tmp_path):
@@ -195,8 +246,15 @@ def test_missing_critical_table_is_stale(tmp_path):
 
 def test_empty_table_is_stale(tmp_path):
     rows = _all_today()
-    rows["jingcai_sp"] = []  # exists but empty
-    rows["jingcai_sp[open]"] = []
+    # ⚠️ 2026-08-18 —— 原来这里**硬编码**要清空的子流(`jingcai_sp` + `[open]`)。
+    # 加第三条子流(`[open-heartbeat]`,也写 `captured_at`)时它就静默失效了:
+    # 整表条目量的是 `MAX(captured_at)`,而新子流照样往同一张表插带 captured_at 的行
+    # ⇒ 表根本不空 ⇒ 断言反了却没人喊。
+    # ⭐ 又是**分母**:该清的是「所有落在这张表上的条目」,从 `CAPTURE_TABLES` 推导,
+    #    不是手写一份会过期的名单。
+    for _t, _c, _m, _cr, _n, _w, _nm in CAPTURE_TABLES:
+        if _t == "jingcai_sp":
+            rows[_entry_key(_t, _w, _nm)] = []      # exists but empty
     db = _mk_db(tmp_path, rows)
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["jingcai_sp"].stale and by["jingcai_sp"].days_stale is None
