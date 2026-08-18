@@ -771,8 +771,19 @@ install_job "com.nutmeg.score_ev_forward_settle" \
 # 包装器只报**新增的红**,并让 §18 服务盘身份**永不被基线抑制**(钱路)。
 # 判断逻辑全在包装器里、有行为测试(tests/v4/test_health_check_cron.py);
 # 这里只负责调一次 —— 大段逻辑塞进 plist 就只能靠语法代理来测。
+# ⏰ 2026-08-18(owner 授权改 cron)—— 09:45 → **11:30**。
+# 原来它**结构性地跑在被它监视的 cron 之前**:早晨批次是
+#   09:00 morning_odds/daily_predict · 09:50 sporttery_open · 10:00 snapshot_board/
+#   morning_recommend/polymarket_gaps · 11:05 sporttery_open(二档)· 11:10 sporttery_vote
+# 而体检在 09:45 ⇒ 它看到的永远是**昨天**的最新数据。
+# 这正是 `jingcai_sp[open]` 那条哨兵每周二假红的三个成因之一(另两个:口径量错了、
+# 阈值贴着噪声边缘,都已在 af1c961 修掉)。
+# 11:30 选在早晨最后一个作业(11:10 sporttery_vote)之后 20 分钟 ——
+# 实测这些作业各自 5-8 秒跑完(日志时间戳),余量充足。
+# ⚠️ 21:00 那档**不动**:它落在傍晚批次(17:00-23:00 每 30 分)中段,
+#    看到的是当天早+午的完整数据,没有倒序问题。
 install_job "com.nutmeg.daily_health_check" \
-  9 45 "" \
+  11 30 "" \
   "$ENV_PREFIX && $REPO_ROOT/scripts/health_check_cron.sh || true" \
   "21:00"
 
