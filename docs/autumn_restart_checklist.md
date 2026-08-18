@@ -246,3 +246,16 @@
 3. **CLV 是记分牌,但要严格量**(t 检验 + FDR),不臆造 +EV,空仓等秋天。
 
 *详情索引:`parlay_soft_water_research.md`(软水主文)· `freeze_gap_test_card.md` · `score_grid_cell_calibration.md` · `devig_method_comparison.md` · `clv_statistical_methodology.md` · `kelly_staking_uncertainty_correlation.md` · `lineup_information_edge.md` · `sharp_money_market_microstructure.md` · `forecasting_frontier_vs_market.md` · `jingcai_market_microstructure.md`*
+
+### 韩国杯下级队中文名 —— 走比分锚,⛔ 别猜(2026-08-18 记)
+
+`KOR_FA_CUP` 注册后,K2/K3/业余队会经由杯赛进入可投注人口。实测:
+* 竞彩**确实用过**这些中文串 —— `v4_jingcai_history.db` 的 `jingcai_odds_history`:
+  `大邱FC` 922 行 · `水原三星` 140 行 · `城南FC` 128 行
+* **但同表 0 行带英文侧**(三者 `has_en` 全为 0)⇒ **映射读不出来**
+
+⇒ 正确路径 = `scripts/anchor_team_names_by_score.py`(终场比分 + 北京日窗 + 四道闸),
+或开球时刻锚。⛔ 照字面猜是红线(错映射是静默污染,比缺映射更坏)。
+
+⚠️ 当前盘面上的韩国杯队只有 2 支,**都已有中文名** ⇒ 今天零实害。
+触发条件:竞彩开始上架 K2/K3 对阵时(`Seongnam FC` 已在 2026-08-19 的 pending 里)。

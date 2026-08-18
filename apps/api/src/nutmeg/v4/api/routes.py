@@ -626,7 +626,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v157-fe-dscope-icon"
+_FE_VERSION = "nutmeg-v158-fe-revert-lo-korea-zh"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2477,6 +2477,9 @@ _CUP_MARKET_COMPETITIONS = [
     # 或手填,同一条)逐字定价**,而不是喂给对韩国杯 OOD 的欧洲模型(那会出垃圾 P)。
     # 队表那一格仍在 `registry_coverage.OUT_OF_SCOPE` 豁免(全表 64 队跨 K1~业余,
     # 52 支无 zh 证据,⛔ 不猜)⇒ `--gate` 不查它、不假红,同 FAC/EFL_CUP。
+    # ⚠️ 2026-08-18:「无 zh 证据」措辞已在 `registry_coverage.py` 更正 ——
+    #   中文串在 `v4_jingcai_history.db` 里**是有的**(大邱FC 922 行等),
+    #   缺的是**同行的英文侧** ⇒ 该走比分锚,不是「没证据」。
     # exit 条件:哪天 Odds API 上了 korea cup(叠鲜线),或 AF 把覆盖从 marquee 扩到
     # 全轮 —— 都自动叠上来,这里不用再动。
     "KOR_FA_CUP",
