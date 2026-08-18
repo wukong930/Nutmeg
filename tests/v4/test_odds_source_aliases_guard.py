@@ -35,9 +35,10 @@ def test_no_key_conflicts() -> None:
     dict 字面量天然不会有重复键 —— 但**后写的会静默覆盖先写的**,
     所以这条真正钉的是「条数没有因为重键而缩水」。
     """
-    assert len(A) == 210, (
-        f"表大小 {len(A)},预期 210(202 + 08-16 沙特联 8:数据攒够后暴露的系统性"
-        f"连字符/后缀差异,靠开球槽内排除法定案)。"
+    assert len(A) == 218, (
+        f"表大小 {len(A)},预期 218(210 + 08-18 的 8:`derive_odds_name_aliases.py` "
+        f"推出 9 条,**采纳 8 条**;第 9 条 `Vitória SC→Guimaraes` 方向反了,"
+        f"理由写在别名表里)。"
         f"若你有意增删,改这个数并在下面 per-league 表同步。")
 
 
@@ -90,9 +91,9 @@ def test_per_league_counts() -> None:
         # ── 解放者杯 3 + 沙特联 2(2026-08-14):回填后仅存的跨源劈开键 ──
         # ⚠️ 沙特联 2→10(2026-08-16):08-14 只看到 2 条,数据攒够才暴露系统性差异。
         #   ⛔ Al-Shabab/Al-Qadsiah 故意留空 —— 那个槽 1×2、指纹两边都 0,判不出。
-        "COPA_LIBERTADORES": 3, "SAU_PRO_LEAGUE": 10,
+        "COPA_LIBERTADORES": 5, "SAU_PRO_LEAGUE": 10,
         # ── 土超 5 条(2026-08-15):此前 0 条,全是变音符/改名 ──
-        "TUR_SUPER_LIG": 5,
+        "TUR_SUPER_LIG": 11,
     }, got
 
 

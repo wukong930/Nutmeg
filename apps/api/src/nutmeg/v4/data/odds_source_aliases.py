@@ -36,6 +36,32 @@
 from __future__ import annotations
 
 ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
+    # ── 2026-08-18 · `derive_odds_name_aliases.py` 推出 9 条,**采纳 8 条** ─────────
+    # 触发:owner「对没加队徽和没翻译队名的队进行处理」。`team_assets_check` 报
+    # 队名缺 27 / 队徽缺 15,查下来其中一批是**同一家俱乐部两套拼法**:
+    # closing 侧(Odds API)写一种、gather 侧(AF,正典)写另一种 ⇒ 盘面上出现两次,
+    # 只有 AF 那个有队徽和中文名。⇒ 归一到 gather 侧即同时修好两样。
+    # ⭐ 这 8 条的目标名**全部已有队徽 + 已有中文名**(逐条实测)。
+    ('COPA_LIBERTADORES', 'Fluminense-RJ'): 'Fluminense',            # 证据 2 场 · 弗鲁米嫩塞
+    ('COPA_LIBERTADORES', 'Independiente Rivadavia'): 'Independ. Rivadavia',  # 2 场 · 里独立
+    ('TUR_SUPER_LIG', 'Amed SK'): 'Amed',                            # 7 场 · 阿米德
+    ('TUR_SUPER_LIG', 'Erzurum BB'): 'Erzurumspor FK',               # 7 场 · 埃尔祖鲁姆士邦
+    ('TUR_SUPER_LIG', 'Fenerbahce'): 'Fenerbahçe',                   # 6 场 · 费内巴切(差一个 ç)
+    ('TUR_SUPER_LIG', 'Genclerbirligi SK'): 'Gençlerbirliği S.K.',   # 5 场 · 根克勒比利吉
+    ('TUR_SUPER_LIG', 'Torku Konyaspor'): 'Konyaspor',               # 7 场 · 科尼亚士邦
+    ('TUR_SUPER_LIG', 'Çaykur Rizespor'): 'Rizespor',                # 6 场 · 里泽士邦
+    #
+    # 🚨 **第 9 条 `('PRT_PRIMEIRA_LIGA', 'Vitória SC'): 'Guimaraes'` 故意不收** ——
+    # 推导脚本在这条上**方向反了**,而它自己看不见:
+    #   `odds_snapshots` 里 api_football(正典侧)的时间线是
+    #     `Guimaraes`  08-06 ~ **08-12**
+    #     `Vitória SC` **08-13** ~ 08-14     ← AF 在 08-13 **把这家俱乐部改名了**
+    #   脚本从共现推导,而重叠窗口(closing 从 08-07 起写 `Vitória SC`)里 gather 侧
+    #   还是旧名 ⇒ 它得出「新正典 → 旧名」,收下就是**把当前正典改写回陈旧值**。
+    # ⭐ 而且现在**根本不需要这条**:closing 侧 08-07~08-17 写的也是 `Vitória SC`,
+    #   两侧已经一致 —— 那次分裂是 08-07~08-12 的**临时**窗口,已自行闭合。
+    # ⚠️ 通用教训:这张表的一致性闸和对照组都**假定目标名是稳定的**。
+    #   「目标自己被改名了」这一类脚本查不出来 ⇒ **采纳前必须看目标名的时间线**。
     ('BRA_SERIE_A', 'Atletico Mineiro'): 'Atletico-MG',   # 证据 6 场
     ('BRA_SERIE_A', 'Bragantino-SP'): 'RB Bragantino',   # 证据 5 场
     ('BRA_SERIE_A', 'Chapecoense'): 'Chapecoense-sc',   # 证据 6 场
