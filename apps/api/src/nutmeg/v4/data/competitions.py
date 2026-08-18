@@ -161,6 +161,36 @@ CUP_COMPETITIONS: dict[str, Competition] = {
             "苏格兰(185)/埃及(895)/泰国(898) 都有,认 id=48 + country=England。"
         ),
     ),
+    # ── 韩国杯 KOR_FA_CUP(2026-08-18 注册)────────────────────────────────
+    # ⚠️ api_football_id=294 是 **live 核过 + 该场比赛钉死**的,不是查表猜:
+    #    AF `/leagues?search=korea` 里 type=Cup · country=South-Korea **唯一**命中
+    #    id=294「FA Cup」;再用比赛本身钉死 —— season=2026 的 55 场里有
+    #    `2026-08-19T10:30Z FC Anyang vs Jeju United FC · Round of 16`,与竞彩
+    #    「韩国杯」记录逐字对上(同 社区盾 用「那场比赛」钉 id 的做法)。
+    # ⚠️ 三个格式布尔**实测**自 season=2026 全 55 场:轮次只有 1/128-finals /
+    #    Round of 128/64/32/16 等淘汰轮、无任何小组标签 ⇒ 无小组阶段;同一对阵在
+    #    一轮里只出现 1 次 ⇒ 非两回合。
+    # ⚠️ Odds API **无**韩国杯 sport(`/v4/sports?all=true` 175 个全表 live 核过,
+    #    韩国只有 `soccer_korea_kleague1`)⇒ sport-key 单元会 warn,同 JPN_J2/荷乙/欧超杯。
+    #    观测到的 FC Anyang/Jeju United 已在 KOR_K_LEAGUE_1 段的 zh 字典里;杯赛含
+    #    K2/K3/业余队,registry_coverage 会按 AF 全表报若干未映射(预期 warn,非硬缺口)。
+    "KOR_FA_CUP": Competition(
+        code="KOR_FA_CUP",
+        display_zh="韩国杯 (韩国足总杯)",
+        display_en="FA Cup (South Korea)",
+        competition_type="club_cup",
+        api_football_id=294,          # live: "FA Cup" (Cup/South-Korea), 2026-08-19 Anyang×Jeju 钉死
+        has_knockouts=True,
+        has_group_stage=False,        # 实测:55 场全淘汰轮,无小组
+        has_two_legged_ties=False,    # 实测:无重复对阵 ⇒ 单场
+        notes=(
+            "竞彩写作「韩国杯」。AF id=294 由 2026-08-19 FC Anyang vs Jeju United "
+            "(Round of 16) 钉死。韩国足球日历年制(2–11 月)⇒ **必须**进 "
+            "CALENDAR_YEAR_LEAGUES(同 KOR_K_LEAGUE_1=292),否则年初的轮次按欧洲惯例算成 "
+            "season−1,AF 返 0 场。Odds API 无此 sport(175 全表核)⇒ 只有 AF 一路线;"
+            "含 K2/K3 等下级队,竞彩上架这些队时需照官方写法补 team_name_zh(⛔ 别猜译名)。"
+        ),
+    ),
     # ── 2026-08-09 owner 点名新增三个:解放者杯 / 欧超杯 / 沙职 ────────────
     # ⚠️ 三个 AF id 全部 **live 核过**(`/leagues?search=`),不是凭印象:
     # 「Super Cup」一个词搜出 **59 条**(德/土/埃/意/比/智/捷/沙都有),

@@ -97,6 +97,15 @@ OUT_OF_SCOPE: dict[str, str] = {
     "COPPA_ITALIA":   "国内杯赛,参赛队跨多级联赛",
     "DFB_POKAL":      "国内杯赛,参赛队跨多级联赛",
     "COUPE_DE_FRANCE": "国内杯赛,参赛队跨多级联赛",
+    # 补(2026-08-18)— 韩国杯 KOR_FA_CUP:同 FAC/EFL_CUP,国内淘汰杯,AF 全表 64 队跨
+    # K1/K2/K3/业余,52 支不在 zh 字典 —— 证据不足**不能猜**(⛔ 红线,错名比缺名更坏)。
+    # 竞彩只上架 K1 对阵(实测 2026-08-19 Anyang×Jeju,两队已可达);下级队若真进竞彩,
+    # ingest-time「过半丢失」哨兵会响。exit 条件:竞彩开始上架下级队且能照官方写法补 zh 时,
+    # 再决定是否移进 MARKET_MODE_LEAGUES。（同 FAC:AF id 有、但全表队检查对它无意义。）
+    # ⭐ 2026-08-18 补记:它现在**在** `_CUP_MARKET_COMPETITIONS` 里被服务了(走「竞彩
+    # 在售+手填 Pinnacle」——两条自动线源都实测干涸,见 routes.py 该处注释)。所以它
+    # 正好落在本字典的定义上「**已服务**但队表那格无意义」,和 FAC/EFL_CUP 完全同形。
+    "KOR_FA_CUP":     "国内杯赛,参赛队跨多级联赛(K1~业余),竞彩只列 K1;下级队无 zh 证据",
     # 它**在** MARKET_MODE_LEAGUES 里(sport-key / AF-id 两格有意义),
     # 只有队表那一格对它无意义 —— 一年一场、两支队。
     "UEFA_SUPER_CUP": "一年一场两队,队表检查无意义",

@@ -2460,6 +2460,26 @@ _CUP_MARKET_COMPETITIONS = [
     #                key 休赛期 active=False,自激活前会走「竞彩在售+手填」那条路。
     "COPA_LIBERTADORES", "UEFA_SUPER_CUP", "SAU_PRO_LEAGUE",
     "NED_EERSTE_DIVISIE", "EFL_CUP",
+    # 补韩国杯(2026-08-18 owner)。线源实测(⛔ 别外推,逐条数过):
+    #   · Odds API → 175/175 sport 全表核过,韩国只有 `soccer_korea_kleague1`,
+    #                **没有** cup 这个 sport ⇒ 这条路对 294 永远空;
+    #   · AF /odds → **稀疏**,不是没有:2026-08-19 那轮 8 场 R16 里**只有 1 场**
+    #                (Anyang×Jeju,fid 1607203)有线 —— 12 家含 Pinnacle
+    #                (H2.87/D3.09/A2.31);其余 7 场 0 家。同 JPN_J2「稀疏且晚」那条
+    #                先例(⚠️ 我第一版只探了 4 场小队对阵、全 0,就误写成「AF 真不给
+    #                韩国杯挂线」——当天被同轮的 Anyang×Jeju 证伪。记着这个错法:
+    #                探赔率覆盖必须把**那一轮全扫一遍**,marquee 场和小队场结论相反)。
+    # ⇒ 两类腿都要:marquee 对阵 AF 自动挂 Pinnacle(psc 自动填、直接可投);其余
+    #    场次 psc=None,走**「竞彩在售 + 手填 Pinnacle」**(同沙职休赛期那条路)。
+    # 把它放进本表**正是为了让这两条都通**:①gather `require_odds=False` ⇒ 无赔率的
+    # 赛程也会作为 psc_*=None 的卡片冒出来(否则 gather 迭代本表,压根不拉 294);
+    # ②`_fixture_to_match_input` 的 925 行闸命中 ⇒ 胜平负按 **de-vig Pinnacle(AF 自动
+    # 或手填,同一条)逐字定价**,而不是喂给对韩国杯 OOD 的欧洲模型(那会出垃圾 P)。
+    # 队表那一格仍在 `registry_coverage.OUT_OF_SCOPE` 豁免(全表 64 队跨 K1~业余,
+    # 52 支无 zh 证据,⛔ 不猜)⇒ `--gate` 不查它、不假红,同 FAC/EFL_CUP。
+    # exit 条件:哪天 Odds API 上了 korea cup(叠鲜线),或 AF 把覆盖从 marquee 扩到
+    # 全轮 —— 都自动叠上来,这里不用再动。
+    "KOR_FA_CUP",
 ]
 
 

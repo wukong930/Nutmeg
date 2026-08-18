@@ -783,6 +783,7 @@ _V12_W7_CUP_AND_VARIANTS = {
     "Lokomotiv Moscow": "莫斯科火车头",
     "Red Bull Salzburg": "萨尔茨堡红牛", "Sturm Graz": "格拉茨风暴",
     "Rapid Vienna": "维也纳快速", "Austria Vienna": "维也纳奥地利",
+    "Lask Linz": "LASK林茨",  # 2026-08-18 竞彩「LASK林茨」解不出(欧冠 Celtic vs Lask Linz 08-19)。整队缺→②补词典。⚠️英文键照抄**盘面**(odds_snapshots)的「Lask Linz」——**不是** AF 的「LASK Linz」:canonical_team 不折大小写、join 大小写敏感,盘面用小写才 join 得上 psc(1.57/4.17/5.40)。「LASK林茨」0 撞车
     "BSC Young Boys": "伯尔尼年轻人", "FC Basel 1893": "巴塞尔",
     "Servette FC": "塞尔维特", "FC Zurich": "苏黎世", "FC Lugano": "卢加诺",
     "Slavia Praha": "布拉格斯拉维亚", "Sparta Praha": "布拉格斯巴达",

@@ -193,6 +193,10 @@ SPORT_KEYS: dict[str, str] = {
     # 1551741 有 Pinnacle),registry-coverage 记 warn 非 gap。
     # 别「补全」它:猜一个不存在的 key 只会让 fetch 每次 404 当空处理。
     "EFL_CUP":              "soccer_england_efl_cup",
+    # ⛔ **韩国杯(KOR_FA_CUP)故意没有条目**(2026-08-18)— `/v4/sports?all=true` 175 个
+    #    sport 全表 live 核过,韩国只有 `soccer_korea_kleague1`(K联赛),**没有**韩国杯这个
+    #    sport。留空,走 AF(id=294)一路线;registry-coverage 记 sport-key warn 非 gap。
+    #    同 欧超杯/荷乙/JPN_J2 先例:别猜一个不存在的 key(只会让 fetch 每次 404 当空)。
     # Add more as needed: FA Cup, Copa del Rey etc.
 }
 

@@ -91,6 +91,12 @@ _EN_TO_CN: dict[str, str] = {
     # ⭐ 取**缩写**而非全称 —— 同 英联赛杯/解放者杯/欧超杯/沙职 的既有惯例;
     #   意译会得到「英格兰社区盾杯」,和两个源都对不上。
     "COMMUNITY_SHIELD": "英社区盾",
+    # 补(2026-08-18)。中文写法**实证**自竞彩 `jingcai_sp.league`(直接抓到「韩国杯」),
+    # 不是意译(意译会得「韩国足总杯」,对不上)。AF id=294 已 live 核 + 2026-08-19
+    # FC Anyang vs Jeju United(Round of 16)钉死。
+    # ⭐ 杯赛 **≠** 韩职(K联赛,KOR_K_LEAGUE_1):Anyang/Jeju 虽是 K1 俱乐部,但这是**独立
+    #   赛事**,映射到「韩职」= 静默污染分组(同「绝不猜」红线的反例)。
+    "KOR_FA_CUP": "韩国杯",
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.
@@ -158,6 +164,13 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     # ⚠️ 它没有对应的 EN 键(我们不采集这项赛事),所以只在中文轨登记;
     #    若将来 EN 轨也出现,`CUP_COMPETITIONS` 要同步注册。
     "亚冠精英",
+    # 同类第七条(2026-08-18):韩国杯 = 韩国足总杯(KOR_FA_CUP),**国内俱乐部杯赛**
+    # ⇒ 不进 δ 的拟合人口(δ 拟合在各国**联赛** CSV 上)。它在 `CUP_COMPETITIONS` 里
+    # 注册为 club_cup(AF id=294),EN 轨本来就排除,这里对齐中文轨。
+    # ⚠️ 同批的 KOR_K_LEAGUE_1(韩职)**不加** —— 它是国内俱乐部**联赛**,正是 P3 该计的人口。
+    # ⚠️ 只加 `_EN_TO_CN` 不加这里 = 杯赛被 classify_league 算成 'domestic' ⇒ 悄悄混入
+    #    P3 联赛人口(2026-08-18 注册时实测到,幸亏对照既有杯赛才发现)。
+    "韩国杯",
 })
 
 #: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。

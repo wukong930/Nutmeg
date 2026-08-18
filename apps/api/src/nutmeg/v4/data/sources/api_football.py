@@ -349,6 +349,10 @@ CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({
     # AF 返回 0 场 —— 与 WC 那条注释记的「6 月落到 year−1 ⇒ 整届世界杯静默消失」同族。
     # ⛔ 沙职**不在**这里:8 月–5 月跨年,欧洲惯例(season=开赛那年)本来就对。
     "COPA_LIBERTADORES", "UEFA_SUPER_CUP",
+    # 补(2026-08-18)— 韩国杯(KOR_FA_CUP)2–11 月日历年制,同 KOR_K_LEAGUE_1(292)。
+    # season=2026 全 55 场落在一个日历年;不进这里则年初的 1/128~Round of 32 会被算成
+    # season−1,AF 返 0 场(同 解放者杯 / WC 那条注释的族)。
+    "KOR_FA_CUP",
     # 体检(2026-06-10)— friendlies are scheduled year-round; API-Football
     # tags them with the calendar year (cached envelope: season=2026).
     "FRIENDLIES",

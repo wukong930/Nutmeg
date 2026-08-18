@@ -531,6 +531,18 @@ _ZH_OVERRIDES: dict[str, str] = {
     #      含已解出的 `Blaublitz Akita` 的**恰好 1 场**:
     #      `L99 J2 League 2026-08-15T09:00 Blaublitz Akita vs Kataller Toyama`。
     "富山胜利": "Kataller Toyama",
+    # 2026-08-18 —— 竞彩换写法致解不出的 3 支(① 类:该队系统里已有,竞彩用了别的中文串)。
+    # 英文值照抄**盘面**(odds_snapshots)拼写;撞车检查:3 个中文串在 TEAM_NAME_ZH 值 /
+    # _ZH_OVERRIDES / 当前 zh_to_canonical 里均未被占用(0 冲突)。
+    #   · 利雅得新月(全称)⇐ 系统只有**简称**`利雅新月`→`Al-Hilal Saudi FC`。锚 = odds_snapshots
+    #       `SAU_PRO_LEAGUE 2026-08-14 Al-Hilal Saudi FC vs Al-Faisaly FC`(psc 1.14/9.05/14.65)。
+    #   · 赫拉克勒斯 ⇐ 词典写`赫拉克莱斯`(莱),竞彩用`勒`。锚 = odds_snapshots
+    #       `NED_EERSTE_DIVISIE 2026-08-14 Heracles vs Den Bosch`(psc 1.54/4.4/5.01)。
+    #   · 曼彻斯特城(全称)⇐ 词典写`曼城`;canonical=`Manchester City`(zh_to_canonical('曼城')
+    #       与 AF ×4626 一致)。⚠️该场当前 odds_snapshots 无赔率 → 名字解得出但 EV 待 Pinnacle 覆盖。
+    "利雅得新月": "Al-Hilal Saudi FC",
+    "赫拉克勒斯": "Heracles",
+    "曼彻斯特城": "Manchester City",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
