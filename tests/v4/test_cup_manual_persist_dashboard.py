@@ -59,8 +59,12 @@ class TestCupManualPersist:
         assert "function _cupManForget(pr)" in html
 
     def test_apply_backs_up_fresh_api_line_for_revert(self, html: str) -> None:
-        # restore stamps _apiSnapshot from the FRESH pred so ↩︎ 复原 goes to the
-        # latest auto odds, not a stale one.
+        """restore 从 **FRESH** pred 盖 `_apiSnapshot`,所以 ↩︎ 复原回到最新自动盘口。
+
+        ⚠️ 2026-08-18:这两条**只钉「有没有这段代码」**,钉不住「快照里装了什么」。
+        实际出事的正是后者(三个构造点里有一个少三个字段,字符串 grep 全绿)。
+        承重的行为断言见 `TestRevertRestoresTheWholeApiLine`。
+        """
         assert "pr._apiSnapshot = {" in html
         assert "pr._manual = true; pr.odds_update = null;" in html
 
@@ -201,3 +205,173 @@ class TestManualAppliesToBothBoardsOnTheSameTab:
         body = html[start:start + 4000]
         assert "odds_source: pr.odds_source ?? null" in body, (
             "_recordBet 记账漏了溯源 —— 手填价会被记成自动抓取的")
+
+
+class TestRevertRestoresTheWholeApiLine:
+    """🚨 「应用手填 → 刷新 → ↩︎ 复原」之后,**整条自动线**都必须回来(2026-08-18)。
+
+    ## 出事的形状
+
+    `↩︎ 复原` 的实现是 `Object.assign(pr, pr._apiSnapshot)` —— 它只还原
+    **快照里有的键**。快照少一个字段 ⇒ 那个字段**原地不动**,停在手填值上。
+
+    三个 `_apiSnapshot` 构造点里,`_cupApplyStoredManual`(刷新/切 tab 时从
+    localStorage 贴回那条)少了 `onex_lo_*` 和 `p_*_market`。而它紧接着就把
+    `pr.onex_lo_*` 覆盖成手填线的下界 ⇒ 复原后:
+
+        点估回到自动线   ·   下界留在手填线
+
+    `_boardLegs` 的钳位 `Math.min(lo, p)` 只兜住**方向**,代价是**下界塌成点估、
+    安全边际归零** —— 同 `market_handicap` 那条「越不可信越容易变绿」。
+    实测(韩国杯主胜腿 SP 2.63):evLo 从 −20.61% 虚高到 −17.56%,**+3.05pp**,
+    而 +5% 闸就建在这上面。
+
+    ## ⭐ 为什么必须是行为断言
+
+    原来守这里的是 `assert "pr._apiSnapshot = {" in html` —— **字符串 grep**。
+    三个构造点里少一个字段,它照样全绿(实测:出事期间该断言一直是绿的)。
+    「语法代理测语义属性」在本仓是明令的反模式,这条是它的又一个现场。
+    ⇒ 这里在 node 里跑**真的** shipped 函数,断言**复原之后的对象状态**。
+    """
+
+    #: 复原后必须与自动线逐字相同的键。⚠️ 加字段进 `_apiSnapshot` 时同步加这里。
+    _MUST_RESTORE = (
+        "p_home_1x2", "p_draw_1x2", "p_away_1x2",
+        "p_home_market", "p_draw_market", "p_away_market",
+        "onex_lo_home", "onex_lo_draw", "onex_lo_away",
+        "psc_home", "psc_draw", "psc_away", "odds_source",
+    )
+
+    @staticmethod
+    def _run(html: str) -> dict:
+        """在 node 里跑真代码:应用 → 刷新(贴回)→ ↩︎ 复原,回传复原后的 pred。"""
+        import json
+        import re
+        import subprocess
+
+        def fn(name: str) -> str:
+            m = re.search(rf"\n(?:async\s+)?function {re.escape(name)}\s*\(", html)
+            assert m, f"dashboard.html 里找不到 {name}"
+            body = html[m.start():]
+            depth = 0
+            started = False
+            for k, ch in enumerate(body):
+                if ch == "{":
+                    depth += 1
+                    started = True
+                elif ch == "}":
+                    depth -= 1
+                    if started and depth == 0:
+                        return body[:k + 1]
+            raise AssertionError(f"{name} 括号不平衡 —— 提取器需要更新")
+
+        src = "\n".join(fn(n) for n in (
+            "_cupManKey", "_cupManStore", "_cupManWrite", "_cupManSave",
+            "_cupManForget", "_cupApplyStoredManual", "_cupManRefreshDerived",
+            "_cupManualRevert",
+        ))
+        m_ls = re.search(r"_LS_CUPMAN\s*=\s*'([^']+)'", html)
+        assert m_ls, "找不到 _LS_CUPMAN —— harness 会静默失效(见类 docstring)"
+        harness = """
+const API = 'http://stub';
+// 🚨 必须定义 —— `_cupManWrite`/`_cupManStore` 引用它,而它们把整段包在
+//    `try { } catch (_) {}` 里 ⇒ 少一个全局变量 = **静默什么都不做**,
+//    夹具看起来跑通了、被测路径压根没进。2026-08-18 我第一版就栽在这。
+const _LS_CUPMAN = '__LS_CUPMAN__';
+const store = {};
+globalThis.localStorage = {
+  getItem: k => (k in store ? store[k] : null),
+  setItem: (k, v) => { store[k] = String(v); },
+  removeItem: k => { delete store[k]; },
+};
+// 手填线的派生结果(服务端会回这些)—— 与自动线**刻意不同**,便于分辨
+const MANUAL = { p_home_1x2: .50, p_draw_1x2: .28, p_away_1x2: .22,
+  onex_lo_home: .48, onex_lo_draw: .26, onex_lo_away: .20, handicap_lines: [{line:-1}],
+  delta_scope: 'out_of_scope' };
+globalThis.fetch = async () => ({ ok: true, json: async () => MANUAL });
+globalThis.renderCupMarket = () => {};
+globalThis._CUPMKT = { preds: [], pending: [] };
+__SRC__
+// ── 自动线(API 下发的原貌)──
+const API_LINE = {
+  home_team: 'A', away_team: 'B', date: '2026-08-19', league: 'KOR_FA_CUP',
+  p_home_1x2: .40, p_draw_1x2: .30, p_away_1x2: .30,
+  p_home_market: .41, p_draw_market: .29, p_away_market: .30,
+  onex_lo_home: .3884, onex_lo_draw: .2884, onex_lo_away: .2884,
+  psc_home: 2.5, psc_draw: 3.3, psc_away: 3.3, odds_source: 'api_football',
+  handicap_lines: [{ line: -1 }], ou_line: 2.5, odds_update: '2026-08-18T00:00:00Z',
+};
+const pr = JSON.parse(JSON.stringify(API_LINE));
+_CUPMKT.preds = [pr];
+// STEP 1 应用手填 —— 按 `_spcalcManualReprice`/`_cupManualReprice` 存的形状写入 localStorage
+_cupManSave(pr, { h: 2.1, d: 3.4, a: 3.6, o: null, u: null, line: 2.5,
+  P: [MANUAL.p_home_1x2, MANUAL.p_draw_1x2, MANUAL.p_away_1x2],
+  lo: [MANUAL.onex_lo_home, MANUAL.onex_lo_draw, MANUAL.onex_lo_away],
+  hc: MANUAL.handicap_lines });
+// STEP 2 刷新/切 tab —— 真正的贴回路径(它会重盖 `_apiSnapshot`)
+const fresh = JSON.parse(JSON.stringify(API_LINE));
+_CUPMKT.preds = [fresh];
+const trace = { stored_keys: Object.keys(JSON.parse(localStorage.getItem(_LS_CUPMAN) || '{}')) };
+_cupApplyStoredManual([fresh], () => {}, false);
+trace.snapshot_stamped = !!fresh._apiSnapshot;
+trace.snapshot_keys = Object.keys(fresh._apiSnapshot || {});
+setTimeout(() => {
+  trace.lo_before_revert = fresh.onex_lo_home;
+  // STEP 3 ↩︎ 复原
+  _cupManualRevert(0);
+  console.log(JSON.stringify({ after: _CUPMKT.preds[0], api: API_LINE, manual: MANUAL,
+    trace }));
+}, 60);
+"""
+        out = subprocess.run(
+            ["node", "-e", harness.replace("__SRC__", src)
+                                  .replace("__LS_CUPMAN__", m_ls.group(1))],
+            capture_output=True, text=True, timeout=60)
+        assert out.returncode == 0, f"node 跑挂了:\n{out.stderr[-2000:]}"
+        return json.loads(out.stdout.strip().split("\n")[-1])
+
+    def test_harness_actually_reaches_the_path_under_test(self, html: str) -> None:
+        """⭐⭐ **强**前提自检 —— 逐段证明夹具真的走到了被测那条路。
+
+        🚨 我的第一版只断言「手填线 ≠ 自动线」,**它是绿的,而空包弹 0 红** ——
+        因为 harness 少定义了全局 `_LS_CUPMAN`,`_cupManWrite`/`_cupManStore` 把整段
+        包在 `try { } catch (_) {}` 里 ⇒ **静默什么都不做** ⇒ localStorage 空 ⇒
+        `_cupApplyStoredManual` 第一行 `if (!m || !Array.isArray(m.P)) return;` 直接返回
+        ⇒ `_apiSnapshot` 压根没被盖 ⇒ 撤销修复也没红。
+
+        ⇒ 「夹具造不出被测条件」在**这个方向**上产生的是**假绿**,比假红更贵。
+        所以自检必须逐段查中间态,不能只查输入。
+        """
+        r = self._run(html)
+        t = r["trace"]
+        assert t["stored_keys"], "localStorage 里什么都没存 —— `_cupManSave` 静默失败了"
+        assert t["snapshot_stamped"], \
+            "`_cupApplyStoredManual` 没有盖 `_apiSnapshot` —— 贴回路径没进"
+        assert t["lo_before_revert"] == r["manual"]["onex_lo_home"], (
+            f"复原**之前**下界不是手填值(实际 {t['lo_before_revert']},"
+            f"手填 {r['manual']['onex_lo_home']})—— 没造出「要被复原」的状态,"
+            f"后面的断言恒真")
+        assert r["manual"]["onex_lo_home"] != r["api"]["onex_lo_home"], \
+            "夹具的手填线和自动线一样 —— 本类全部断言恒真"
+
+    def test_revert_restores_every_backed_up_field(self, html: str) -> None:
+        """🚨 承重条:复原后每个字段都必须回到自动线,一个都不许留在手填值上。"""
+        r = self._run(html)
+        after, api, manual = r["after"], r["api"], r["manual"]
+        stuck = [k for k in self._MUST_RESTORE
+                 if k in api and after.get(k) != api[k]]
+        assert not stuck, (
+            f"🚨 ↩︎ 复原后这些字段**没回到自动线**:{stuck}\n"
+            + "\n".join(f"   {k}: 复原后={after.get(k)} 自动线={api[k]} "
+                        f"手填线={manual.get(k, '(手填未涉及)')}" for k in stuck)
+            + "\n   ⇒ `_apiSnapshot` 少备份了它们(`Object.assign` 只还原快照里有的键)。")
+
+    def test_lower_bound_specifically_does_not_collapse(self, html: str) -> None:
+        """具名锚:下界塌成点估 = 安全边际归零,这是 2026-08-18 那个 bug 的钱路后果。"""
+        r = self._run(html)
+        after, api = r["after"], r["api"]
+        margin = after["p_home_1x2"] - after["onex_lo_home"]
+        want = api["p_home_1x2"] - api["onex_lo_home"]
+        assert abs(margin - want) < 1e-9, (
+            f"🚨 复原后 1X2 主胜腿的安全边际 = {margin*100:.2f}pp,自动线应为 "
+            f"{want*100:.2f}pp。边际被压缩 ⇒ evLo 虚高 ⇒ +5% 闸变松。")

@@ -3393,6 +3393,13 @@ const LEAGUE_ZH = {
   ENG_CHAMPIONSHIP: '英冠', ESP_SEGUNDA_DIVISION: '西乙', ITA_SERIE_B: '意乙', GER_2_BUNDESLIGA: '德乙',
   FRA_LIGUE_2: '法乙', NED_EREDIVISIE: '荷甲', PRT_PRIMEIRA_LIGA: '葡超', BEL_PRO_LEAGUE: '比甲', JPN_J1: '日职联',
   NOR_ELITESERIEN: '挪超', SWE_ALLSVENSKAN: '瑞典超', DNK_SUPERLIGA: '丹超', FIN_VEIKKAUSLIIGA: '芬超',
+  // 🚨 2026-08-18 补 —— 韩国杯注册(38ab5ad)时**只加了服务端** `league_labels.py` 的
+  //   `KOR_FA_CUP → 韩国杯`,而面板读的是**这一份**表。两份同名不同用:
+  //   服务端那份给 δ 人口分类/中文轨,这份给分组头(`_lgGroupHtml`)和甜区榜行。
+  //   ⇒ 只加一处 = **服务端绿、面板印生字符串 `KOR_FA_CUP`**。
+  //   实测:它曾是 `_CUP_MARKET_COMPETITIONS` 全部 30 个成员里**唯一**没有中文名的。
+  //   护栏见 `tests/v4/test_league_zh_coverage.py`(拿两块板的并集当分母)。
+  KOR_FA_CUP: '韩国杯',
   KOR_K_LEAGUE_1: 'K联赛', JPN_J2: '日职乙', AUS_A_LEAGUE: '澳超', SCO_PREMIERSHIP: '苏超',
   TUR_SUPER_LIG: '土超', SUI_SUPER_LEAGUE: '瑞士超',
   USA_MLS: '美职联', BRA_SERIE_A: '巴甲',
@@ -7512,6 +7519,25 @@ function _cupApplyStoredManual(preds, rerender, keepModelP) {
       ou_line: pr.ou_line, odds_update: pr.odds_update,
       // ↩︎ 复原要把出处一并还原;漏了 = 撤销手填后台账仍记 'manual'
       odds_source: pr.odds_source ?? null,
+      // 🚨 2026-08-18 补 —— 这里曾是**三个 `_apiSnapshot` 构造点里唯一缺字段的那个**,
+      // 而且它必须装另两处的**并集**:`_cupApplyStoredManual` 被**两块板**都调
+      // (L6768 标准板 keepModelP=true · L8270 市场板)。
+      //
+      // 缺 `onex_lo_*` 的后果(**碰钱**):
+      //   手填「应用」→ 刷新/切 tab(走本函数从 localStorage 贴回)→ 点 ↩︎ 复原
+      //   ⇒ 点估回到自动线,而**下界留在手填线**(紧接着下面就把 `pr.onex_lo_*`
+      //     覆盖成手填值,复原时却没有备份可还)。
+      //   `_boardLegs` 的钳位 `Math.min(lo, p)` 只兜住方向 ⇒ **下界塌成点估、
+      //   安全边际归零**(同 `market_handicap` 那条「越不可信越容易变绿」)。
+      //   实测(韩国杯主胜腿 SP 2.63):evLo 从 −20.61% 虚高到 −17.56%,**+3.05pp**
+      //   = δ₁ₓ₂ 下界 1.16pp × SP。而 +5% 闸就建在这 3.05pp 上。
+      //
+      // 缺 `p_*_market` 的后果:同 L7409 那条 —— 标准模式「市」列和市场 EV 会停在
+      // 手填盘口上,而模型 P 已回到自动线,两列来自不同盘口。
+      p_home_market: pr.p_home_market, p_draw_market: pr.p_draw_market,
+      p_away_market: pr.p_away_market,
+      onex_lo_home: pr.onex_lo_home ?? null, onex_lo_draw: pr.onex_lo_draw ?? null,
+      onex_lo_away: pr.onex_lo_away ?? null,
     };
     if (!keepModelP) {
       pr.p_home_1x2 = m.P[0]; pr.p_draw_1x2 = m.P[1]; pr.p_away_1x2 = m.P[2];
