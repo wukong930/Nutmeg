@@ -1447,7 +1447,11 @@ def sporttery_refresh_endpoint() -> SportteryRefreshResponse:
         from nutmeg.v4.cli.ingest_sporttery import harvest_to_db
         # protect_manual=False: an explicit 🎯 refresh OVERWRITES the stale
         # market_mode capture with the latest official SP (that IS the button's job).
-        r = harvest_to_db(db_path, refresh=True, protect_manual=False)
+        # trigger="button" —— `phase` 分不出触发源(close 覆盖 13 轮晚间 + exotics +
+        # 每一次点击)。实测 jingcai_sp 自 07-20 起 104 个 captured_at 里 39 个
+        # (37.5%)落在 cron 槽位 ±5min 之外 ⇒ 靠时间戳反推不可靠。
+        r = harvest_to_db(db_path, refresh=True, protect_manual=False,
+                          trigger="button")
     except Exception:  # noqa: BLE001 — fail-soft; the button surfaces the reason
         return SportteryRefreshResponse(ok=False, reason="竞彩抓取失败(网络/端点)")
     return SportteryRefreshResponse(ok=True, **r)

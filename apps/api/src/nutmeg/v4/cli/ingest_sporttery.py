@@ -12,12 +12,14 @@ touches your betting account. Personal/local use only.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 
 # Persistent, queryable surface for「当日未映射竞彩队名」— repo 根下,由 db_path 反推
 # (data/v4_observation.db → 上两级)。桌面推送易逝(无头 launchd 里看不见)、cron
 # out.log 没人读(体检 2026-07-03 P2),这个 latest 文件被 health_check.sh 主动读出。
 _UNMAPPED_REPORT_RELPATH = "logs/sporttery_unmapped_latest.txt"
+_UNMAPPED_HISTORY_RELPATH = "logs/sporttery_unmapped_history.jsonl"
 
 
 def summarize_unmapped(matches: list[dict]) -> dict:
@@ -93,6 +95,96 @@ def _write_unmapped_report(db_path, report: str) -> None:
         pass
 
 
+def _append_unmapped_history(db_path, summary: dict, matches: list[dict],
+                             stamp_utc: str, phase: str, trigger: str,
+                             had_w: int, hhad_w: int) -> None:
+    """把每次 harvest 的**名字解析**缺口追加到 `logs/sporttery_unmapped_history.jsonl`。
+
+    ⭐ **为什么不是「把 _latest 按日期存一份副本」。** 那是 δ 校准仪表踩过的坑的
+    *半个* 修法:有历史了,但仍只有**分子**。`_latest` 记「哪几场没映射上」,
+    三个月的分子攒起来**算不出率** —— 那几天竞彩上架了多少场、哪些联赛,没人记。
+
+    🚨 **分母必须以「比赛」为单位,不是「轮次」。** 一天跑 ~16 轮,而一场比赛
+    在售 1–3.3 天(实测:世界杯 3.29 天 vs 欧罗巴 1.00 天)⇒ 裸计数被**在售时长
+    加权**,逐联赛放大 16–54×。审查实测:90 天模拟里按裸 `bad` 排「先补哪个联赛」
+    **12 个联赛错位 8.9 个、top-1 在 5/20 个种子里翻掉**。所以另落一份
+    ``matches_seen``:全部在售场次的 ``[联赛, match_date, match_num]`` 身份,
+    让消费方**自己跨轮去重**。⛔ 只落「按比赛去重的计数」没用 —— 单条记录内去重
+    与不去重**完全相同**(一轮里同一场不出现两次),膨胀只在跨轮求和时发生。
+    ⚠️ ``(联赛, 日期)`` **不是唯一键**(实测 54.7% 的格子装不止一场,最多 16)
+    ⇒ 去重键**必须**带 `match_num`,少了它照样排错。
+
+    🚨 **`side` 不能省。** 一场未映射通常只坏一侧,另一侧被连坐:审查实测
+    被点名的 116 个队名里 **74 个(64%)本身映射得好好的**,逐队计数中位虚高 ×32。
+    ⛔ 「读的时候拿词典再筛一遍」是**假补救**:词典近乎纯增(近 20 个提交 +145/−3),
+    用窗口末的词典去筛会把真发生过的缺口筛成 0。
+
+    ⚠️⚠️ **这份记录测的是「名字解不解得出」,不是「盘面上有没有价」。**
+    分子来自 `summarize_unmapped`,它**从不碰赔率**(见 `routes.py` 该端点 docstring:
+    「解不出 ≠ 整场丢弃」「(N/M) 不能读成另外 M−N 场都在盘面上」)。实测 07-21~08-20
+    的 291 场「名字解出来了」里 **10 场(3.4%)盘面零行**(巴西杯 7/7 等)。
+    ⇒ 曲线变绿**不等于**窟窿变小。落 ``had_w``/``hhad_w`` 是为了至少能分出
+    「名字解出来了」和「行真的落库了」——**但那仍不是「有没有价」。**
+
+    ⚠️ **只覆盖实时源。** 竞彩走势档案(`jingcai_odds_history`)是另一套更短的写法
+    (实测四个实时写法在档案里出现 0 次)⇒ 档案侧缺口(2026-08-20:比赛级 26.8%)
+    与这份历史**互不可推**。两条链,两个分母。
+
+    ⭐ **jsonl 而非每日一文件**:一天多轮(open ×2 + evening ×13 + exotics + 🎯 按钮),
+    轮间差异本身是信号(竞彩分批上架)。append-only ⇒ 任何一次写都不抹掉先前观测。
+    ``n_matches == 0`` **也落一行** —— 那样才能把「抓到 0 场」与「根本没跑 / 写失败」
+    分开(四态同形是审查确认的真缺陷)。
+
+    Fail-soft,但**留痕**:写失败记一条 warning(旧版静默 `pass`,而这个文件
+    今天还没有任何读者 ⇒ 静默失败会永远看不见)。
+    """
+    from collections import Counter
+    from pathlib import Path
+    try:
+        n_all = Counter((m.get("league_cn") or "?") for m in matches)
+        n_bad = Counter((u["league_cn"] or "?") for u in summary["unmapped"])
+        # ⭐ 全部在售场次的**身份** —— 跨轮聚合唯一的把手。
+        # ⚠️ 只落 by_league 的计数是不够的:单条记录里去重与不去重**完全相同**,
+        #    膨胀只在**跨轮求和**时发生 ⇒ 消费方必须能自己去重,而去重需要身份。
+        #    只落未映射那些的身份(names)则只能去重**分子**,分母照样塌。
+        seen = [[m.get("league_cn") or "?", m.get("match_date"), m.get("match_num")]
+                for m in matches]
+        names = []
+        for m in matches:
+            if m.get("home_en") and m.get("away_en"):
+                continue
+            lg = m.get("league_cn") or "?"
+            side = ("" if m.get("home_en") else "h") + ("" if m.get("away_en") else "a")
+            names.append([m.get("home_cn"), m.get("away_cn"), lg,
+                          m.get("match_date"), m.get("match_num"), side])
+        rec = {
+            "t": stamp_utc,
+            "phase": phase,          # jingcai_sp 写入语义:open 盖 jc_open_*,close 盖终盘
+            "trigger": trigger,      # 谁触发的:cron 各槽位 vs 🎯 按钮 —— phase 分不出
+            "n_matches": len(matches),
+            "n_unmapped": len(summary["unmapped"]),
+            "rows_written": {"had": had_w, "hhad": hhad_w},
+            # 裸计数(按轮次)—— 只用于同一轮内部,⛔ 跨轮求和会被在售时长加权
+            "by_league": {lg: {"n": n, "bad": n_bad.get(lg, 0)} for lg, n in n_all.items()},
+            # ⭐ [league_cn, match_date, match_num] × 全部在售场次 —— 跨轮去重的把手。
+            # 分母和分子共用同一套键(names 的第 3-5 项),所以两边都能去重。
+            "matches_seen": seen,
+            "gone": summary["gone"],
+            "partial": summary["partial"],
+            # [home_cn, away_cn, league_cn, match_date, match_num, side] — side 指**坏的是哪侧**
+            "names": names,
+        }
+        out = Path(db_path).resolve().parent.parent / _UNMAPPED_HISTORY_RELPATH
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with out.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
+    except (OSError, TypeError, ValueError) as exc:
+        # ⛔ 别退回静默 pass:这份数据**结构上无法回溯**(见 docstring),
+        # 而它今天还没有任何读者 ⇒ 静默失败 = 永久空洞且无人知晓。
+        logging.getLogger(__name__).warning(
+            "未映射历史写入失败(%s: %s)—— 这一轮的观测永久丢失", type(exc).__name__, exc)
+
+
 def _push_unmapped_alarm(alarm_bits: list[str]) -> None:
     """桌面弹窗 — 即时但**易逝**的通道(无头 launchd 里常看不见)。持久通道是 sink 写的
     logs/sporttery_unmapped_latest.txt(health_check.sh 主动读),即使这条推送没人看见
@@ -112,7 +204,8 @@ def _push_unmapped_alarm(alarm_bits: list[str]) -> None:
 
 def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = False,
                   matches: list[dict] | None = None, protect_manual: bool = True,
-                  phase: str = "close", exotics: bool = False) -> dict:
+                  phase: str = "close", exotics: bool = False,
+                  trigger: str = "cli") -> dict:
     """Upsert the current 竞彩 SP into jingcai_sp (source=sporttery). Fetches if
     ``matches`` is None. Returns ``{matches, mapped, unmapped, had, hhad, crs, ttg,
     unmapped_teams, alarm_bits}``. Shared by the CLI and the 🎯 刷新竞彩 endpoint.
@@ -172,11 +265,21 @@ def harvest_to_db(db_path, *, pool_codes: str = "had,hhad", refresh: bool = Fals
     # 🎯 按钮两条路都留痕)。只在真抓到场次时刷新 — 抓取失败(0 场)别把上次报告洗成✅假绿;
     # 那种漏由 data_freshness「jingcai_sp 停长」另行报警。Fail-soft,绝不打断入库。
     summary = summarize_unmapped(matches)
+    import datetime
     if matches:
-        import datetime
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         _write_unmapped_report(
             db_path, render_unmapped_report(summary, stamp, len(matches)))
+    # 2026-08-20 —— 同一份 summary 再落一条 append-only 历史(带**按比赛去重**的分母)。
+    # `_latest` 只有当下一帧,判不了「缺口在变好还是变坏」;而实时侧的缺口**结构上
+    # 无法回溯**(走势档案是另一套写法)⇒ 只能从今天开始前向积累。
+    # ⚠️ 与 `_latest` 不同:**0 场也写**。`_latest` 不刷新是为了不洗成 ✅ 假绿;
+    #    而历史要的是相反的东西 —— 记下「这一轮跑了、结果是 0 场」,
+    #    否则「抓到 0 场 / cron 没跑 / 写失败 / 开关关掉」四态在文件上完全同形。
+    _append_unmapped_history(
+        db_path, summary, matches,
+        datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        phase, trigger, had_w, hhad_w)
     return {"matches": len(matches), "mapped": len(mapped),
             "unmapped": len(summary["unmapped"]), "had": had_w, "hhad": hhad_w,
             "crs": crs_w, "ttg": ttg_w,
@@ -267,7 +370,8 @@ def main(argv: list[str] | None = None) -> int:
         print("\n(dry-run — 未写库)")
         return 0
 
-    r = harvest_to_db(args.db, matches=matches, phase=args.phase, exotics=args.exotics)
+    r = harvest_to_db(args.db, matches=matches, phase=args.phase,
+                      exotics=args.exotics, trigger="cron")
     print(f"\n写入 jingcai_sp: 胜平负 {r['had']} · 让球 {r['hhad']}  "
           f"(source=sporttery, phase={args.phase}, 不覆盖手填)")
     if args.exotics:

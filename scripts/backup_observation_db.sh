@@ -26,6 +26,16 @@ KEEP=7
 TS="$(date +%Y%m%dT%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
+# 2026-08-20 —— 前向 append-only 历史,**结构上无法回溯**(见 ingest_sporttery
+# `_append_unmapped_history` docstring)。它落在 logs/ 下,而 logs/ 在 .gitignore 里、
+# 本脚本原本只备 *.db ⇒ 这份数据此前**零副本**。丢了就只能从丢的那天重新开始攒。
+for f in logs/sporttery_unmapped_history.jsonl; do
+  [[ -f "$f" ]] || continue
+  cp "$f" "$BACKUP_DIR/$(basename "$f" .jsonl).${TS}.jsonl"
+  ls -1t "$BACKUP_DIR/$(basename "$f" .jsonl)."*.jsonl 2>/dev/null | tail -n +$((KEEP + 1)) \
+    | xargs -I{} rm -f {}
+done
+
 for db in data/v4_observation.db data/score_ev_forward.db; do
   [[ -f "$db" ]] || continue
   base="$(basename "$db" .db)"
