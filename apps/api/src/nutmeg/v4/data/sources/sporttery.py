@@ -559,6 +559,20 @@ _ZH_OVERRIDES: dict[str, str] = {
     #   ✅ 另一条链健康:该场 psc 已在 odds_snapshots ⇒ 补完是真进盘面能算 EV,
     #        不是只让横幅闭嘴(见 [[unmapped-banner-silences-not-fixes]] 那条教训)。
     "比尔森": "Plzen",
+    # 2026-08-20 横幅 1/20:[日职] 东京FC vs 千叶市原。又是**只坏一侧** ——
+    # `东京FC`→`FC Tokyo` 本表上方早已有,拖住整场的是 `千叶市原`(词典写 `千叶联`)。
+    #   锚 = 同场唯一:odds_snapshots `JPN_J1 2026-08-21 FC Tokyo vs JEF United Chiba`
+    #        (odds_api,psc 1.52/4.17/6.33,ou_line 2.5)—— 已解析那侧当日 J1 只此一个对手。
+    #        英文值 = 盘面真在用的拼法,同时也正是 TEAM_NAME_ZH 的键(→`千叶联`)。
+    #        ✅ 顺带证实该队 2026 在 J1(08-08 广岛/08-15 町田两场都挂 JPN_J1),不是靠推测。
+    #   撞车检查:`千叶市原` 在 TEAM_NAME_ZH 值集 / _ZH_OVERRIDES / _ZH_TO_EN 里 0 占用;
+    #        全词典含 Chiba/JEF 的键只有 `JEF United Chiba` 一条。
+    #   ⭐ **两天内第二例「词典的中文值从来没匹配过竞彩」**(前一例:比尔森 25 vs 0)——
+    #      竞彩档案 `千叶市原` **65 场**、`千叶联` **0 场**。这类缺口是**潜伏**的:
+    #      横幅只在该队被竞彩上架那天才点名,所以「横幅没响 ≠ 词典是全的」。
+    #      (memory: `unmapped-gap-history-forward-only` / `unmapped-banner-silences-not-fixes`)
+    #   ✅ 另一条链健康:psc 已在库 ⇒ 补完是真进盘面能算 EV。
+    "千叶市原": "JEF United Chiba",
     # 📌 同批发现但**故意不补**(2026-08-19),写下来免得下次有人以为漏了:
     #    竞彩**历史档案**把红星写作 `贝红星`(21 场,全部在欧罗巴),而**实时源**写
     #    全称 `贝尔格莱德红星`(已能解)——正是本表上方记过的「同一支队两种长度,
