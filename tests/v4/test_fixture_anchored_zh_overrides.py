@@ -47,6 +47,14 @@ PINNED: dict[str, dict] = {
         "date": "2026-08-21", "league": "JPN_J1",
         "already_ok": ("东京FC", "FC Tokyo"),
     },
+    # ⚠️ 这条是**同音异形**:词典写「弗罗西诺内」(罗),竞彩写「弗洛西诺内」(洛)。
+    #    按竞彩写法 grep 会 0 命中而误判成「整队不在」⇒ 判类要 grep **英文键**。
+    "弗洛西诺内": {
+        "en": "Frosinone",
+        "anchor": ("Juventus", "away"),
+        "date": "2026-08-23", "league": "ITA_SERIE_A",
+        "already_ok": ("尤文图斯", "Juventus"),
+    },
 }
 
 
