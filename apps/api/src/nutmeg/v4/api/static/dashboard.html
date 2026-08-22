@@ -7990,8 +7990,15 @@ function _pendingCardHtml(pf, i) {
   // 竞彩在卖的场次多一块手填 Pinnacle 面板。输入形状与卡内 `cupman-*` 一致
   // (三腿 + 大小球线/大/小),但 id 前缀不同 —— 两处同时在 DOM 里,撞 id 会静默取错值
   // (`test_spcalc_manual_pin.py:317` 守的正是这类前缀混用)。
+  // ⭐ 2026-08-22 —— **默认展开**(`open`)。owner 报「日乙这场为什么不在竞彩可投注里」,
+  // 查下来功能两个月前就建好了、入口就在这张卡上,他只是没找到:待开盘区在页面最底、
+  // 今天 80 场,而面板自己还是一个默认收起的 <details> ⇒ 要连点两层才看得见。
+  // ⚠️ 只对 `sell`(竞彩在售·需手填)的卡展开 —— 它们是**今天就能下注**的场,
+  // 和「三天后才开盘」的普通待开盘卡不是一回事。数量天然很少:实测 2026-06-11 起
+  // 602 场竞彩在售里只有 15 场(2.5%)从没拿到过 Pinnacle 价(巴西杯 6/7、日乙 2/6
+  // 是主要来源),今天全页只有 2 张,不存在「全展开会很长」的问题。
   const panel = !sell ? '' : `
-      <details id="pendman-${i}" class="mt-2 pt-2" style="border-top:1px dashed var(--border-subtle)">
+      <details id="pendman-${i}" open class="mt-2 pt-2" style="border-top:1px dashed var(--border-subtle)">
         <summary class="text-xs cursor-pointer select-none" style="color:#4338ca">${t('pend_jc_toggle')}</summary>
         <div class="mt-2 space-y-2">
           <div class="text-xs text-muted">${t('pend_jc_hint')}</div>
