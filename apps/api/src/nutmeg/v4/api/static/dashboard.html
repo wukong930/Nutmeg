@@ -2191,6 +2191,9 @@ const I18N = {
     jc_bettable_note: '竞彩**当前在售**的场次(胜平负或让球任一有完整 SP,且距开球 >5 分钟)—— 两种模式合并成一张表,2026-08-05 从两块模式板里搬出来独立成列表、置于甜区 EV 榜之上。<br>⚠️ <b>联赛组默认收起</b>:完整卡片很高(3 天窗口实测触到过 33 场),全展开会把甜区榜和串关构造器推到几屏之外,而榜的用法恰恰是「先扫一眼再下潜」。点组头展开,展开/收起会被记住。<br>⭐ 卡片是<b>搬</b>过来的、不是复制:同一场比赛在页面上只有一张卡。真复制的话,第二张卡收得下键盘却永远没有反应,而且 📌 记一笔会把<b>另一张卡</b>的赔率发出去 —— 这是实测出来的,不是顾虑。<br>两块模式板里剩下的是模型 / Pinnacle <b>参考</b>场次(竞彩没上架,买不了)。',
     jc_all_moved_up:  'ℹ️ 本模式今天的场次全部可投注,已移至顶部「竞彩可投注」列表。',
     jc_ref_hdr:       '竞彩未上架 · 仅模型 / Pinnacle 参考',
+    jc_closing_hdr:   '⏳ 即将截止 · 竞彩仍在售(实测卖到开球),但已过判闸线,不进串关池',
+    jc_kicked_hdr:    '⏹ 已开赛 · 竞彩停售,记账入口已关闭',
+    jc_kicked_norec:  '⏹ 已开赛,不能记账',
     jc_morning_hint:  '竞彩分批上架:当日新场多在北京 09:25–09:45 晨批发布(北欧等小联赛常当天才开售),此刻名单可能不全;09:45 后点 🎯 刷新竞彩立取,或等 09:50 / 11:05 自动补捕。',
     spcalc_enter_sp:  '输入竞彩 SP 看 EV',
     spcalc_mkt:       '市',
@@ -2772,6 +2775,9 @@ const I18N = {
     jc_bettable_note: 'Matches 竞彩 is currently selling (a complete SP on either 1X2 or handicap, kickoff more than 5 minutes away) — both modes merged into one list, pulled out of the two mode boards on 2026-08-05 and placed above the sweet-spot EV board.<br>League groups start COLLAPSED: full cards are tall (a 3-day window has hit 33 matches) and expanding them all would push the sweet-spot board and the parlay builder several screens down, which defeats scan-then-drill. Tap a group header to expand; the state is remembered.<br>Cards are MOVED here, not copied: each match has exactly one card on the page. A duplicate would accept keystrokes and never respond, and the record-bet pin would post the OTHER copy odds — measured, not hypothetical.<br>What stays on the mode boards is the model / Pinnacle reference slate: 竞彩 does not list those, so you cannot bet them.',
     jc_all_moved_up:  'ℹ️ Every match in this mode is bettable today; they all moved up to the 竞彩 bettable list at the top.',
     jc_ref_hdr:       'Not on 竞彩 · model / Pinnacle reference',
+    jc_closing_hdr:   '⏳ Closing soon · still on sale (竞彩 sells to kickoff), past the gate — not in the parlay pool',
+    jc_kicked_hdr:    '⏹ Kicked off · 竞彩 closed, recording disabled',
+    jc_kicked_norec:  '⏹ Kicked off — cannot record',
     jc_morning_hint:  '竞彩 lists same-day additions in a ~09:25–09:45 (Beijing) morning batch (Nordic & minor leagues often matchday-only), so this slate may be incomplete; hit 🎯 after ~09:45, or the 09:50 / 11:05 auto-captures pull them in.',
     spcalc_enter_sp:  'Enter 竞彩 SP for EV',
     spcalc_mkt:       'Mkt',
@@ -5176,19 +5182,39 @@ function _lgGroupHtml(lg, col, count, cardsHtml, pfx) {
 //: 而「宁可多留一条可能过期的,不要静默吞掉一条能买的」在这里是对的方向:
 //: 前者你在投注站会发现,后者你永远不知道错过了什么。
 const _JC_KO_BUFFER_MIN = 5;
+//: 竞彩 SP 在不在(胜平负或让球任一齐全)。从 `_isJcBettable` 里抽出来共享 ——
+//: 陈旧徽章和分区都要问这件事,而它们**不该**顺带问「还能不能买」。
+function _hasJcSp(pr) {
+  if (!pr) return false;
+  return (pr.jc_home != null && pr.jc_draw != null && pr.jc_away != null)
+      || (pr.jc_hc_home != null && pr.jc_hc_draw != null && pr.jc_hc_away != null);
+}
+//: ⭐ 2026-08-21 —— 开球三态。**闸的判据一字未动**:`_isJcBettable` 仍是
+//: 「进入 T−5 就 false」⇒ 串关池 / 甜区榜 / top-1 逐元素不变(`_parlayPool` 只有
+//: 一个调用点,喂它的 items 来自 `_isJcBettable`)。新增的纯粹是**显示层**能分清:
+//:
+//:   'closing' 竞彩**还在卖**,只是进了开赛前 5 分钟 —— 实测竞彩卖到 T−0
+//:             (0/1,531 条末次变盘在开球后),**5.29% 的末次变盘落在最后 5 分钟**,
+//:             最紧的一条距开球 12 秒。而 owner 自己的手填 23% 发生在 T−5 或更晚。
+//:   'kicked'  已开赛,竞彩停售 —— 这里才该关掉下注入口。
+//:
+//: ⛔ 以前这两种一起掉进标题写着「竞彩未上架」的抽屉,而那句话对它们**是假的**
+//:   (它明明上架了、正在调价)—— owner 报的「卡片消失」就是这个。
+//: ⚠️ 拿不到开球时刻(近 30 天实测 2.6%)⇒ 'open',**保留不装懂**,沿用原策略。
+function _jcKoState(pr) {
+  if (!pr || !pr.kickoff_utc) return 'open';
+  const ko = new Date(pr.kickoff_utc).getTime();
+  if (!Number.isFinite(ko)) return 'open';
+  const now = Date.now();
+  if (ko <= now) return 'kicked';
+  return ko <= now + _JC_KO_BUFFER_MIN * 60000 ? 'closing' : 'open';
+}
 function _isJcBettable(pr) {
   if (!pr) return false;
-  const had  = pr.jc_home != null && pr.jc_draw != null && pr.jc_away != null;
-  const hhad = pr.jc_hc_home != null && pr.jc_hc_draw != null && pr.jc_hc_away != null;
-  if (!(had || hhad)) return false;
-  if (pr.kickoff_utc) {                       // 只在**能判**的时候判
-    const ko = new Date(pr.kickoff_utc).getTime();
-    // ⚠️ `Number.isFinite` 在这里**不承重**:坏时间戳给 NaN,而 `NaN <= x` 本来
-    // 就是 false ⇒ 拆掉它行为不变(2026-08-03 变异验证过)。留着是写明意图,
-    // **别把它当成一道真的闸** —— 别处若靠「有 isFinite 所以坏值被挡住了」会踩空。
-    if (Number.isFinite(ko) && ko <= Date.now() + _JC_KO_BUFFER_MIN * 60000) return false;
-  }
-  return true;
+  if (!_hasJcSp(pr)) return false;
+  // 时间判据已抽进 `_jcKoState`(逐字等价:原来「ko <= now+buffer ⇒ false」,
+  // 现在「只有 'open' 才 true」,而 'open' 的定义就是 ko > now+buffer 或判不了)。
+  return _jcKoState(pr) === 'open';
 }
 // Group [{pr, idx}] by league, order leagues by earliest kickoff, sort each league
 // by kickoff, render via _lgGroupHtml — the existing card layout, factored out so
@@ -5836,20 +5862,36 @@ function _jcMorningHintHtml() {
 //: ⚠️ 旧签名收**单个** `cardHtml`,而全局列表要装两模式的卡(标准是
 //: `renderTodaySpCalc` 里的局部箭头函数,市场是顶层 `_cupCardHtml`)—— 这也是
 //: 为什么全局列表是**两个按模式独占的子容器**、不是一个合并的 innerHTML。
+//: ⭐ 2026-08-21 三分区。`closing` = **有竞彩 SP 但已过 T−5** 的那批,
+//: 它们以前和「竞彩根本没上架」的场混在同一个抽屉里 —— 两者完全不是一回事。
+//: `bett` 的口径一字未动 ⇒ 上游消费者(全局列表、计数)行为不变。
 function _bettableSplit(preds) {
-  const bett = [], rest = [];
-  (preds || []).forEach((pr, idx) => (_isJcBettable(pr) ? bett : rest).push({ pr, idx }));
-  return { bett, rest };
+  const bett = [], closing = [], rest = [];
+  (preds || []).forEach((pr, idx) => {
+    if (_isJcBettable(pr)) { bett.push({ pr, idx }); return; }
+    (_hasJcSp(pr) ? closing : rest).push({ pr, idx });
+  });
+  return { bett, closing, rest };
 }
 //: 模式板里剩下的「参考」区。可投注那批已搬走 ⇒ 这里只剩 rest。
 //: ⚠️ 若 rest 为空(该模式今天**每一场**都可投注),不能只留一块空白 ——
 //: 那读起来像「板坏了」。补一句「已移至顶部」,同「分不出没有和没去看」。
-function _referenceZoneHtml(rest, cardHtml, bettCount) {
+//: ⚠️ `closing` 的两个子区**默认展开**(前缀不在 `_LG_DEFAULT_COLLAPSED` 里)——
+//: 它们是「马上要没了」和「已经没了」,收起来等于又藏一次。
+function _referenceZoneHtml(rest, cardHtml, bettCount, closing) {
+  const hdr = (key, color) => `<div class="text-xs mt-2 mb-2 px-2 pt-2"
+      style="border-top:1px dashed var(--border-subtle);color:${color}">${t(key)}</div>`;
+  const clo = (closing || []).filter(o => _jcKoState(o.pr) === 'closing');
+  const kck = (closing || []).filter(o => _jcKoState(o.pr) === 'kicked');
+  const parts = [];
+  if (clo.length) parts.push(hdr('jc_closing_hdr', '#b45309') + _lgGroupsHtml(clo, cardHtml, 'clo:'));
+  if (kck.length) parts.push(hdr('jc_kicked_hdr', 'var(--text-muted)') + _lgGroupsHtml(kck, cardHtml, 'kck:'));
   if (rest.length) {
-    return `<div class="text-xs text-muted mt-2 mb-2 px-2 pt-2"
+    parts.push(`<div class="text-xs text-muted mt-2 mb-2 px-2 pt-2"
         style="border-top:1px dashed var(--border-subtle)">${t('jc_ref_hdr')}</div>`
-      + _lgGroupsHtml(rest, cardHtml, '');
+      + _lgGroupsHtml(rest, cardHtml, ''));
   }
+  if (parts.length) return parts.join('');
   return bettCount
     ? `<div class="text-xs text-muted mt-2 px-2 py-2">${t('jc_all_moved_up')}</div>`
     : '';
@@ -5888,6 +5930,12 @@ function _recordBet(mode, idx, outcome, market, btn) {
   const preds = mode === 'cup' ? _CUPMKT.preds : _SPCALC.preds;
   const pr = (preds || [])[idx];
   if (!pr) return;
+  // 🚨 2026-08-21 —— 已开赛就不能记账。这是**行为闸不是文案**:服务端
+  // `/observation/record-bet` 里 `kickoff` 出现 0 次,而台账
+  // (`recommendation_sessions`/`single_predictions`)没有 kickoff 列 ⇒ 赛后记的注
+  // 事后**不可识别、不可清洗**。⚠️ 只拦 'kicked',**不拦 'closing'** ——
+  // 那 5 分钟竞彩还在卖(实测 5.29% 的末次变盘落在那里)。
+  if (_jcKoState(pr) === 'kicked') { alert(t('jc_kicked_norec')); return; }
   const spClass = market === 'handicap'
     ? (mode === 'cup' ? 'cuphcsp' : 'spcalc-hcsp')
     : (mode === 'cup' ? 'cupsp' : 'spcalc-sp');
@@ -6147,9 +6195,9 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
   // (`_cupRecalc` 有,两模式一直不对称),卡片此刻不在 DOM 就直接抛 —— 而且
   // 异常冒到 loadSpCalc 的 catch 会把一个纯 DOM 时序 bug 显示成
   // 「抓取盘口失败(API 暂不可用)」。下面另加了逐卡 try/catch 兜底。
-  const { bett, rest } = _bettableSplit(preds);
+  const { bett, closing, rest } = _bettableSplit(preds);
   _renderBettableInto('spcalc', bett, cardHtml);
-  const scoredHtml = _referenceZoneHtml(rest, cardHtml, bett.length);
+  const scoredHtml = _referenceZoneHtml(rest, cardHtml, bett.length, closing);
   // V14 — 待开盘 fixtures now feed the merged 待开盘赛事 section at the page bottom.
   list.innerHTML = scoredHtml;
   _setPending('spcalc', pending);
@@ -6816,7 +6864,9 @@ function _openManualReverse() {
 // 库奥皮奥案:客胜绿灯只存在于 20:39 后的价上,旧价把它藏掉。
 // amber 条件 = 价龄 >60min 且距开球 <3h(竞彩临停售调价最凶的窗口)→ 提示点 🎯。
 function _jcFreshnessHtml(pr) {
-  if (!pr || !pr.jc_captured_at || !_isJcBettable(pr)) return '';
+  // ⚠️ 2026-08-21:原来这里是 `!_isJcBettable(pr)` ⇒ 卡片一进 T−5 就把**唯一的
+  // 时间线索自己关掉**,停售卡上一个字都不说它已开赛。改成只要求有竞彩 SP。
+  if (!pr || !pr.jc_captured_at || !_hasJcSp(pr)) return '';
   const ts = Date.parse(pr.jc_captured_at);
   if (isNaN(ts)) return '';
   const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
@@ -7043,7 +7093,8 @@ function _cupCardHtml(pr, idx) {
           </div>`).join('')}
           <div class="flex items-center gap-2 mt-2 flex-wrap">
             <button id="cuphcrec-${idx}" onclick="_cupHcRecord(${idx})"
-                    class="text-xs px-3 py-1 rounded" style="background:#059669;color:#fff;cursor:pointer">
+                    ${_jcKoState(pr) === 'kicked' ? 'disabled' : ''}
+                    class="text-xs px-3 py-1 rounded" style="background:${_jcKoState(pr) === 'kicked' ? 'var(--border-subtle)' : '#059669'};color:#fff;cursor:${_jcKoState(pr) === 'kicked' ? 'not-allowed' : 'pointer'}">
               ${_expandIcons(t('cupmkt_hc_record'))}
             </button>
             <span id="cuphcverdict-${idx}" class="text-xs text-muted" aria-live="polite"></span>
@@ -7192,6 +7243,12 @@ async function _cupHcRecord(idx) {
   const sel = $(`#cuphcline-${idx}`);
   const verdict = $(`#cuphcverdict-${idx}`);
   const btn = $(`#cuphcrec-${idx}`);
+  // 🚨 同 `_recordBet`:这条带 `record_session: true`,直接写结算/ROI 人口,
+  // 而 `/recommend/market-handicap` handler 里 `kickoff` 出现 0 次。
+  if (pr && _jcKoState(pr) === 'kicked') {
+    if (verdict) { verdict.textContent = t('jc_kicked_norec'); verdict.style.color = '#e11d48'; }
+    return;
+  }
   if (!pr || !sel || sel.value === '') { if (verdict) verdict.textContent = t('spcalc_hc_pickline'); return; }
   const line = parseInt(sel.value, 10);
   const get = (o) => {
@@ -8101,9 +8158,9 @@ function renderCupMarket(preds, pending) {
   $('#cupmkt-count').textContent = ` · ${preds.length} ${t('spcalc_n_matches')}`;
   // 2026-07-07 — 竞彩可投注置顶 (same zoning as 标准模式 via _bettableFirstHtml).
   // 2026-08-05 —— 同标准模式:可投注卡搬进全局列表,板里只留参考区。
-  const { bett: _cBett, rest: _cRest } = _bettableSplit(preds);
+  const { bett: _cBett, closing: _cClo, rest: _cRest } = _bettableSplit(preds);
   _renderBettableInto('cup', _cBett, _cupCardHtml);
-  list.innerHTML = _referenceZoneHtml(_cRest, _cupCardHtml, _cBett.length);
+  list.innerHTML = _referenceZoneHtml(_cRest, _cupCardHtml, _cBett.length, _cClo);
   _setPending('cupmkt', pending);   // 待开盘 → merged bottom section
   _sweetBoardScheduleRefresh();   // 🍬 全局榜:列表重渲后同步(外部容器不随卡重建)
   // Restore preserved 竞彩 SP / 让球线 into the freshly-rendered inputs + recompute.

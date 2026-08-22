@@ -61,7 +61,11 @@ def _run(names: tuple[str, ...], body: str) -> str:
     return r.stdout.strip()
 
 
-_GATE = ("const _JC_KO_BUFFER_MIN", "function _isJcBettable")
+#: ⚠️ 2026-08-21 —— `_isJcBettable` 的时间判据抽进了 `_jcKoState`、
+#: SP 判据抽进了 `_hasJcSp`(三分区显示层要共用)。harness 必须把依赖一起喂给 node。
+#: ⭐ **下面所有断言一字未改** —— 它们现在同时是「抽取没有改变行为」的验收。
+_GATE = ("const _JC_KO_BUFFER_MIN", "function _hasJcSp",
+         "function _jcKoState", "function _isJcBettable")
 _SP = "{jc_home:2,jc_draw:3,jc_away:4}"
 
 
