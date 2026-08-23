@@ -364,6 +364,93 @@ def load_prev(hist_dir: Path, today: str) -> dict | None:
     return prev
 
 
+#: 只统计 ±1 × 俱乐部 —— 大赛两条的 `n_delta` 恒 0(联赛全在 δ 覆盖外),
+#: 差值恒 0,连「变差」这个事件都定义不了。
+_STREAK_CELLS = ("-1·俱乐部", "+1·俱乐部")
+#: 亮黄的门槛。取 14 ≈ 两周日读数,对齐 prereg v2.0 §5.1「连续两周」的**精神**。
+#: ⛔ 但它**不是** §5.1 的判定,见 `worse_streaks` docstring。
+_STREAK_WARN = 14
+
+
+def worse_streaks(hist: Path) -> dict[str, dict]:
+    """跨归档数「连续多少个读数比裸网格更差」。
+
+    ⭐ **为什么需要它**:2026-08-22 查出 `+1·俱乐部` 已连续 **21 个读数**变差,
+    而报表**天天在印、没有任何人被通知** —— 因为每份产物只显示**当天**那一帧,
+    「连了多久」这个数在任何现有输出里都不存在。本函数就是把它印出来。
+    (病史与 §15 起因同形:「不被问就不会发现」。)
+
+    🚨 **它是可见性装置,不是统计量,更不是 prereg §5.1 的判定。**
+    日读数之间共享几乎全部数据(N 从 63 涨到 112 用了三周)⇒ **21 个读数不是
+    21 个证据,是 1 个证据印了 21 遍**(同 memory `false-replication-patterns`)。
+    而且判「变差」只看符号、没有幅度阈值:2026-08-22 的对抗审查实测,
+    **零效应下连续两个月切片都变差的概率 ≈ 24.6%,且与 `n_delta` 无关**
+    (30 → 200 纹丝不动);九个月赛季里至少一次假触发 ≈ 82%。
+    ⇒ **看到黄灯不等于该回滚。** 回滚判据在 prereg v2.0 §5.1(替换它的 v2.1 §4
+    已于 2026-08-22 被对抗审查否掉),要 owner 口令。
+
+    ⚠️ `n_delta == 0` 的读数(δ 一行都没生效)**打断连续**并计入 `n_untested` ——
+    「没测」不是「没变差」。旧归档(2026-08-16 之前)无 `n_delta` 字段,
+    此时退回只看符号,并在返回里标 `has_legacy=True`。
+    """
+    out: dict[str, dict] = {}
+    files = sorted(hist.glob("*.json")) if hist and hist.exists() else []
+    for cell in _STREAK_CELLS:
+        streak = untested = 0
+        legacy = False
+        latest: dict | None = None
+        for f in reversed(files):                      # 从最新往回数
+            try:
+                v = json.loads(f.read_text(encoding="utf-8")).get(cell)
+            except (OSError, ValueError):
+                break
+            if not v or "raw_ll" not in v:
+                break
+            nd = v.get("n_delta")
+            if nd is None:
+                legacy = True
+            elif nd == 0:
+                untested += 1
+                break
+            if latest is None:
+                latest = {"date": f.stem, "diff": v["raw_ll"] - v["c1_ll"],
+                          "n": v.get("n"), "n_delta": nd}
+            if v["raw_ll"] - v["c1_ll"] < 0:
+                streak += 1
+            else:
+                break
+        out[cell] = {"streak": streak, "n_readings": len(files),
+                     "n_untested": untested, "has_legacy": legacy, "latest": latest}
+    return out
+
+
+def render_streaks(st: dict[str, dict]) -> str:
+    """渲成 markdown。体检 §15 grep `^- 连续变差` 这一行。"""
+    lines = ["", "## 连续变差追踪(可见性装置,**不判闸**)", ""]
+    hot = False
+    for cell, d in st.items():
+        lt = d["latest"]
+        if lt is None:
+            lines.append(f"- 连续变差 {cell} — 无归档读数")
+            continue
+        flag = "⚠️" if d["streak"] >= _STREAK_WARN else "·"
+        hot = hot or d["streak"] >= _STREAK_WARN
+        lines.append(
+            f"- 连续变差 {flag} {cell} — **{d['streak']} 个读数**"
+            f"(共 {d['n_readings']} 份归档)· 最近 {lt['date']} 差 {lt['diff']:+.4f}"
+            f" · N={lt['n']} · δ生效 {lt['n_delta']}")
+    lines += ["",
+              "> 🚨 **这不是回滚判据。** 日读数高度重叠(21 个读数 ≈ 1 个证据印 21 遍);",
+              "> 判「变差」只看符号无幅度阈值 —— 零效应下连续两月都变差的概率 ≈ **24.6%**,",
+              "> 且与 `n_delta` **无关**(30→200 不变),九个月赛季至少一次假触发 ≈ **82%**",
+              "> (2026-08-22 对抗审查实测)。⇒ 看到 ⚠️ **不等于该回滚**;",
+              "> 回滚判据在 prereg v2.0 §5.1,要 owner 口令。", ""]
+    if hot:
+        lines.append("> ⏰ 当前有线达到警戒长度 —— 该**看一眼**,不是该动手。")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="让球 δ 校准常设仪表(只读,永不 gate)")
     ap.add_argument("--db", default="data/v4_observation.db")
@@ -383,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
     text = "\n".join([
         "# 让球 δ 校准(只读研究 · 永不 gate)", "",
         render(buckets, min_n=args.min_n, prev=prev),
+        render_streaks(worse_streaks(hist)) if hist else "",
         render_power(),
         "> ⚠️ 本仪表**不改任何 δ**。改一个已部署的预注册常数需要 owner 口令 +",
         "> prereg 修订(δ₋₂ 走的就是这条路)。它的职责是让「该不该改」一直可见。",
