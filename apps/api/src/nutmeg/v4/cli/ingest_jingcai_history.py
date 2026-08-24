@@ -47,7 +47,15 @@ def backfill(db_path: str, begin: str, end: str, *, leagues: frozenset[str] | No
     match's odds series. Returns a summary dict. `leagues` are canonical CN abbrevs."""
     seen = _existing_ids(db_path) if skip_existing else set()
     stat = {"enumerated": 0, "in_scope": 0, "fetched": 0, "stored_rows": 0,
-            "skipped": 0, "failed": 0, "chunks_empty": 0}
+            "skipped": 0, "failed": 0, "chunks_empty": 0,
+            # ⭐ 2026-08-24 —— 失败的 matchId **逐场留痕**(不只计数)。
+            # 起因:涓流 236 轮累计失败 68 场(0.36%),而架构靠「绕回起点 re-sweep」
+            # 自愈(失败 ⇒ 没入库 ⇒ 下一遍不会被 skip_existing 跳过)。
+            # 但 `wrapped=True` 的轮次是 **0/236** —— 那条自愈路径**从没在生产跑过**,
+            # 而只有计数的话,绕回之后**验不了**它到底补上了哪些:
+            # 「补上了但那些场本来就没数据」和「绕回没生效」在 stored_rows 上同形。
+            # ⚠️ 上限 50:一轮真失败几百场时别把状态文件写爆(计数仍然完整)。
+            "failed_ids": []}
     for cb, ce in _date_chunks(begin, end, chunk_days):
         # 一个 14 天窗口跨全部竞彩联赛 NEVER 真空 → 枚举返回 0 = 节流/网络失败,不是真没赛。
         # 退避重试(防「静默丢整段」——2024-25 首跑就这样丢了 09→05 段)。
@@ -75,6 +83,8 @@ def backfill(db_path: str, begin: str, end: str, *, leagues: frozenset[str] | No
             parsed = fetch_and_parse(mid)
             if not parsed:
                 stat["failed"] += 1
+                if len(stat["failed_ids"]) < 50:
+                    stat["failed_ids"].append(str(mid))
                 continue
             # enumeration's matchDate is authoritative (getFixedBonus has no kickoff)
             parsed["close_date"] = m.get("match_date") or parsed.get("close_date")

@@ -659,11 +659,61 @@ _LEAGUE_TRACK_TABLES: tuple[tuple[str, str], ...] = (
 )
 
 
+#: `failed_ids` 从这天起才开始留痕 —— 之前的失败只有计数,没有 id。
+#: ⚠️ 报出来,否则「0 场待补」会被读成「历史失败都补回来了」。
+_FAILED_IDS_SINCE = "2026-08-24"
+
+
+def _trickle_recovery_line(rows: list[dict], history_db) -> list[str]:
+    """涓流失败的**逐场**补回情况。
+
+    ⭐ 为什么需要它:架构靠「游标绕回起点 re-sweep」自愈(失败 ⇒ 没入库 ⇒
+    下一遍不被 `skip_existing` 跳过)。但 2026-08-24 实测 `wrapped=True` 的轮次是
+    **0/236** —— 那条自愈路径**从没在生产跑过**。而只看 `stored_rows`,
+    「补上了但那些场本来就没数据」和「绕回根本没生效」**长得一模一样**
+    (本仓栽过很多次的同形陷阱)。⇒ 拿 id 直接去库里查,把间接判据换成直接的。
+    """
+    ids: list[str] = []
+    for r in rows:
+        for x in (r.get("failed_ids") or []):
+            if x not in ids:
+                ids.append(str(x))
+    if not ids:
+        return [f"  失败逐场留痕:0 条(留痕自 {_FAILED_IDS_SINCE} 起;之前的失败只有计数)"]
+    # ⚠️ `jingcai_odds_history` 在 **v4_jingcai_history.db**,不在观测库。
+    #    传错库 ⇒ 查询报错或空 ⇒ 「0 已补回」和「真的没补回」**长得一模一样**。
+    #    所以先显式确认表在,再查;不在就说「查不了」,绝不报 0。
+    if not Path(history_db).exists():
+        return [f"  失败逐场留痕:{len(ids)} 条,但历史库不在这个 checkout — 补回情况**未查**"]
+    try:
+        conn = sqlite3.connect(f"file:{history_db}?mode=ro", uri=True)
+        with conn:
+            # ⛔ 这里**曾有**一道显式的「表存在吗」检查。空包拆掉它之后测试仍全绿 ——
+            #    因为缺表时 SQL 抛的 `no such table: jingcai_odds_history` 本身就说了
+            #    「未查」且点名了表,与显式检查的产出无法区分。⇒ 它是死代码,已删。
+            #    (同「涓流 streak 那个 break」:空包弹证明分不出,就别留着。)
+            q = ",".join("?" * len(ids))
+            done = {str(r[0]) for r in conn.execute(
+                f"SELECT DISTINCT match_id FROM jingcai_odds_history WHERE match_id IN ({q})",
+                ids)}
+    except sqlite3.Error as exc:
+        return [f"  失败逐场留痕:{len(ids)} 条,但查库失败({exc})— 补回情况**未查**"]
+    left = [x for x in ids if x not in done]
+    line = (f"  失败逐场留痕:累计 {len(ids)} 场 · **已补回 {len(done)}** · 待补 {len(left)}"
+            f"(留痕自 {_FAILED_IDS_SINCE} 起)")
+    out = [line]
+    if left:
+        out.append(f"    待补 matchId(前 8):{left[:8]}"
+                   " ← 绕回起点 re-sweep 时应被重抓;⛔ 若绕回后仍在,才是真问题")
+    return out
+
+
 def check_jingcai_trickle(
     status_path: str | Path = "logs/jingcai_trickle_status.jsonl",
     *,
     now: datetime | None = None,
     lookback: int = 7,
+    history_db: str | Path = "data/v4_jingcai_history.db",
 ) -> tuple[list[str], list[str]]:
     """竞彩历史涓流进度 —— 回答「它扫完了吗」,而且**能区分「没有」和「没去看」**。
 
@@ -747,6 +797,7 @@ def check_jingcai_trickle(
         f"  最近 {len(recent)} 轮:枚举 {enum_sum} · 新增 {stored_sum} 行 · 失败 {fail_sum} · "
         f"上次 {age_h:.1f}h 前"
     )
+    info.extend(_trickle_recovery_line(rows, history_db))
 
     if age_h > 48:
         alarms.append(

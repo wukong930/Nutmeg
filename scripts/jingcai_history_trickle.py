@@ -164,6 +164,10 @@ def main() -> int:
         days_remaining=max((end - nxt).days, 0), wrapped=wrapped,
         **{k: int(stat.get(k, 0)) for k in
            ("enumerated", "in_scope", "fetched", "stored_rows", "skipped", "failed")},
+        # ⭐ 2026-08-24 —— 失败的 matchId 逐场留痕。绕回起点 re-sweep 之后,
+        # 拿这份列表去查库就能**精确**回答「那些缺口补上了吗」——
+        # 只看 stored_rows 是间接判据:「补上了但本来就没数据」和「绕回没生效」同形。
+        failed_ids=list(stat.get("failed_ids") or []),
     )
     return 0
 
