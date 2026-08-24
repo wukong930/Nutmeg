@@ -171,6 +171,25 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     # ⚠️ 只加 `_EN_TO_CN` 不加这里 = 杯赛被 classify_league 算成 'domestic' ⇒ 悄悄混入
     #    P3 联赛人口(2026-08-18 注册时实测到,幸亏对照既有杯赛才发现)。
     "韩国杯",
+    # 同类第八/九条(2026-08-24)—— 起因:桌面推送「捕获表停长,某 cron 可能死了」,
+    # 查下来**没有 cron 死**,是 `data_freshness` 的 label_alarms 同乘那条非零退出,
+    # 而报的是这两个「标签表不认识」。
+    #
+    # 德国杯 = DFB_POKAL,**国内俱乐部杯赛** ⇒ 不进 δ 的拟合人口(δ 拟合在各国**联赛** CSV 上)。
+    #   证据(不是意译):`jingcai_sp` 的「德国杯」行与 `odds_snapshots` 的 `DFB_POKAL`
+    #   **同场 join 44 行**(2026-08-23);`CUP_COMPETITIONS` 里 DFB_POKAL 正是 `club_cup`,
+    #   EN 轨本来就排除,这里对齐中文轨。
+    "德国杯",
+    # 德超杯 = 德国超级杯(DFL-Supercup),**国内俱乐部杯赛** ⇒ 同上排除。
+    #   证据:库里只有一场 —— `Borussia Dortmund vs Bayern München` 2026-08-22;
+    #   AF leagues 缓存里德国男足只有**一个**超级杯条目 `id=529 'Super Cup' (Germany, Cup)`,
+    #   其余候选全排除(1137 Supercup der Frauen 女足 / 715 DFB Junioren Pokal 青年 /
+    #   947 DFB Pokal - Women 女足)。结构对应物:`UEFA_SUPER_CUP` 在注册表里正是 `club_cup`。
+    # ⚠️ 它**没有**对应的 EN 键(我们不采集这项赛事)⇒ 只在中文轨登记,同「亚冠精英」;
+    #    若将来 EN 轨也出现,`CUP_COMPETITIONS` 要同步注册。
+    # ⛔ 特意**没有**发明一个 `GER_SUPER_CUP` 塞进 `_EN_TO_CN` —— 判「认识」走的是本集合
+    #    (`classify_league` 中文轨),塞 `_EN_TO_CN` 既不生效又会假装我们服务这项赛事。
+    "德超杯",
 })
 
 #: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。

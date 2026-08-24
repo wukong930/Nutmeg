@@ -887,6 +887,33 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date) -> str
     return "\n".join(lines)
 
 
+#: 非零退出的五个驱动源。顺序 = 报告里的呈现顺序。
+_ALARM_KIND_LABELS = ("捕获表停更", "额度", "模型供应链", "联赛标签", "涓流")
+
+
+def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
+                     label_alarms, trickle_alarms) -> str:
+    """→ 追加到报告末尾的「报警类别」行(全绿时返回空串)。
+
+    ⭐ 2026-08-24 加。起因:桌面推送写死「捕获表停长,**某 cron 可能死了**」,
+    而这条非零退出承载**五种**原因。那次实际是**联赛标签**双轨,而文案把 owner
+    指向了 cron —— **信号为真,但它证明的不是文案声称的那个命题**
+    (同 memory `first-match-is-not-the-population` 第四类)。
+
+    ⇒ 修法两半:① 报告里说清是哪一类(本函数);② 推送文案改成**类别中立**
+    (`setup_local_pipeline.sh`)。⛔ 不要把类别硬编进推送文案 —— 那需要在
+    plist 的一行 shell 里做命令替换,而 plist 的引号转义本仓已经踩过
+    (`&&` 必须写成 `&amp;&amp;`,21/23 个文件曾因此是无效 XML)。
+    """
+    kinds = [k for k, v in zip(_ALARM_KIND_LABELS,
+                               (crit_stale, quota_alarms, supply_alarms,
+                                label_alarms, trickle_alarms), strict=True) if v]
+    if not kinds:
+        return ""
+    return ("\n\n报警类别: " + " · ".join(kinds)
+            + "  ← 非零退出由这些驱动;⛔ 别默认是 cron 死了")
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description="捕获表漏数据哨兵 — 某个捕获流停止增长即报警"
@@ -1000,6 +1027,13 @@ def main(argv: list[str] | None = None) -> int:
             report += "\n" + "\n".join(
                 f"⚠️ 探针: {q}(非配额报警;连续出现=探针本身坏了,修它)"
                 for q in probe_fails)
+        # ⭐ 2026-08-24 —— 报警类别行。起因:桌面推送写死「捕获表停长,某 cron
+        # 可能死了」,而这条非零退出承载**五种**原因(捕获表 / 额度 / 供应链 /
+        # 联赛标签 / 涓流)。那次实际是联赛标签,而文案把 owner 指向了 cron ——
+        # **信号为真,但它证明的不是文案声称的命题**。
+        # 报告里给出类别,推送文案改成类别中立(见 setup_local_pipeline.sh)。
+        report += alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
+                                   label_alarms, trickle_alarms)
         print(report)
         if args.out:
             Path(args.out).write_text(report + "\n", encoding="utf-8")
