@@ -94,3 +94,67 @@ class TestReadOnly:
                        "record_jingcai_sp", "record_row_snapshot"):
             assert banned not in src, f"Phase 1 只读,不该出现 {banned}"
         assert "mode=ro" in src, "必须以只读模式打开数据库"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 次要结局 A(两腿 CLV 相关)—— 2026-08-30:原判据是 `abs(r) < 0.3` 的**硬阈值**,
+# 不看功效。实测 r=+0.22 / N=31 被印成「≈0 → 分散化成立」,而 N=31 的最小可检出
+# |r| 是 0.36 ⇒ **「测不出」被印成了「成立」**,而 prereg ② 的整套论证靠它当前提。
+# ⇒ 三态:成立(等价检验)/ 推翻(区间不含 0)/ **功效不足**。
+# ⚠️ 这些断言全是**行为断言** —— 造数据跑 render,不查源码里有没有某个字符串。
+# ─────────────────────────────────────────────────────────────────────────
+
+def _pairs_with_corr(n: int, rho: float, spread: float = 0.10):
+    """造 n 对腿,两腿 clv 的相关约等于 rho。"""
+    import math
+    import random
+    rnd = random.Random(4242)
+    out = []
+    for i in range(n):
+        z = rnd.gauss(0, 1)
+        a = spread * z
+        b = spread * (rho * z + math.sqrt(max(1 - rho * rho, 0.0)) * rnd.gauss(0, 1))
+        leg = lambda c, k: {                                    # noqa: E731
+            "clv": c, "cap_ev": 0.05, "date": f"2026-06-{i % 28 + 1:02d}",
+            "hc": None, "label": "主胜", "league": "西甲",
+            "market": "had", "match": f"H{k}{i} vs A{k}{i}"}
+        out.append((leg(a, "a"), leg(b, "b")))
+    return out
+
+
+def _verdict_line(pairs):
+    from nutmeg.v4.cli.pair_ev_ledger import render
+    import collections
+    nbd = collections.Counter(p[0]["date"] for p in pairs)
+    rep = {"legs": [], "pairs": pairs, "selected": pairs, "n_by_day": nbd}
+    for line in render(rep).splitlines():
+        if "相关系数" in line:
+            return line
+    raise AssertionError("render 没有输出相关系数行 —— 夹具没生效,断言会是空的")
+
+
+def test_underpowered_r_is_reported_as_undecidable_not_as_zero() -> None:
+    """🚨 主回归:小 r + 小 N 必须说「判不了」,**不许**说「≈0/成立」。"""
+    line = _verdict_line(_pairs_with_corr(31, 0.22))
+    assert "功效不足" in line, line
+    assert "分散化成立" not in line, "把「测不出」印成了「成立」—— 旧 bug 复发"
+    assert "最小可检出" in line, "没告诉读者这个 N 买得到什么"
+
+
+def test_strong_positive_r_is_reported_as_refuting_the_premise() -> None:
+    """真的正相关(区间不含 0)必须推翻 ② 的前提。"""
+    line = _verdict_line(_pairs_with_corr(80, 0.75))
+    assert "正相关" in line and "归零" in line, line
+    assert "功效不足" not in line, line
+
+
+def test_equivalence_passes_only_with_enough_n() -> None:
+    """宣布「分散化成立」必须过**等价检验**:整个区间落在 ±0.3 内。
+
+    同一个 rho≈0,N 小 ⇒ 判不了;N 大 ⇒ 才允许说成立。
+    ⇒ 结论随 **N** 变而不随点估变 —— 这正是「不显著 ≠ 相等」的可执行形式。
+    """
+    small = _verdict_line(_pairs_with_corr(20, 0.0))
+    big = _verdict_line(_pairs_with_corr(400, 0.0))
+    assert "功效不足" in small, small
+    assert "分散化成立" in big and "等价检验" in big, big

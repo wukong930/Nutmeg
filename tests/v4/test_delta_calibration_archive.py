@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from nutmeg.v4.cli._shared import report_history_dir
 from nutmeg.v4.cli.delta_calibration import load_prev, main, render, slice_key, slice_stats
 
 REPO = Path(__file__).resolve().parents[2]
@@ -46,7 +47,7 @@ def test_slice_stats_only_keeps_slices_above_min_n() -> None:
 def test_load_prev_excludes_today(tmp_path: Path) -> None:
     """⭐ 承重:同日重跑时今天的存档**已被覆盖**,若不排除今天就会拿自己当基准,
     「连续两次变差」永远成立 —— 自比工具的经典自噬。"""
-    h = tmp_path / "delta_calibration_history"
+    h = report_history_dir(tmp_path / "x_latest.md")
     h.mkdir()
     def _put(day: str, n: int) -> None:
         (h / f"{day}.json").write_text(
@@ -102,12 +103,36 @@ def test_archive_is_written_by_default(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(REPO)
     out = tmp_path / "latest.md"
     assert main(["--out", str(out)]) == 0
-    h = tmp_path / "delta_calibration_history"
+    # 走**命名规则**而不是硬编码名(2026-08-30 抽成 `_shared.report_history_dir`)。
+    # 这条测的是「默认就存档」这个**行为**;目录叫什么由规则定,规则本身由
+    # test_production_history_paths_are_pinned 钉死。
+    h = report_history_dir(out)
     assert h.exists(), "默认没有存档"
     assert list(h.glob("*.json")) and list(h.glob("*.md")), "md/json 缺一"
 
 
 def test_no_archive_flag_opts_out(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(REPO)
-    assert main(["--out", str(tmp_path / "latest.md"), "--no-archive"]) == 0
-    assert not (tmp_path / "delta_calibration_history").exists()
+    out = tmp_path / "latest.md"
+    assert main(["--out", str(out), "--no-archive"]) == 0
+    # ⚠️ 这里原来也硬编码 "delta_calibration_history"。抽出命名规则之后,那个名字
+    #    在本夹具下**根本不会被创建** ⇒ 断言变成**因为查错目录才绿**(假绿)。
+    #    改成查规则算出来的那个目录,它才真的在测「--no-archive 生效了」。
+    assert not report_history_dir(out).exists()
+
+
+def test_production_history_paths_are_pinned() -> None:
+    """🚨 生产路径的历史目录名**不许变** —— 那是本仪表唯一的跨期记忆。
+
+    2026-08-30 把命名从「delta 硬编码 / sigma 由 stem 推导」两份副本抽成一处规则
+    (`_shared.report_history_dir`)。抽的时候必须保证生产路径**逐字不变**:
+    `logs/delta_calibration_history/` 里躺着 58 份读数,`worse_streaks()` 直接读它;
+    名字一变,「连续变差 N 个读数」当场归零而且**不会报错** —— 它会安静地说「无归档
+    读数」,和「真的没变差过」长得一模一样。
+    """
+    assert report_history_dir("logs/delta_calibration_latest.md") == \
+        Path("logs/delta_calibration_history")
+    assert report_history_dir("logs/sigma_p_fit_latest.md") == \
+        Path("logs/sigma_p_fit_history")
+    assert report_history_dir("logs/pair_ev_latest.md") == \
+        Path("logs/pair_ev_history")

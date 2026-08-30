@@ -52,6 +52,7 @@ import statistics as st
 from collections import defaultdict
 from pathlib import Path
 
+from nutmeg.v4.cli._shared import write_report_with_history
 from nutmeg.v4.data.league_labels import (
     TRAINED_LEAGUES_CN,
     canonical_league,
@@ -402,21 +403,9 @@ def main(argv: list[str] | None = None) -> int:
     text = render(load_trajectories(args.db), n_boot=args.boot, seed=args.seed)
     print(text)
     if args.out:
-        p = Path(args.out)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text, encoding="utf-8")
-        # ⭐ 同时留一份带日期的历史副本。
-        #
-        # 只写 `_latest.md`(每次覆盖、零历史)= δ 仪表 2026-08 踩过的坑:prereg
-        # 写着「连续两周变差才回滚」,而现有产物**根本判不了「上周是多少」**。
-        # 本仪表的 prereg §4 同样有跨期判据(前后半样本外更优),没有历史就是
-        # 到了评估点才发现自己手上只有一个点。历史文件按日期命名、同日覆盖。
-        # ⚠️ 用 removesuffix 而不是裸 `p.stem` —— 默认文件名是 `..._latest.md`,
-        #    直接拼会得到 `sigma_p_fit_latest_history/`(第一版就是这么错的)。
-        base = p.stem.removesuffix("_latest")
-        hist = p.parent / f"{base}_history" / f"{dt.date.today():%Y-%m-%d}{p.suffix}"
-        hist.parent.mkdir(parents=True, exist_ok=True)
-        hist.write_text(text, encoding="utf-8")
+        # 归档规则见 `_shared.write_report_with_history`(2026-08-30 抽成一处定义)。
+        # 本仪表 prereg §4 有跨期判据(前后半样本外更优),没有历史到评估点就只剩一个点。
+        write_report_with_history(args.out, text)
     return 0
 
 

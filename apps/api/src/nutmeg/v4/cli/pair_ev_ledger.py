@@ -23,6 +23,7 @@ import math
 import sqlite3
 import statistics as st
 
+from nutmeg.v4.cli._shared import write_report_with_history
 from nutmeg.v4.cli.clv_ledger import (
     _HAD,
     _HC,
@@ -39,6 +40,23 @@ LEG_FLOOR = 0.02      # 每腿单独下限 = 单腿闸的一半。⚠️ **不�
                       # Phase 2 可能的阈值规则预留。
 PAIR_GATE = 0.05      # 配对闸 = 单腿闸同一个数(要测的正是这条线搬过去成不成立)
 _CORR_MIN_N = 10      # 次要结局 A 的最小 N —— 低于它不显示相关系数(见 render)
+#: 最小可检出 |r| 用**真** t 临界值(``scipy.stats.t.ppf``),不是 1.96。
+#: ⚠️ 1.96 是大样本近似,而 t 临界值**更大** ⇒ 用 1.96 会把门槛算**小**
+#: (N=31:0.34 vs 真值 0.36)= **高估**自己的检出能力,正好是本行要防的那件事。
+#: 「小到无关紧要」的 |r| —— 要宣布「分散化成立」必须整个 95% 区间落在带内
+#: (等价检验),而不是「没测出显著」。0.3 沿用原阈值的量级,只是改了用法。
+_CORR_NEGLIGIBLE = 0.3
+
+
+def _t_crit(df: int) -> float:
+    """双尾 α=.05 的 t 临界值;scipy 缺席时退回 1.96 并**由调用方承担**低估。"""
+    if df < 1:
+        return float("inf")
+    try:
+        from scipy.stats import t as _t
+        return float(_t.ppf(0.975, df))
+    except ImportError:
+        return 1.96
 
 
 def _legs_for_day(conn: sqlite3.Connection) -> list[dict]:
@@ -163,13 +181,32 @@ def render(rep: dict) -> str:
             ys = [b["clv"] for _, b in sel]
             try:
                 r = st.correlation(xs, ys)
-                if abs(r) < 0.3:
-                    verdict = "≈0 → 分散化成立(σ 平方和加,②的前提站得住)"
-                elif r > 0:
+                # 🚨 2026-08-30 修:这里原来是 `if abs(r) < 0.3: "≈0 → 分散化成立"`
+                #    —— 一个**不看功效**的硬阈值。实测 r=+0.22 / N=31 被判成
+                #    「成立」,而 N=31 在 α=.05 下**最小可检出 |r| 是 0.36** ⇒
+                #    r=0.22 根本落在测不出的区间里。**「测不出」被印成了「≈0」**,
+                #    而 ② 那套「σ 平方和加」的论证正是靠这一行当前提。
+                #    ⇒ 三态:成立 / 推翻 / **功效不足**。「不显著 ≠ 相等」——
+                #    要说「成立」必须过**等价检验**(整个区间落在无关紧要的带内),
+                #    不是「没测出显著」。
+                n = len(sel)
+                z = math.atanh(max(min(r, 0.999999), -0.999999))
+                se = 1.0 / math.sqrt(n - 3) if n > 3 else float("inf")
+                lo, hi = math.tanh(z - 1.96 * se), math.tanh(z + 1.96 * se)
+                _tc = _t_crit(n - 2)
+                r_det = _tc / math.sqrt(n - 2 + _tc ** 2)        # 最小可检出 |r|
+                if lo > 0:
                     verdict = "正相关 → 误差**同向**,σ 线性加,②的好处归零"
-                else:
+                elif hi < 0:
                     verdict = "负相关 → 误差**反向**,比独立还好;但先怀疑是样本假象"
-                L.append(f"  两腿 CLV 相关系数 r={r:+.2f}  {verdict}")
+                elif -_CORR_NEGLIGIBLE < lo and hi < _CORR_NEGLIGIBLE:
+                    verdict = (f"等价检验通过(整个区间落在 ±{_CORR_NEGLIGIBLE:.1f} 内)"
+                               " → 分散化成立(σ 平方和加,②的前提站得住)")
+                else:
+                    verdict = (f"⚠️ **功效不足,判不了** —— N={n} 最小可检出 |r|="
+                               f"{r_det:.2f};⛔ 别把它读成「≈0」,②的前提**尚未验证**")
+                L.append(f"  两腿 CLV 相关系数 r={r:+.2f} "
+                         f"[95%CI {lo:+.2f}, {hi:+.2f}]  {verdict}")
             except st.StatisticsError:
                 L.append("  两腿 CLV 相关系数:方差为零,算不了")
         else:
@@ -199,8 +236,15 @@ def render(rep: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="配对 EV 测量(Phase 1,只读)")
     p.add_argument("--db", default="data/v4_observation.db")
+    # 归档(2026-08-30)。prereg §4 的主结局要在 N≥30 时读,而本工具原来**只打印**
+    # —— 跑完就没了,到评估点手上只有一个点。同 δ 仪表 2026-08 踩过的坑。
+    p.add_argument("--out", default="logs/pair_ev_latest.md")
+    p.add_argument("--no-archive", action="store_true")
     args = p.parse_args(argv)
-    print(render(compute(args.db)))
+    text = render(compute(args.db))
+    print(text)
+    if args.out:
+        write_report_with_history(args.out, text, archive=not args.no_archive)
     return 0
 
 

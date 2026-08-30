@@ -47,6 +47,10 @@ import sqlite3
 import statistics as st
 from pathlib import Path
 
+from nutmeg.v4.cli._shared import (
+    report_history_dir,
+    write_report_with_history,
+)
 from nutmeg.v4.cli.clv_ledger import _devig3
 from nutmeg.v4.data.league_labels import is_domestic_club_league
 from nutmeg.v4.model import market_handicap as MH
@@ -464,7 +468,10 @@ def main(argv: list[str] | None = None) -> int:
     buckets = load_lines(args.db)
     stats = slice_stats(buckets, min_n=args.min_n)
     today = dt.datetime.now(dt.UTC).date().isoformat()
-    hist = (Path(args.out).parent / "delta_calibration_history") if args.out else None
+    # 目录命名走共享规则(2026-08-30)—— 这里原本**硬编码**成
+    # "delta_calibration_history",`--out foo.md` 也会写进它;生产路径下与
+    # stem 推导恰好一致,所以两份副本分叉了没人发现。
+    hist = report_history_dir(args.out) if args.out else None
     prev = load_prev(hist, today) if hist else None
 
     text = "\n".join([
@@ -478,18 +485,14 @@ def main(argv: list[str] | None = None) -> int:
     ])
     print(text)
     if args.out:
-        p = Path(args.out)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text, encoding="utf-8")
         # ⭐ 自动存档(2026-08-03)。prereg v2.0 §5.1 要「连续两周」,而本仪表原来
         # 只写 _latest.md 每次覆盖 —— 那个条件在产物上判不了。md 给人看,json 给
         # 下次自比用(解析 markdown 太脆)。同日重跑覆盖当天这份 = 当天最新读数。
-        if not args.no_archive and hist is not None:
-            hist.mkdir(parents=True, exist_ok=True)
-            (hist / f"{today}.md").write_text(text, encoding="utf-8")
-            (hist / f"{today}.json").write_text(
-                json.dumps(stats, ensure_ascii=False, indent=1), encoding="utf-8")
-            print(f"[archive] {hist}/{today}.{{md,json}}")
+        _h = write_report_with_history(
+            args.out, text, payload=stats,
+            archive=not args.no_archive, today=today)
+        if _h is not None:
+            print(f"[archive] {_h}/{today}.{{md,json}}")
     return 0
 
 
