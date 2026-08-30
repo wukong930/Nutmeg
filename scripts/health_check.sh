@@ -550,6 +550,23 @@ import datetime as dt, pathlib, sqlite3
 ROOT = pathlib.Path(".")
 cur = ROOT / "data/jingcai_history_cursor.txt"
 BEGIN, LAG, WINDOW, EVERY_H = dt.date(2021, 8, 1), 2, 7, 1   # 与 trickle 脚本同源
+STATUS = ROOT / "logs/jingcai_trickle_status.jsonl"
+
+# ⭐ 速度**一处定义**,和体检 §9 共用 —— 这一节曾经拿 `left / WINDOW * EVERY_H`
+#   自己推,其中 EVERY_H=1 来自 plist 的 StartInterval=3600 ⇒ 同一份报告两节的
+#   ETA 差 13 倍(见 data_freshness.trickle_closing_rate 的 docstring)。
+from nutmeg.v4.cli.data_freshness import trickle_closing_rate
+
+
+def _measured_rate():
+    import json
+    if not STATUS.exists():
+        return None
+    try:
+        rows = [json.loads(x) for x in STATUS.read_text().splitlines() if x.strip()]
+    except (OSError, ValueError):
+        return None
+    return trickle_closing_rate(rows)
 
 if not cur.exists():
     print("WARN|涓流游标文件不存在 ⇒ 它没跑过,或路径变了")
@@ -564,13 +581,30 @@ else:
         if left <= 0:
             print(f"OK|涓流已扫到终点({d})—— 归档跟上今天")
         else:
-            hours = left / WINDOW * EVERY_H
-            print(f"OK|涓流游标 {d} · 离终点 {left} 天 ⇒ 约 {hours:.0f}h "
-                  f"({hours/24:.1f} 天)扫到今天")
-            # ⛔ 这里**故意不报**「归档落后 N 天」—— 那是游标的函数,不是故障。
-            #    只有当 ETA 本身异常(远超一轮 sweep)才值得喊。
-            if hours > 24 * 20:
-                print(f"WARN|ETA {hours/24:.0f} 天 > 一轮 sweep 的量级 ⇒ 查游标有没有卡住")
+            m = _measured_rate()
+            if m is None:
+                # 退路:拿排程常数推,并**明说这是排程不是实测** —— 否则它会被
+                # 当成量出来的数(那正是 2026-08-30 那个 12 倍误差的读法)。
+                days_eta = left / (WINDOW * 24 / EVERY_H)
+                print(f"OK|涓流游标 {d} · 离终点 {left} 天 ⇒ 约 {days_eta:.1f} 天"
+                      f"(⚠️ **按排程上限估**,日志不足以量实测节律;真实通常慢数倍)")
+            else:
+                rate, n, span = m
+                if rate <= 0:
+                    # 游标追不上终点 ⇒ 第一遍永远跑不完。这是真故障,不是「还没走到」。
+                    print(f"WARN|涓流游标 {d} · 离终点 {left} 天,但近 {n} 轮"
+                          f"({span:.1f} 天)净合拢 {rate:+.1f} 天/天 ⇒ **追不上终点**"
+                          f",第一遍跑不完 —— 查 cron 是不是没在跑")
+                else:
+                    days_eta = left / rate
+                    print(f"OK|涓流游标 {d} · 离终点 {left} 天 · 实测净合拢 "
+                          f"{rate:.1f} 天/天(近 {n} 轮 / {span:.1f} 天)"
+                          f" ⇒ 约 {days_eta:.0f} 天扫到今天")
+                    # ⛔ 这里**故意不报**「归档落后 N 天」—— 那是游标的函数,不是故障。
+                    #    只有当 ETA 本身异常(远超一轮 sweep)才值得喊。
+                    if days_eta > 60:
+                        print(f"WARN|ETA {days_eta:.0f} 天 —— 远超一轮 sweep 的量级"
+                              f",查游标有没有卡住")
 
 obs = ROOT / "data/v4_observation.db"
 if obs.exists():

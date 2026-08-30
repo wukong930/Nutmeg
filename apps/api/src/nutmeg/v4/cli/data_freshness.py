@@ -664,6 +664,52 @@ _LEAGUE_TRACK_TABLES: tuple[tuple[str, str], ...] = (
 _FAILED_IDS_SINCE = "2026-08-24"
 
 
+#: 量实测速度时回看多少轮。7 轮太短(节律本身有起伏,ETA 会跳),40 轮 ≈ 两周。
+TRICKLE_RATE_LOOKBACK = 40
+
+
+def trickle_closing_rate(rows, lookback: int = TRICKLE_RATE_LOOKBACK):
+    """涓流状态行 → ``(净合拢速度 天/天, 轮数, 跨越天数)``;量不了返回 ``None``。
+
+    ⭐ **一处定义**:体检 §9(本文件)和 §19(``scripts/health_check.sh``)都调它。
+    2026-08-30 之前 §19 自己拿 ``left / WINDOW * EVERY_H`` 推,其中 ``EVERY_H=1``
+    来自 plist 的 ``StartInterval=3600`` ⇒ **同一份报告里两节的 ETA 差 13 倍**
+    (§19 说 1.0 天,§9 说 13 天)。本函数存在的理由就是消掉那第二把尺子。
+
+    🚨 ``StartInterval`` 是**排程**不是**速率**。实测这台机器的实现率是 **8%**
+    (排程 24 轮/天,实跑 2.9 轮/天),且 24h/48h/168h 三个窗口都是 8% —— 稳定,
+    不是偶发。⇒ 节律只能从任务**自己的日志**里数。
+    反面见 [[measure-cadence-before-changing-a-guard]]:那次我假设慢实际快,
+    这次护栏假设快实际慢,**两次读的是同一个 StartInterval**。
+
+    ⭐ 扣掉**终点自己的推进**:END = 今天−LAG,每过一天它也往前走一天 ⇒ 真正在
+    缩短的是 ``游标速度 − 终点速度``。只除游标速度会**低估** ETA。
+    """
+    recent = list(rows)[-lookback:]
+    if len(recent) < 2:          # 一轮算不出速度
+        return None
+    try:
+        t0 = datetime.fromisoformat(str(recent[0]["ran_at"]))
+        t1 = datetime.fromisoformat(str(recent[-1]["ran_at"]))
+        c0 = date.fromisoformat(str(recent[0]["cursor_next"]))
+        c1 = date.fromisoformat(str(recent[-1]["cursor_next"]))
+        e0 = date.fromisoformat(str(recent[0]["end"]))
+        e1 = date.fromisoformat(str(recent[-1]["end"]))
+    except (KeyError, ValueError, TypeError):
+        return None
+    span = (t1 - t0).total_seconds() / 86400.0
+    if span < 1.0:
+        # ⭐ 闸在**跨越时长**上,不在轮数上。2026-08-30 我一度写成 `len < 8`,被
+        #   test_still_working_reports_progress_and_measured_eta 抓住:它用 2 轮跨
+        #   3 天 —— 那是个**合法**测量,而 `len<8` 会把 ETA 整个吞掉。而「没有 ETA」
+        #   和「涓流不工作」在报告里长得一样 ⇒ 假红。抖动该靠 lookback 窗口治,
+        #   不是靠抬最小轮数。
+        return None
+    if any(r.get("wrapped") for r in recent):
+        return None              # 绕过起点 ⇒ 游标差值没有意义
+    return ((c1 - c0).days - (e1 - e0).days) / span, len(recent), span
+
+
 def _trickle_recovery_line(rows: list[dict], history_db) -> list[str]:
     """涓流失败的**逐场**补回情况。
 
@@ -775,19 +821,13 @@ def check_jingcai_trickle(
     stored_sum = sum(int(r.get("stored_rows") or 0) for r in recent)
     fail_sum = sum(int(r.get("failed") or 0) for r in recent)
 
-    # 实测推进速度 → ETA(不假设 cron 频率)
+    # 实测推进速度 → ETA(不假设 cron 频率;与体检 §19 共用 trickle_closing_rate)
     eta = ""
-    if len(recent) >= 2:
-        try:
-            d0 = datetime.fromisoformat(str(recent[0]["ran_at"]))
-            hist = (date.fromisoformat(str(last["cursor_next"]))
-                    - date.fromisoformat(str(recent[0]["cursor_next"]))).days
-            wall = max((ran - d0).total_seconds() / 86400.0, 1e-9)
-            if hist > 0:
-                rate = hist / wall
-                eta = f" · 实测 {rate:.0f} 天历史/天 ⇒ ETA ≈ {remaining / rate:.0f} 天"
-        except (KeyError, ValueError):
-            pass
+    _m = trickle_closing_rate(rows)
+    if _m and _m[0] > 0:
+        _rate, _n, _span = _m
+        eta = (f" · 实测净合拢 {_rate:.0f} 天历史/天(近 {_n} 轮/{_span:.0f} 天)"
+               f" ⇒ ETA ≈ {remaining / _rate:.0f} 天")
 
     info.append(
         f"竞彩涓流 游标 {last.get('cursor_next')} → 终点 {last.get('end')} · "
