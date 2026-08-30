@@ -34,6 +34,8 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import sqlite3
+
+from nutmeg.v4.data.league_labels import canonical_league
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -112,6 +114,17 @@ def record_jingcai_sp_snapshot(
             return False
         if not (match_date and home_team and away_team and market):
             return False
+        # 联赛标签归一(2026-08-30)—— 两个写入方两套词汇:sporttery cron 写竞彩
+        # 中文缩写(西甲/日职),面板「记一笔」写 V4 EN 代码(ESP_LA_LIGA/JPN_J1)。
+        # 在**写入侧**归一,而不是靠事后回填:回填只清存量,25 天里已经清了 4 次
+        # (08-05 / 08-13 / 08-24 / 08-30),每轮再生 3-8 个写法 —— 那是跑步机不是修复。
+        # ⚠️ 必须带真值闸:`canonical_league(None)` 返回 '(未标联赛)' 而**不是** None。
+        #    无闸套用会把「不知道联赛」写成一个字面量占位串,并让下方
+        #    `COALESCE(excluded.league, ...)` 拿这个占位串覆盖掉已存的真联赛 ——
+        #    把「没去看」写成「看过了」,正是本仓反复出现的那类静默污染。
+        # 认不出的标签原样透传(fail-open)⇒ data_freshness 的 unknown 检查照常生效。
+        if league:
+            league = canonical_league(league)
         # 闸 3 —— 开球后的读数不是可下注的价(见模块头)。
         if _past_kickoff(kickoff_utc):
             return False

@@ -29,6 +29,7 @@ from pathlib import Path
 
 import httpx
 
+from nutmeg.v4.data.league_labels import league_filter_variants
 from nutmeg.v4.data.sources.odds_api import (
     SPORT_KEYS,
     _extract_h2h,
@@ -40,15 +41,22 @@ from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
 REPO = Path(__file__).resolve().parents[1]
 DB = REPO / "data" / "v4_observation.db"
 
-# 中文标签 → 联赛代码。前 5 条有**共现证据**(同一场比赛在 jingcai_sp 里两种标签都
-# 出现过);后 3 条由**队伍池**判定(挪超里是 Bodo/Glimt·Molde·Brann,且 Brann/Molde
-# 与 NOR_ELITESERIEN 重叠;巴甲是 Flamengo·Corinthians·Gremio;美职是 Inter Miami·
-# LAFC·LA Galaxy)。league_labels._EN_TO_CN 只覆盖前者,这里补全后者。
-_ZH_TO_CODE = {
-    "芬超": "FIN_VEIKKAUSLIIGA", "世界杯": "WC", "韩职": "KOR_K_LEAGUE_1",
-    "欧罗巴": "UEL", "瑞超": "SWE_ALLSVENSKAN",
-    "挪超": "NOR_ELITESERIEN", "巴甲": "BRA_SERIE_A", "美职": "USA_MLS",
-}
+# 中文标签 → sport_key。⚠️ 这里**曾经**有一份手维护的中文→代码字典(8 条),注释
+# 写着「league_labels._EN_TO_CN 只覆盖前者,这里补全后者」—— 后来 _EN_TO_CN 长全了,
+# 这份副本却停在原地。2026-08-30 实测:那 8 条它全都重复,而它**漏了**西甲/日职/
+# 意甲/英超/德甲/法乙/葡超/英冠 —— 正好是训练联赛。后果不是报错,是 `sk=None`
+# ⇒ `continue` ⇒ **静静跳过 38% 的可拉人口(248/646 行)**,和「没有数据」同形。
+# ⇒ 改为从 `league_filter_variants` 展开(由 _EN_TO_CN 推导,不可能再掉队)。
+#   两轨通吃:传中文缩写或 V4 EN 代码,都拿到同一个 sport_key。
+def _sport_key(label: str | None) -> str | None:
+    """任一轨的联赛写法 → Odds API sport_key;认不出返回 None(调用方静默跳过)。"""
+    if not label:
+        return None
+    for v in sorted(league_filter_variants({label})):
+        if v in SPORT_KEYS:
+            return SPORT_KEYS[v]
+    return None
+
 # 只写「快照时刻之后这么久内开球」的场次 —— 见模块头那条 in-play 铁律。
 WINDOW_MIN = 30
 LEAD_MIN = 5          # 快照取开球前 5 分钟(要的是收盘价,不是赛前很久的价)
@@ -85,8 +93,7 @@ def plan(day_from: str, day_to: str) -> dict[tuple[str, str], list[dict]]:
         conn.close()
     out: dict[tuple[str, str], list[dict]] = {}
     for r in rows:
-        code = _ZH_TO_CODE.get(r["league"], r["league"])
-        sk = SPORT_KEYS.get(code)
+        sk = _sport_key(r["league"])
         if not sk:
             continue          # 没有 sport_key 的联赛拉不到,静静跳过(汇总里会显示)
         try:

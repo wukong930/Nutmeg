@@ -19,6 +19,8 @@ import logging
 import sqlite3
 from collections import defaultdict
 
+from nutmeg.v4.data.league_labels import canonical_league
+
 # outcome index: 0=home, 1=draw, 2=away (matches jingcai_sp.ft_outcome)
 _LABELS = ("主胜", "平局", "客胜")
 _HC_LABELS = ("让胜", "让平", "让负")
@@ -263,7 +265,14 @@ def _print(report: dict, min_ev: float) -> None:
 
     _bucket(lambda c: {"had": "1X2 胜平负", "hhad": "让球胜平负"}.get(
         c.get("market", "had"), c.get("market")), "玩法")
-    _bucket(lambda c: c["league"], "联赛")
+    # 归一后再分组(2026-08-30)。同一联赛有**两轨写法**:sporttery cron 写竞彩
+    # 中文缩写,面板「记一笔」(source=market_mode)写 V4 EN 代码 ⇒ 裸字符串
+    # 分组会把一个联赛算成两组、并稀释它的 N。本文件是全仓 8 个 jingcai_sp
+    # 读者里**唯一**一个不过归一的(其余走 canonical_league / _delta_in_scope)。
+    # 实测(--min-ev -1):修前多出 ESP_LA_LIGA 3 注 + JPN_J1 3 注两个虚假组,
+    # 西甲 147→150、日职 93→96。默认 --min-ev 0.05 下不可见(那 6 条腿 EV 顶到
+    # -4.65%,离闸还差 9.65pp)—— **潜伏不等于不存在**,EN 行一旦过闸就报错数。
+    _bucket(lambda c: canonical_league(c["league"]), "联赛")
     _bucket(lambda c: _ev_band(c["ev"]), "EV 档")
     _bucket(lambda c: _drift_band(c["drift"]), "Pinnacle 冻结后漂移")
 

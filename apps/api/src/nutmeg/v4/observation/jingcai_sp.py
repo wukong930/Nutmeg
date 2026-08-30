@@ -20,6 +20,8 @@ import datetime as dt
 import logging
 import math
 import sqlite3
+
+from nutmeg.v4.data.league_labels import canonical_league
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -122,14 +124,14 @@ CREATE TABLE IF NOT EXISTS jingcai_sp (
     -- 要关联 odds_snapshots 请用 (home_team, away_team, 日期±1),两侧队名都已过
     -- zh_to_canonical / gather 的同一套 canonical EN。
     fixture_id   INTEGER,
-    -- ⚠️ league 是**双轨口径**,同一批比赛可能出现两种标签:
-    --   · cron 路径写竞彩中文名        —— '芬超'
-    --   · 面板路径写我们的联赛代码     —— 'FIN_VEIKKAUSLIIGA'
-    -- 后果:**按 league 分组统计会把同一联赛拆成两行**(实测芬超 33 + 11),
-    -- 任何按联赛聚合的分析(如秋季 §1-⑦ per-league CLV 协变量)必须先归一,
-    -- 否则每个联赛的 N 都被低估。不影响 EV(EV 只走队名 join + 赔率)。
-    -- 未统一是因为改口径要连带决定存量行怎么迁移 —— 等真有下游要 per-league
-    -- 聚合时一并定,别在没有消费者的时候改。
+    -- league:**新写入一律是规范形**(竞彩中文缩写),2026-08-30 起在捕获处归一。
+    -- 历史上这里是双轨的(cron 写 '芬超',面板写 'FIN_VEIKKAUSLIIGA'),后果是
+    -- 按 league 分组会把同一联赛拆成两行(实测芬超 33 + 11)。当时留着没改,
+    -- 理由是「等真有下游要 per-league 聚合时一并定」—— 结果 25 天里靠回填清了
+    -- 4 次(08-05/08-13/08-24/08-30),每轮再生 3-8 个写法。⇒ 改在写入侧。
+    -- ⚠️ 读取方**仍然必须**过 `canonical_league`:存量老行还是双轨的,而且
+    --    `WHERE league IN (…)` 跑在取行之前 —— 那要用 `league_filter_variants`。
+    -- 不影响 EV(EV 只走队名 join + 赔率)。
     league       TEXT,
     match_date   TEXT NOT NULL,
     home_team    TEXT NOT NULL,
@@ -225,6 +227,17 @@ def record_jingcai_sp(
             return False  # no 竞彩 line to log
         if not (match_date and home_team and away_team):
             return False
+        # 联赛标签归一(2026-08-30)—— 两个写入方两套词汇:sporttery cron 写竞彩
+        # 中文缩写(西甲/日职),面板「记一笔」写 V4 EN 代码(ESP_LA_LIGA/JPN_J1)。
+        # 在**写入侧**归一,而不是靠事后回填:回填只清存量,25 天里已经清了 4 次
+        # (08-05 / 08-13 / 08-24 / 08-30),每轮再生 3-8 个写法 —— 那是跑步机不是修复。
+        # ⚠️ 必须带真值闸:`canonical_league(None)` 返回 '(未标联赛)' 而**不是** None。
+        #    无闸套用会把「不知道联赛」写成一个字面量占位串,并让下方
+        #    `COALESCE(excluded.league, ...)` 拿这个占位串覆盖掉已存的真联赛 ——
+        #    把「没去看」写成「看过了」,正是本仓反复出现的那类静默污染。
+        # 认不出的标签原样透传(fail-open)⇒ data_freshness 的 unknown 检查照常生效。
+        if league:
+            league = canonical_league(league)
         # 闸 1 — booksum 带(见模块头):单腿脏值/混拼在这里被拒,官方合法盘全通过。
         booksum = _sane_booksum(float(jc_home), float(jc_draw), float(jc_away))
         if booksum is None or not (_BOOKSUM_MIN <= booksum <= _BOOKSUM_MAX):
