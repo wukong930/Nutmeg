@@ -602,6 +602,39 @@ _ZH_OVERRIDES: dict[str, str] = {
     #    ⚠️ 今天零影响(只影响历史回填,不影响在售场次)。哪天 `贝红星` 出现在实时源上,
     #    同场唯一锚就有了,那时再补。⚠️ 别和 `圣旺红星`→`RED Star FC 93`(法甲/法乙,
     #    巴黎红星)搞混——两者在档案里各 22/21 场,靠联赛完全分得开。
+    # ── 2026-09-01 横幅「队名解不出 2/17」。⭐ 4 个被点名的名字里 **2 个本来就解得出**
+    #    (普雷斯顿→Preston、枥木城→Tochigi City)—— 横幅按**比赛**点名,一侧坏就整场上榜。
+    #    真缺口只有下面 2 条,两支队在 TEAM_NAME_ZH 里**都有**,只是竞彩换了写法 ⇒ ① 类。
+    #
+    # 锚(开球时刻 + 联赛 + 已知那一侧,不是按音猜):
+    #   · 布里斯托尔城 ← AF fixture **1563122** `2026-09-01T18:45 · England · Championship
+    #     · Preston vs Bristol City`。锚 = 普雷斯顿(=Preston,已解)当日英冠唯一主场。
+    #     词典原写「布里斯托城」——**只差一个「尔」**,正是最容易被眼睛跳过、
+    #     以为「已经有了」的那种(同 巴黎圣日尔曼/耳 那条)。
+    #   · 八户南源 ← AF fixture **1567425** `2026-09-02T09:30 · Japan · J-League Cup
+    #     · Vanraure Hachinohe vs Tochigi City`。锚 = 枥木城(=Tochigi City,已解)。
+    #     词典原写「八户」。⚠️「南源」按音完全对不上 Vanraure —— **只有 fixture 锚拿得到**,
+    #     这类正是「翻译法必错」的一类。
+    #
+    # 撞车检查(查 AF 侧同名俱乐部数,不是看着像):
+    #   · Hachinohe:AF 全库**只有 1 家** `Vanraure Hachinohe` ⇒ 无歧义。
+    #   · Bristol:AF 有 5 个(City / City U21 / City W / Manor Farm / Rovers),
+    #     但只有 `Bristol City` 是英冠男足一队,且 fixture 1563122 已钉死。
+    #     ⚠️ `Bristol Rovers` 是**另一家俱乐部**,别混。
+    #   · 两个中文名在 TEAM_NAME_ZH 值集合与本表里都没被别的队占用(0 冲突)。
+    # ✅「值必须在盘面出现过」:`Bristol City` 86 行 / `Vanraure Hachinohe` 3 行
+    #    (odds_snapshots,即 join 目标本身)。
+    #
+    # ⚠️ 第三条链**两场结果不同**(补词典 ≠ 能算 EV,横幅看不见这条):
+    #   · Preston vs Bristol City:Pinnacle **有**(2.66/3.46/2.68 @ 09-01 01:00)⇒ 补完真能进盘面。
+    #   · Vanraure Hachinohe:`odds_snapshots` **0 行** ⇒ 补完横幅闭嘴,但这场仍算不出 EV,
+    #     会落到「待手填」区。这正是横幅自己那句警告的实例。
+    # 📌 顺带:`classify_league('日联赛杯')` = **unknown**,而我们**没有** J-League Cup 的
+    #    V4 代码(只有 JPN_J1 / JPN_J2)⇒ ⛔ **不编一个**塞进 `_EN_TO_CN`。
+    #    这场落库后哨兵会如实报 `unknown: 日联赛杯` —— 那是**正确的**信号
+    #    (我们确实没注册这项赛事),编个假英文键只会把真信号消音。
+    "布里斯托尔城": "Bristol City",
+    "八户南源": "Vanraure Hachinohe",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

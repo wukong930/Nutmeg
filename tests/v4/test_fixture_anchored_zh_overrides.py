@@ -55,7 +55,45 @@ PINNED: dict[str, dict] = {
         "date": "2026-08-23", "league": "ITA_SERIE_A",
         "already_ok": ("尤文图斯", "Juventus"),
     },
+    # ── 2026-09-01 横幅「2/17」。⭐ 被点名的 4 个名字里 **2 个本来就是好的**
+    #    (普雷斯顿 / 枥木城)—— 横幅按**比赛**点名。又一次「先逐名跑再动手」。
+    "布里斯托尔城": {
+        "en": "Bristol City",
+        "anchor": ("Preston", "home"),
+        "date": "2026-09-01", "league": "ENG_CHAMPIONSHIP",
+        "already_ok": ("普雷斯顿", "Preston"),
+    },
+    # ⚠️ 这条**锚不到 odds_snapshots**:Pinnacle 从没覆盖过日联赛杯,该场 0 行。
+    #    ⇒ 用 `af_fixture` 锚(AF 赛程缓存里的那一条),见下面锚定断言的两条路。
+    #    「南源」按音完全对不上 Vanraure —— 翻译法必错,只有 fixture 锚拿得到。
+    "八户南源": {
+        "en": "Vanraure Hachinohe",
+        "anchor": ("Tochigi City", "away"),
+        "date": "2026-09-02", "league": "JPN_LEAGUE_CUP",
+        "af_fixture": 1567425,
+        "already_ok": ("枥木城", "Tochigi City"),
+    },
 }
+
+
+def _af_fixture_pair(fixture_id: int) -> tuple[str, str] | None:
+    """AF 赛程缓存里 ``fixture_id`` 的 ``(home, away)``;找不到返回 None(⇒ 断言会红)。"""
+    import glob
+    import json
+    for f in (glob.glob(str(REPO / "data/external/api_football/_fixtures/*.json"))
+              + glob.glob(str(REPO / "data/external/api_football/fixtures/*.json"))):
+        try:
+            d = json.load(open(f, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for it in (d if isinstance(d, list) else d.get("response") or []):
+            if not isinstance(it, dict):
+                continue
+            if (it.get("fixture") or {}).get("id") != fixture_id:
+                continue
+            t = it.get("teams") or {}
+            return ((t.get("home") or {}).get("name"), (t.get("away") or {}).get("name"))
+    return None
 
 
 @pytest.mark.parametrize("zh", sorted(PINNED))
@@ -98,11 +136,20 @@ def test_the_pairing_is_pinned_by_fixture_identity(zh: str) -> None:
 
     红了 = 钉的前提没了(赛程变了/库里多了一场)⇒ **重新钉一次,别硬改常数。**
     """
+    p = PINNED[zh]
+    if "af_fixture" in p:
+        # ⭐ 第二条锚源(2026-09-01 起)。`odds_snapshots` 只覆盖 Pinnacle 开过的场次
+        # —— 日联赛杯这类它从没开过,该表 0 行 ⇒ 拿它当唯一锚源会把**能锚的场次
+        # 误判成锚不到**。AF 赛程缓存不依赖任何书商开盘,而且钉的是**具体 fixture id**,
+        # 比「当日对手集」更硬。⛔ 但它只是换锚源,不是放宽:仍要求两侧逐字相等。
+        assert _af_fixture_pair(p["af_fixture"]) == (
+            (p["en"], p["anchor"][0]) if p["anchor"][1] == "away" else (p["anchor"][0], p["en"])
+        ), f"AF fixture {p['af_fixture']} 的两队和钉的不一致 —— 重新钉,别改常数"
+        return
     db = REPO / "data/v4_observation.db"
     if not db.exists():
         pytest.skip("观测库不在这个 checkout 里")
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    p = PINNED[zh]
     anchor, side = p["anchor"]
     col, other = ("home_team", "away_team") if side == "home" else ("away_team", "home_team")
     rs = {r[0] for r in conn.execute(
