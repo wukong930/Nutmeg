@@ -24,9 +24,14 @@
 from __future__ import annotations
 
 import collections
+from pathlib import Path
+
+import pytest
 
 from nutmeg.v4.data.odds_source_aliases import ODDS_SOURCE_ALIASES as A
 from nutmeg.v4.data.odds_source_aliases import canonical_team
+
+REPO = Path(__file__).resolve().parents[2]
 
 
 def test_no_key_conflicts() -> None:
@@ -35,10 +40,11 @@ def test_no_key_conflicts() -> None:
     dict 字面量天然不会有重复键 —— 但**后写的会静默覆盖先写的**,
     所以这条真正钉的是「条数没有因为重键而缩水」。
     """
-    assert len(A) == 218, (
-        f"表大小 {len(A)},预期 218(210 + 08-18 的 8:`derive_odds_name_aliases.py` "
+    assert len(A) == 220, (
+        f"表大小 {len(A)},预期 220(210 + 08-18 的 8:`derive_odds_name_aliases.py` "
         f"推出 9 条,**采纳 8 条**;第 9 条 `Vitória SC→Guimaraes` 方向反了,"
-        f"理由写在别名表里)。"
+        f"理由写在别名表里 · + 09-01 的 2:EFL_CUP 的 Coventry/Leeds,"
+        f"08-25 才首次在杯赛两侧共现)。"
         f"若你有意增删,改这个数并在下面 per-league 表同步。")
 
 
@@ -85,9 +91,14 @@ def test_per_league_counts() -> None:
         # ⚠️ 英冠 5→16:08-14 预埋时 closing 侧 0 行,首个比赛日才暴露 9 个名字
         #   (其中 8 个我只建了 EFL_CUP 键)。见 test_alias_gap_when_same_name...
         "ENG_CHAMPIONSHIP": 16, "ESP_SEGUNDA_DIVISION": 15, "ITA_SERIE_B": 4,
-        # ── 🩸 联赛杯 37 条(2026-08-14):**不是预埋,是止血** ──
-        # closing 侧 70 个名字里 37 个叠不上;08-08 整轮双记。
-        "EFL_CUP": 37,
+        # ── 🩸 联赛杯 39 条:**不是预埋,是止血** ──
+        # 08-14 补 37 条:closing 侧 70 个名字里 37 个叠不上;08-08 整轮双记。
+        # ⚠️ 37→39(2026-09-01):`Coventry City`→`Coventry` / `Leeds United`→`Leeds`。
+        #   08-14 时它们在杯赛两侧都是 0 行,当时**明确不许预埋**;08-25 第一次上盘面
+        #   (closing 69 / gather 418,同比赛日两侧都有)⇒ 拿到该联赛自己的共现证据才补。
+        #   🚨 抓到它的不是任何注释(第 197 行和本表段落头都写过警告),而是数据驱动的
+        #   `test_alias_gap_when_same_name_plays_in_another_league` —— **同一个洞第三次**。
+        "EFL_CUP": 39,
         # ── 解放者杯 3 + 沙特联 2(2026-08-14):回填后仅存的跨源劈开键 ──
         # ⚠️ 沙特联 2→10(2026-08-16):08-14 只看到 2 条,数据攒够才暴露系统性差异。
         #   ⛔ Al-Shabab/Al-Qadsiah 故意留空 —— 那个槽 1×2、指纹两边都 0,判不出。
@@ -222,12 +233,25 @@ def test_efl_cup_has_its_own_verified_entries() -> None:
     assert canonical_team("EPL", "Leicester City") == "Leicester City"
     assert canonical_team("ENG_CHAMPIONSHIP", "Wimbledon") == "Wimbledon"
 
-    # ③ ⛔ 没有证据的联赛不许预埋:Coventry/Leeds 在 EFL_CUP 两侧 0 行
-    #    ⇒ 给它们建杯赛条目 = 凭「英超那边是这么写的」猜,正是本仓红线。
-    for nm in ("Coventry City", "Leeds United"):
-        assert ("EFL_CUP", nm) not in A, (
-            f"{nm!r} 在 EFL_CUP 两侧都没有行,不该有条目 —— "
-            f"要加必须先拿到该联赛自己的共现证据")
+    # ③ ⛔ 没有证据的联赛不许预埋 —— **规矩没变,变的是证据**。
+    #
+    # 2026-08-14 立本条时,`Coventry`/`Leeds` 在 EFL_CUP 两侧都是 **0 行**,
+    # 所以当时钉的是「不许有条目」。2026-08-25 它们第一次出现在杯赛盘面
+    # (直接查 `odds_snapshots`:同联赛同比赛日,closing 69 行 / gather 418 行):
+    #     closing 侧 'Coventry City' / 'Leeds United'
+    #     gather  侧 'Coventry'      / 'Leeds'
+    # ⇒ 「该联赛自己的共现证据」已经拿到,条目于 2026-09-01 补上。
+    #
+    # 🚨 这条断言当初把**一个当时的结论**冻了起来,而不是把**规矩**写下来
+    #    ⇒ 数据变化的那一天它必然与正确修复正面冲突(实测:补键当场撞红,
+    #    而红的理由「两侧都没有行」在那一刻已经是假的)。真正守这条规矩的是下面
+    #    数据驱动的 `test_alias_gap_when_same_name_plays_in_another_league`
+    #    —— 它是**从库里现算**的,不会随时间腐坏。这里只留正向的解析断言。
+    for nm, want in (("Coventry City", "Coventry"), ("Leeds United", "Leeds")):
+        assert canonical_team("EFL_CUP", nm) == want, f"{nm!r} 的杯赛条目没生效"
+        # ⭐ 联赛维度仍然承重:换个没有条目的联赛必须**原样穿透**,
+        #    否则「补一条杯赛键」会顺手污染所有联赛。
+        assert canonical_team("UCL", nm) == nm, f"{nm!r} 泄进了没有条目的联赛"
 
 
 def test_efl_cup_sheffield_pair_never_merges() -> None:
@@ -240,6 +264,98 @@ def test_efl_cup_sheffield_pair_never_merges() -> None:
     assert canonical_team("EFL_CUP", "Sheffield United") == "Sheffield Utd"
     assert canonical_team("EFL_CUP", "Sheffield Wednesday") == "Sheffield Wednesday"
     assert A.get(("EFL_CUP", "Sheffield United")) != "Sheffield Wednesday"
+
+
+def _alias_gaps(rows: list[tuple], aliases: dict) -> dict[str, list[str]]:
+    """从 `odds_snapshots` 的行里找出「别名建在了别的联赛」的缺口。
+
+    ⭐ 2026-09-01 从 `test_alias_gap_when_same_name_plays_in_another_league`
+    里抽出来:原来这段逻辑**只有在本机有观测库时才会被执行过一次**,
+    没有任何东西证明它真能抓到它声称要抓的形态。抽成纯函数之后,
+    `test_alias_gap_detector_fires_on_the_2026_08_15_shape` 用合成行直接钉它,
+    空包弹也才有地方打。
+
+    `rows` = [(league, match_date, source, home_team, away_team), …]。
+    """
+    day: dict[tuple, list[int]] = collections.defaultdict(lambda: [0, 0])
+    for lg, d, src, _h, _a in rows:
+        day[(lg, d)][0 if src == "closing" else 1] += 1
+    live = {k for k, v in day.items() if v[0] and v[1]}   # ← 分母守卫
+
+    closing_names: dict[str, set[str]] = collections.defaultdict(set)
+    gather_names: dict[str, set[str]] = collections.defaultdict(set)
+    for lg, d, src, h, a in rows:
+        if (lg, d) not in live:
+            continue
+        tgt = closing_names if src == "closing" else gather_names
+        tgt[lg].update((h, a))
+
+    aliased = collections.defaultdict(set)               # closing名 → 已建键的联赛集
+    for lg, nm in aliases:
+        aliased[nm].add(lg)
+
+    gaps: dict[str, list[str]] = collections.defaultdict(list)
+    for nm, leagues in aliased.items():
+        for lg, names in closing_names.items():
+            if lg in leagues or nm not in names:
+                continue
+            # ⛔ 2026-09-01 复核移除:这里一度多一句
+            #      `if nm in gather_names.get(lg, set()): continue`
+            #    (closing 名在本联赛 gather 侧原样存在就当作不缺键)。它是在一次
+            #    「只修测试」的改动里顺手加进来的**收窄**,没有任何 commit 依据,
+            #    而 `closing_names`/`gather_names` 本来就是**逐联赛**的,它声称要防的
+            #    跨联赛误算根本不存在。实测在当前全库数据上它是 no-op(加不加同一结果)
+            #    ⇒ 今天不救人,将来只会漏报:同一联赛里若一部分场次两侧都用长名、
+            #    另一部分是长 closing / 短 gather,它会把后者一起吞掉。
+            #    ⇒ 恢复本探测器**原本的**语义。
+            # 它在本联赛真的叠不上吗?(目标名在 gather 侧就说明确实缺)
+            tgt = {aliases[(x, nm)] for x in leagues}
+            if tgt & gather_names.get(lg, set()):
+                gaps[lg].append(f"{nm!r} → {sorted(tgt)}")
+    return dict(gaps)
+
+
+def test_alias_gap_detector_fires_on_the_2026_08_15_shape() -> None:
+    """⭐ 探针自检:用**合成行**重演 2026-08-15 那个形态,证明 `_alias_gaps` 真会响。
+
+    没有这条,下面那条护栏在没有观测库的环境里 skip、在有库的环境里
+    「恰好全绿」—— 两种情况都不构成「它能抓到东西」的证据
+    (同 [[syntactic-proxy-for-semantic-property]]:先把答案当场算一遍)。
+    """
+    aliases = {("EFL_CUP", "Sheffield United"): "Sheffield Utd"}
+    rows = [
+        # 英冠这一天两侧都有行 ⇒ 过分母守卫;closing 用 `Sheffield United`,
+        # gather 用别名的目标 `Sheffield Utd` ⇒ 差的就是 (ENG_CHAMPIONSHIP, …) 那条键。
+        ("ENG_CHAMPIONSHIP", "2026-08-15", "closing", "Sheffield United", "Norwich"),
+        ("ENG_CHAMPIONSHIP", "2026-08-15", "gather", "Sheffield Utd", "Norwich"),
+    ]
+    assert _alias_gaps(rows, aliases) == {
+        "ENG_CHAMPIONSHIP": ["'Sheffield United' → ['Sheffield Utd']"]}, "探针不响"
+
+    # ① 键补上 ⇒ 不响
+    assert not _alias_gaps(rows, {**aliases, ("ENG_CHAMPIONSHIP", "Sheffield United"):
+                                  "Sheffield Utd"})
+    # ② 分母守卫:**逐(联赛,比赛日)**要求两侧都有行。
+    #    这里造的正是 2026-08-15 西乙那次误报的形状:比赛日 A 只有 closing、
+    #    比赛日 B 只有 gather —— 不按天卡就会把 A 的 closing 名和 B 的 gather 名
+    #    拼成一个根本不存在的「缺口」。
+    #    ⚠️ 第一版这条写成 `rows[:1]`(整个输入只有一行 closing),
+    #    把守卫拆掉它照样绿 —— 因为 gather 侧压根是空的,走不到判据。
+    assert not _alias_gaps(
+        [("ENG_CHAMPIONSHIP", "2026-08-15", "closing", "Sheffield United", "Norwich"),
+         ("ENG_CHAMPIONSHIP", "2026-08-16", "gather", "Sheffield Utd", "Norwich")],
+        aliases)
+    # ③ ⛔ 原来这里断言「closing 名在本联赛 gather 侧原样存在 ⇒ 不算缺口」。
+    #    那条断言是上面被移除的 `continue` 的镜像,一起删 —— 它把一个**没有证据的
+    #    收窄**固化成了期望值。逐联赛的名字集合是**并集**,「同名也出现过」并不能
+    #    证明每一场都叠得上。
+    # ④ 本联赛 gather 侧**没有**那个目标名 ⇒ 只凭「同名在别处有条目」不能判缺键。
+    #    ⚠️ 这一条是补上去的:第一版少了它,「拆掉 `tgt & gather_names` 判据」的
+    #    空包弹**全绿** —— 前三条恰好都被更早的分支挡住了,谁都没走到那句。
+    assert not _alias_gaps(
+        [("ENG_CHAMPIONSHIP", "2026-08-15", "closing", "Sheffield United", "Norwich"),
+         ("ENG_CHAMPIONSHIP", "2026-08-15", "gather", "Somebody Else", "Norwich")],
+        aliases)
 
 
 def test_alias_gap_when_same_name_plays_in_another_league() -> None:
@@ -259,9 +375,12 @@ def test_alias_gap_when_same_name_plays_in_another_league() -> None:
     其实是 gather 滞后,被旧口径判成 FAIL)。
     """
     import sqlite3
-    from pathlib import Path
 
-    db = Path("data/v4_observation.db")
+    # ⚠️ 2026-09-01:原来是 `Path("data/v4_observation.db")` —— **CWD 相对**。
+    # 换个目录跑 pytest 就静默 skip,正是本仓那条「把『没有』说成『没去看』」。
+    # 改成仓库根锚定;同文件其余 DB 用例(`test_fixture_anchored_zh_overrides` 等)
+    # 也是这个写法。
+    db = REPO / "data/v4_observation.db"
     if not db.exists():
         pytest.skip("没有观测库 —— 这条断言只在本地有意义")
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -272,33 +391,7 @@ def test_alias_gap_when_same_name_plays_in_another_league() -> None:
     finally:
         con.close()
 
-    day: dict[tuple, list[int]] = collections.defaultdict(lambda: [0, 0])
-    for lg, d, src, _h, _a in rows:
-        day[(lg, d)][0 if src == "closing" else 1] += 1
-    live = {k for k, v in day.items() if v[0] and v[1]}   # ← 分母守卫
-
-    closing_names: dict[str, set[str]] = collections.defaultdict(set)
-    gather_names: dict[str, set[str]] = collections.defaultdict(set)
-    for lg, d, src, h, a in rows:
-        if (lg, d) not in live:
-            continue
-        tgt = closing_names if src == "closing" else gather_names
-        tgt[lg].update((h, a))
-
-    aliased = collections.defaultdict(set)               # closing名 → 已建键的联赛集
-    for lg, nm in A:
-        aliased[nm].add(lg)
-
-    gaps: dict[str, list[str]] = collections.defaultdict(list)
-    for nm, leagues in aliased.items():
-        for lg, names in closing_names.items():
-            if lg in leagues or nm not in names:
-                continue
-            # 它在本联赛真的叠不上吗?(目标名不在 gather 侧就说明确实缺)
-            tgt = {A[(x, nm)] for x in leagues}
-            if tgt & gather_names.get(lg, set()):
-                gaps[lg].append(f"{nm!r} → {sorted(tgt)}")
-
+    gaps = _alias_gaps(rows, A)
     assert not gaps, (
         f"这些 closing 名在别的联赛已有别名,却出现在**本联赛**的 closing 侧、"
         f"而本联赛 gather 侧正好有那个目标名 ⇒ 本联赛缺键,该比赛日的行会叠不上:"

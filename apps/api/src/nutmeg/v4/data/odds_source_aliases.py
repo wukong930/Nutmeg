@@ -281,6 +281,21 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     #    MK Dons),已查全库仅存 AFC Wimbledon 一支,无撞车。
     # ⚠️ 'Sheffield United' → 'Sheffield Utd':全库同时存在 Sheffield Wednesday,
     #    两个串互不为前缀/子串,无歧义。
+    #
+    # 🩸 2026-09-01 追加 2 条(`Coventry City` / `Leeds United`)。**同一个洞第三次**:
+    # 上面第 197 行的英超段落注释白纸黑字写着「⚠️ Coventry City / Leeds United 也出现在
+    # EFL_CUP 的盘面里 —— 杯赛要另立条目」,本段落头又写了一遍「只留了注释没建条目
+    # ⇒ 又一次『警告写在注释里、闸没写在代码里』」,而 08-14 那批**仍然没把这两条建上**
+    # (它们那时还没出现在盘面上,08-25 才第一次露面)。
+    # ⇒ 结论不是「下次注释写仔细点」,而是:**注释挡不住这个类**,只有
+    #   `test_alias_gap_when_same_name_plays_in_another_league` 那条数据驱动的护栏能。
+    #
+    # 证据(2026-09-01 直接查 `odds_snapshots`,不是靠探测器自述):
+    #   EFL_CUP · 2026-08-25 · closing 69 行 / gather 418 行(两侧都有 ⇒ 过分母守卫)
+    #     closing 侧  'Coventry City'      gather 侧  'Coventry'
+    #     closing 侧  'Leeds United'       gather 侧  'Leeds'
+    #   目标名与已有的 ('EPL', …) 两条**逐字相同**;全库无同名撞车
+    #   (Coventry City FC / Leeds United AFC 各仅一支)。
     ('EFL_CUP', 'Accrington Stanley'): 'Accrington ST',        # 指纹 3
     ('EFL_CUP', 'Birmingham City'): 'Birmingham',              # 指纹 2
     ('EFL_CUP', 'Blackburn Rovers'): 'Blackburn',              # 劈开键
@@ -292,11 +307,13 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('EFL_CUP', 'Cheltenham Town'): 'Cheltenham',              # 指纹 1
     ('EFL_CUP', 'Chesterfield FC'): 'Chesterfield',            # 劈开键
     ('EFL_CUP', 'Colchester United'): 'Colchester',            # 劈开键
+    ('EFL_CUP', 'Coventry City'): 'Coventry',                  # 2026-08-25 实测缺口
     ('EFL_CUP', 'Crewe Alexandra'): 'Crewe',                   # 指纹 3
     ('EFL_CUP', 'Derby County'): 'Derby',                      # 指纹 1
     ('EFL_CUP', 'Doncaster Rovers'): 'Doncaster',              # 指纹 3
     ('EFL_CUP', 'Grimsby Town'): 'Grimsby',                    # 劈开键
     ('EFL_CUP', 'Huddersfield Town'): 'Huddersfield',          # 指纹 3
+    ('EFL_CUP', 'Leeds United'): 'Leeds',                      # 2026-08-25 实测缺口
     ('EFL_CUP', 'Leicester City'): 'Leicester',                # 指纹 1
     ('EFL_CUP', 'Lincoln City'): 'Lincoln',                    # 指纹 1
     ('EFL_CUP', 'Northampton Town'): 'Northampton',            # 指纹 1

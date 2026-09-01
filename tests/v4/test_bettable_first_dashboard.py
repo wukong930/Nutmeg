@@ -38,7 +38,10 @@ docstring 原文留着 —— 断言可以过时,它当初想守的东西不会�
 """
 from __future__ import annotations
 
+import datetime as dt
+import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -66,6 +69,91 @@ def _fn(html: str, name: str) -> str:
                 return html[start:j + 1]
         j += 1
     raise AssertionError(name)
+
+
+def _decl(html: str, head: str) -> str:
+    """抠出一个顶层 `function …{}` 或 `const …;` 声明(同 test_jc_closing_zone.py)。"""
+    i = html.index(head)
+    depth, started = 0, False
+    for j in range(i, len(html)):
+        c = html[j]
+        if c == "{":
+            depth += 1
+            started = True
+        elif c == "}":
+            depth -= 1
+            if started and depth == 0:
+                return html[i:j + 1]
+        elif c == ";" and not started:
+            return html[i:j + 1]
+    raise AssertionError(f"括号不平衡:{head}")
+
+
+def _ko(minutes: float) -> str:
+    return (dt.datetime.now(dt.UTC) + dt.timedelta(minutes=minutes)).isoformat()
+
+
+#: 六张卡,横跨 `_bettableSplit` 的全部三个去向。⚠️ 本文件**不**断言 2/3/4/5 各自
+#: 落进哪个桶(那是 `test_jc_closing_zone.py` 的活),只断言 0/1 不许出现在板里。
+_SPLIT_FIXTURE = [
+    {"jc_home": 2, "jc_draw": 3, "jc_away": 4, "kickoff_utc": _ko(600)},   # 0 可投注
+    {"jc_home": 2, "jc_draw": 3, "jc_away": 4},                           # 1 可投注(无开球时刻)
+    {"jc_home": 2, "jc_draw": 3, "jc_away": 4, "kickoff_utc": _ko(3)},    # 2 即将截止
+    {"jc_home": 2, "jc_draw": 3, "jc_away": 4, "kickoff_utc": _ko(-10)},  # 3 已开赛
+    {},                                                                    # 4 竞彩没上架
+    {"jc_home": 2},                                                        # 5 SP 不全
+]
+
+
+def _run_split_wiring(html: str, renderer: str) -> dict:
+    """把某个 renderer 里「切分 → 写顶部 → 写板」那三行**原样**抠出来跑一遍。
+
+    ⭐ 为什么不逐字匹配那三行:调用点每加一个实参就会误报一次,而误报的是
+    「性质破了」这个结论 —— 代价比漏报更贵(见调用方 docstring)。
+    ⭐ 为什么不整跑 `renderTodaySpCalc`:它要一整个 DOM,而**这三行**就是本条要守的
+    全部接线。桩掉两个渲染器只记「谁收到了哪些卡」,其余原样执行。
+    """
+    body = _fn(html, renderer)
+    m = re.search(r"const \{[^}]*\} = _bettableSplit\(preds\);.*?_referenceZoneHtml\([^;]*;",
+                  body, re.S)
+    assert m, f"{renderer} 里找不到「_bettableSplit → _referenceZoneHtml」那段接线"
+    src = "\n".join(_decl(html, h) for h in (
+        "const _JC_KO_BUFFER_MIN", "function _hasJcSp", "function _jcKoState",
+        "function _isJcBettable", "function _bettableSplit"))
+    harness = """
+__SRC__
+let _up = null;
+// 顶部那块全局子容器收到了什么
+function _renderBettableInto(mode, bett, cardHtml) { _up = (bett || []).map(o => o.idx); }
+// 板收到了什么。真的 `_referenceZoneHtml` 把**它收到的每一个桶**都 join 进返回值
+// (clo / kck / rest 三段,见源码)⇒ 桩按「所有数组实参都会被画进板里」建模。
+// `bett.length` 是个数字,`Array.isArray` 自然滤掉 ⇒ 传计数不算把卡传进板里。
+function _referenceZoneHtml(...args) {
+  return args.filter(Array.isArray).flatMap(a => a.map(o => `[#${o.idx}]`)).join('');
+}
+const cardHtml = () => '';
+const _cupCardHtml = () => '';
+const list = {};
+const preds = __PREDS__;
+__WIRING__
+// ⚠️ 板的落点是 `scoredHtml`(标准)还是 `list.innerHTML`(市场)由抠出来的那段
+//    自己决定;两个都取不到就让它炸,别静默返回空(空 = 下面的断言全恒真)。
+const board = (typeof scoredHtml !== 'undefined') ? scoredHtml : list.innerHTML;
+if (typeof board !== 'string') throw new Error('取不到板的 innerHTML —— 落点变了');
+console.log(JSON.stringify({
+  up: _up,
+  board: [...board.matchAll(/\\[#(\\d+)\\]/g)].map(x => +x[1]),
+}));
+"""
+    r = subprocess.run(
+        ["node", "-e", harness.replace("__SRC__", src)
+                              .replace("__PREDS__", json.dumps(_SPLIT_FIXTURE))
+                              .replace("__WIRING__", m.group(0))],
+        capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, f"node 跑挂了:\n{r.stderr[-2000:]}"
+    out = json.loads(r.stdout.strip().split("\n")[-1])
+    assert out["up"] is not None, "`_renderBettableInto` 压根没被调用 —— 接线断了"
+    return out
 
 
 class TestBettableFirst:
@@ -167,13 +255,40 @@ class TestOwnershipInvariants:
         「搬」和「复制」在源码上只差一个 `+`,在行为上差一个静默的错单:
         复制之后第二张卡收得下键盘却毫无反应,`_recordBet` 还会把另一张卡的赔率
         POST 出去。所以必须钉死:**两个 renderer 的板内容里不许出现可投注那批**。
+
+        ## 2026-09-01 —— 后两条从「逐字匹配调用点」改成**真跑那三行**
+
+        原来钉的是 `"const scoredHtml = _referenceZoneHtml(rest, cardHtml, bett.length);"`。
+        a95888b(开赛前后三分区)给 `_referenceZoneHtml` 加了第 4 个实参 `closing`
+        ⇒ 逐字匹配红,而它守的性质**一点没破**(`closing` 里装的是有竞彩 SP 但已过
+        T−5 的场,与 `bett` 互斥)。⇒ 断言过时,不是代码退化。
+
+        改法不是把新拼法抄进来 —— 那只是把同一根线往后挪一格(本仓已经绊过两次,
+        见 `test_cup_manual_persist_dashboard.py::test_restore_triggers_background_reprice`)。
+        现在把调用点那三行**原样抠出来在 node 里执行**,桩掉两个渲染器只记「谁收到了
+        哪些卡」,断言:可投注那批**只**去了顶部子容器,板里一张都没有,且两边加起来
+        不多不少就是全部。加第 5 个实参、换参数顺序都不会误报;把 `bett` 传进板里
+        才会红 —— 那正是「搬」变成「复制」的那一个 `+`。
         """
         for fn, bett in (("renderTodaySpCalc", "bett"), ("renderCupMarket", "_cBett")):
             body = _fn(html, fn)
             assert f"_lgGroupsHtml({bett}" not in body, (
                 f"{fn} 自己又渲染了一遍可投注卡 ⇒ 同一场比赛在页面上有两张卡")
-        assert "const scoredHtml = _referenceZoneHtml(rest, cardHtml, bett.length);" in html
-        assert "list.innerHTML = _referenceZoneHtml(_cRest, _cupCardHtml, _cBett.length);" in html
+
+        for fn in ("renderTodaySpCalc", "renderCupMarket"):
+            r = _run_split_wiring(html, fn)
+            up, board = set(r["up"]), set(r["board"])
+            assert up == {0, 1}, (
+                f"{fn}:夹具没造出可投注卡(顶部收到 {sorted(up)},应为 [0, 1])"
+                f" ⇒ 下面两条恒真")
+            assert not (up & board), (
+                f"{fn}:{sorted(up & board)} 号场**同时**出现在顶部列表和模式板里。"
+                f"\n⇒ 同一 `data-idx` 两张卡:每处 querySelector 都取文档序第一张,"
+                f"第二张收得下键盘却毫无反应,而 `_recordBet` 会把**另一张卡的赔率**"
+                f" POST 出去(无 alert 无提示)。CSS 隐藏救不了 —— 隐藏元素照样赢选择器。")
+            assert up | board == set(range(6)), (
+                f"{fn}:有卡片凭空消失了 —— 顶部 {sorted(up)} + 板 {sorted(board)}"
+                f" 不等于全部 6 张")
 
     def test_bettable_groups_default_to_collapsed(self, html: str) -> None:
         """owner 2026-08-05 选的是「完整卡片,但联赛分组默认折叠」。

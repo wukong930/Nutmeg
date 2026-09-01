@@ -7,6 +7,9 @@ jingcai_sp.captured_at 穿到卡片,>60min 且距开球 <3h 时 amber 提示点 
 """
 from __future__ import annotations
 
+import datetime as dt
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -21,6 +24,28 @@ ROUTES = REPO / "apps/api/src/nutmeg/v4/api/routes.py"
 @pytest.fixture(scope="module")
 def html() -> str:
     return DASH.read_text(encoding="utf-8")
+
+
+def _decl(html: str, head: str) -> str:
+    """抠出一个顶层 `function …{}` 或 `const …;` 声明(同 test_jc_closing_zone.py)。"""
+    i = html.index(head)
+    depth, started = 0, False
+    for j in range(i, len(html)):
+        c = html[j]
+        if c == "{":
+            depth += 1
+            started = True
+        elif c == "}":
+            depth -= 1
+            if started and depth == 0:
+                return html[i:j + 1]
+        elif c == ";" and not started:
+            return html[i:j + 1]
+    raise AssertionError(f"括号不平衡:{head}")
+
+
+def _ko(minutes: float) -> str:
+    return (dt.datetime.now(dt.UTC) + dt.timedelta(minutes=minutes)).isoformat()
 
 
 class TestServerSide:
@@ -48,9 +73,63 @@ class TestServerSide:
 
 class TestDashboardBadge:
     def test_helper_defined_and_gated(self, html):
+        """徽章的出场判据 —— **真调函数**,不 grep 那一行 if 怎么拼。
+
+        ## 2026-09-01 改写的原因
+
+        原来这条是 `assert "if (!pr || !pr.jc_captured_at || !_isJcBettable(pr)) …" in html`。
+        a95888b(开赛前后三分区)**故意**把判据从 `_isJcBettable` 换成 `_hasJcSp`,
+        理由写在被测代码的注释里:键在可投注上 ⇒ 卡片一进 T−5 就把**唯一的时间线索
+        自己关掉**,停售卡上一个字都不说它已开赛。那个提交新增了
+        `test_jc_closing_zone.py::test_freshness_badge_survives_the_gate` 守新行为,
+        却漏了本条 ⇒ 同一份源码上两个测试互相打架,而红的这个守的是**已被推翻的**判据。
+
+        ⇒ 断言过时,不是代码退化。改法不是把新拼法抄进来(下次加个参数照样红),
+        而是钉**真值表**:有 SP + 有可解析时间戳 ⇒ 出;缺任一 ⇒ 不出;
+        而「还能不能买」**不参与**判据。同 [[syntactic-proxy-for-semantic-property]]。
+        """
         assert "function _jcFreshnessHtml(pr)" in html
-        # 只对可投注卡显示;无时间戳不撒谎
-        assert "if (!pr || !pr.jc_captured_at || !_isJcBettable(pr)) return '';" in html
+        had = {"jc_home": 2.0, "jc_draw": 3.2, "jc_away": 4.1}
+        hc = {"jc_hc_home": 2.0, "jc_hc_draw": 3.2, "jc_hc_away": 4.1}
+        cap = _ko(-30)
+        cases = {
+            # ── 出徽章 ──
+            "open":        {**had, "jc_captured_at": cap, "kickoff_utc": _ko(600)},
+            # ⭐ 承重:T−5 之后**照出**。键回 `_isJcBettable` 的话这两条立刻红。
+            "closing":     {**had, "jc_captured_at": cap, "kickoff_utc": _ko(3)},
+            "kicked":      {**had, "jc_captured_at": cap, "kickoff_utc": _ko(-10)},
+            "no_kickoff":  {**had, "jc_captured_at": cap},
+            "handicap_sp": {**hc, "jc_captured_at": cap, "kickoff_utc": _ko(600)},
+            # ── 不出徽章:没有可信的时间就闭嘴,不撒谎 ──
+            "no_sp":       {"jc_captured_at": cap, "kickoff_utc": _ko(600)},
+            "no_stamp":    {**had, "kickoff_utc": _ko(600)},
+            "bad_stamp":   {**had, "jc_captured_at": "not-a-date", "kickoff_utc": _ko(600)},
+            "partial_sp":  {"jc_home": 2.0, "jc_captured_at": cap, "kickoff_utc": _ko(600)},
+        }
+        src = "\n".join(_decl(html, h) for h in (
+            "const _JC_KO_BUFFER_MIN", "function _hasJcSp", "function _jcKoState",
+            # ⚠️ `_isJcBettable` 本身不参与判据,但要在场 —— 否则「判据退回可投注」
+            # 那发空包弹会炸成 ReferenceError(假红),而不是**答错**(真红)。
+            "function _isJcBettable", "function _jcFreshnessHtml"))
+        r = subprocess.run(
+            ["node", "-e", src + f"""
+              globalThis.t = k => k; globalThis.IC = k => k;
+              const cases = {json.dumps(cases)};
+              const out = {{}};
+              for (const [k, pr] of Object.entries(cases)) out[k] = !!_jcFreshnessHtml(pr);
+              out.null_pred = !!_jcFreshnessHtml(null);
+              console.log(JSON.stringify(out));"""],
+            capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr[-2000:]
+        got = json.loads(r.stdout.strip().split("\n")[-1])
+        want = {"open": True, "closing": True, "kicked": True, "no_kickoff": True,
+                "handicap_sp": True, "no_sp": False, "no_stamp": False,
+                "bad_stamp": False, "partial_sp": False, "null_pred": False}
+        assert got == want, (
+            "徽章出场判据变了:"
+            + str({k: (got[k], want[k]) for k in want if got[k] != want[k]})
+            + "\n⇒ True 应出未出 = 那张卡上没有任何时间线索;"
+              "False 应闭嘴却出了 = 拿不可信的时间戳当准的报。")
 
     def test_amber_condition_is_1h_and_3h_to_ko(self, html):
         assert "const stale = mins > 60 && hrsToKo < 3;" in html

@@ -15,13 +15,34 @@ localStorage 永久删)。owner 实报该行为有害:手填 Pinnacle 正是因�
 """
 from __future__ import annotations
 
+import datetime as dt
+import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 DASH = REPO / "apps/api/src/nutmeg/v4/api/static/dashboard.html"
+
+
+def _decl(html: str, head: str) -> str:
+    """抠出一个顶层 `function …{}` 或 `const …;` 声明(同 test_jc_closing_zone.py)。"""
+    i = html.index(head)
+    depth, started = 0, False
+    for j in range(i, len(html)):
+        c = html[j]
+        if c == "{":
+            depth += 1
+            started = True
+        elif c == "}":
+            depth -= 1
+            if started and depth == 0:
+                return html[i:j + 1]
+        elif c == ";" and not started:
+            return html[i:j + 1]
+    raise AssertionError(f"括号不平衡:{head}")
 
 
 @pytest.fixture(scope="module")
@@ -195,16 +216,99 @@ class TestManualAppliesToBothBoardsOnTheSameTab:
         `recommendation_sessions.odds_source`。漏掉 ⇒ 手打的价按自动源入账,
         而 store.py 明写「绝不默认成 api_football —— 那等于把『没告诉我』伪装成
         『我查过了』」。改这条之前本板不可能有手填,所以漏了不说谎;现在会。
+
+        ## 2026-09-01 改写:从「函数头 4000 字符里 grep 那一行」改成真跑一次记账
+
+        原来是 `html[start:start + 4000]` —— **定长窗口**。a95888b 往 `_recordBet`
+        头部加了已开赛闸 + 一段注释,`odds_source:` 那行被推到 4000 字之外 ⇒ 红。
+        代码没退化(那行一直在),是探针的取样窗口过时了。
+
+        ⇒ 定长窗口和逐字匹配是同一个毛病的两种写法。改成在 node 里**真调
+        `_recordBet` 并拦下 POST**,断言 body 里的 `odds_source` 就是那张卡的值。
+        这样既不怕函数长胖,也能抓到「写死成常量」「读错对象」这类 grep 抓不到的形态。
         """
-        # 2026-08-06 改写:卡级「已下单」(`_spcalcRecord`/`_spcalcHcRecord`)已按
-        # owner 要求删除(recommendation_sessions 由 daily/morning_recommend cron
-        # 自动写,手动那份是重复)。⇒ 📌 `_recordBet` 成了**唯一**的手动记账路径,
-        # 溯源断言必须跟着搬过来,否则删掉那两个函数的同时就静默丢了 provenance。
+        # 2026-08-06:卡级「已下单」(`_spcalcRecord`/`_spcalcHcRecord`)已按 owner
+        # 要求删除(recommendation_sessions 由 daily/morning_recommend cron 自动写,
+        # 手动那份是重复)⇒ 📌 `_recordBet` 是**唯一**的手动记账路径。
         assert "function _spcalcRecord(" not in html, "卡级已下单回来了?溯源断言要一起回来"
-        start = html.index("function _recordBet(")
-        body = html[start:start + 4000]
-        assert "odds_source: pr.odds_source ?? null" in body, (
-            "_recordBet 记账漏了溯源 —— 手填价会被记成自动抓取的")
+
+        # ⭐ 两次:带溯源 / 不带。**两条都承重** —— store.py 明写「绝不默认成
+        #    api_football,那等于把『没告诉我』伪装成『我查过了』」⇒ 缺失必须是
+        #    显式的 null,不能被省略、也不能兜底成别的来源。
+        for label, source, want in (("手填", "manual", "manual"),
+                                    ("无溯源", None, None)):
+            body = self._post_one_bet(html, source)
+            assert body["url"].endswith("/observation/record-bet"), body["url"]
+            assert "odds_source" in body["json"], (
+                f"[{label}] POST body 里根本没有 `odds_source` 这个键 —— "
+                f"`store._request_odds_source` 读不到,手打的价按自动源入账")
+            assert body["json"]["odds_source"] == want, (
+                f"[{label}] 送出的溯源是 {body['json']['odds_source']!r},应为 {want!r}")
+
+    @staticmethod
+    def _post_one_bet(html: str, odds_source: str | None) -> dict:
+        """在 node 里真跑 📌 记一笔:开注额框 → 填金额 → ✓ → 拦下那次 POST。"""
+        pr = {"league": "KOR_FA_CUP", "date": "2026-09-02",
+              "home_team": "A", "away_team": "B",
+              "jc_home": 2.1, "jc_draw": 3.4, "jc_away": 3.6,
+              "kickoff_utc": (dt.datetime.now(dt.UTC)
+                              + dt.timedelta(hours=6)).isoformat(),
+              "p_home_1x2": 0.50, "p_draw_1x2": 0.28, "p_away_1x2": 0.22}
+        if odds_source is not None:
+            pr["odds_source"] = odds_source
+        src = "\n".join(_decl(html, h) for h in (
+            "const _JC_KO_BUFFER_MIN", "function _hasJcSp", "function _jcKoState",
+            "function _recordBet"))
+        harness = """
+const API = 'http://stub';
+globalThis.t = k => k;
+// 任何 alert = 走进了某个拒绝分支(闸/缺 SP/缺 P)⇒ 夹具没造出被测条件,必须炸,
+// 不能静默返回一个「没 POST」的空结果(那会让下面的断言变成假绿)。
+globalThis.alert = m => { throw new Error('REJECTED: ' + m); };
+let posted = null;
+globalThis.fetch = async (url, opts) => {
+  posted = { url, json: JSON.parse(opts.body) };
+  return { ok: true, json: async () => ({ recorded: true }) };
+};
+const made = [];
+const _mk = () => {
+  const kids = {};
+  const el = {
+    className: '', innerHTML: '', textContent: '', disabled: false, value: '',
+    title: '', style: {}, onclick: null,
+    querySelector: s => (kids[s] ||= { value: '', title: '', disabled: false,
+      textContent: '', style: {}, onclick: null,
+      focus() {}, addEventListener() {} }),
+    replaceWith() {}, focus() {}, addEventListener() {}, after() {},
+  };
+  made.push(el);
+  return el;
+};
+globalThis.document = {
+  createElement: _mk,
+  // 卡上那个竞彩 SP 输入框(市场模式 1X2 ⇒ `.cupsp`)
+  querySelector: sel => (sel.includes('cupsp') ? { value: '2.50' } : null),
+};
+globalThis._CUPMKT = { preds: [__PRED__] };
+globalThis._SPCALC = { preds: [] };
+__SRC__
+const btn = { style: {}, parentElement: { querySelector: () => null }, after() {} };
+_recordBet('cup', 0, 'H', '1x2', btn);
+const span = made[0];
+if (!span) throw new Error('没有开出注额框 —— `_recordBet` 提前返回了');
+span.querySelector('.bet-stake').value = '12';
+(async () => {
+  await span.querySelector('.bet-ok').onclick();
+  if (!posted) throw new Error('✓ 之后没有任何 POST —— 被测那条路没走到');
+  console.log(JSON.stringify(posted));
+})();
+"""
+        r = subprocess.run(
+            ["node", "-e", harness.replace("__SRC__", src)
+                                  .replace("__PRED__", json.dumps(pr))],
+            capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, f"node 跑挂了:\n{r.stderr[-2000:]}"
+        return json.loads(r.stdout.strip().split("\n")[-1])
 
 
 class TestRevertRestoresTheWholeApiLine:
@@ -293,8 +397,15 @@ globalThis.renderCupMarket = () => {};
 globalThis._CUPMKT = { preds: [], pending: [] };
 __SRC__
 // ── 自动线(API 下发的原貌)──
+// ⏰ 比赛日必须**相对今天**算,不能写死。`_cupManWrite` 会剪掉 `date < today`
+//    的条目(`test_prune_stale_entries` 钉的就是它)⇒ 写死一个当时的未来日期
+//    是**定时炸弹**:那天一过,`_cupManSave` 静默存了个空 store,
+//    `_cupApplyStoredManual` 第一行就早返回,本类三条**全部变成假绿**
+//    —— 2026-09-01 实测:承重两条照常绿,只有下面那条自检红。
+//    (这正是类 docstring 里那个「夹具造不出被测条件 ⇒ 假绿」的第二个现场。)
+const FIXTURE_DATE = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
 const API_LINE = {
-  home_team: 'A', away_team: 'B', date: '2026-08-19', league: 'KOR_FA_CUP',
+  home_team: 'A', away_team: 'B', date: FIXTURE_DATE, league: 'KOR_FA_CUP',
   p_home_1x2: .40, p_draw_1x2: .30, p_away_1x2: .30,
   p_home_market: .41, p_draw_market: .29, p_away_market: .30,
   onex_lo_home: .3884, onex_lo_draw: .2884, onex_lo_away: .2884,
@@ -311,12 +422,17 @@ _cupManSave(pr, { h: 2.1, d: 3.4, a: 3.6, o: null, u: null, line: 2.5,
 // STEP 2 刷新/切 tab —— 真正的贴回路径(它会重盖 `_apiSnapshot`)
 const fresh = JSON.parse(JSON.stringify(API_LINE));
 _CUPMKT.preds = [fresh];
-const trace = { stored_keys: Object.keys(JSON.parse(localStorage.getItem(_LS_CUPMAN) || '{}')) };
+const trace = { fixture_date: FIXTURE_DATE,
+  stored_keys: Object.keys(JSON.parse(localStorage.getItem(_LS_CUPMAN) || '{}')) };
 _cupApplyStoredManual([fresh], () => {}, false);
 trace.snapshot_stamped = !!fresh._apiSnapshot;
 trace.snapshot_keys = Object.keys(fresh._apiSnapshot || {});
 setTimeout(() => {
   trace.lo_before_revert = fresh.onex_lo_home;
+  // ⭐ 复原**之前**哪些字段真的偏离了自动线 —— 只有这些字段的「复原断言」有判别力,
+  //    其余的恒真。见 `test_the_harness_names_the_fields_it_can_discriminate`。
+  trace.diverged = Object.keys(API_LINE).filter(
+    k => JSON.stringify(fresh[k]) !== JSON.stringify(API_LINE[k]));
   // STEP 3 ↩︎ 复原
   _cupManualRevert(0);
   console.log(JSON.stringify({ after: _CUPMKT.preds[0], api: API_LINE, manual: MANUAL,
@@ -344,7 +460,10 @@ setTimeout(() => {
         """
         r = self._run(html)
         t = r["trace"]
-        assert t["stored_keys"], "localStorage 里什么都没存 —— `_cupManSave` 静默失败了"
+        assert t["stored_keys"], (
+            "localStorage 里什么都没存 —— `_cupManSave` 静默失败了。"
+            f"\n⏰ 先查夹具的比赛日({t.get('fixture_date')}):`_cupManWrite` 会剪掉 "
+            "`date < today` 的条目,写死的日期一过期就是这个症状(2026-09-01 踩过)。")
         assert t["snapshot_stamped"], \
             "`_cupApplyStoredManual` 没有盖 `_apiSnapshot` —— 贴回路径没进"
         assert t["lo_before_revert"] == r["manual"]["onex_lo_home"], (
@@ -353,6 +472,33 @@ setTimeout(() => {
             f"后面的断言恒真")
         assert r["manual"]["onex_lo_home"] != r["api"]["onex_lo_home"], \
             "夹具的手填线和自动线一样 —— 本类全部断言恒真"
+
+    def test_the_harness_names_the_fields_it_can_discriminate(self, html: str) -> None:
+        """⚠️ 2026-09-01 —— 「在 `_MUST_RESTORE` 里」≠「这条夹具测得出来」。
+
+        实测:把 `p_*_market` 从 `_cupApplyStoredManual` 的 `_apiSnapshot` 里删掉,
+        `test_revert_restores_every_backed_up_field` **照样全绿**。原因不是断言写错,
+        是**本条路径根本不动这三个字段**:市场板(`keepModelP=false`)贴回的是
+        `p_*_1x2`,标准板(`keepModelP=true`)这三个连点估都不写。唯一会把
+        `p_*_market` 盖成手填值的是 `_spcalcManualReprice`,而它有**自己**那份快照。
+
+        ⇒ 那三个字段在这里是**防御性携带**,不是本夹具已覆盖的东西。
+        本条把这个边界钉成可执行的事实,免得下一个人读 `_MUST_RESTORE` 时
+        以为 13 个字段都有判别力(同 `first-match-is-not-the-population`:
+        「列在清单里」不等于「被测到了」)。
+        """
+        diverged = set(self._run(html)["trace"]["diverged"])
+        # ✅ 有判别力:复原前它们真的停在手填线上
+        covered = {"p_home_1x2", "p_draw_1x2", "p_away_1x2",
+                   "onex_lo_home", "onex_lo_draw", "onex_lo_away",
+                   "psc_home", "psc_draw", "psc_away", "odds_source"}
+        assert covered <= diverged, (
+            f"这些字段复原前**没有**偏离自动线 ⇒ 对它们的复原断言恒真:"
+            f"{sorted(covered - diverged)}")
+        # ⚠️ 无判别力(见 docstring)。若哪天它们也偏离了,说明有新路径开始写它们 ——
+        #    那时把它们挪进 `covered`,别把本条删掉。
+        assert diverged.isdisjoint({"p_home_market", "p_draw_market", "p_away_market"}), (
+            "`p_*_market` 现在会偏离了 ⇒ 有新路径在写它们,把它们挪进 covered")
 
     def test_revert_restores_every_backed_up_field(self, html: str) -> None:
         """🚨 承重条:复原后每个字段都必须回到自动线,一个都不许留在手填值上。"""
