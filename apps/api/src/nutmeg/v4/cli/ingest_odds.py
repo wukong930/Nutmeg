@@ -393,13 +393,35 @@ def _gather_rows(
                 league_oa_refresh = _oa_refresh_decision(
                     odds_api_refresh, bettable_pairs, fixtures, sport_key, oa_refreshed,
                 )
+                oa_ok = False
                 try:
                     oa_lookup = odds_api.fetch_pinnacle_lookup(
                         sport_key, refresh=league_oa_refresh,
                         ttl_seconds=oa_ttl_seconds,
                     )
+                    oa_ok = True
                 except Exception as exc:  # noqa: BLE001
                     log.warning("odds_api overlay failed for %s: %s", league, exc)
+                # ⭐ 2026-09-01 —— 「🔄 刷新盘口」顺手把**多书商**也存下(owner 的问题:
+                #    「多书商参照怎么保证新鲜?用刷新盘口吗?」——此前不,只有 cron 写)。
+                #
+                # 🚨 **零额外配额**,但只在三个条件同时成立时才成立,少一个都会变成真消费:
+                #   1. `oa_ok` —— 上面那次拉取**成功**了 ⇒ 同参数的缓存文件必然存在。
+                #      (`refresh=False` **不等于**只读缓存:`_request` 的判据是
+                #       `cf.exists() and not refresh and fresh_enough`,文件不在就直接
+                #       fall through 去发请求 —— 见本函数 `oa_ttl_seconds` 那段。)
+                #   2. `league_oa_refresh` —— 只在**真发生了实时拉取**的那一次采集。
+                #      ⛔ 不能无条件挂:面板每 60s 轮询一次 sp-calc,13 联赛 × 3 天
+                #      = 39 次/分钟的重复读盘+去重写,而**日常采集本来就有 cron**
+                #      (`closing_odds` 走同一个 `capture_books_for_sport`)。
+                #      顺带被 `oa_refreshed` 天然去重成「一次 🔄 = 每 sport 一次」。
+                #   3. `snapshot_db` —— `record_line_history=false` 的调用方
+                #      (snapshot_board cron)是**只读**的,不许在那条路上写库。
+                if oa_ok and league_oa_refresh and snapshot_db:
+                    from nutmeg.v4.observation.book_snapshots import (
+                        capture_books_for_sport,
+                    )
+                    capture_books_for_sport(snapshot_db, sport_key, refresh=False)
 
         # fetch-perf B (V14) — phase 1: time-window filter → fixtures needing /odds
         pending: list[tuple[dict, int]] = []

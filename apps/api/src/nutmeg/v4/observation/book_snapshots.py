@@ -130,4 +130,56 @@ def record_book_lookup(db_path: str | Path, lookup: dict, *,
     return n
 
 
-__all__ = ["DDL", "ensure_book_snapshots", "record_book_lookup", "record_book_snapshot"]
+def capture_books_for_sport(db_path: str | Path, sport_key: str, *,
+                            regions: str = "eu", refresh: bool = False) -> int:
+    """把 Odds API **当前缓存里**那 15–22 家写进 `book_snapshots` → 真写入的条数。
+
+    ## ⭐ 为什么这是零配额
+
+    `fetch_book_lookup` 与 `fetch_pinnacle_lookup` 打的是**同一个 endpoint + 同一组
+    参数**(`sports/{sk}/odds`,`regions` / `markets=h2h,totals` / `oddsFormat`),
+    而 `odds_api._cache_path` 只按参数哈希 ⇒ **同一个缓存文件**。调用方只要在一次
+    **成功的** Pinnacle 拉取之后调用本函数,那个文件必然存在;这里传
+    `ttl_seconds=None` ⇒ `fresh_enough` 恒 True ⇒ `_request` 走缓存分支,不发请求。
+
+    🚨 反过来说:`refresh=False` **不等于「只读缓存」**。`odds_api._request` 的判据是
+    `if cf.exists() and not refresh and fresh_enough:` —— 文件**不存在**时它会直接
+    fall through 到 live fetch。所以调用方**必须**先确认同参数的那次拉取成功了
+    (最省事的判据:上一步的 lookup 非空),否则这里就是一次真消费。
+    额度真凶历来是**服务路径**而不是 cron,别在这里开第二个口子。
+
+    ⚠️ 存**原始拼法**而不是 lookup 的归一键:归一后名字的信息丢了,而消费方
+    (`routes._attach_book_consensus` → `team_match.same_team`)join 时会自己再归一
+    一次。所以名字从 `fetch_current_odds` 的原始事件里取。
+
+    ⛔ 整体 fail-soft:任何异常都吞掉并返回 0 —— 这是**参照层**,绝不允许它拖垮
+    调用方(收盘线采集是 CLV 地基;盘面刷新是 owner 临场在用的)。
+    """
+    from nutmeg.v4.data.sources import odds_api
+    try:
+        books = odds_api.fetch_book_lookup(sport_key, regions=regions, refresh=refresh)
+        if not books:
+            return 0
+        n = 0
+        for e in (odds_api.fetch_current_odds(
+                sport_key, regions=regions, markets="h2h,totals", refresh=False) or []):
+            key = (odds_api._norm_team(e.get("home_team") or ""),
+                   odds_api._norm_team(e.get("away_team") or ""),
+                   str(e.get("commence_time") or "")[:10])
+            bk = books.get(key)
+            if not bk:
+                continue
+            n += int(record_book_snapshot(
+                db_path, match_date=key[2],
+                home_team=e.get("home_team") or "",
+                away_team=e.get("away_team") or "", books=bk))
+        if n:
+            log.info("book-snapshots: %s 写入 %d 条(多书商离散度参照)", sport_key, n)
+        return n
+    except Exception:  # noqa: BLE001
+        log.warning("book-snapshots 采集失败(%s)—— 不影响调用方", sport_key, exc_info=True)
+        return 0
+
+
+__all__ = ["DDL", "capture_books_for_sport", "ensure_book_snapshots",
+           "record_book_lookup", "record_book_snapshot"]

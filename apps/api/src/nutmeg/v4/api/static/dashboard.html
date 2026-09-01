@@ -727,6 +727,20 @@
 
   /* 信息卡片重绘:更圆角 + 细描边 + 柔和投影 */
   .shadow-sm.rounded-lg{border-radius:12px!important;border:1px solid var(--border-subtle);box-shadow:0 1px 2px rgba(0,0,0,.16),0 6px 18px rgba(0,0,0,.05)}
+  /* 多书商参照面板 —— 窄屏列裁剪 + 横滚兜底。
+     🚨 2026-09-01 owner 报「多书商参考看板没有 EV 值」。实测 375px 手机宽度下:
+        面板容器 264px · 表格 392px · EVₑ 格 328→394 · EVₗ 格 394→459,
+        视口只到 375 ⇒ **最后两列(恰好就是那两列 EV)整个被挤出屏幕右侧**,
+        而容器 overflow-x 是 visible ⇒ 连横滑都够不到。我前两轮误判成「浏览器
+        没刷新」两次,直到把 getBoundingClientRect 量出来才看见。
+     ⛔ 故意写成原生 @media 而不是 Tailwind 的 `hidden sm:table-cell`:
+        全站 @media 数原本是 0,响应式**全靠 cdn.tailwindcss.com**,而 owner 在墙内
+        ——CDN 死掉的那天,靠 Tailwind 类做的修复会跟着一起失效,症状和现在一模一样。
+     窄屏丢掉的三列都是**可从别处推导**的:竞彩 SP(卡片上方就是输入框)、
+     最保守 P(它的 EV 就是保留下来的 EVₗ)、离散(已提到 <summary> 行常显)。
+     留下 腿 · 共识 · EVₑ · EVₗ 四列,实测约 196px,264px 容器里富余。 */
+  .bk-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+  @media (max-width:640px){ .bk-opt{display:none} }
 </style>
 </head>
 <body><!-- bg + text now via :root[data-theme] -->
@@ -2331,7 +2345,7 @@ const I18N = {
     bk_consensus:     '共识',
     bk_low:           '最保守',
     bk_spread:        '离散',
-    bk_disclaimer:    '⚠️ 共识**排除 Pinnacle 自己**,只回答「它是不是在自说自话」。仅供临场参考,不参与判闸/排序/串关 —— 支持它的样本(63 场)全是世界杯且人口偏斜,只证明机制存在。EVₑ=按共识 · EVₗ=按最保守。',
+    bk_disclaimer:    '⚠️ 共识<b>排除 Pinnacle 自己</b>,只回答「它是不是在自说自话」。仅供临场参考,不参与判闸/排序/串关 —— 支持它的样本(63 场)全是世界杯且人口偏斜,只证明机制存在。EVₑ=按共识 · EVₗ=按最保守。',
     poly_leg:         '腿',
     poly_sp:          '竞彩 SP',
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
@@ -6157,7 +6171,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
           ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
           <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}</span>
         </div>
-        ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx)}
+        ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx, 'sp')}
         ${/* 2026-08-05 — Pinnacle 原盘 + 大小球,原来只有市场模式卡有。
               ⭐ **不是为了好看**:标准模式的 1X2 走模型 P,但**让球是 Pinnacle
               市场反推的**(routes.py `_model_board_handicap_lines`,从去vig 的
@@ -6432,7 +6446,7 @@ function _spcalcRecalc(idx) {
       const el = document.querySelector('.spcalc-sp[data-idx="' + idx + '"][data-outcome="' + o + '"]');
       const v = el ? parseFloat(el.value) : NaN;
       return isNaN(v) ? null : v;
-    }));
+    }), 'sp');
   } catch (e) { /* noop */ }
   if (!pr) return;
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
@@ -6921,7 +6935,7 @@ function _hasBk(pr) {
 //    **全是世界杯 + 全是缓存未过期的**,人口偏斜 ⇒ 只证明机制存在,不是影响多大。
 //    改闸须走预注册(同 δ / CLV 的规格)。
 // ⚠️ 共识**刻意排除 Pinnacle 自己**;`bk_n` 必须一起显示 —— 2 家的共识不是共识。
-function _bkHtml(pr, idx) {
+function _bkHtml(pr, idx, ns) {
   // ⚠️ 「这项赛事 Odds API 根本没有对应 sport」和「今天还没抓到」是**两件事**:
   //    前者永远不会有(日联赛杯/意大利杯/德国杯…),后者 cron 下一轮就有。
   //    不区分的话 owner 会一直等一个不会来的东西 ⇒ 前者给一行灰字,后者什么都不显示。
@@ -6930,10 +6944,15 @@ function _bkHtml(pr, idx) {
       ? '<div class="text-xs mb-1 text-muted">' + IC('info') + ' ' + t('bk_none') + '</div>'
       : '';
   }
+  // 🚨 id 必须带命名空间:标准模式(_SPCALC.preds)和杯赛/市场模式(_CUPMKT.preds)
+  //    各自从 0 开始编号,共用 `bk-ev-{idx}-…` 会**撞号**——2026-09-01 实测活页面上
+  //    重复 id 有 **66 个**,而 getElementById 只返回 DOM 里第一个 ⇒ 在杯赛卡片手填
+  //    竞彩 SP,更新的是**标准模式那张卡**,杯赛卡自己永远停在 `--`。
+  const NS = ns || 'sp';
   const SP = [pr.jc_home, pr.jc_draw, pr.jc_away];
   const L = [t('leg_home'), t('leg_draw'), t('leg_away')];
   const maxSp = Math.max.apply(null, pr.bk_spread || [0]);
-  const hot = maxSp >= 6, warm = maxSp >= 3;
+  const hot = maxSp >= 6;   // ⚠️ 原来的 `warm`(≥3pp 才显示离散)已删:离散改成常显
   const age = pr.bk_captured_at ? _bkAge(pr.bk_captured_at) : '';
   const rows = [0, 1, 2].map(function (i) {
     const sp = SP[i], c = pr.bk_consensus[i], lo = pr.bk_low[i], d = pr.bk_spread[i];
@@ -6944,28 +6963,38 @@ function _bkHtml(pr, idx) {
     };
     const dCol = d >= 6 ? '#dc2626' : (d >= 3 ? '#d97706' : '#64748b');
     return '<tr><td class="pr-3">' + L[i] + '</td>'
-      + '<td class="pr-3 text-right text-muted">' + (sp ? Number(sp).toFixed(2) : '--') + '</td>'
+      // `bk-opt` = 窄屏丢掉的列(见 <style> 里那段);EV 两列**永远不带**这个类。
+      + '<td class="pr-3 text-right text-muted bk-opt">' + (sp ? Number(sp).toFixed(2) : '--') + '</td>'
       + '<td class="pr-3 text-right">' + (c * 100).toFixed(1) + '%</td>'
-      + '<td class="pr-3 text-right text-muted">' + (lo * 100).toFixed(1) + '%</td>'
-      + '<td class="pr-3 text-right" style="color:' + dCol + '">' + d.toFixed(1) + 'pp</td>'
+      + '<td class="pr-3 text-right text-muted bk-opt">' + (lo * 100).toFixed(1) + '%</td>'
+      + '<td class="pr-3 text-right bk-opt" style="color:' + dCol + '">' + d.toFixed(1) + 'pp</td>'
       // ⚠️ 带 id:手填竞彩 SP 后由 `_bkEvRefresh(idx, pr)` **就地更新这两格**。
       // ⛔ 不重渲整块 —— 那会把 <details> 收起来(用户刚展开又关掉 = 真倒退)。
-      + '<td class="pr-3 text-right" id="bk-ev-' + idx + '-' + i + '-c">' + ev(c) + '</td>'
-      + '<td class="text-right" id="bk-ev-' + idx + '-' + i + '-l">' + ev(lo) + '</td></tr>';
+      + '<td class="pr-3 text-right" id="bk-ev-' + NS + '-' + idx + '-' + i + '-c">' + ev(c) + '</td>'
+      + '<td class="text-right" id="bk-ev-' + NS + '-' + idx + '-' + i + '-l">' + ev(lo) + '</td></tr>';
   }).join('');
-  return '<details class="mt-1 text-xs"><summary style="cursor:pointer;color:#0f766e">'
+  // 🚨 2026-09-01 —— 接 `_foldAttrs` 做展开持久化。原本是**裸** <details>,而这张卡
+  //    是 innerHTML 整片重建的(60s 轮询 / 🔄 刷新盘口 / 🎯 刷新竞彩 都会重建)
+  //    ⇒ owner 刚点开,下一轮就自己折回去了。外面还套一层**默认折叠**的联赛组
+  //    (`_LG_DEFAULT_COLLAPSED = new Set(['jcg:'])`)⇒ 要挖两层才看得到。
+  //    ⚠️ 这个坑仓库里已经踩过一次并留了注释(让球区 `_foldAttrs('hc', …)`),
+  //    新面板又原样踩了一遍 —— 所以下面有一条测试钉死「bk 的 details 必须带 fold」。
+  return '<details class="mt-1 text-xs" ' + _foldAttrs('bk', _foldKey(pr))
+    + '><summary style="cursor:pointer;color:#0f766e">'
     + IC('board') + ' ' + t('bk_badge') + ' \u00b7 ' + pr.bk_n + ' ' + t('bk_books')
-    + (warm ? ' \u00b7 ' + t('bk_spread') + ' ' + maxSp.toFixed(1) + 'pp' + (hot ? ' \u26a0\ufe0f' : '') : '')
+    // ⚠️ 离散**常显**(原本 <3pp 就藏):窄屏下表里那一列被 `bk-opt` 裁掉了,
+    //    藏在这里就等于彻底看不到——而「共识紧不紧」正是这个面板存在的理由。
+    + ' \u00b7 ' + t('bk_spread') + ' ' + maxSp.toFixed(1) + 'pp' + (hot ? ' \u26a0\ufe0f' : '')
     + (age ? ' \u00b7 ' + age : '')
     + '</summary><div class="mt-1 pl-2" style="border-left:2px solid #ccfbf1">'
-    + '<table class="text-xs"><thead><tr class="text-muted">'
+    + '<div class="bk-scroll"><table class="text-xs"><thead><tr class="text-muted">'
     + '<th class="pr-3 text-left">' + t('poly_leg') + '</th>'
-    + '<th class="pr-3 text-right">' + t('poly_sp') + '</th>'
+    + '<th class="pr-3 text-right bk-opt">' + t('poly_sp') + '</th>'
     + '<th class="pr-3 text-right">' + t('bk_consensus') + '</th>'
-    + '<th class="pr-3 text-right">' + t('bk_low') + '</th>'
-    + '<th class="pr-3 text-right">' + t('bk_spread') + '</th>'
+    + '<th class="pr-3 text-right bk-opt">' + t('bk_low') + '</th>'
+    + '<th class="pr-3 text-right bk-opt">' + t('bk_spread') + '</th>'
     + '<th class="pr-3 text-right">EV\u2091</th>'
-    + '<th class="text-right">EV\u2097</th></tr></thead><tbody>' + rows + '</tbody></table>'
+    + '<th class="text-right">EV\u2097</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
     + '<div class="mt-1" style="color:#b45309">' + t('bk_disclaimer') + '</div></div></details>';
 }
 //: 手填竞彩 SP 之后,就地刷新多书商面板的两列 EV。
@@ -6975,13 +7004,14 @@ function _bkHtml(pr, idx) {
 // 参照面板还停在服务端预填时的旧值**。两个数并排显示而其中一个是陈的,
 // 比不显示更坏(它看起来像是「共识不同意」,其实只是没跟上)。
 // ⚠️ 刷新盘口那条路没事(`loadSpCalc` 整卡重渲),**只有手填这条有**。
-function _bkEvRefresh(idx, pr, spOverride) {
+function _bkEvRefresh(idx, pr, spOverride, ns) {
   if (!_hasBk(pr)) return;
+  const NS = ns || 'sp';
   const SP = spOverride || [pr.jc_home, pr.jc_draw, pr.jc_away];
   for (let i = 0; i < 3; i++) {
     const sp = SP[i];
     [['c', pr.bk_consensus[i]], ['l', pr.bk_low[i]]].forEach(function (pair) {
-      const el = document.getElementById('bk-ev-' + idx + '-' + i + '-' + pair[0]);
+      const el = document.getElementById('bk-ev-' + NS + '-' + idx + '-' + i + '-' + pair[0]);
       if (!el) return;
       if (!sp || sp <= 1) { el.innerHTML = '<span class="text-muted">--</span>'; return; }
       const e = pair[1] * sp - 1;
@@ -7273,7 +7303,7 @@ function _cupCardHtml(pr, idx) {
           <span class="badge-gold text-xs whitespace-nowrap">${t('cupmkt_badge')}</span>
         </span>
       </div>
-      ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx)}
+      ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx, 'cup')}
       ${_pinRawHtml(pr)}
       ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _foldAttrs('mb', _fk))}${manual}
     </div>`;
@@ -7289,7 +7319,7 @@ function _cupRecalc(idx) {
       const el = document.querySelector('.cupsp[data-idx="' + idx + '"][data-outcome="' + o + '"]');
       const v = el ? parseFloat(el.value) : NaN;
       return isNaN(v) ? null : v;
-    }));
+    }), 'cup');
   } catch (e) { /* noop */ }
   if (!pr) return;
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
@@ -7885,6 +7915,13 @@ function _mktPredCardHtml(pr, idx) {
         </div>
         <span class="badge-gold whitespace-nowrap shrink-0">胜平负 · ${outcomeLabel(best)}</span>
       </div>
+      ${/* 🚨 2026-09-01 补挂:此前**着陆 tab(🎯 今日推荐)上一张都没有** ——
+            四个挂了面板的容器全在 `<div id="tab-upcoming" class="tab-panel hidden">`
+            里,而这张卡吃的是**同一次** cup-market 回包(`renderMarketPred(body.predictions)`),
+            服务端 `_attach_book_consensus` 早就把 bk_* 挂满了,只是前端没渲。
+            ⚠️ 命名空间必须是**第三个**('mkt'):`idx` 索引的是 `_MKTPRED_CARDS`,
+            又是一个独立的 0 基索引空间,复用 'cup' 会再撞一次号。 */''}
+      ${_bkHtml(pr, idx, 'mkt')}
       <div class="flex items-end justify-between gap-3">
         <div>
           <div class="num-display text-2xl text-gold font-semibold">${pct}%</div>
@@ -8109,6 +8146,13 @@ function _pendPromote(preds, pending) {
       jc_captured_at: pf.jc_captured_at,
       jc_single_available: pf.jc_single_available,
       jc_hc_single_available: pf.jc_hc_single_available,
+      // ⭐ 多书商共识:服务端 `_attach_book_consensus(pending)` **已经给待开盘行挂好了**,
+      //    原本这个白名单漏掉整组 `bk_*` ⇒ 升格成卡片时静默蒸发(没告警、没灰字)。
+      //    🚨 这批卡恰恰**最需要**它:竞彩在卖、Pinnacle 永远不开盘、P 完全来自
+      //    owner 手打的一条线 ⇒ 单锚不可信到极点,而共识是唯一能反驳它的东西。
+      bk_consensus: pf.bk_consensus, bk_low: pf.bk_low, bk_spread: pf.bk_spread,
+      bk_n: pf.bk_n, bk_captured_at: pf.bk_captured_at,
+      bk_unavailable: pf.bk_unavailable,
       market_mode: true,
       _manual: true, _manualTs: m.ts || null,
       odds_update: null,
