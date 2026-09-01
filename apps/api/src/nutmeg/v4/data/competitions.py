@@ -191,6 +191,35 @@ CUP_COMPETITIONS: dict[str, Competition] = {
             "含 K2/K3 等下级队,竞彩上架这些队时需照官方写法补 team_name_zh(⛔ 别猜译名)。"
         ),
     ),
+    # 补(2026-09-01 owner 点名)。AF id=101 由**本地缓存**钉死,不是搜名字:
+    # fixture 1567425 `2026-09-02T09:30 · Japan · J-League Cup · season=2026 ·
+    # Vanraure Hachinohe vs Tochigi City (Round of 128)`。
+    # ⚠️ 撞车:AF 全表叫「*League Cup*」的有 14 个(英 48 / 冰 168 / 苏 185 / 阿联酋 302
+    #   / 爱尔兰 360 / 新加坡 505 …)—— **按名字匹配会 13 路撞车**,只有 id 101 是
+    #   J-League Cup + Japan。日本另有 `102 Emperor Cup`(天皇杯)与 `548 Super Cup`,别混。
+    "JPN_LEAGUE_CUP": Competition(
+        code="JPN_LEAGUE_CUP",
+        display_zh="日联赛杯 (J联赛杯)",
+        display_en="J-League Cup",
+        competition_type="club_cup",
+        api_football_id=101,          # 本地缓存 fixture 1567425 钉死(见上)
+        has_knockouts=True,
+        # 实测(竞彩档案 123 场 / 2021-2025,**按赛季内**统计):90 组对阵在同一赛季
+        # 内重复出现(多为 ×2,2025 有 ×3)⇒ 两回合成立。
+        # ⚠️ 我第一次是跨 5 个赛季数的,得到「80/84 重复」—— 那个数**说明不了两回合**
+        #   (每季碰一次也会重复)。分赛季重算才是对的人口。
+        has_two_legged_ties=True,
+        has_group_stage=True,         # ×3 的那几组只能由小组赛解释;未逐轮核,置信度低于上一条
+        notes=(
+            "竞彩写作「日联赛杯」(档案 `jingcai_odds_history.league_cn` 123 场 / "
+            "`crown_close_history` 27 场 / `jingcai_vote` 用全称「日本联赛杯」)。"
+            "月份分布 2–11 月、12/1 月为零 ⇒ **日历年制**,必须进 CALENDAR_YEAR_LEAGUES。"
+            "Odds API 无此 sport(全仓只有 `soccer_japan_j_league` 一个日本 key)⇒ "
+            "只走 AF 的 Pinnacle 镜像。⚠️ 本地 `_odds` 缓存里 league=101 **零行** —— "
+            "但我们从没注册过它、也就从没去要过它的赔率,所以那个 0 **是构造性的**,"
+            "不能当成「Pinnacle 不覆盖」的证据。上线后按本联赛**自己数一遍**。"
+        ),
+    ),
     # ── 2026-08-09 owner 点名新增三个:解放者杯 / 欧超杯 / 沙职 ────────────
     # ⚠️ 三个 AF id 全部 **live 核过**(`/leagues?search=`),不是凭印象:
     # 「Super Cup」一个词搜出 **59 条**(德/土/埃/意/比/智/捷/沙都有),

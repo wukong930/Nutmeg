@@ -353,6 +353,14 @@ CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({
     # season=2026 全 55 场落在一个日历年;不进这里则年初的 1/128~Round of 32 会被算成
     # season−1,AF 返 0 场(同 解放者杯 / WC 那条注释的族)。
     "KOR_FA_CUP",
+    # 补(2026-09-01)— 日联赛杯(JPN_LEAGUE_CUP=101)。**实测**竞彩档案 123 场的
+    # 月份分布:2月2 / 3月67 / 4月32 / 5月12 / 6月58 / 8月6 / 9月39 / 10月30 / 11月5,
+    # **12 月与 1 月为零** ⇒ 一个日历年内跑完(AF catalog 也写 2025-03-20→2025-11-01)。
+    # ⚠️ 不进这里的话,年初(2-4 月,占档案 **82%**)的轮次会按欧洲惯例算成 season−1,
+    #   AF 返 **0 场且不报错** —— 这个家族的坑仓里已经踩过至少四次(WC/解放者杯/韩国杯/社区盾)。
+    # ⚠️ 日本正在转秋春制:缓存里 J1 的 2026-08~09 场次已被 AF 标成 `season=2027`,
+    #   而**同期的杯赛仍标 season=2026** ⇒ 杯赛目前还是日历年制。哪天它跟着转,这里要改。
+    "JPN_LEAGUE_CUP",
     # 体检(2026-06-10)— friendlies are scheduled year-round; API-Football
     # tags them with the calendar year (cached envelope: season=2026).
     "FRIENDLIES",

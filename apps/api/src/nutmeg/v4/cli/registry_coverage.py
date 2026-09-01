@@ -115,6 +115,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     # 在售+手填 Pinnacle」——两条自动线源都实测干涸,见 routes.py 该处注释)。所以它
     # 正好落在本字典的定义上「**已服务**但队表那格无意义」,和 FAC/EFL_CUP 完全同形。
     "KOR_FA_CUP":     "国内杯赛,参赛队跨多级联赛(K1~业余),竞彩只列 K1;下级队无 zh 证据",
+    "JPN_LEAGUE_CUP": "国内杯赛,参赛队跨 J1/J2/J3,无固定赛季队表;Odds API 无 sport key",
     # 它**在** MARKET_MODE_LEAGUES 里(sport-key / AF-id 两格有意义),
     # 只有队表那一格对它无意义 —— 一年一场、两支队。
     "UEFA_SUPER_CUP": "一年一场两队,队表检查无意义",

@@ -2487,6 +2487,12 @@ _CUP_MARKET_COMPETITIONS = [
     # exit 条件:哪天 Odds API 上了 korea cup(叠鲜线),或 AF 把覆盖从 marquee 扩到
     # 全轮 —— 都自动叠上来,这里不用再动。
     "KOR_FA_CUP",
+    # 补日联赛杯(2026-09-01 owner)。AF id=101。⛔ **不能**进 `_SP_CALC_LEAGUES` ——
+    # 那是 13 个欧洲训练联赛的模型盘,把杯赛塞进去会拿 OOD 模型 P 当真值**且不报错**。
+    # 这里走的是 Pinnacle 去vig 逐字定价,和其他杯赛同一条路。
+    # ⚠️ 缺这一行是**最静默**的一种漏注册:`_gather_rows` 从不被问 league=101,
+    #   端点照常返回 200 + 空名单,和「今天没有比赛」长得一模一样。
+    "JPN_LEAGUE_CUP",
 ]
 
 

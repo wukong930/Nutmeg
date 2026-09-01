@@ -97,13 +97,19 @@ _EN_TO_CN: dict[str, str] = {
     # ⭐ 杯赛 **≠** 韩职(K联赛,KOR_K_LEAGUE_1):Anyang/Jeju 虽是 K1 俱乐部,但这是**独立
     #   赛事**,映射到「韩职」= 静默污染分组(同「绝不猜」红线的反例)。
     "KOR_FA_CUP": "韩国杯",
+    # 补(2026-09-01)。中文写法**三源实证**,不是意译(意译会得「日本联赛杯」全称):
+    #   · `jingcai_odds_history.league_cn` 「日联赛杯」123 场(2021-2025)
+    #   · `crown_close_history.league_cn`  「日联赛杯」27 场
+    #   · `jingcai_sp.league`              「日联赛杯」2 行(即 2026-09-02 那场)
+    "JPN_LEAGUE_CUP": "日联赛杯",
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.
 # Only VERIFIED-or-defensive entries; anything else passes through fail-open.
 _CN_SYNONYM: dict[str, str] = {
     "瑞典超级联赛": "瑞超",   # observed in jingcai_vote.league_cn 2026-07-02
-    "日职联": "日职",          # common variant of the J1 abbrev
+    "日职联": "日职",
+    "日本联赛杯": "日联赛杯",   # jingcai_vote.league_cn 实测 2 行用全称(2026-09-01)          # common variant of the J1 abbrev
 }
 
 #: The confirmatory universe (canonical CN form) — the production artifact's
@@ -171,6 +177,12 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     # ⚠️ 只加 `_EN_TO_CN` 不加这里 = 杯赛被 classify_league 算成 'domestic' ⇒ 悄悄混入
     #    P3 联赛人口(2026-08-18 注册时实测到,幸亏对照既有杯赛才发现)。
     "韩国杯",
+    # 同类第八条(2026-09-01):日联赛杯 = J联赛杯(JPN_LEAGUE_CUP),**国内俱乐部杯赛**。
+    # 🚨 这一条是本次注册里**唯一会静默污染数据**的:`DOMESTIC_LEAGUES_CN` 是从
+    #   `_EN_TO_CN.values()` **减去本集合**推导的 ⇒ 只补 _EN_TO_CN 不补这里,
+    #   `classify_league("日联赛杯")` 会返回 `domestic`,一个跨 J1/J2/J3 的淘汰杯
+    #   就**悄悄混进 δ 校准的国内联赛人口**。数字会动,什么都不报错。
+    "日联赛杯",
     # 同类第八/九条(2026-08-24)—— 起因:桌面推送「捕获表停长,某 cron 可能死了」,
     # 查下来**没有 cron 死**,是 `data_freshness` 的 label_alarms 同乘那条非零退出,
     # 而报的是这两个「标签表不认识」。

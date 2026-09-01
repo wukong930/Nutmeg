@@ -1127,6 +1127,7 @@
             <option value="EURO">欧洲杯</option>
             <option value="JPN_J1">日职 J1</option>
             <option value="JPN_J2">日乙 J2</option>
+            <option value="JPN_LEAGUE_CUP">日联赛杯</option>
             <option value="UCL">欧冠</option>
             <option value="UEL">欧联</option>
             <option value="MANUAL">其他(不自动结算)</option>
@@ -3406,6 +3407,9 @@ const LEAGUE_ZH = {
   //   实测:它曾是 `_CUP_MARKET_COMPETITIONS` 全部 30 个成员里**唯一**没有中文名的。
   //   护栏见 `tests/v4/test_league_zh_coverage.py`(拿两块板的并集当分母)。
   KOR_FA_CUP: '韩国杯',
+  // 补日联赛杯(2026-09-01)。⚠️ 同 KOR_FA_CUP 那条教训:服务端 league_labels.py
+  //   和这一份是**两份同名不同用**的表,只加服务端 ⇒ 面板印生字符串 JPN_LEAGUE_CUP。
+  JPN_LEAGUE_CUP: '日联赛杯',
   KOR_K_LEAGUE_1: 'K联赛', JPN_J2: '日职乙', AUS_A_LEAGUE: '澳超', SCO_PREMIERSHIP: '苏超',
   TUR_SUPER_LIG: '土超', SUI_SUPER_LEAGUE: '瑞士超',
   USA_MLS: '美职联', BRA_SERIE_A: '巴甲',
