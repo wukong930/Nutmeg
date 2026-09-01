@@ -148,7 +148,8 @@ def _rows(body: Any) -> list[dict[str, Any]]:
     if isinstance(body, list):
         return body
     if isinstance(body, dict):
-        return body.get("data", []) or []
+        # /events → {"data": [...]};/events/keyset → {"events": [...], "next_cursor": …}
+        return body.get("data") or body.get("events") or []
     return []
 
 
@@ -197,6 +198,67 @@ def fetch_events(
     return out
 
 
+
+def fetch_events_keyset(
+    *,
+    tag_slug: str = SOCCER_TAG_SLUG,
+    closed: bool = False,
+    start_time_min: str | None = None,
+    start_time_max: str | None = None,
+    limit: int = 100,
+    after_cursor: str | None = None,
+    refresh: bool = False,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Gamma **/events/keyset** —— 游标分页,**没有 offset 上限**。→ (events, next_cursor)
+
+    ## 为什么必须换到它(2026-09-01)
+
+    `/events` 的 offset 分页在 ≥2100 返 422(Polymarket 弃用了它,错误信息直接
+    点名 keyset)。而我们按 `startDate` **升序** + `closed=false` 翻页 ⇒ 浅页全是
+    **已开球却没关闭**的旧市场,它们只增不减。实测墙内 **95.6%** 是过去的比赛
+    (889 个开球在 30 天前以上),今天的比赛被挤到墙**后面** ⇒ 每轮只捞到 ~20 个
+    可用赛事(峰值 344),抓取量从 ~140 行/天塌到 ~10 行/天,**塌了 10 天没人发现**
+    (cron 退出码 0、`check_freshness` 一路绿 —— 见 `check_volume_cliff`)。
+
+    ⭐ **`start_time_min/max` 才是按开球筛的参数**,实测 limit=100 时窗口内命中
+    **100/100**;而 `start_date_min` 返回 **0 条**(它筛的是事件创建/上架日期,
+    与开球中位差 **1085h**;`endDate` 才 ≈ 开球,中位差 0.00h、85% 在 1h 内)。
+    ⇒ 模块历史上「`start_date_min` 不可靠」那条警告是**对的**,只是当年的结论停在
+    「所以只能全量翻页」,没往下找对的字段。
+
+    ⚠️ 参数名 `after_cursor` 来自 **`/openapi.json`**(283KB,一直都在),不是猜的。
+    我猜过 7 个名字(cursor/next_cursor/nextCursor/after/…)**全部静默返回第一页**
+    —— 服务端对未知查询参数不报错,于是「翻了 80 页拿到 100 条」而循环毫无察觉。
+    ⇒ 见下面 `fetch_soccer_game_events` 里那条**必须有的**翻页前进断言。
+    """
+    settings = get_settings()
+    params: dict[str, Any] = {
+        "tag_slug": tag_slug,
+        "closed": str(closed).lower(),
+        "limit": limit,
+    }
+    if start_time_min:
+        params["start_time_min"] = start_time_min
+    if start_time_max:
+        params["start_time_max"] = start_time_max
+    if after_cursor:
+        params["after_cursor"] = after_cursor
+    body = _request(
+        settings.polymarket_gamma_base_url,
+        "/events/keyset",
+        params,
+        ttl_seconds=settings.polymarket_metadata_ttl_seconds,
+        refresh=refresh,
+    )
+    out = []
+    for ev in _rows(body):
+        e = dict(ev)
+        e["markets"] = [normalize_market(m) for m in (ev.get("markets") or [])]
+        out.append(e)
+    cursor = body.get("next_cursor") if isinstance(body, dict) else None
+    return out, (str(cursor) if cursor else None)
+
+
 def _is_game_event(event: dict[str, Any]) -> bool:
     """True iff the event has at least one market with a ``gameStartTime`` —
     i.e. an actual scheduled match, not a futures/award/prop event."""
@@ -219,50 +281,83 @@ def _in_window(event: dict[str, Any], start: str, end: str | None) -> bool:
     return kd >= start and (end is None or kd <= end)
 
 
+#: keyset 分页的硬上限(防跑飞)。服务端按开球筛之后按窗口大小走,撞上会 warning。
+_KEYSET_MAX_PAGES = 200
+#: `max_events` 的默认值 —— 它是**保险丝不是配额**。
+#: ⚠️ 旧值 3000 是 offset 时代为「全量翻页」定的;换成服务端按开球筛之后,
+#: 它反而成了**新的静默截断点**:实测未来 7 天就有 3000+ 个赛事,正好被切在整数上。
+#: 「量刚好等于上限」和「真的只有这么多」长得一模一样 —— 所以撞上必须喊。
+_KEYSET_FUSE = 20000
+
+
 def fetch_soccer_game_events(
     *,
     start_date_min: str,
     end_date: str | None = None,
-    max_events: int = 3000,
+    max_events: int = _KEYSET_FUSE,
     page_size: int = 100,
     refresh: bool = False,
 ) -> list[dict[str, Any]]:
-    """All soccer GAME events (matches with a kickoff in [start_date_min, end_date])
-    across EVERY league Polymarket lists — J2, La Liga 2, Serie B, Chinese Super
-    League, World Cup, friendlies, etc.
+    """开球落在 [start_date_min, end_date] 的所有足球 GAME events(全联赛)。
 
-    IMPORTANT: the Gamma /events ``start_date_min`` query param is unreliable for
-    game events — it filters on the event's creation/startDate (a season-start or
-    listing date), NOT the kickoff, and silently dropped whole leagues (J2, La
-    Liga 2 …) when we tried it. So we paginate the FULL soccer tag and window by
-    the MARKET ``gameStartTime`` in code. Men/women + competition filtering still
-    happens downstream in polymarket_match (via ``seriesSlug``).
+    走 **/events/keyset + `start_time_min/max`**(见 `fetch_events_keyset` 的
+    docstring:为什么必须换、以及 `start_date_min` 为什么是错的字段)。
+    服务端已按开球筛,代码里仍再过一道 `_in_window` —— 服务端语义变了要能兜住。
+
+    ## 2026-09-01 之前的实现踩了什么
+
+    旧实现用 `/events` 的 offset 分页 + `order=startDate&ascending=true`。
+    Polymarket 在 offset≥2100 返 422;2026-07-15 的修复**接住 422 并接受已抓到的页**,
+    理由写作「深页全是远期比赛 ⇒ 撞墙=到底了」。那句话当时对、后来假:
+    升序下**浅页是最老的未关闭市场**,它们越堆越多,把今天的比赛挤到墙后面。
+    ⇒ 那次修复**消除了症状、保留了病因,并且移除了唯一的告警**(422 不再穿透),
+    于是 2026-08-23 起抓取量塌 10 倍而 cron 一路绿灯。
+    ⭐ 通用教训:把「炸给你看」改成「安静少给你」之前,先问**谁来告诉我它降级了**。
     """
+    lo = f"{start_date_min}T00:00:00Z"
+    hi = f"{end_date}T23:59:59Z" if end_date else None
     out: list[dict[str, Any]] = []
-    offset = 0
-    while offset < max_events:
-        try:
-            page = fetch_events(limit=page_size, offset=offset, refresh=refresh)
-        except PolymarketError as exc:
-            # 体检 W0 2026-07-15 — Polymarket 弃用深 offset 分页(offset≥2100 →
-            # 422 "use /events/keyset")。以前没接这个异常:它穿透整个 run,已抓的
-            # 页全部作废、零写入、exit 0 → cron 绿灯空转 4 天(07-12 起 —— 恰是
-            # soccer 开放事件数涨过 2100 的那天)。events 按 startDate 升序,深页
-            # 全是远期比赛 → 撞墙 = 视为「到底了」,接受已抓的近期页;其它错误照旧抛。
-            if "offset too large" in str(exc):
-                log.warning(
-                    "Polymarket offset cap hit at %d — accepting %d events fetched "
-                    "so far (deeper pages are far-future)", offset, len(out))
-                break
-            raise
+    seen: set[str] = set()
+    cursor: str | None = None
+    pages = 0
+    while len(out) < max_events and pages < _KEYSET_MAX_PAGES:
+        page, nxt = fetch_events_keyset(
+            limit=page_size, after_cursor=cursor,
+            start_time_min=lo, start_time_max=hi, refresh=refresh,
+        )
+        pages += 1
         if not page:
             break
-        out.extend(e for e in page if _is_game_event(e) and _in_window(e, start_date_min, end_date))
-        if len(page) < page_size:
+        ids = {str(e.get("id")) for e in page if e.get("id") is not None}
+        # 🚨 **翻页前进断言** —— 没有它,一个不生效的游标参数会让循环无限拿第一页
+        # 而毫不知情。2026-09-01 实犯:我猜了 7 个游标参数名,服务端对未知查询参数
+        # **不报错**,于是「翻了 80 页、拉了 467MB,累计仍是 100 条」跑完才发现。
+        # ⇒ 任何游标/偏移循环的第一条断言必须是「这一页和已见过的不一样」。
+        if ids and ids <= seen:
+            log.error(
+                "Polymarket keyset 第 %d 页没有前进(%d 条全是见过的)—— "
+                "游标参数可能失效了;停止翻页,本轮只用已抓到的 %d 个赛事",
+                pages, len(ids), len(out))
             break
-        offset += page_size
+        seen |= ids
+        out.extend(
+            e for e in page
+            if _is_game_event(e) and _in_window(e, start_date_min, end_date)
+        )
+        if not nxt or len(page) < page_size:
+            break
+        cursor = nxt
+    if len(out) >= max_events:
+        log.warning(
+            "Polymarket keyset 撞到 max_events=%d 的保险丝 —— **结果被截断了**,"
+            "窗口内真实赛事数 ≥ 这个值。⛔ 别把它读成「就这么多」;"
+            "要么缩小 --days,要么调高保险丝", max_events)
+    if pages >= _KEYSET_MAX_PAGES:
+        log.warning(
+            "Polymarket keyset 翻到上限 %d 页仍未结束 —— 服务端窗口过滤可能没生效,"
+            "查 start_time_min/max 是否还被支持", _KEYSET_MAX_PAGES)
+    log.info("Polymarket keyset: %d 页 · 窗口内赛事 %d", pages, len(out))
     return out
-
 
 def fetch_price(token_id: str, *, side: str = "sell", refresh: bool = True) -> float | None:
     """CLOB best price for one outcome token. ``side`` is the side of the RESTING

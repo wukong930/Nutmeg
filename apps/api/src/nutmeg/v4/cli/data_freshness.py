@@ -860,6 +860,82 @@ def check_jingcai_trickle(
     return (info, alarms)
 
 
+#: 「行量断崖」监视的表 → 时间列。只放**有稳定日节律**的捕获表。
+#: ⛔ 别放 `jingcai_sp`(上架量本身随赛程波动)、`league_predictions`(赛程驱动)。
+_VOLUME_CLIFF_TABLES: dict[str, str] = {
+    "polymarket_gaps": "recorded_at",
+    "odds_snapshots": "captured_at",
+    "jingcai_sp_snapshots": "captured_at",
+    "jingcai_vote": "captured_at",
+}
+#: 近 7 日日均 / 前 28 日日均 低于它 ⇒ 断崖。
+#: 阈值**回测定的**:0.30 在健康表(odds_snapshots,49 个可回测日)上触发 **0 次**,
+#: 而 polymarket_gaps 的真塌方触发 5 次;0.60 会在健康表上响 7 次(太松)。
+_CLIFF_RATIO = 0.30
+#: 前 28 日日均低于它就不判 —— 小表的比值全是噪声。
+_CLIFF_MIN_BASELINE = 20.0
+
+
+def check_volume_cliff(
+    db_path: str | Path, *, today: date | None = None,
+) -> tuple[list[str], list[str]]:
+    """近 7 日日均 vs 前 28 日日均 —— 抓「**还在写,但量掉了一个数量级**」。
+
+    ## 为什么现有探针抓不到
+
+    `check_freshness` 问的是「**最后一行多久前**」。2026-08-23 起 Polymarket 抓取
+    从 ~140 行/天塌到 ~10 行/天,但它**每天都还在写** ⇒ 最后一行永远是今天
+    ⇒ 探针一路报 ✓ 绿,而实际可用赛事从 344 个掉到 22 个,**塌了 10 天没人知道**。
+
+    根因是 Polymarket 弃用深 offset 分页(≥2100 → 422),而我们按 `startDate`
+    **升序**翻页 + `closed=false` ⇒ 浅页全是**已开球却没关闭**的旧市场
+    (实测墙内 95.6% 是过去的比赛),把今天的比赛挤到墙后面。
+    2026-07-15 的修复接住了 422 并「接受已抓到的页」—— 它消除了症状、保留了病因,
+    **并且移除了唯一的告警**。本探针就是把那个告警换个判据补回来。
+
+    ⚠️ **未跨过休赛期验证**:回测窗口最长只有 49 天(表本身才这么长),
+    没经历过赛季转换。第一次在 6-7 月休赛期响的时候,**先怀疑是季节性**,
+    别急着当故障 —— 判据是「其它捕获表有没有同时掉」。
+    """
+    day = today or date.today()
+    info: list[str] = []
+    alarms: list[str] = []
+    p = Path(db_path)
+    if not p.exists():
+        return info, alarms
+    try:
+        conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return info, alarms
+    try:
+        for tbl, col in _VOLUME_CLIFF_TABLES.items():
+            try:
+                rows = dict(conn.execute(
+                    f"SELECT substr({col},1,10), COUNT(*) FROM {tbl} "  # noqa: S608
+                    f"WHERE {col} >= ? GROUP BY 1",
+                    ((day - timedelta(days=35)).isoformat(),)).fetchall())
+            except sqlite3.Error:
+                continue          # 表/列不在(旧库)⇒ 跳过,不是报警
+            def _rate(lo: int, hi: int) -> float:
+                return sum(rows.get((day - timedelta(days=k)).isoformat(), 0)
+                           for k in range(lo, hi)) / float(hi - lo)
+            r7, r28 = _rate(0, 7), _rate(7, 35)
+            if r28 < _CLIFF_MIN_BASELINE:
+                continue          # 基线太小,比值没意义
+            ratio = r7 / r28
+            info.append(f"{tbl} 行量 近7日 {r7:.0f}/日 vs 前28日 {r28:.0f}/日 "
+                        f"= {ratio:.2f}×")
+            if ratio < _CLIFF_RATIO:
+                alarms.append(
+                    f"{tbl} **行量断崖** {r7:.0f}/日 vs 基线 {r28:.0f}/日 "
+                    f"({ratio:.2f}×,闸 {_CLIFF_RATIO:.2f})—— 它**还在写**所以"
+                    f"「最后一行」探针是绿的;先查采集端有没有静默降级(分页撞墙/"
+                    f"过滤器变严/上游改接口),⛔ 别只看 cron 退出码")
+    finally:
+        conn.close()
+    return info, alarms
+
+
 def check_league_labels(db_path: str | Path) -> tuple[list[str], list[str]]:
     """联赛标签双轨探针(2026-08-05)。
 
@@ -979,11 +1055,12 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date) -> str
 
 
 #: 非零退出的五个驱动源。顺序 = 报告里的呈现顺序。
-_ALARM_KIND_LABELS = ("捕获表停更", "额度", "模型供应链", "联赛标签", "涓流")
+_ALARM_KIND_LABELS = ("捕获表停更", "额度", "模型供应链", "联赛标签", "涓流",
+                       "行量断崖")
 
 
 def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
-                     label_alarms, trickle_alarms) -> str:
+                     label_alarms, trickle_alarms, cliff_alarms=()) -> str:
     """→ 追加到报告末尾的「报警类别」行(全绿时返回空串)。
 
     ⭐ 2026-08-24 加。起因:桌面推送写死「捕获表停长,**某 cron 可能死了**」,
@@ -998,7 +1075,8 @@ def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
     """
     kinds = [k for k, v in zip(_ALARM_KIND_LABELS,
                                (crit_stale, quota_alarms, supply_alarms,
-                                label_alarms, trickle_alarms), strict=True) if v]
+                                label_alarms, trickle_alarms, cliff_alarms),
+                               strict=True) if v]
     if not kinds:
         return ""
     return ("\n\n报警类别: " + " · ".join(kinds)
@@ -1059,6 +1137,7 @@ def main(argv: list[str] | None = None) -> int:
             ]
     label_info, label_alarms = (
         ([], []) if args.no_league_labels else check_league_labels(db_path))
+    cliff_info, cliff_alarms = check_volume_cliff(db_path)
     # 涓流进度 —— 同 supply 的处理:探针炸了走 alarms,不能装成「没问题」
     trickle_info: list[str] = []
     trickle_alarms: list[str] = []
@@ -1108,6 +1187,11 @@ def main(argv: list[str] | None = None) -> int:
             report += "\n\n  — 联赛标签双轨(2026-08-05:模块早就描述了这个病,却没人在报)—"
             report += "".join(f"\n  · {q}" for q in label_info)
             report += "".join(f"\n  ✗ {q}" for q in label_alarms)
+        if cliff_info or cliff_alarms:
+            report += ("\n\n  — 行量断崖(2026-09-01:Polymarket 还在写但量塌了 10 倍,"
+                       "「最后一行」探针一路绿了 10 天)—")
+            report += "".join(f"\n  · {q}" for q in cliff_info)
+            report += "".join(f"\n  ✗ {q}" for q in cliff_alarms)
         if trickle_info or trickle_alarms:
             report += "\n\n  — 竞彩历史涓流(2026-08-08:上次它「扫完了」是假信号,丢了 4,751 场)—"
             report += "".join(f"\n  · {q}" for q in trickle_info)
@@ -1124,7 +1208,7 @@ def main(argv: list[str] | None = None) -> int:
         # **信号为真,但它证明的不是文案声称的命题**。
         # 报告里给出类别,推送文案改成类别中立(见 setup_local_pipeline.sh)。
         report += alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
-                                   label_alarms, trickle_alarms)
+                                   label_alarms, trickle_alarms, cliff_alarms)
         print(report)
         if args.out:
             Path(args.out).write_text(report + "\n", encoding="utf-8")
@@ -1137,8 +1221,10 @@ def main(argv: list[str] | None = None) -> int:
     # 分人口」这件事本身(P3 计数、CLV 闸的 FDR 家族),和捕获表停更一样值得人看。
     # 2026-08-08:涓流报警**同乘**这条非零退出 —— 它守的是「回填停了」和
     # 「零新增是假信号」两件事,而两者都曾经静默地丢掉几千场数据。
+    # 2026-09-01:行量断崖**同乘**这条非零退出 —— 它守的是「还在写但量塌了」,
+    # 而那正是 `check_freshness`(问「最后一行多久前」)结构上看不见的一类。
     return 1 if (crit_stale or quota_alarms or supply_alarms or label_alarms
-                 or trickle_alarms) else 0
+                 or trickle_alarms or cliff_alarms) else 0
 
 
 if __name__ == "__main__":
