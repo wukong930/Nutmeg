@@ -106,6 +106,31 @@ _EN_TO_CN: dict[str, str] = {
     #   · `jingcai_odds_history.league_cn` = 「日天皇杯」66 场 ← 竞彩口径 = 规范形
     #   · `crown_close_history.league_cn`  = 「天皇杯」 7 场  ← 进 _CN_SYNONYM
     "JPN_EMPEROR_CUP": "日天皇杯",
+    # ── 2026-09-01 补 8 条:全部**已注册在盘面**却缺 CN 映射,各自赛季一开就会
+    #    被 `check_league_labels` 报成 unknown(意大利杯今天已经在响)。
+    #    中文写法**全部实证**自本地档案,⛔ 无一条是意译:
+    #      COPPA_ITALIA    「意大利杯」 竞彩档案 777 · 皇冠 25 · 今日在售 6 · vote 6
+    #      DFB_POKAL       「德国杯」   837 · 23 · 5 · 5
+    #      FAC             「英足总杯」 2085 · 53
+    #      UECL            「欧协联」   1366 · 30
+    #      COUPE_DE_FRANCE 「法国杯」   714 · 26
+    #      WC_QUAL_UEFA    「欧预赛」   1279
+    #      EURO            「欧洲杯」   602
+    #      AUS_A_LEAGUE    「澳超」     5378 · 165
+    #    ⚠️ `COPA_DEL_REY` 两源写法**不同**:竞彩写「西国王杯」(786)、皇冠写
+    #    「国王杯」(27)。按本仓惯例取**竞彩**口径作规范形,皇冠那个进 `_CN_SYNONYM`
+    #    —— 与同日「日天皇杯 / 天皇杯」完全同形。
+    #    ⛔ 另 4 个(丹超/苏超/瑞士超/土超)**档案里零实证,故意留缺口** ——
+    #    等竞彩上架那天哨兵点名、有了证据再补。绝不按联赛全名意译。
+    "COPPA_ITALIA": "意大利杯",
+    "DFB_POKAL": "德国杯",
+    "FAC": "英足总杯",
+    "UECL": "欧协联",
+    "COUPE_DE_FRANCE": "法国杯",
+    "COPA_DEL_REY": "西国王杯",
+    "WC_QUAL_UEFA": "欧预赛",
+    "EURO": "欧洲杯",
+    "AUS_A_LEAGUE": "澳超",
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.
@@ -114,7 +139,8 @@ _CN_SYNONYM: dict[str, str] = {
     "瑞典超级联赛": "瑞超",   # observed in jingcai_vote.league_cn 2026-07-02
     "日职联": "日职",
     "日本联赛杯": "日联赛杯",   # jingcai_vote.league_cn 实测 2 行用全称(2026-09-01)
-    "天皇杯": "日天皇杯",        # crown_close_history.league_cn 实测 7 场用短名(2026-09-01)          # common variant of the J1 abbrev
+    "天皇杯": "日天皇杯",        # crown_close_history.league_cn 实测 7 场用短名(2026-09-01)
+    "国王杯": "西国王杯",        # 同上:皇冠写短名(27 场),竞彩写「西国王杯」(786 场)          # common variant of the J1 abbrev
 }
 
 #: The confirmatory universe (canonical CN form) — the production artifact's
@@ -189,6 +215,9 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     #   就**悄悄混进 δ 校准的国内联赛人口**。数字会动,什么都不报错。
     "日联赛杯",
     "日天皇杯",     # 同上:国内俱乐部杯赛,**不是**国内联赛(δ 人口)
+    # 2026-09-01 同批。⚠️ **`澳超` 故意不在这里** —— 它是国内**联赛**,
+    # 进了会把一整个联赛错误地踢出 δ 的国内人口(与杯赛相反的方向,同样是静默污染)。
+    "意大利杯", "英足总杯", "法国杯", "西国王杯", "欧预赛",
     # 同类第八/九条(2026-08-24)—— 起因:桌面推送「捕获表停长,某 cron 可能死了」,
     # 查下来**没有 cron 死**,是 `data_freshness` 的 label_alarms 同乘那条非零退出,
     # 而报的是这两个「标签表不认识」。

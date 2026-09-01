@@ -356,10 +356,16 @@ class TestEveryServedLeagueHasBothTracks:
     #:    这和「forward-only 源识别当天就建」是同一条纪律的两面。
     #: ⚠️ 注意 `DNK_SUPERLIGA` 在列 —— 它正是 `classify_league` docstring 里点名的
     #:    那个活例,存在至少三个月没人补,因为老护栏的分母看不见它。
+    #: ⭐ 2026-09-01 —— 13 个里补掉 9 个,**全部照档案实证**(⛔ 无一条意译):
+    #:    COPPA_ITALIA「意大利杯」777场+皇冠25+今日在售6 · DFB_POKAL「德国杯」837+23
+    #:    · FAC「英足总杯」2085+53 · UECL「欧协联」1366+30 · COUPE_DE_FRANCE「法国杯」714+26
+    #:    · WC_QUAL_UEFA「欧预赛」1279 · EURO「欧洲杯」602 · AUS_A_LEAGUE「澳超」5378+165
+    #:    · COPA_DEL_REY 两源写法不同(竞彩「西国王杯」786 / 皇冠「国王杯」27)⇒
+    #:      取竞彩口径作规范形,皇冠那个进 `_CN_SYNONYM`(同「日天皇杯/天皇杯」)。
+    #: ⛔ 剩下 4 个**档案里零实证**,故意留缺口 —— 等竞彩上架、探针以 `unknown`
+    #:    报出真实中文串那天再补。`DNK_SUPERLIGA` 仍在列(它就是那个活例)。
     _KNOWN_CN_GAPS = frozenset({
-        "AUS_A_LEAGUE", "COPA_DEL_REY", "COPPA_ITALIA", "COUPE_DE_FRANCE",
-        "DFB_POKAL", "DNK_SUPERLIGA", "EURO", "FAC", "SCO_PREMIERSHIP",
-        "SUI_SUPER_LEAGUE", "TUR_SUPER_LIG", "UECL", "WC_QUAL_UEFA",
+        "DNK_SUPERLIGA", "SCO_PREMIERSHIP", "SUI_SUPER_LEAGUE", "TUR_SUPER_LIG",
     })
 
     def test_no_new_league_loses_its_cn_mapping(self):
