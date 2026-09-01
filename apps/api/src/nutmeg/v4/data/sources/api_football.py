@@ -361,6 +361,9 @@ CALENDAR_YEAR_LEAGUES: frozenset[str] = frozenset({
     # ⚠️ 日本正在转秋春制:缓存里 J1 的 2026-08~09 场次已被 AF 标成 `season=2027`,
     #   而**同期的杯赛仍标 season=2026** ⇒ 杯赛目前还是日历年制。哪天它跟着转,这里要改。
     "JPN_LEAGUE_CUP",
+    # 天皇杯(JPN_EMPEROR_CUP=102):实测月份 5月7 / 6月39 / 7月11 / 8月6 / 9月3 /
+    # 10月3 / 11月1 / **12月3**,1–4 月为零 ⇒ 同样一个日历年内跑完(决赛在年底)。
+    "JPN_EMPEROR_CUP",
     # 体检(2026-06-10)— friendlies are scheduled year-round; API-Football
     # tags them with the calendar year (cached envelope: season=2026).
     "FRIENDLIES",

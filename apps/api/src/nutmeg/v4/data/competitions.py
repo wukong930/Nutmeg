@@ -204,12 +204,21 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         competition_type="club_cup",
         api_football_id=101,          # 本地缓存 fixture 1567425 钉死(见上)
         has_knockouts=True,
-        # 实测(竞彩档案 123 场 / 2021-2025,**按赛季内**统计):90 组对阵在同一赛季
-        # 内重复出现(多为 ×2,2025 有 ×3)⇒ 两回合成立。
-        # ⚠️ 我第一次是跨 5 个赛季数的,得到「80/84 重复」—— 那个数**说明不了两回合**
-        #   (每季碰一次也会重复)。分赛季重算才是对的人口。
+        # 实测(竞彩档案 **123 个 match_id** / 2021-2025,按赛季内统计):
+        # 同一对阵重复 **29 组**,分布 {1 次: 65, 2 次: 29} ⇒ 两回合成立。
+        # 🚨 这个数我错过**两次**,值得留着当反面教材:
+        #   ① 跨 5 个赛季数得「80/84 组重复」—— 每季碰一次也会重复,说明不了两回合;
+        #   ② 分赛季重算得「90 组」—— 仍然错:我按 `(match_id, 日期)` 去重,而**赔率
+        #      跨午夜更新的比赛会占两个日期** ⇒ 同一场被数成两场。正确写法是
+        #      `GROUP BY match_id`。改对后 90 → 29,结论不变但数字差 3 倍。
+        #      (发现它是因为天皇杯量出「7 组重复」而单场淘汰赛不该有 —— 一查
+        #       每组的 match_id 都相同。**是那个不合理的结果把前一个错误也带了出来**。)
         has_two_legged_ties=True,
-        has_group_stage=True,         # ×3 的那几组只能由小组赛解释;未逐轮核,置信度低于上一条
+        # ⚠️ **未测出**。改对计数后最大只有 ×2,而 ×2 与「两回合淘汰」和「主客场小组赛」
+        #   **都相容** ⇒ 分不出来。本字段全仓**零消费者**,置 False 是默认值**不是结论**。
+        #   (我上一版写 True,理由是「×3 只能由小组赛解释」—— 那个 ×3 是上面那个
+        #    午夜假象造出来的,证据不存在。)
+        has_group_stage=False,
         notes=(
             "竞彩写作「日联赛杯」(档案 `jingcai_odds_history.league_cn` 123 场 / "
             "`crown_close_history` 27 场 / `jingcai_vote` 用全称「日本联赛杯」)。"
@@ -218,6 +227,30 @@ CUP_COMPETITIONS: dict[str, Competition] = {
             "只走 AF 的 Pinnacle 镜像。⚠️ 本地 `_odds` 缓存里 league=101 **零行** —— "
             "但我们从没注册过它、也就从没去要过它的赔率,所以那个 0 **是构造性的**,"
             "不能当成「Pinnacle 不覆盖」的证据。上线后按本联赛**自己数一遍**。"
+        ),
+    ),
+    # 补(2026-09-01 owner 点名,紧接日联赛杯)。AF id=102,**全表唯一**:
+    # 本地 leagues catalog 里叫 "Emperor Cup" 的只有 `102 / Cup / Japan` 一条
+    # (对比日联赛杯要在 14 个撞名的 "*League Cup*" 里挑,这个不用挑)。
+    # 缓存实证:2026-08-19(24 场)+ 2026-08-26(32 场),season=2026。
+    "JPN_EMPEROR_CUP": Competition(
+        code="JPN_EMPEROR_CUP",
+        display_zh="日天皇杯 (天皇杯)",
+        display_en="Emperor Cup",
+        competition_type="club_cup",
+        api_football_id=102,
+        has_knockouts=True,
+        # 实测(竞彩档案 **66 个 match_id** / 2021-2025):赛季内同一对阵重复
+        # **0 组** ⇒ 纯单场淘汰。与日联赛杯(29 组)形成干净对照。
+        has_two_legged_ties=False,
+        has_group_stage=False,        # 单场淘汰 + 0 重复 ⇒ 无小组赛
+        notes=(
+            "竞彩写作「日天皇杯」(`jingcai_odds_history` 66 场);⚠️ 皇冠档案写的是"
+            "**「天皇杯」**(7 场)—— 两种写法都实证过,已把后者进 `_CN_SYNONYM`。"
+            "月份分布 5–12 月、1–4 月为零 ⇒ **日历年制**(与日联赛杯的 2–11 月不同,"
+            "但同样在一个日历年内)。Odds API 无此 sport ⇒ 只走 AF Pinnacle 镜像;"
+            "⭐ 与日联赛杯不同,本地 `_odds` 缓存里 league=102 **有 5 场、其中 4 场带 "
+            "Pinnacle** —— 这是注册前就有的独立证据,不是构造性的 0。"
         ),
     ),
     # ── 2026-08-09 owner 点名新增三个:解放者杯 / 欧超杯 / 沙职 ────────────

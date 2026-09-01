@@ -2493,6 +2493,7 @@ _CUP_MARKET_COMPETITIONS = [
     # ⚠️ 缺这一行是**最静默**的一种漏注册:`_gather_rows` 从不被问 league=101,
     #   端点照常返回 200 + 空名单,和「今天没有比赛」长得一模一样。
     "JPN_LEAGUE_CUP",
+    "JPN_EMPEROR_CUP",   # 天皇杯(2026-09-01)。AF id=102,同上,⛔ 同样别进 _SP_CALC_LEAGUES
 ]
 
 

@@ -102,6 +102,10 @@ _EN_TO_CN: dict[str, str] = {
     #   · `crown_close_history.league_cn`  「日联赛杯」27 场
     #   · `jingcai_sp.league`              「日联赛杯」2 行(即 2026-09-02 那场)
     "JPN_LEAGUE_CUP": "日联赛杯",
+    # 天皇杯(2026-09-01)。⚠️ 两个源写法不同,都实证过:
+    #   · `jingcai_odds_history.league_cn` = 「日天皇杯」66 场 ← 竞彩口径 = 规范形
+    #   · `crown_close_history.league_cn`  = 「天皇杯」 7 场  ← 进 _CN_SYNONYM
+    "JPN_EMPEROR_CUP": "日天皇杯",
 }
 
 # Chinese synonyms (full names / variants) → the same canonical abbrev.
@@ -109,7 +113,8 @@ _EN_TO_CN: dict[str, str] = {
 _CN_SYNONYM: dict[str, str] = {
     "瑞典超级联赛": "瑞超",   # observed in jingcai_vote.league_cn 2026-07-02
     "日职联": "日职",
-    "日本联赛杯": "日联赛杯",   # jingcai_vote.league_cn 实测 2 行用全称(2026-09-01)          # common variant of the J1 abbrev
+    "日本联赛杯": "日联赛杯",   # jingcai_vote.league_cn 实测 2 行用全称(2026-09-01)
+    "天皇杯": "日天皇杯",        # crown_close_history.league_cn 实测 7 场用短名(2026-09-01)          # common variant of the J1 abbrev
 }
 
 #: The confirmatory universe (canonical CN form) — the production artifact's
@@ -183,6 +188,7 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     #   `classify_league("日联赛杯")` 会返回 `domestic`,一个跨 J1/J2/J3 的淘汰杯
     #   就**悄悄混进 δ 校准的国内联赛人口**。数字会动,什么都不报错。
     "日联赛杯",
+    "日天皇杯",     # 同上:国内俱乐部杯赛,**不是**国内联赛(δ 人口)
     # 同类第八/九条(2026-08-24)—— 起因:桌面推送「捕获表停长,某 cron 可能死了」,
     # 查下来**没有 cron 死**,是 `data_freshness` 的 label_alarms 同乘那条非零退出,
     # 而报的是这两个「标签表不认识」。
