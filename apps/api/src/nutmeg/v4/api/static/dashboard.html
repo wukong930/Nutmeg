@@ -2321,6 +2321,16 @@ const I18N = {
     dscope_miss_tip:  '⚠️ 这张卡的 league 没传到服务端 — 让球线按「未校准」处理(±带 10 倍、点估少扣 δ)。**这是 bug 不是形态**:两次线上事故(2026-08-16 手填重定价、08-17 刷新重算)症状都是它。请报一下。',
     frz_badge_tip:    '距开球时长 — 现在下单,到收盘 Pinnacle 预计还漂 ±2σ(已并入 EV 的 ± 区间);凌晨场停售早、缺口不可压缩(A-1 实测:41% 凌晨场中位缺口 6h)',
     jc_price_age:     '竞彩价',
+    // Polymarket 第二意见(2026-09-01)。⛔ 只显示不判闸 —— 已测两次都在竞彩人口上测不出。
+    leg_home:         '主胜',
+    leg_draw:         '平局',
+    leg_away:         '客胜',
+    poly_badge:       'Polymarket 第二意见',
+    poly_leg:         '腿',
+    poly_sp:          '竞彩 SP',
+    poly_depth:       '盘口深度',
+    poly_age:         '线龄',
+    poly_disclaimer:  '⚠️ 仅供临场参考,不参与判闸/排序/串关。Poly 的 P 在竞彩会下注的人口上并未被证明更准(1X2 t=1.00 · 让球 t=1.77)。',
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
     sw_second:        '次优',
     pb_hcshare:       '让球腿',
@@ -2905,6 +2915,15 @@ const I18N = {
     dscope_miss_tip:  'WARNING: this card did not send its league to the server - the handicap board is treated as uncalibrated (10x band, delta not deducted). This is a BUG, not a mode; both 2026-08-16 and 08-17 incidents looked exactly like this. Please report it.',
     frz_badge_tip:    'Hours to kickoff — commit now and Pinnacle keeps drifting until close (±2σ, folded into the EV ± band); overnight matches freeze early with an incompressible gap (A-1 measured: 41% of matches, median 6h)',
     jc_price_age:     '竞彩 price',
+    leg_home:         'Home',
+    leg_draw:         'Draw',
+    leg_away:         'Away',
+    poly_badge:       'Polymarket 2nd opinion',
+    poly_leg:         'Leg',
+    poly_sp:          '竞彩 SP',
+    poly_depth:       'Book depth',
+    poly_age:         'age',
+    poly_disclaimer:  '⚠️ Reference only — never gates, ranks, or enters parlays. Poly\'s P is NOT proven sharper on the 竞彩-bettable population (1X2 t=1.00 · handicap t=1.77).',
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
     sw_second:        '2nd',
     pb_hcshare:       'handicap legs',
@@ -6132,7 +6151,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
           ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
           <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}</span>
         </div>
-        ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}
+        ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_polyHtml(pr)}
         ${/* 2026-08-05 — Pinnacle 原盘 + 大小球,原来只有市场模式卡有。
               ⭐ **不是为了好看**:标准模式的 1X2 走模型 P,但**让球是 Pinnacle
               市场反推的**(routes.py `_model_board_handicap_lines`,从去vig 的
@@ -6869,6 +6888,55 @@ function _openManualReverse() {
 // 埃尔夫斯堡案:让胜峰值价 1.97 定格,实价已砍到 1.79,面板 −1.3% vs 真 −9~−10%;
 // 库奥皮奥案:客胜绿灯只存在于 20:39 后的价上,旧价把它藏掉。
 // amber 条件 = 价龄 >60min 且距开球 <3h(竞彩临停售调价最凶的窗口)→ 提示点 🎯。
+function _hasPoly(pr) {
+  return !!(pr && pr.poly_home != null && pr.poly_draw != null && pr.poly_away != null);
+}
+//: Polymarket 第二意见 —— **按需展开**,没数据的卡片完全不变样。
+//
+// 🚨 它**不是更准的 P**。已测两次,都在**竞彩会下注的人口**上测不出:
+//    1X2 Δlog-loss t=1.00(N=71)· 让球 t=1.77(N=113)。全样本上 Poly 确实更准
+//    (t=2.56),但准在**竞彩买不到的那半边**;判定那个量级还要 ~7 个月。
+// ⛔ 绝不进 `_boardLegs` 的 evLo / argmax / 串关构造器 —— 同「never auto-pick the
+//    rosier one」那条既有纪律(真 EV 板用 Pinnacle、甜区榜用模型 P,刻意不混)。
+//
+// ⚠️ 实测今天 16 张可投注卡里只有 3 张有数据(~19%)——**这是正常形态**:
+//    Polymarket 重仓 MLS/欧协/北欧/女足,竞彩重仓欧洲五大+亚洲,交集本来就小。
+//    ⛔ 没数据时什么都不渲染,别显示「无数据」占位(会让 80% 的卡片多一块噪音)。
+function _polyHtml(pr) {
+  if (!_hasPoly(pr)) return '';
+  const P = [pr.poly_home, pr.poly_draw, pr.poly_away];
+  const SP = [pr.jc_home, pr.jc_draw, pr.jc_away];
+  const L = [t('leg_home'), t('leg_draw'), t('leg_away')];
+  // ⚠️ 线龄是 Poly 自己的抓取时刻(recorded_at),**不是** `freshness_hours`
+  //    —— 那一列是 **Pinnacle** 的线龄(实测同批行上 78h vs 575h,两个不同的量)。
+  const age = pr.poly_fresh_h == null ? ''
+    : (pr.poly_fresh_h < 1 ? Math.round(pr.poly_fresh_h * 60) + 'm' : pr.poly_fresh_h.toFixed(1) + 'h');
+  const stale = pr.poly_fresh_h != null && pr.poly_fresh_h > 12;
+  const thin = pr.poly_depth_usd != null && pr.poly_depth_usd < 500;
+  const rows = P.map(function (p, i) {
+    const sp = SP[i];
+    const ev = (sp && sp > 1) ? (p * sp - 1) : null;
+    const col = ev == null ? '' : (ev >= 0.05 ? '#059669' : (ev >= 0 ? '#64748b' : '#dc2626'));
+    const evTxt = ev == null ? '<span class="text-muted">--</span>'
+      : '<span style="color:' + col + '">' + (ev * 100).toFixed(1) + '%</span>';
+    return '<tr><td class="pr-3">' + L[i] + '</td>'
+      + '<td class="pr-3 text-right">' + (p * 100).toFixed(1) + '%</td>'
+      + '<td class="pr-3 text-right text-muted">' + (sp ? Number(sp).toFixed(2) : '--') + '</td>'
+      + '<td class="text-right">' + evTxt + '</td></tr>';
+  }).join('');
+  return '<details class="mt-1 text-xs"><summary style="cursor:pointer;color:#7c3aed">'
+    + IC('board') + ' ' + t('poly_badge') + (age ? ' \u00b7 ' + age : '') + (stale ? ' \u26a0\ufe0f' : '')
+    + '</summary><div class="mt-1 pl-2" style="border-left:2px solid #ede9fe">'
+    + '<table class="text-xs"><thead><tr class="text-muted">'
+    + '<th class="pr-3 text-left">' + t('poly_leg') + '</th>'
+    + '<th class="pr-3 text-right">Poly P</th>'
+    + '<th class="pr-3 text-right">' + t('poly_sp') + '</th>'
+    + '<th class="text-right">EV</th></tr></thead><tbody>' + rows + '</tbody></table>'
+    + '<div class="text-muted mt-1">' + t('poly_depth') + ' $'
+    + Number(pr.poly_depth_usd || 0).toLocaleString() + (thin ? ' \u26a0\ufe0f' : '')
+    + (age ? ' \u00b7 ' + t('poly_age') + ' ' + age : '') + '</div>'
+    + '<div class="mt-1" style="color:#b45309">' + t('poly_disclaimer') + '</div></div></details>';
+}
 function _jcFreshnessHtml(pr) {
   // ⚠️ 2026-08-21:原来这里是 `!_isJcBettable(pr)` ⇒ 卡片一进 T−5 就把**唯一的
   // 时间线索自己关掉**,停售卡上一个字都不说它已开赛。改成只要求有竞彩 SP。
@@ -7145,7 +7213,7 @@ function _cupCardHtml(pr, idx) {
           <span class="badge-gold text-xs whitespace-nowrap">${t('cupmkt_badge')}</span>
         </span>
       </div>
-      ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}
+      ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_polyHtml(pr)}
       ${_pinRawHtml(pr)}
       ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _foldAttrs('mb', _fk))}${manual}
     </div>`;
