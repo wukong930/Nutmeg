@@ -167,10 +167,16 @@ def record_row_snapshot(
     psc_over25/psc_under25, odds_update, kickoff_utc, date/league/teams).
     ``envelope`` (optional) additionally captures the Asian-Handicap board.
 
-    ``captured_at`` — ISO 时刻,**只给历史回填用**(2026-07-23)。默认 None = 此刻,
-    实时 cron 一律走默认。回填历史快照时必须显式传该快照的真实时刻:否则补回来的
-    行全戳成"今天",在时间轴上落错位置 —— 空洞照旧显示为空洞(数据明明已找回),
-    而 CLV / 线史分析会看到几十行挤在同一秒。
+    ``captured_at`` — ISO 时刻,**观测发生的那一刻**(不是落盘那一刻)。默认
+    None = 此刻。两类调用方必须显式传:
+      ① 历史回填(2026-07-23):必须传该快照的真实时刻,否则补回来的行全戳成
+         "今天",在时间轴上落错位置 —— 空洞照旧显示为空洞(数据明明已找回),
+         而 CLV / 线史分析会看到几十行挤在同一秒。
+      ② 🚨 **带 pre-kickoff 闸的实时采集**(2026-09-01):判闸用的时刻和落库的
+         `captured_at` 必须是**同一个值**。`closing_odds` 此前让本函数在写库那
+         一刻自己取 now,于是「闸看到的 now」和「戳进去的 now」之间隔了一段 δ
+         (p50 0.2ms,但本函数 `busy_timeout=3000` ⇒ 最坏 3s)⇒ 2026-08-30 写出
+         2 行 `captured_at > kickoff_utc`。传入判过闸的那个时刻即根除,零边界。
 
     Returns True iff a NEW state row was inserted; False on skip (待开盘 row,
     unchanged state) or on ANY internal failure (logged, never raised).

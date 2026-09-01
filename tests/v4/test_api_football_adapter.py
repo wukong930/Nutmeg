@@ -242,7 +242,11 @@ class TestComputeXiMinutesShare:
 
 
 class TestClientErrorWhenNoKey:
-    def test_raises_when_key_missing(self):
+    def test_raises_when_key_missing(self, real_api_football_client):
+        # ⚠️ 申明 `real_api_football_client`:`tests/conftest.py` 的付费闸把
+        #    `_client` 换成了自己的拦截器,而**本条的被测对象正是 `_client` 自己**
+        #    ⇒ 不装回来就永远对不上那条消息。装回来不放行花钱:本条走的是
+        #    「缺 key ⇒ 建连之前就抛」那一支。
         """When get_settings() returns a Settings with no api_football_key,
         the client constructor must surface a clear error rather than
         sending an unauthenticated request."""
@@ -454,7 +458,12 @@ class TestLeagueSeasonTTL:
         monkeypatch.setattr(api_football, "_request", fake_request)
         return calls
 
-    def test_stale_current_season_refetches(self, tmp_path, monkeypatch):
+    def test_stale_current_season_refetches(self, tmp_path, monkeypatch,
+                                            real_wc_fixture_fetch):
+        # ⚠️ 申明 `real_wc_fixture_fetch`:`tests/conftest.py` 有一层针对
+        #    `/today-recommendations` 强制拉 WC 赛程的 no-op 止血贴,而
+        #    **本条的被测对象正是那个函数** ⇒ 不豁免就永远在测 `lambda: []`。
+        #    豁免不放行花钱:AF 出口闸仍在(本条自己也 patch 了 `_request`)。
         import datetime as dt
         yr = dt.datetime.now(dt.UTC).year
         self._seed(tmp_path, yr, age_hours=7)
@@ -464,7 +473,12 @@ class TestLeagueSeasonTTL:
         assert out == fresh
         assert True in calls
 
-    def test_old_season_never_refetches(self, tmp_path, monkeypatch):
+    def test_old_season_never_refetches(self, tmp_path, monkeypatch,
+                                        real_wc_fixture_fetch):
+        # ⚠️ 申明 `real_wc_fixture_fetch`:`tests/conftest.py` 有一层针对
+        #    `/today-recommendations` 强制拉 WC 赛程的 no-op 止血贴,而
+        #    **本条的被测对象正是那个函数** ⇒ 不豁免就永远在测 `lambda: []`。
+        #    豁免不放行花钱:AF 出口闸仍在(本条自己也 patch 了 `_request`)。
         self._seed(tmp_path, 2020, age_hours=7)   # settled long ago
         calls = self._calls(monkeypatch, [{"fixture": {"id": 7}}])
         api_football.fetch_fixtures_for_league_season("WC", 2020, cache_dir=tmp_path)

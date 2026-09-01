@@ -212,19 +212,63 @@ def test_kickoff_literal_shapes_stay_within_the_known_whitelist() -> None:
 
 # ── G5 · pre-kickoff 闸的夹具(被迫的:它在生产数据上是 no-op) ────────
 
+#: 竞态修复(逐行重取 now + **用判闸那一刻当 captured_at**)**落到主树磁盘**的时刻
+#: (UTC),取自 `closing_odds.py` 的 mtime —— 不是谁记得的一个数。
+#:
+#: ⚠️ 2026-09-02 更正:上一版这里写的是「`com.nutmeg.closing_odds` 是 launchd
+#: 常驻、**不热载**、owner 重启之前红是正确的」—— **对这个 job 是错的**。
+#: 实查它的 plist:`StartInterval = 1800` 且**没有 KeepAlive** ⇒ 它是**周期任务**,
+#: 每轮起一个新 Python 进程 ⇒ **代码落盘即生效,不需要任何重启**。
+#: (记忆 `live-cron-vs-setup-source-drift` 讲的是 `api_server` 那种常驻 daemon,
+#:  把它套到周期任务上,会把 owner 指向一个根本不存在的「重启」步骤。)
+_RACE_FIX_DEPLOYED_AT = "2026-09-01T17:05:25+00:00"
+
+#: 修复之前写下的越界行。⛔ **不清洗**(理由见下面的 docstring)。
+_KNOWN_PRE_FIX_BLOCKED_IDS = {47742, 47754}
+
+
 @pytest.mark.skipif(not _DB.exists(), reason="没有观测库")
-def test_pre_kickoff_gate_is_currently_a_noop_and_can_only_be_guarded_by_fixtures() -> None:
-    """🚨 四个文件称作「承重」的 `captured_at < kickoff_utc` 闸,**一行都没挡住**。
+def test_pre_kickoff_gate_blocks_nothing_written_after_the_race_fix() -> None:
+    """🚨 pre-kickoff 闸:**修复之后**写下的行里,一条都不许越界。
 
-    实测(2026-08-14):`kickoff_utc` 非空 28,405 行里被排除 **0 行(0.00%)**;
-    `_pinn_close` 的 base 与「整个把闸拿掉」的变体,861 条腿**逐条相同**。
+    ## 它曾经是 no-op,2026-08-30 不再是了 —— 我去数过了
 
-    后果不是「它没用」,而是 —— **它无法自证**。
-    哪天格式漂移让这个比较恒为真,production 的读数和现在**一模一样**(还是 0)。
-    ⇒ 生产数据永远喂不到它 ⇒ 只能靠夹具守。
+    实测(2026-08-14):28,405 行里被排除 **0 行**;`_pinn_close` 的 base 与
+    「整个把闸拿掉」的变体,861 条腿逐条相同 ⇒ 生产数据永远喂不到它,
+    闸的**能力**只能靠夹具守(下面那条 + `test_closing_odds` 里的三条)。
 
-    本条断言的是**这个事实本身**:一旦它开始挡住行,说明数据形态变了,
-    值得去看一眼(而不是继续假设它在保护什么)。
+    2026-08-30 出现 **2 行**(49,019 行中),上一版断言 `== 0` 因此变红。
+    ⛔ 上一版写着「别直接改期望值,先去数」。**去数的结果**(2026-09-01):
+
+    ① **不是字面漂移**。两行的 `kickoff_utc` 都是正典 `…+00:00`,`captured_at`
+       同格式 ⇒ 字典序有效,闸本身没坏。
+    ② **是写入侧竞态**。`closing_odds` 的 `now` 只在函数入口取一次,而它到写库
+       之间隔着每 sport 一次 Odds-API HTTP + 一次书商快照 + 逐行写库;实测 789 轮
+       的**写入→写入**跨度随本轮联赛数线性增长(11 个联赛 max 9s)。cron 又恰好
+       漂到 HH:29:5x / HH:59:5x 起跑而开球集中在 HH:00/HH:30 ⇒ **每轮都在开球点
+       前几秒起跑**。那两行 `captured_at` 只晚了 1s / 2s。
+    ③ **不是 2026-07-01 那种毒**。两行 `odds_update`(Pinnacle 自己的 last_update)
+       都是开球前 **30s**;全库 11,708 条 closing 行里 `odds_update >= kickoff` 的
+       有 **0 行** —— 那才是「真盘中线」的指纹。赔率值也正常(1.38/5.55/8.35,
+       不是 1.06/…/53.96 那种领先方畸形线)。**数据是好的,晚的只有我们自己的戳。**
+    ④ **污染面 = 0**,且**不清洗**。CLV(`_pinn_close`)、软水扫描
+       (`jingcai_staleness`)、`jingcai_vote` 回填、`jingcai_sp`、`handicap_triples`
+       都带 SQL 闸;`sigma_p_fit` 在 `load_trajectories` 里自带 `ca < ko`
+       (实测全部点的 h 最小值 = +3s,负 h **0 个**)。对照组(备份库删掉这 2 行
+       重跑四个消费方)输出**逐字节相同**;阳性对照(改删相邻两行)证明
+       `sigma_p_fit` 对这两场**有**功效而 CLV/线源/陈旧度**没有**(那两场根本不在
+       竞彩盘面上,`jingcai_sp`/`jingcai_vote` 各 0 行)⇒ 「相同」是真结论不是空洞。
+       ⇒ 清掉只会删掉**我们手上最接近真收盘的那张线**(开球前 30s),换不来任何
+       可测的改变,还要动「回填/删改 odds_snapshots 是红线」那条规矩。
+
+    ## ⇒ 期望值改成什么
+
+    `== 0` 已经不可能再成立(那 2 行永久留在库里),而**老误报的护栏最后会被删掉**。
+    所以拆成两半,和本文件 `_SINK_FIX_DEPLOYED_AT` 那条同一个套路:
+      · **前向闸**(承重):修复上线之后写的行,越界数必须是 0 —— 天生绿,
+        修复回退或没上线就红。
+      · **历史钉**:修复之前的越界行必须**恰好**是那 2 条;多一条就说明有人回填了
+        odds_snapshots,或者本文件的判据被人动过。
     """
     c = sqlite3.connect(f"file:{_DB}?mode=ro", uri=True)
     try:
@@ -232,14 +276,66 @@ def test_pre_kickoff_gate_is_currently_a_noop_and_can_only_be_guarded_by_fixture
             SELECT COUNT(*), SUM(CASE WHEN NOT (captured_at < kickoff_utc) THEN 1 ELSE 0 END)
             FROM odds_snapshots WHERE kickoff_utc IS NOT NULL AND captured_at IS NOT NULL
         """).fetchone()
+        after = c.execute("""
+            SELECT id, source, league, home_team, away_team, kickoff_utc, captured_at
+            FROM odds_snapshots
+            WHERE kickoff_utc IS NOT NULL AND captured_at IS NOT NULL
+              AND NOT (captured_at < kickoff_utc) AND captured_at > ?
+        """, (_RACE_FIX_DEPLOYED_AT,)).fetchall()
+        # ⚠️ 前向闸的**分母**。没有它,`assert not after` 在窗口里一行都没有时
+        #    是**空洞为真** —— 落地当天实测就是 0 行,它绿得毫无意义。
+        n_after = c.execute("""
+            SELECT COUNT(*) FROM odds_snapshots
+            WHERE source = 'closing' AND captured_at > ?
+        """, (_RACE_FIX_DEPLOYED_AT,)).fetchone()[0]
+        before_ids = {r[0] for r in c.execute("""
+            SELECT id FROM odds_snapshots
+            WHERE kickoff_utc IS NOT NULL AND captured_at IS NOT NULL
+              AND NOT (captured_at < kickoff_utc) AND captured_at <= ?
+        """, (_RACE_FIX_DEPLOYED_AT,))}
     finally:
         c.close()
-    assert tot > 1000, f"样本太小({tot}),这条会变空洞"
-    assert (blocked or 0) == 0, (
-        f"pre-kickoff 闸开始挡住行了({blocked}/{tot})—— 这**不一定是坏事**,"
-        f"但它此前一直是 no-op,形态变了值得看一眼:是真有盘中行进来了,"
-        f"还是 kickoff_utc/captured_at 的字面漂了导致字典序失效?"
-        f"⛔ 别直接改这个断言的期望值,先去数。")
+    assert tot > 1000, (
+        f"样本太小({tot} 行),这条会变空洞。\n"
+        f"⚠️ **最可能的原因不是数据没了,是你指到了一个测试造出来的残壳**:"
+        f"套件里有 CLI 用例走默认参数 `--db data/v4_observation.db`,"
+        f"在**没有观测库的工作树里跑一遍全量**就会在 `data/` 下建出一个百来行的空库。"
+        f"下一次跑时 `_DB.exists()` 为真 ⇒ 本条不再 skip,却对着残壳在数。\n"
+        f"排查:`sqlite3 {_DB} 'SELECT COUNT(*) FROM odds_snapshots'` —— "
+        f"生产库是**万级**。是残壳就删掉它再跑;⛔ 别因为它红就放宽这里的下限。")
+    assert (blocked or 0) >= len(_KNOWN_PRE_FIX_BLOCKED_IDS), (
+        f"越界行总数 {blocked} 少于已知的 {len(_KNOWN_PRE_FIX_BLOCKED_IDS)} 条 —— "
+        f"有人**删了/回填了** odds_snapshots(本仓红线),或者换库了。先去查,别改这里。")
+    assert not after, (
+        f"**修复之后**写入的行里出现了 {len(after)} 条 `captured_at >= kickoff_utc`:\n"
+        + "\n".join(map(str, after)) + "\n"
+        "两种可能,都得去看:\n"
+        "  ① 修复没上线 —— ⚠️ `com.nutmeg.closing_odds` 是 **StartInterval=1800 的\n"
+        "     周期任务**(无 KeepAlive),代码落盘即生效,**不需要重启**。所以这一支\n"
+        "     真正要查的是「文件是不是真的在主树上」而不是「重启了没有」:\n"
+        "     `git -C . diff --stat -- apps/api/src/nutmeg/v4/observation/closing_odds.py`\n"
+        "  ② 修复被回退,或者出现了第二条写入路径(grep `source=\'closing\'` 的写入方)。\n"
+        "⛔ 别把这条改成 warning,也别再往期望值里加白名单 —— 先去数。")
+    # ⚠️ **空洞守卫**:`assert not after` 只在窗口里真有行时才有判别力。
+    #    刚上线那几天窗口必然是空的(closing 采集本来就稀疏,`--sports auto`
+    #    随赛程自选联赛)⇒ 给一个宽限期;宽限期过了窗口还是空的,那就**不是
+    #    「闸没红」而是「没人喂它」** —— closing 采集停了同样值得人看一眼。
+    #    ⛔ 别把宽限期调长来消音:调长 = 把这条护栏的失效期一起调长。
+    import datetime as _dt
+
+    _age_days = (_dt.datetime.now(_dt.UTC)
+                 - _dt.datetime.fromisoformat(_RACE_FIX_DEPLOYED_AT)).days
+    assert not (_age_days >= 7 and n_after == 0), (
+        f"上线已 {_age_days} 天,而窗口里一条 closing 行都没有 ⇒ **前向闸恒空洞**,"
+        f"它这些天的绿不构成任何证据。要查的是 closing 采集是不是停了"
+        f"(看 logs/data_freshness_latest.md 里 `odds_snapshots[closing]` 那行),"
+        f"⛔ 不是把 `_RACE_FIX_DEPLOYED_AT` 往后挪。")
+
+    assert before_ids == _KNOWN_PRE_FIX_BLOCKED_IDS, (
+        f"修复之前的越界行不再是已知那 2 条:实际 {sorted(before_ids)},"
+        f"期望 {sorted(_KNOWN_PRE_FIX_BLOCKED_IDS)}。"
+        f"多出来 = 有人回填了 odds_snapshots(红线);少了 = 有人删了行。"
+        f"两种都不该悄悄发生。")
 
 
 def test_pre_kickoff_gate_actually_excludes_a_post_kickoff_row(tmp_path: Path) -> None:

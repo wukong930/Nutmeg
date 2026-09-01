@@ -122,13 +122,37 @@ def capture_closing_pinnacle(
     (a leading team → a degenerate 1.06/53.96 line). Recording those as a "close"
     poisons the CLV ledger and the soft-water scan (2026-07-01: an in-play capture
     produced a phantom +87% EV leg). We skip any match whose kickoff is at/​before
-    ``now``; a match with no parseable kickoff is skipped too (can't prove it's
-    pre-match). The last snapshot taken before kickoff remains the true close."""
+    the observation instant; a match with no parseable kickoff is skipped too
+    (can't prove it's pre-match). The last snapshot before kickoff = the true close.
+
+    🚨 **该闸的 `now` 必须逐行重取,且必须就是落库的 `captured_at`**(2026-09-01)。
+    此前 `now` 只在函数入口取一次,而它到写库之间隔着:每个 sport 一次
+    `fetch_pinnacle_lookup` HTTP + 一次 `capture_books_for_sport` + 逐行写库。
+    实测(789 轮 closing)**写入→写入**跨度随本轮联赛数线性增长:1 个联赛 p50 0s、
+    11 个联赛 p50 8s / max 9s —— 而 `now` 取在第一次 HTTP **之前**,真实窗口比这更宽。
+    cron 又恰好卡在最坏相位:`StartInterval 1800` 漂到 HH:29:5x / HH:59:5x,
+    而开球集中在 HH:00:00 / HH:30:00 ⇒ **每一轮都在开球点前几秒起跑**。
+    2026-08-30 因此写出 2 行 `captured_at > kickoff_utc`(晚 1s / 2s),
+    撞红了那条生产哨兵(它当时叫 `…gate_is_currently_a_noop…`,现已随本次
+    修复改名为 `test_pre_kickoff_gate_blocks_nothing_written_after_the_race_fix`)。
+
+    ⭐ 修法是**取一次、既判闸又落库**(`observed`),不是加安全边界:
+      · 只重取 `now` 而让 sink 自己戳 `captured_at` ⇒ 闸与戳之间仍有 δ。δ 实测
+        p50 0.2ms,但 `record_row_snapshot` 自带 `busy_timeout=3000` ⇒ **最坏 3s**
+        ⇒ 要挡住它得上 M≥3s 的边界。
+      · 而边界**恰好只砍最有价值的那批线**:实测 lead<5s 的有 6 场(0.50%)、
+        lead<30s 的 19 场(1.57%),它们被挡掉后 close 全部退化到**约 30 分钟前**
+        (上一 tick;0 场彻底失去 close)。本模块存在的全部理由就是「贴着自己的
+        开球点取线」(修 ③ 的中位 ~5h 陈旧锚)⇒ 花 0.5–1.6% 最贵的线去换一个
+        δ 本可以直接消掉的问题,是**用钱买省事**。
+      · `observed` 先 `.replace(microsecond=0)` 再判闸,判闸用**同样截秒**的开球点
+        ⇒ 落库字面 `captured_at < kickoff_utc` 由构造保证,零边界、零合法行损失。
+    ⚠️ 显式传入的 `now` 仍然被尊重(冻结时钟 = 测试/回放),此时不重取。"""
     from nutmeg.v4.data.sources import odds_api
     from nutmeg.v4.observation.book_snapshots import capture_books_for_sport
     from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
 
-    now = now or datetime.now(UTC)
+    frozen_now = now          # 显式传入 = 冻结时钟(测试/回放);None = 实时,逐行重取
     out: dict[str, int] = {}
     for sk in sport_keys:
         sport_key = odds_api.SPORT_KEYS.get(sk, sk)
@@ -157,8 +181,14 @@ def capture_closing_pinnacle(
             # per-sport try, so an unguarded None crashes the WHOLE capture round.
             if e is None:
                 continue
+            # 🚨 逐行重取观测时刻 —— **不能**用函数入口那个 now(见 docstring:
+            #    中间隔着 HTTP + 书商快照 + 逐行写库,实测最宽 9s,而 cron 正好在
+            #    开球点前几秒起跑)。截到秒:落库的 `captured_at` 就是这个值,
+            #    判闸也拿它跟**同样截秒**的开球点比 ⇒ `captured_at < kickoff_utc`
+            #    由构造成立,不需要安全边界,也不损失任何合法的临开球线。
+            observed = (frozen_now or datetime.now(UTC)).replace(microsecond=0)
             kickoff = _parse_iso(e.get("commence_time"))
-            if kickoff is None or kickoff <= now:
+            if kickoff is None or observed >= kickoff.replace(microsecond=0):
                 skipped_live += 1  # already kicked off (live odds) or unknown KO
                 continue
             date = key[2] if isinstance(key, tuple) and len(key) >= 3 else e.get("date")
@@ -181,7 +211,12 @@ def capture_closing_pinnacle(
             }
             if not (row["date"] and row["home_team"] and row["away_team"]):
                 continue
-            written += int(record_row_snapshot(db_path, row, source="closing"))
+            # ⭐ 把判过闸的那个时刻**原样**戳进 captured_at —— 不让 sink 在写库那一刻
+            #    再取一次 now(那就又出现闸与戳之间的 δ)。它也比写库时刻**更接近真相**:
+            #    「我们何时观测到」= 取数那一刻,不是落盘那一刻。
+            written += int(record_row_snapshot(
+                db_path, row, source="closing",
+                captured_at=observed.isoformat(timespec="seconds")))
         if skipped_live:
             log.info("closing-odds %s: skipped %d already-started/unknown-KO match(es)",
                      sk, skipped_live)

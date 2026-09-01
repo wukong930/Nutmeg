@@ -121,14 +121,34 @@ def test_market_handicap_reports_the_scope():
 
 @pytest.mark.parametrize("ep", ["/api/v4/predictions/sp-calc",
                                 "/api/v4/predictions/cup-market"])
-def test_auto_boards_never_report_missing(ep):
+def test_auto_boards_never_report_missing(ep, live_api_football_calls):
     """🚨 **自动卡也吃这个闸。** 任何一场报 `missing` = 构造点漏填 league。
 
     ⭐ 这条替代了 08-16 那个恒真验收(「重启后查 `suppressed_none == 0`」——
     新进程里计数器恒为 0,永远通过)。**它问的是逐场的事实,不是进程内的计数。**
+
+    ## 💸 2026-09-02 —— 它一直在花钱,只是没人看得见
+
+    本条打的是**真端点**,而 `/predictions/sp-calc` 与 `/cup-market` 会走
+    `_gather_rows` → 逐联赛 `api_football` 赛程拉取。AF 赛程缓存冷的时候,
+    实测**每次参数化 13+ 次真实付费请求**,而且一条红都没有(调用点 fail-soft)。
+    新装的 AF 出口闸(`tests/conftest.py`)才把它照出来。
+
+    ⭐ 修法**不是**关掉这条检查 —— 它查的是活盘面上逐场的事实,有真价值;
+    也**不是**花钱把缓存焐热。改成:
+      · 缓存**热** ⇒ 照常查(零成本,判别力完整);
+      · 缓存**冷** ⇒ 闸会记下「本来要发的请求」,此时 skip 并**说明本次无判别力**,
+        而不是付钱买一次绿。
+    这和它自己下面那条「盘面为空 ⇒ 明写没有判别力」是同一个态度。
+    ⚠️ 申明 `live_api_football_calls` 是为了**认领**被拦下的调用(否则 teardown 判红),
+    不是为了放行 —— 闸仍然把它们全部拦在进程内,一分钱都不会花。
     """
     r = _client().get(ep)
     assert r.status_code == 200, r.text
+    if len(live_api_football_calls):
+        pytest.skip(
+            f"AF 赛程缓存冷({len(live_api_football_calls)} 次拉取被闸拦下)"
+            f"—— 盘面不完整,本条本次无判别力。⛔ 不为了跑这条而去付费预热。")
     preds = (r.json() or {}).get("predictions") or []
     bad = [(p.get("home_team"), p.get("league")) for p in preds
            if p.get("delta_scope") == "missing"]
