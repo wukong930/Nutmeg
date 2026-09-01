@@ -128,12 +128,29 @@ def test_probe_failure_is_not_silence() -> None:
         "涓流探针没有 try/except → 它一抛异常,整份报告丢失而心跳照常写 = 假绿")
     # ⚠️ 2026-08-08 —— 这条我第一版写成 `"or trickle_alarms" in src`,**是假护栏**:
     #    那个子串在 `if trickle_info or trickle_alarms:`(**打印**条件)里也出现,
-    #    所以把退出码里的那份删掉,断言照样绿(变异 M6 抓到的)。
-    #    改成只看**退出码那一行**。同族:语法代理测语义属性。
-    ret = src[src.index("    return 1 if ("):]
-    ret = ret[:ret.index("else 0") + 6]
-    assert "trickle_alarms" in ret, (
-        f"涓流报警没有同乘非零退出 ⇒ 推送不会触发。退出码那行现在是:{ret!r}")
+    #    所以把退出码里的那份删掉,断言照样绿(变异 M6 抓到的)。同族:语法代理测语义。
+    #
+    # ⚠️ 2026-09-01 第二次改锚:第二版盯的是字面量 `    return 1 if (`,而那一行在
+    #    「探针失明」上线时被换成了共用判据 `_any_alarm(...)` ⇒ `.index()` 直接抛
+    #    ValueError。**性质一点没破,是锚点又过时了** —— 逐字锚在实现细节上,
+    #    换个写法就红,和它自己批评的第一版是同一个病的另一面。
+    #    ⇒ 改成两条都不吃拼法的:① 行为上「只有涓流这一格非空」必须让退出码为 1;
+    #    ② AST 上 main 的 return 确实把 `trickle_alarms` 交给了那个判据。
+    import ast
+
+    from nutmeg.v4.cli import data_freshness as df
+
+    slot = df._ALARM_KIND_LABELS.index("涓流")
+    groups = [[] for _ in df._ALARM_KIND_LABELS]
+    groups[slot] = ["涓流探针炸了"]
+    assert df._any_alarm(*groups) is True, "只有涓流报警时退出码判据没响"
+    assert df._any_alarm(*[[] for _ in df._ALARM_KIND_LABELS]) is False
+
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "main")
+    rets = [n for n in ast.walk(fn) if isinstance(n, ast.Return)
+            and n.value is not None and "trickle_alarms" in ast.dump(n.value)]
+    assert rets, "main 的 return 里根本没有 trickle_alarms ⇒ 涓流报警不同乘非零退出"
 
 
 def test_producer_and_consumer_agree_on_the_fields(tmp_path: Path, monkeypatch) -> None:

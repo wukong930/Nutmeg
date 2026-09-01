@@ -283,7 +283,28 @@ def check_freshness(
     return out
 
 
-def check_api_quota() -> tuple[list[str], list[str]]:
+def _probe_get(url: str, **kw):
+    """配额探针专用 GET:**先直连,失败再走环境代理**。
+
+    🚨 2026-09-01 —— 哨兵报 `ProxyError: 503 Service Unavailable`,而这两个探针
+    **根本不需要代理**:同一台机器上 daemon 一个代理变量都没配,却全天直连
+    Odds API 正常。`httpx` 默认 `trust_env=True` ⇒ 它继承了 cron 环境的
+    `HTTPS_PROXY`,于是代理一抖,哨兵的额度探针就瞎(瞎掉的后果见
+    `probe_ok`:额度闸会静默变成无人监控)。
+
+    ⛔ 不是简单地把代理禁掉:万一哪天网络反过来变成「只有代理能出去」,
+    写死直连就等于把探针永久钉死。⇒ 直连优先、代理兜底,**两条都不通才算失败**。
+    ⚠️ 仍然用模块级 `httpx.get`(不是 `httpx.Client`)—— 现有测试是 monkeypatch
+    `httpx.get` 的,换成 Client 上下文会让那三条测试的接缝当场失效而**不报错**。
+    """
+    import httpx
+    try:
+        return httpx.get(url, trust_env=False, **kw)
+    except Exception:
+        return httpx.get(url, trust_env=True, **kw)
+
+
+def check_api_quota() -> tuple[list[str], list[str], bool | None]:
     """体检 Wave3 (P1#13) — quota-exhaustion alarm. Both feeds have PULL-only
     panels; hitting the cap means the fresher-line overlay/closing anchor
     silently fall back to stale mirrors (EV cards quietly go wrong). Probe the
@@ -303,8 +324,8 @@ def check_api_quota() -> tuple[list[str], list[str]]:
     if af_key:
         try:
             import httpx
-            r = httpx.get("https://v3.football.api-sports.io/status",
-                          headers={"x-apisports-key": af_key}, timeout=6)
+            r = _probe_get("https://v3.football.api-sports.io/status",
+                           headers={"x-apisports-key": af_key}, timeout=6)
             req = ((r.json() or {}).get("response") or {}).get("requests") or {}
             cur, lim = req.get("current"), req.get("limit_day")
             if cur is not None and lim and float(cur) / float(lim) >= 0.9:
@@ -316,15 +337,19 @@ def check_api_quota() -> tuple[list[str], list[str]]:
     if oa_key:
         try:
             import httpx
-            r = httpx.get("https://api.the-odds-api.com/v4/sports/",
-                          params={"apiKey": oa_key}, timeout=6)
+            r = _probe_get("https://api.the-odds-api.com/v4/sports/",
+                           params={"apiKey": oa_key}, timeout=6)
             rem = r.headers.get("x-requests-remaining")
             if rem is not None and float(rem) < 50:
                 alarms.append(
                     f"Odds API 剩余 credit {rem} (<50) — 收盘锚/鲜线将断供")
         except Exception as exc:  # noqa: BLE001
             probe_failures.append(f"Odds API 配额探针失败: {type(exc).__name__}: {exc}")
-    return alarms, probe_failures
+    # `probe_ok` 三态,**None 和 False 必须分开**:
+    #   None  = 压根没探(没配 key:测试/离线)⇒ 谈不上失明,不该报警;
+    #   False = 探了但没探到 ⇒ **额度闸此刻是无人监控的**,而报告长得和健康一样。
+    probe_ok = None if not (af_key or oa_key) else not probe_failures
+    return alarms, probe_failures, probe_ok
 
 
 # 体检 W1 2026-07-15(D1 冻结不报警)— 生产 artifact 曾冻 724 天无人知:哨兵只看
@@ -1014,8 +1039,13 @@ def _user_rows(db_path: str | Path, today: date) -> list[tuple[str, int, str | N
         conn.close()
 
 
-def render(statuses: list[TableStatus], db_path: str | Path, today: date) -> str:
-    lines = [f"# 捕获表新鲜度哨兵 (today={today})", ""]
+def render(statuses: list[TableStatus], db_path: str | Path, today: date,
+           now: datetime | None = None) -> str:
+    # ⚠️ `now` 可选且默认 None ⇒ **render 保持纯函数**(测试比对输出不会因为时钟而漂)。
+    #    只有 main() 会传它 —— 报告落盘时必须能回答「这是哪一轮」:哨兵一天跑 3 轮
+    #    (02:00/13:00/20:00),只写 today 的话,13:01 的推送和 20:03 的报告长得一样。
+    stamp = f" · 运行于 {now:%H:%M:%S}" if now else ""
+    lines = [f"# 捕获表新鲜度哨兵 (today={today}{stamp})", ""]
     bad = [s for s in statuses if s.stale and s.critical]
     warn = [s for s in statuses if s.stale and not s.critical]
     holed = [s for s in statuses if s.gaps]
@@ -1056,11 +1086,106 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date) -> str
 
 #: 非零退出的五个驱动源。顺序 = 报告里的呈现顺序。
 _ALARM_KIND_LABELS = ("捕获表停更", "额度", "模型供应链", "联赛标签", "涓流",
-                       "行量断崖")
+                       "行量断崖", "探针失明")
+
+#: 配额探针连续瞎多久算「失明」(小时)。哨兵一天跑 3 轮 ⇒ 24h 覆盖 3 轮:
+#: 单轮网络抖动**不会**误报(保留 2026-07-15 那条设计:抖动 ≠ 配额红线),
+#: 而真瞎了最多一天就响。⛔ 别把它调到 <8h —— 那等于把抖动重新拉回推送里。
+_PROBE_BLIND_HOURS = 24.0
+
+
+def history_path_for(out: str | Path | None) -> Path | None:
+    """→ 与 `--out` 同目录的逐轮历史 JSONL(没有 --out 就没有历史)。"""
+    return Path(out).with_name("data_freshness_history.jsonl") if out else None
+
+
+def alarm_path_for(out: str | Path | None) -> Path | None:
+    """→ **只在报警那轮写**的报告副本。
+
+    🚨 2026-09-01 owner 实测的洞:推送说「看 `data_freshness_latest.md` 末行」,
+    而那个文件**每一轮都被覆盖**。13:01 报警 → 20:00 那轮全绿 → 20:03 覆盖掉
+    ⇒ owner 去看的时候,答案已经没了(我自己就是这么丢掉那次读数的)。
+    ⇒ 报警轮**另存一份**:它只会被下一次**报警**覆盖,不会被健康轮抹掉。
+    (同 `59df1fd` 那条的下一层:文案指对了地方,但地方到时候已经空了。)
+    """
+    return Path(out).with_name("data_freshness_alarm_latest.md") if out else None
+
+
+def record_run(history: Path | None, *, kinds: list[str],
+               probe_ok: bool | None, now: datetime) -> None:
+    """逐轮追加一行 JSON。失败静默 —— 记账坏了绝不许拖垮哨兵本身。"""
+    if history is None:
+        return
+    try:
+        import json as _json
+        history.parent.mkdir(parents=True, exist_ok=True)
+        with history.open("a", encoding="utf-8") as fh:
+            fh.write(_json.dumps({
+                "ts": now.isoformat(timespec="seconds"),
+                "kinds": kinds,
+                "probe_ok": probe_ok,
+            }, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def check_probe_blindness(history: Path | None, *, probe_ok: bool | None,
+                          now: datetime,
+                          max_hours: float = _PROBE_BLIND_HOURS) -> list[str]:
+    """配额探针**持续**瞎 ⇒ 报警(同乘非零退出)。
+
+    ## 它补的洞
+
+    退出码只看 `quota_alarms`,而探针失败进的是另一个列表(2026-07-15 的设计:
+    瞬时抖动 ≠ 配额红线,不该推送)。代价是:**探针瞎着的这段时间,额度闸
+    处于无人监控状态,而报告和健康轮长得一模一样** —— 2026-09-01 实测:
+    13:00 报了额度,20:00 探针 ProxyError ⇒ `quota_alarms` 空 ⇒ 退出 0,
+    要是额度当时还没恢复,owner 一个字都不会收到。
+
+    ⇒ 保留「单轮不报」,但**连续 >max_hours 没有一次成功读数**就必须响:
+    那已经不是抖动,是「我们不知道额度是多少」这件事本身持续了一天。
+
+    ⚠️ 判据是「**上一次成功**距今多久」而不是「连续失败几轮」——
+    后者会被排程变更悄悄改变含义(见 memory:`StartInterval` 是排程不是速率)。
+    ⛔ 本轮成功 / 没有历史 / 压根没探(probe_ok=None)⇒ 一律不报。
+    """
+    if probe_ok is not False or history is None or not history.exists():
+        return []
+    try:
+        import json as _json
+        last_ok = None
+        for ln in history.read_text(encoding="utf-8").splitlines():
+            try:
+                rec = _json.loads(ln)
+            except Exception:  # noqa: BLE001 — 半行/脏行跳过,别让记账毁了报警
+                continue
+            if rec.get("probe_ok") is True and rec.get("ts"):
+                last_ok = rec["ts"]
+        if last_ok is None:
+            return []          # 从来没成功过 ⇒ 多半是刚装/没配 key,不该吵
+        hours = (now - datetime.fromisoformat(last_ok)).total_seconds() / 3600.0
+        if hours <= max_hours:
+            return []
+        return [f"配额探针已连续失明 {hours:.1f}h(上次成功读数 {last_ok})"
+                f" —— 这段时间**额度闸等于没有**:探到的报警进 quota_alarms,"
+                f"而探不到时它是空的,报告长得和健康一模一样"]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _alarm_kinds(*groups) -> list[str]:
+    """→ 触发了的类别名。⭐ 退出码、类别行、报警存档**共用这一个来源** ——
+    三处各写一遍 `a or b or c…` 迟早会漂(加第 7 类时就差点漏掉存档那处)。"""
+    return [k for k, v in zip(_ALARM_KIND_LABELS, groups, strict=True) if v]
+
+
+def _any_alarm(*groups) -> bool:
+    return bool(_alarm_kinds(*groups))
 
 
 def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
-                     label_alarms, trickle_alarms, cliff_alarms=()) -> str:
+                     label_alarms, trickle_alarms, cliff_alarms=(),
+                     blind_alarms=()) -> str:
     """→ 追加到报告末尾的「报警类别」行(全绿时返回空串)。
 
     ⭐ 2026-08-24 加。起因:桌面推送写死「捕获表停长,**某 cron 可能死了**」,
@@ -1073,10 +1198,8 @@ def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
     plist 的一行 shell 里做命令替换,而 plist 的引号转义本仓已经踩过
     (`&&` 必须写成 `&amp;&amp;`,21/23 个文件曾因此是无效 XML)。
     """
-    kinds = [k for k, v in zip(_ALARM_KIND_LABELS,
-                               (crit_stale, quota_alarms, supply_alarms,
-                                label_alarms, trickle_alarms, cliff_alarms),
-                               strict=True) if v]
+    kinds = _alarm_kinds(crit_stale, quota_alarms, supply_alarms,
+                         label_alarms, trickle_alarms, cliff_alarms, blind_alarms)
     if not kinds:
         return ""
     return ("\n\n报警类别: " + " · ".join(kinds)
@@ -1115,7 +1238,13 @@ def main(argv: list[str] | None = None) -> int:
     # the vote-cron watchdog alarms on ITS absence (P0-2 mutual watching).
     write_heartbeat(db_path)
     crit_stale = [s for s in statuses if s.stale and s.critical]
-    quota_alarms, probe_fails = ([], []) if args.no_quota else check_api_quota()
+    # ⚠️ 本地时区且带偏移:`%H:%M:%S` 给 owner 看的是本地时刻,而 isoformat 落盘后
+    #    `fromisoformat` 拿回来仍是 aware ⇒ 历史里的时间差可以直接减。
+    now = datetime.now().astimezone()
+    history = history_path_for(args.out)
+    quota_alarms, probe_fails, probe_ok = (
+        ([], [], None) if args.no_quota else check_api_quota())
+    blind_alarms = check_probe_blindness(history, probe_ok=probe_ok, now=now)
     # ⚠️ 2026-08-07:这条**必须**兜住异常。心跳在上面第 598 行就写掉了,而心跳的
     # 语义是「哨兵跑过」——  探针在这里抛一个异常,整份报告(采集表新鲜度、配额、
     # 标签)全丢、退出码是个 traceback,而 vote-cron 看门狗看到的是一条**新鲜的
@@ -1178,7 +1307,7 @@ def main(argv: list[str] | None = None) -> int:
         for q in trickle_alarms:
             print(f"TRICKLE-STUCK\t{q}")
     else:
-        report = render(statuses, db_path, today)
+        report = render(statuses, db_path, today, now)
         if supply_info or supply_alarms:
             report += "\n\n  — 模型供应链(体检 W1:哨兵以前只看采集表)—"
             report += "".join(f"\n  · {q}" for q in supply_info)
@@ -1200,18 +1329,34 @@ def main(argv: list[str] | None = None) -> int:
             report += "\n" + "\n".join(f"⚠️ 配额: {q}" for q in quota_alarms)
         if probe_fails:
             report += "\n" + "\n".join(
-                f"⚠️ 探针: {q}(非配额报警;连续出现=探针本身坏了,修它)"
+                f"⚠️ 探针: {q}(单轮抖动**不**推送;连续 >"
+                f"{_PROBE_BLIND_HOURS:.0f}h 读不到会升级成「探针失明」报警)"
                 for q in probe_fails)
+        if blind_alarms:
+            report += "\n" + "\n".join(f"✗ 探针失明: {q}" for q in blind_alarms)
         # ⭐ 2026-08-24 —— 报警类别行。起因:桌面推送写死「捕获表停长,某 cron
         # 可能死了」,而这条非零退出承载**五种**原因(捕获表 / 额度 / 供应链 /
         # 联赛标签 / 涓流)。那次实际是联赛标签,而文案把 owner 指向了 cron ——
         # **信号为真,但它证明的不是文案声称的命题**。
         # 报告里给出类别,推送文案改成类别中立(见 setup_local_pipeline.sh)。
         report += alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
-                                   label_alarms, trickle_alarms, cliff_alarms)
+                                   label_alarms, trickle_alarms, cliff_alarms,
+                                   blind_alarms)
         print(report)
         if args.out:
             Path(args.out).write_text(report + "\n", encoding="utf-8")
+            # 🚨 报警轮**另存一份**:`_latest.md` 每轮都被覆盖,而哨兵一天跑 3 轮
+            #    ⇒ 13:01 推送 → 20:03 健康轮覆盖 ⇒ owner 去看时答案已经没了
+            #    (2026-09-01 实测,我自己也是这么丢掉那次读数的)。
+            #    这份只会被下一次**报警**覆盖。
+            if _any_alarm(crit_stale, quota_alarms, supply_alarms, label_alarms,
+                          trickle_alarms, cliff_alarms, blind_alarms):
+                ap = alarm_path_for(args.out)
+                if ap:
+                    try:
+                        ap.write_text(report + "\n", encoding="utf-8")
+                    except Exception:  # noqa: BLE001 — 存档失败不该改变退出码
+                        pass
 
     # Quota exhaustion rides the SAME non-zero exit as a stale capture table →
     # the daily_settle chain's osascript push fires for it too (P1#13: the
@@ -1223,8 +1368,16 @@ def main(argv: list[str] | None = None) -> int:
     # 「零新增是假信号」两件事,而两者都曾经静默地丢掉几千场数据。
     # 2026-09-01:行量断崖**同乘**这条非零退出 —— 它守的是「还在写但量塌了」,
     # 而那正是 `check_freshness`(问「最后一行多久前」)结构上看不见的一类。
-    return 1 if (crit_stale or quota_alarms or supply_alarms or label_alarms
-                 or trickle_alarms or cliff_alarms) else 0
+    # 2026-09-01:探针失明**同乘**这条非零退出 —— 它守的是「额度闸此刻是无人
+    # 监控的」,而那一段时间里报告和健康轮**长得一模一样**(实测:13:00 报额度、
+    # 20:00 探针 ProxyError ⇒ quota_alarms 空 ⇒ 退出 0)。
+    record_run(history,
+               kinds=_alarm_kinds(crit_stale, quota_alarms, supply_alarms,
+                                  label_alarms, trickle_alarms, cliff_alarms,
+                                  blind_alarms),
+               probe_ok=probe_ok, now=now)
+    return 1 if _any_alarm(crit_stale, quota_alarms, supply_alarms, label_alarms,
+                           trickle_alarms, cliff_alarms, blind_alarms) else 0
 
 
 if __name__ == "__main__":

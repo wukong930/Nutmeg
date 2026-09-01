@@ -180,15 +180,18 @@ class TestQuotaAlarm:
         class R:
             headers = {"x-requests-remaining": "12"}
         monkeypatch.setattr(httpx, "get", lambda *a, **k: R())
-        alarms, probe_fails = df.check_api_quota()
+        alarms, probe_fails, probe_ok = df.check_api_quota()
         assert alarms and "12" in alarms[0]
         assert probe_fails == []
+        assert probe_ok is True, "探到了就该是 True(失明判据靠它)"
 
     def test_no_keys_no_probe(self, monkeypatch):
         from nutmeg.v4.cli import data_freshness as df
         monkeypatch.delenv("NUTMEG_ODDS_API_KEY", raising=False)
         monkeypatch.delenv("NUTMEG_API_FOOTBALL_KEY", raising=False)
-        assert df.check_api_quota() == ([], [])
+        # ⚠️ 2026-09-01 第三个返回值 `probe_ok`:**None 和 False 必须分开** ——
+        #    没配 key 是「压根没探」,不该被算成「探针瞎了」而触发失明报警。
+        assert df.check_api_quota() == ([], [], None)
 
     def test_probe_failure_visible_not_alarm(self, monkeypatch):
         """体检 W1 — 探针失败必须可见(probe_failures),但不冒充配额报警。"""
@@ -201,9 +204,10 @@ class TestQuotaAlarm:
         def boom(*a, **k):
             raise httpx.ConnectError("network down")
         monkeypatch.setattr(httpx, "get", boom)
-        alarms, probe_fails = df.check_api_quota()
+        alarms, probe_fails, probe_ok = df.check_api_quota()
         assert alarms == []
         assert probe_fails and "探针失败" in probe_fails[0]
+        assert probe_ok is False, "探了没探到 ⇒ False(单轮仍不推送,但要能被失明判据数到)"
 
 
 class TestClvTierRegistrySync:
