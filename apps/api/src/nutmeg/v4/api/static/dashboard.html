@@ -2325,12 +2325,14 @@ const I18N = {
     leg_home:         '主胜',
     leg_draw:         '平局',
     leg_away:         '客胜',
-    poly_badge:       'Polymarket 第二意见',
+    bk_badge:         '多书商参照',
+    bk_books:         '家',
+    bk_consensus:     '共识',
+    bk_low:           '最保守',
+    bk_spread:        '离散',
+    bk_disclaimer:    '⚠️ 共识**排除 Pinnacle 自己**,只回答「它是不是在自说自话」。仅供临场参考,不参与判闸/排序/串关 —— 支持它的样本(63 场)全是世界杯且人口偏斜,只证明机制存在。EVₑ=按共识 · EVₗ=按最保守。',
     poly_leg:         '腿',
     poly_sp:          '竞彩 SP',
-    poly_depth:       '盘口深度',
-    poly_age:         '线龄',
-    poly_disclaimer:  '⚠️ 仅供临场参考,不参与判闸/排序/串关。Poly 的 P 在竞彩会下注的人口上并未被证明更准(1X2 t=1.00 · 让球 t=1.77)。',
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
     sw_second:        '次优',
     pb_hcshare:       '让球腿',
@@ -2918,12 +2920,14 @@ const I18N = {
     leg_home:         'Home',
     leg_draw:         'Draw',
     leg_away:         'Away',
-    poly_badge:       'Polymarket 2nd opinion',
+    bk_badge:         'Book consensus',
+    bk_books:         'books',
+    bk_consensus:     'Consensus',
+    bk_low:           'Most conservative',
+    bk_spread:        'Spread',
+    bk_disclaimer:    '⚠️ Consensus EXCLUDES Pinnacle itself — it answers "is Pinnacle talking to itself?". Reference only: never gates, ranks, or enters parlays. EVₑ = at consensus · EVₗ = at the most conservative book.',
     poly_leg:         'Leg',
     poly_sp:          '竞彩 SP',
-    poly_depth:       'Book depth',
-    poly_age:         'age',
-    poly_disclaimer:  '⚠️ Reference only — never gates, ranks, or enters parlays. Poly\'s P is NOT proven sharper on the 竞彩-bettable population (1X2 t=1.00 · handicap t=1.77).',
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
     sw_second:        '2nd',
     pb_hcshare:       'handicap legs',
@@ -6151,7 +6155,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
           ${teamLogo(pr.away_team)}<span>${zhTeam(pr.away_team)}</span>
           <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}</span>
         </div>
-        ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_polyHtml(pr)}
+        ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx)}
         ${/* 2026-08-05 — Pinnacle 原盘 + 大小球,原来只有市场模式卡有。
               ⭐ **不是为了好看**:标准模式的 1X2 走模型 P,但**让球是 Pinnacle
               市场反推的**(routes.py `_model_board_handicap_lines`,从去vig 的
@@ -6418,6 +6422,16 @@ function _jcStaleCaptureHc(pr, hcspClass, lineSelId, idx) {
 
 function _spcalcRecalc(idx) {
   const pr = _SPCALC.preds[idx];
+  // 多书商参照的两列 EV 跟着实时 SP 走(**就地更新**,不重渲 ⇒ <details> 不会被收起)。
+  // ⚠️ 读的是**输入框里的值**,不是 `pr.jc_*`(那是服务端预填,手填后就陈了)。
+  // ⛔ 整段 try 兜住:参照层坏了绝不许拖垮主 EV 计算。
+  try {
+    _bkEvRefresh(idx, pr, ['H', 'D', 'A'].map(function (o) {
+      const el = document.querySelector('.spcalc-sp[data-idx="' + idx + '"][data-outcome="' + o + '"]');
+      const v = el ? parseFloat(el.value) : NaN;
+      return isNaN(v) ? null : v;
+    }));
+  } catch (e) { /* noop */ }
   if (!pr) return;
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   const Mkt = _mktP(pr);   // 纯市场公允 P(服务端 WPO);null = 该场没有 Pinnacle 线
@@ -6888,54 +6902,91 @@ function _openManualReverse() {
 // 埃尔夫斯堡案:让胜峰值价 1.97 定格,实价已砍到 1.79,面板 −1.3% vs 真 −9~−10%;
 // 库奥皮奥案:客胜绿灯只存在于 20:39 后的价上,旧价把它藏掉。
 // amber 条件 = 价龄 >60min 且距开球 <3h(竞彩临停售调价最凶的窗口)→ 提示点 🎯。
-function _hasPoly(pr) {
-  return !!(pr && pr.poly_home != null && pr.poly_draw != null && pr.poly_away != null);
+function _hasBk(pr) {
+  return !!(pr && Array.isArray(pr.bk_consensus) && pr.bk_consensus.length === 3);
 }
-//: Polymarket 第二意见 —— **按需展开**,没数据的卡片完全不变样。
+//: 多书商共识 + 离散度 —— **按需展开**,没数据的卡片完全不变样。
 //
-// 🚨 它**不是更准的 P**。已测两次,都在**竞彩会下注的人口**上测不出:
-//    1X2 Δlog-loss t=1.00(N=71)· 让球 t=1.77(N=113)。全样本上 Poly 确实更准
-//    (t=2.56),但准在**竞彩买不到的那半边**;判定那个量级还要 ~7 个月。
-// ⛔ 绝不进 `_boardLegs` 的 evLo / argmax / 串关构造器 —— 同「never auto-pick the
-//    rosier one」那条既有纪律(真 EV 板用 Pinnacle、甜区榜用模型 P,刻意不混)。
+// 回答 owner 的原始问题:竞彩**封盘后**价格冻住而外盘还在动,按封盘价算的 EV
+// 还站得住吗?实测封盘后主胜隐含概率漂移 **|漂移|>2pp 占 29%、>5pp 占 5%**
+// (区间 [−12.4,+9.7]pp)—— 量级远大于所有 δ 校正。
+// 生产 EV 用的已经是**实时** Pinnacle(漂移本身吃进去了);**本层补的是另一半**:
+// 那次漂移是真信息,还是 Pinnacle 一家的抖动?
 //
-// ⚠️ 实测今天 16 张可投注卡里只有 3 张有数据(~19%)——**这是正常形态**:
-//    Polymarket 重仓 MLS/欧协/北欧/女足,竞彩重仓欧洲五大+亚洲,交集本来就小。
-//    ⛔ 没数据时什么都不渲染,别显示「无数据」占位(会让 80% 的卡片多一块噪音)。
-function _polyHtml(pr) {
-  if (!_hasPoly(pr)) return '';
-  const P = [pr.poly_home, pr.poly_draw, pr.poly_away];
+// ⭐ 单锚会夸大:法乙那场 Pinnacle 是 13 家里最看好客胜的 ⇒ 单锚 EV **+16.7%**
+//    vs 13 家中位 **+8.8%** vs 最保守 **−0.6%**(近一倍)。
+// 🚨 ⛔ 绝不进 `_boardLegs` 的 evLo / argmax / 串关构造器:支持它的 63 场样本
+//    **全是世界杯 + 全是缓存未过期的**,人口偏斜 ⇒ 只证明机制存在,不是影响多大。
+//    改闸须走预注册(同 δ / CLV 的规格)。
+// ⚠️ 共识**刻意排除 Pinnacle 自己**;`bk_n` 必须一起显示 —— 2 家的共识不是共识。
+function _bkHtml(pr, idx) {
+  if (!_hasBk(pr)) return '';
   const SP = [pr.jc_home, pr.jc_draw, pr.jc_away];
   const L = [t('leg_home'), t('leg_draw'), t('leg_away')];
-  // ⚠️ 线龄是 Poly 自己的抓取时刻(recorded_at),**不是** `freshness_hours`
-  //    —— 那一列是 **Pinnacle** 的线龄(实测同批行上 78h vs 575h,两个不同的量)。
-  const age = pr.poly_fresh_h == null ? ''
-    : (pr.poly_fresh_h < 1 ? Math.round(pr.poly_fresh_h * 60) + 'm' : pr.poly_fresh_h.toFixed(1) + 'h');
-  const stale = pr.poly_fresh_h != null && pr.poly_fresh_h > 12;
-  const thin = pr.poly_depth_usd != null && pr.poly_depth_usd < 500;
-  const rows = P.map(function (p, i) {
-    const sp = SP[i];
-    const ev = (sp && sp > 1) ? (p * sp - 1) : null;
-    const col = ev == null ? '' : (ev >= 0.05 ? '#059669' : (ev >= 0 ? '#64748b' : '#dc2626'));
-    const evTxt = ev == null ? '<span class="text-muted">--</span>'
-      : '<span style="color:' + col + '">' + (ev * 100).toFixed(1) + '%</span>';
+  const maxSp = Math.max.apply(null, pr.bk_spread || [0]);
+  const hot = maxSp >= 6, warm = maxSp >= 3;
+  const age = pr.bk_captured_at ? _bkAge(pr.bk_captured_at) : '';
+  const rows = [0, 1, 2].map(function (i) {
+    const sp = SP[i], c = pr.bk_consensus[i], lo = pr.bk_low[i], d = pr.bk_spread[i];
+    const ev = function (P) {
+      return (sp && sp > 1) ? '<span style="color:' +
+        (P * sp - 1 >= 0.05 ? '#059669' : (P * sp - 1 >= 0 ? '#64748b' : '#dc2626')) +
+        '">' + ((P * sp - 1) * 100).toFixed(1) + '%</span>' : '<span class="text-muted">--</span>';
+    };
+    const dCol = d >= 6 ? '#dc2626' : (d >= 3 ? '#d97706' : '#64748b');
     return '<tr><td class="pr-3">' + L[i] + '</td>'
-      + '<td class="pr-3 text-right">' + (p * 100).toFixed(1) + '%</td>'
       + '<td class="pr-3 text-right text-muted">' + (sp ? Number(sp).toFixed(2) : '--') + '</td>'
-      + '<td class="text-right">' + evTxt + '</td></tr>';
+      + '<td class="pr-3 text-right">' + (c * 100).toFixed(1) + '%</td>'
+      + '<td class="pr-3 text-right text-muted">' + (lo * 100).toFixed(1) + '%</td>'
+      + '<td class="pr-3 text-right" style="color:' + dCol + '">' + d.toFixed(1) + 'pp</td>'
+      // ⚠️ 带 id:手填竞彩 SP 后由 `_bkEvRefresh(idx, pr)` **就地更新这两格**。
+      // ⛔ 不重渲整块 —— 那会把 <details> 收起来(用户刚展开又关掉 = 真倒退)。
+      + '<td class="pr-3 text-right" id="bk-ev-' + idx + '-' + i + '-c">' + ev(c) + '</td>'
+      + '<td class="text-right" id="bk-ev-' + idx + '-' + i + '-l">' + ev(lo) + '</td></tr>';
   }).join('');
-  return '<details class="mt-1 text-xs"><summary style="cursor:pointer;color:#7c3aed">'
-    + IC('board') + ' ' + t('poly_badge') + (age ? ' \u00b7 ' + age : '') + (stale ? ' \u26a0\ufe0f' : '')
-    + '</summary><div class="mt-1 pl-2" style="border-left:2px solid #ede9fe">'
+  return '<details class="mt-1 text-xs"><summary style="cursor:pointer;color:#0f766e">'
+    + IC('board') + ' ' + t('bk_badge') + ' \u00b7 ' + pr.bk_n + ' ' + t('bk_books')
+    + (warm ? ' \u00b7 ' + t('bk_spread') + ' ' + maxSp.toFixed(1) + 'pp' + (hot ? ' \u26a0\ufe0f' : '') : '')
+    + (age ? ' \u00b7 ' + age : '')
+    + '</summary><div class="mt-1 pl-2" style="border-left:2px solid #ccfbf1">'
     + '<table class="text-xs"><thead><tr class="text-muted">'
     + '<th class="pr-3 text-left">' + t('poly_leg') + '</th>'
-    + '<th class="pr-3 text-right">Poly P</th>'
     + '<th class="pr-3 text-right">' + t('poly_sp') + '</th>'
-    + '<th class="text-right">EV</th></tr></thead><tbody>' + rows + '</tbody></table>'
-    + '<div class="text-muted mt-1">' + t('poly_depth') + ' $'
-    + Number(pr.poly_depth_usd || 0).toLocaleString() + (thin ? ' \u26a0\ufe0f' : '')
-    + (age ? ' \u00b7 ' + t('poly_age') + ' ' + age : '') + '</div>'
-    + '<div class="mt-1" style="color:#b45309">' + t('poly_disclaimer') + '</div></div></details>';
+    + '<th class="pr-3 text-right">' + t('bk_consensus') + '</th>'
+    + '<th class="pr-3 text-right">' + t('bk_low') + '</th>'
+    + '<th class="pr-3 text-right">' + t('bk_spread') + '</th>'
+    + '<th class="pr-3 text-right">EV\u2091</th>'
+    + '<th class="text-right">EV\u2097</th></tr></thead><tbody>' + rows + '</tbody></table>'
+    + '<div class="mt-1" style="color:#b45309">' + t('bk_disclaimer') + '</div></div></details>';
+}
+//: 手填竞彩 SP 之后,就地刷新多书商面板的两列 EV。
+//
+// 🚨 2026-09-01 修的一个真 bug:`_bkHtml` 是**卡片渲染时烘进 HTML** 的,而
+// `_spcalcRecalc` 只改 `#spcalc-ev-*` 那几个 span ⇒ 手填 SP 后**真 EV 更新了、
+// 参照面板还停在服务端预填时的旧值**。两个数并排显示而其中一个是陈的,
+// 比不显示更坏(它看起来像是「共识不同意」,其实只是没跟上)。
+// ⚠️ 刷新盘口那条路没事(`loadSpCalc` 整卡重渲),**只有手填这条有**。
+function _bkEvRefresh(idx, pr, spOverride) {
+  if (!_hasBk(pr)) return;
+  const SP = spOverride || [pr.jc_home, pr.jc_draw, pr.jc_away];
+  for (let i = 0; i < 3; i++) {
+    const sp = SP[i];
+    [['c', pr.bk_consensus[i]], ['l', pr.bk_low[i]]].forEach(function (pair) {
+      const el = document.getElementById('bk-ev-' + idx + '-' + i + '-' + pair[0]);
+      if (!el) return;
+      if (!sp || sp <= 1) { el.innerHTML = '<span class="text-muted">--</span>'; return; }
+      const e = pair[1] * sp - 1;
+      el.innerHTML = '<span style="color:' +
+        (e >= 0.05 ? '#059669' : (e >= 0 ? '#64748b' : '#dc2626')) +
+        '">' + (e * 100).toFixed(1) + '%</span>';
+    });
+  }
+}
+function _bkAge(iso) {
+  const ts = Date.parse(iso);
+  if (isNaN(ts)) return '';
+  const m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  return m < 60 ? m + 'm' : (m / 60).toFixed(1) + 'h';
 }
 function _jcFreshnessHtml(pr) {
   // ⚠️ 2026-08-21:原来这里是 `!_isJcBettable(pr)` ⇒ 卡片一进 T−5 就把**唯一的
@@ -7213,7 +7264,7 @@ function _cupCardHtml(pr, idx) {
           <span class="badge-gold text-xs whitespace-nowrap">${t('cupmkt_badge')}</span>
         </span>
       </div>
-      ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_polyHtml(pr)}
+      ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx)}
       ${_pinRawHtml(pr)}
       ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _foldAttrs('mb', _fk))}${manual}
     </div>`;
@@ -7221,6 +7272,16 @@ function _cupCardHtml(pr, idx) {
 
 function _cupRecalc(idx) {
   const pr = _CUPMKT.preds[idx];
+  // 多书商参照的两列 EV 跟着实时 SP 走(**就地更新**,不重渲 ⇒ <details> 不会被收起)。
+  // ⚠️ 读的是**输入框里的值**,不是 `pr.jc_*`(那是服务端预填,手填后就陈了)。
+  // ⛔ 整段 try 兜住:参照层坏了绝不许拖垮主 EV 计算。
+  try {
+    _bkEvRefresh(idx, pr, ['H', 'D', 'A'].map(function (o) {
+      const el = document.querySelector('.cupsp[data-idx="' + idx + '"][data-outcome="' + o + '"]');
+      const v = el ? parseFloat(el.value) : NaN;
+      return isNaN(v) ? null : v;
+    }));
+  } catch (e) { /* noop */ }
   if (!pr) return;
   const P = { H: pr.p_home_1x2, D: pr.p_draw_1x2, A: pr.p_away_1x2 };
   ['H', 'D', 'A'].forEach(o => {

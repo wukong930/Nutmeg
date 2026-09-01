@@ -125,6 +125,7 @@ def capture_closing_pinnacle(
     ``now``; a match with no parseable kickoff is skipped too (can't prove it's
     pre-match). The last snapshot taken before kickoff remains the true close."""
     from nutmeg.v4.data.sources import odds_api
+    from nutmeg.v4.observation.book_snapshots import record_book_snapshot
     from nutmeg.v4.observation.odds_snapshots import record_row_snapshot
 
     now = now or datetime.now(UTC)
@@ -138,6 +139,30 @@ def capture_closing_pinnacle(
                         exc_info=True)
             out[sk] = 0
             continue
+        # 多书商快照(2026-09-01)—— **零额外调用**:`fetch_current_odds` 是 TTL 缓存的,
+        # 上面这次 `fetch_pinnacle_lookup` 刚取过同一批事件,这里只是把**本来丢掉的
+        # 那 15–22 家**读出来存下。用途=给单锚做离散度参照(见 `book_snapshots` 模块头)。
+        # ⛔ 整段 fail-soft 且**独立于主流程**:它坏了绝不影响 Pinnacle 收盘线的采集
+        #    —— 那是 CLV 地基,不能被一个「参照层」拖累。
+        try:
+            _books = odds_api.fetch_book_lookup(sport_key, refresh=False)
+            _n = 0
+            for _e in (odds_api.fetch_current_odds(
+                    sport_key, regions="eu", markets="h2h,totals", refresh=False) or []):
+                _k = (odds_api._norm_team(_e.get("home_team") or ""),
+                      odds_api._norm_team(_e.get("away_team") or ""),
+                      str(_e.get("commence_time") or "")[:10])
+                _bk = _books.get(_k)
+                if not _bk:
+                    continue
+                _n += int(record_book_snapshot(
+                    db_path, match_date=_k[2],
+                    home_team=_e.get("home_team") or "",
+                    away_team=_e.get("away_team") or "", books=_bk))
+            if _n:
+                log.info("book-snapshots: %s 写入 %d 条(多书商离散度参照)", sk, _n)
+        except Exception:  # noqa: BLE001
+            log.warning("book-snapshots 采集失败(%s)—— 不影响收盘线", sk, exc_info=True)
         written = 0
         skipped_live = 0
         for key, e in (lookup or {}).items():

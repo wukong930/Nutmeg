@@ -226,23 +226,26 @@ class SinglePrediction(BaseModel):
     # 可以给胜平负开单关而让球不开,所以两个玩法各一列,别合并。
     # 实测只有 17% 场次可单关且高度集中(韩职 29%/瑞超 21%/挪超 13%,
     # 欧罗巴·芬超·欧冠·巴甲·美职 0/59)。None=未知 → 前端不渲染徽章,不猜。
-    # ── Polymarket 1X2 参考(2026-09-01)—— ⛔ **只显示,不判闸** ────────────
-    #: Poly 三条腿 mid **归一后**的概率。为什么用 mid 不用 ask:ask 是「在 Poly 上
-    #: 买要付多少」,而这里是拿 Poly 当**概率源**给竞彩定价,该用它的公允估计。
-    #: 实测 Σmid 中位 **1.0000**、97% 落在 [0.98,1.02](Σask 中位 1.0200=2% 抽水)
-    #: ⇒ 归一近乎 no-op,但能挡住 [0.790, 1.825] 那些离群;Σ 出 [0.95,1.05] 一律不给。
+    # ── 多书商离散度参照(2026-09-01)—— ⛔ **只显示,不判闸** ────────────────
+    #: 回答的问题是 owner 提的那个:竞彩**封盘后**价格冻住而外盘还在动,
+    #: 按封盘价算的 EV 还站不站得住?实测封盘后主胜隐含概率漂移
+    #: **|漂移|>2pp 占 29%、>5pp 占 5%,区间 [−12.4,+9.7]pp** —— 量级远大于所有 δ 校正。
     #:
-    #: 🚨 **绝不进 `_boardLegs` 的 evLo、argmax、串关构造器。** 已测:Poly 的 P 在
-    #: **竞彩会下注的人口**上打不过我们(1X2 t=1.00 / 让球 t=1.77,两次都测不出),
-    #: 要判定那个量级还需 ~7 个月。⇒ 它是**第二意见**,不是更好的 P。
-    #: 见 memory `polymarket-ev-research-board` + `docs/polymarket_handicap_prereg_v1.0`。
-    poly_home: float | None = None
-    poly_draw: float | None = None
-    poly_away: float | None = None
-    #: 盘口深度(USD)与**线龄**。⚠️ 必须一起显示:实测 freshness 中位 7h 但
-    #: 90 分位 78h、**最大 1007h(42 天)** —— 不标出来会被当成实时价读。
-    poly_depth_usd: float | None = None
-    poly_fresh_h: float | None = None
+    #: ⭐ 单锚(只看 Pinnacle)会**夸大**:法乙那场它是 13 家里最看好客胜的 ⇒
+    #: 单锚 EV **+16.7%** vs 13 家中位 **+8.8%** vs 最保守 **−0.6%**(近一倍)。
+    #: 63 场重叠上「Pinnacle 过 +5% 闸而共识不过」的腿有 5 条。
+    #: ⛔ 但那 63 场人口偏斜(全世界杯 + 全缓存未过期)⇒ 只证明**机制存在**,
+    #: **不是**影响多大的估计 ⇒ 绝不进 `_boardLegs` 的 evLo / argmax / 串关。
+    #:
+    #: ⚠️ **共识刻意排除 Pinnacle 自己** —— 含它的中位会被它拖着走,答不了
+    #: 「Pinnacle 是不是在自说自话」这个问题。
+    #: ⚠️ `bk_n` **必须和数值一起显示**:2 家的「共识」不是共识。
+    #: 三元组顺序 = (主胜, 平局, 客胜),与 `jc_home/draw/away` 对齐。
+    bk_consensus: list[float] | None = None   # 非-Pinnacle 书商去vig 后的**中位**
+    bk_low: list[float] | None = None         # 最保守(最小)的那一家
+    bk_spread: list[float] | None = None      # 离散度(max−min,**百分点**)
+    bk_n: int | None = None                   # 家数(含 Pinnacle)
+    bk_captured_at: str | None = None         # 这批报价抓于何时
     jc_single_available: int | None = None
     jc_hc_single_available: int | None = None
     # V14 — when API-Football last refreshed this Pinnacle snapshot (ISO). The
@@ -339,23 +342,26 @@ class PendingFixture(BaseModel):
     #: ⇒ 即便手填出 +EV **也只能进串关,买不了单关**。
     jc_single_available: int | None = None
     jc_hc_single_available: int | None = None
-    # ── Polymarket 1X2 参考(2026-09-01)—— ⛔ **只显示,不判闸** ────────────
-    #: Poly 三条腿 mid **归一后**的概率。为什么用 mid 不用 ask:ask 是「在 Poly 上
-    #: 买要付多少」,而这里是拿 Poly 当**概率源**给竞彩定价,该用它的公允估计。
-    #: 实测 Σmid 中位 **1.0000**、97% 落在 [0.98,1.02](Σask 中位 1.0200=2% 抽水)
-    #: ⇒ 归一近乎 no-op,但能挡住 [0.790, 1.825] 那些离群;Σ 出 [0.95,1.05] 一律不给。
+    # ── 多书商离散度参照(2026-09-01)—— ⛔ **只显示,不判闸** ────────────────
+    #: 回答的问题是 owner 提的那个:竞彩**封盘后**价格冻住而外盘还在动,
+    #: 按封盘价算的 EV 还站不站得住?实测封盘后主胜隐含概率漂移
+    #: **|漂移|>2pp 占 29%、>5pp 占 5%,区间 [−12.4,+9.7]pp** —— 量级远大于所有 δ 校正。
     #:
-    #: 🚨 **绝不进 `_boardLegs` 的 evLo、argmax、串关构造器。** 已测:Poly 的 P 在
-    #: **竞彩会下注的人口**上打不过我们(1X2 t=1.00 / 让球 t=1.77,两次都测不出),
-    #: 要判定那个量级还需 ~7 个月。⇒ 它是**第二意见**,不是更好的 P。
-    #: 见 memory `polymarket-ev-research-board` + `docs/polymarket_handicap_prereg_v1.0`。
-    poly_home: float | None = None
-    poly_draw: float | None = None
-    poly_away: float | None = None
-    #: 盘口深度(USD)与**线龄**。⚠️ 必须一起显示:实测 freshness 中位 7h 但
-    #: 90 分位 78h、**最大 1007h(42 天)** —— 不标出来会被当成实时价读。
-    poly_depth_usd: float | None = None
-    poly_fresh_h: float | None = None
+    #: ⭐ 单锚(只看 Pinnacle)会**夸大**:法乙那场它是 13 家里最看好客胜的 ⇒
+    #: 单锚 EV **+16.7%** vs 13 家中位 **+8.8%** vs 最保守 **−0.6%**(近一倍)。
+    #: 63 场重叠上「Pinnacle 过 +5% 闸而共识不过」的腿有 5 条。
+    #: ⛔ 但那 63 场人口偏斜(全世界杯 + 全缓存未过期)⇒ 只证明**机制存在**,
+    #: **不是**影响多大的估计 ⇒ 绝不进 `_boardLegs` 的 evLo / argmax / 串关。
+    #:
+    #: ⚠️ **共识刻意排除 Pinnacle 自己** —— 含它的中位会被它拖着走,答不了
+    #: 「Pinnacle 是不是在自说自话」这个问题。
+    #: ⚠️ `bk_n` **必须和数值一起显示**:2 家的「共识」不是共识。
+    #: 三元组顺序 = (主胜, 平局, 客胜),与 `jc_home/draw/away` 对齐。
+    bk_consensus: list[float] | None = None   # 非-Pinnacle 书商去vig 后的**中位**
+    bk_low: list[float] | None = None         # 最保守(最小)的那一家
+    bk_spread: list[float] | None = None      # 离散度(max−min,**百分点**)
+    bk_n: int | None = None                   # 家数(含 Pinnacle)
+    bk_captured_at: str | None = None         # 这批报价抓于何时
 
 
 class SpCalcResponse(BaseModel):

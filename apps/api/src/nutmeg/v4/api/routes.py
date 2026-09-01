@@ -382,103 +382,91 @@ def _should_record_session(req_record_flag: bool) -> Optional[str]:
 
 
 
-#: Poly 三条 mid 之和的可接受带。实测 Σmid **中位 1.0000、97% 落在 [0.98,1.02]**
-#: (Σask 中位 1.0200 = Poly 自己的 2% 抽水,⛔ 别拿 ask 当概率),
-#: 但尾部有 [0.790, 1.825] 这类离群 —— 归一它们只会造出一个像模像样的假概率。
-_POLY_BOOKSUM_LO, _POLY_BOOKSUM_HI = 0.95, 1.05
+#: 共识至少要几家才给 —— 少于它,「中位」只是噪声。
+#: ⚠️ 阈值不是拍的:实测每场家数 3–25、均 18;3 家以下的场次共识和单锚没区别。
+_BK_MIN_BOOKS = 5
 
 
-def _attach_polymarket_1x2(preds: list) -> None:
-    """给卡片挂 Polymarket 的 1X2 概率(**只显示,⛔ 不判闸**)。
+def _attach_book_consensus(preds: list) -> None:
+    """给卡片挂**多书商共识 + 离散度**(⛔ 只显示,不判闸)。
 
-    ## 它是什么、不是什么
+    ## 它回答什么
 
-    `poly_*` = Poly 三条腿 `poly_mid` **归一后**的概率。用 mid 不用 ask:ask 是
-    「在 Poly 上买要付多少」,而这里是拿 Poly 当**概率源**给竞彩定价,该用公允估计。
+    owner 的问题:竞彩**封盘后**价格冻住而外盘还在动 —— 按封盘价算的 EV 还站得住吗?
+    实测封盘后主胜隐含概率漂移 **|漂移|>2pp 占 29%、>5pp 占 5%**,区间 [−12.4,+9.7]pp,
+    量级远大于所有 δ 校正。而生产 EV 用的是**实时** Pinnacle(已核:盘面 psc 与
+    `jingcai_sp` 封盘时的 psc 8 场里 3 场不同)⇒ 漂移本身已被吃进去了。
+    **本层补的是另一半:那次漂移是真信息,还是 Pinnacle 一家的抖动?**
 
-    🚨 **它不是更准的 P。** 已测两次,都在**竞彩会下注的人口**上测不出:
-    1X2 Δlog-loss t=**1.00**(N=71)、让球 t=**1.77**(N=113)——
-    全样本上 Poly 确实更准(t=2.56),但准在**竞彩买不到的那半边**。
-    要判定那个量级还需 ~7 个月。
-    ⇒ 它是**第二意见**,⛔ 绝不进 `_boardLegs` 的 evLo / argmax / 串关构造器。
-    见 memory `polymarket-ev-research-board` + `docs/polymarket_handicap_prereg_v1.0`。
+    ⭐ 已测:单锚会夸大 —— 法乙那场 Pinnacle 是 13 家里最看好客胜的,
+    单锚 EV **+16.7%** vs 13 家中位 **+8.8%** vs 最保守 **−0.6%**(近一倍)。
 
-    ## 两道闸
+    ## 三条纪律
 
-    · Σmid ∉ [0.95, 1.05] ⇒ **整场不给**(与其归一一个坏三元组,不如什么都不显示)。
-    · 三条腿不齐 ⇒ 不给。
+    · **共识排除 Pinnacle 自己** —— 含它的中位会被它拖着走,答不了「它是不是在
+      自说自话」;
+    · `bk_n` **必须一起显示** —— 2 家的共识不是共识,所以 `<_BK_MIN_BOOKS` 直接不给;
+    · ⛔ **绝不进 `_boardLegs` 的 evLo / argmax / 串关**:支持它的 63 场样本
+      **全是世界杯 + 全是缓存未过期的**,人口偏斜,只证明机制存在。改闸须预注册。
 
-    ## ⚠️ 线龄用 `recorded_at`,**不是** `freshness_hours`
-
-    `polymarket_gaps.freshness_hours` 是 **Pinnacle** 的线龄(源码里
-    `_age_hours(odds_update, now)`,`reasons` 写作 `stale_pinnacle`)——
-    我差点把它当成「Poly 线龄」印在卡片上。同一批行上两个数完全不同
-    (2026-09-01 实测:Pinnacle 中位 78h vs Poly 自己 575h)。
-    ⇒ 「逐字为真但证明的是另一个命题」,见 memory `first-match-is-not-the-population`。
-
-    ⛔ 连接键走 `(match_date, home, away)` 归一后的名字 —— **不许用 fixture_id**
+    ⛔ 连接键走归一后的 `(match_date, home, away)`,**不用 fixture_id**
     (`jingcai_sp.fixture_id` 恒 NULL,守卫 `admin._JOIN_KEY_COLUMNS` 已上线)。
-    Best-effort:任何失败都静默跳过,绝不让一张卡渲染失败。
+    Best-effort:任何失败静默跳过,绝不让一张卡渲染失败。
     """
     db = _observation_db_path()
     if not db or not preds:
         return
     try:
+        import json as _json
         import sqlite3 as _sq
-        from datetime import UTC, datetime
+        import statistics as _st
 
         from nutmeg.v4.data.sources.odds_api import _norm_team
         conn = _sq.connect(f"file:{db}?mode=ro", uri=True)
     except Exception:  # noqa: BLE001
         return
-    now = datetime.now(UTC)
-    book: dict[tuple, dict] = {}
+    latest: dict[tuple, tuple] = {}
     try:
-        rows = conn.execute(
-            "SELECT match_date, home_team, away_team, outcome_spec, poly_mid, "
-            "depth_usd, recorded_at FROM polymarket_gaps "
-            "WHERE outcome_spec IN ('HOME_WIN','DRAW','AWAY_WIN') "
-            "AND settled_at IS NULL AND poly_mid IS NOT NULL").fetchall()
+        for md, h, a, books, n, cap in conn.execute(
+                "SELECT match_date, home_team, away_team, books, n_books, captured_at "
+                "FROM book_snapshots ORDER BY captured_at"):
+            latest[(md, _norm_team(h or ""), _norm_team(a or ""))] = (books, n, cap)
     except Exception:  # noqa: BLE001
-        return
+        return          # 表还不存在(新库)⇒ 静默跳过
     finally:
         conn.close()
-    for md, h, a, spec, mid, depth, rec in rows:
-        key = (md, _norm_team(h or ""), _norm_team(a or ""))
-        cur = book.setdefault(key, {})
-        prev = cur.get(spec)
-        # 同一 (场, 腿) 取**最新**一条(cron 每轮 upsert 一行)
-        if prev is None or str(rec or "") > str(prev[2] or ""):
-            cur[spec] = (float(mid), depth, rec)
     _failed = 0
     for pr in preds:
         try:
             d = pr.date.isoformat() if hasattr(pr.date, "isoformat") else str(pr.date)
-            v = book.get((d, _norm_team(pr.home_team), _norm_team(pr.away_team)))
-            if not v or len(v) != 3:
+            row = latest.get((d, _norm_team(pr.home_team), _norm_team(pr.away_team)))
+            if not row:
                 continue
-            tot = sum(v[k][0] for k in ("HOME_WIN", "DRAW", "AWAY_WIN"))
-            if not (_POLY_BOOKSUM_LO <= tot <= _POLY_BOOKSUM_HI):
-                continue          # 坏三元组:不显示胜过显示一个假概率
-            pr.poly_home = v["HOME_WIN"][0] / tot
-            pr.poly_draw = v["DRAW"][0] / tot
-            pr.poly_away = v["AWAY_WIN"][0] / tot
-            depths = [x[1] for x in v.values() if x[1] is not None]
-            pr.poly_depth_usd = min(depths) if depths else None   # 最薄的那条腿
-            ages = []
-            for x in v.values():
+            raw = _json.loads(row[0])
+            # 每家先各自去vig(比例归一)—— 书商抽水各不相同,不归一没法比
+            devigged = {}
+            for k, o in raw.items():
                 try:
-                    t = datetime.fromisoformat(str(x[2]).replace("Z", "+00:00"))
-                    ages.append((now - t).total_seconds() / 3600.0)
-                except (TypeError, ValueError):
-                    pass
-            pr.poly_fresh_h = max(ages) if ages else None         # 最旧的那条腿(保守)
+                    inv = [1.0 / float(x) for x in o]
+                except (TypeError, ValueError, ZeroDivisionError):
+                    continue
+                tot = sum(inv)
+                if tot > 0:
+                    devigged[k] = [x / tot for x in inv]
+            others = [v for k, v in devigged.items() if k != "pinnacle"]
+            if len(devigged) < _BK_MIN_BOOKS or len(others) < 2:
+                continue
+            pr.bk_consensus = [_st.median([v[i] for v in others]) for i in range(3)]
+            pr.bk_low = [min(v[i] for v in others) for i in range(3)]
+            pr.bk_spread = [(max(v[i] for v in others) - min(v[i] for v in others)) * 100.0
+                            for i in range(3)]
+            pr.bk_n = int(row[1])
+            pr.bk_captured_at = row[2]
         except Exception:  # noqa: BLE001
             _failed += 1
     if _failed:
-        log.warning("_attach_polymarket_1x2: %d/%d 场写回失败(多半是消费方 schema "
-                    "少声明了 poly_* 字段)", _failed, len(preds))
-
+        log.warning("_attach_book_consensus: %d/%d 场写回失败(多半是消费方 schema "
+                    "少声明了 bk_* 字段)", _failed, len(preds))
 
 def _attach_jingcai_sp(preds: list) -> None:
     """Pre-fill each prediction's 竞彩 SP (1X2 + 让球) from jingcai_sp so the 市场模式
@@ -725,7 +713,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v161-fe-poly-second-opinion"
+_FE_VERSION = "nutmeg-v162-fe-book-consensus"
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -2374,7 +2362,7 @@ def predictions_sp_calc(
                 kickoff_utc=(r.get("kickoff_utc") or None),
             ))
     _attach_jingcai_sp(all_preds)
-    _attach_polymarket_1x2(all_preds)
+    _attach_book_consensus(all_preds)
     return SpCalcResponse(
         generated_at_utc=_dt.datetime.now(_dt.UTC).isoformat(),
         date_start=today.isoformat(),
@@ -2880,7 +2868,7 @@ def predictions_cup_market(
                     kickoff_utc=(r.get("kickoff_utc") or None),
                 ))
     _attach_jingcai_sp(preds)
-    _attach_polymarket_1x2(preds)
+    _attach_book_consensus(preds)
     # ⭐ 2026-08-08 —— 待开盘行也挂竞彩 SP,并把「竞彩已经在卖」这件事标出来。
     #
     # 为什么以前不挂:待开盘 = 「等 Pinnacle 开盘」,而开盘后它自然会变成 pred
@@ -2894,7 +2882,7 @@ def predictions_cup_market(
     # ⚠️ 也**不是**「待开盘里所有场次」:面板待开盘的 10 场日乙来自 AF **赛程**,
     #    竞彩只卖其中 2 场 —— 给 10 场都开手填入口 = 8 张永远算不出 EV 的空卡。
     _attach_jingcai_sp(pending)
-    _attach_polymarket_1x2(pending)
+    _attach_book_consensus(pending)
     for pf in pending:
         # 与前端 `_isJcBettable` 同口径:胜平负三条齐 **或** 让球三条齐。
         # 单独抽出来是为了两边只有一份定义(前端那份是显示层,这份是数据层)。

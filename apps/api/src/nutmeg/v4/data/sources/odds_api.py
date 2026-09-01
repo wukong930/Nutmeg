@@ -585,6 +585,70 @@ def _extract_totals(bookmaker: dict[str, Any]) -> tuple[float, float, float] | N
     return best
 
 
+
+def fetch_book_lookup(
+    sport_key: str,
+    *,
+    regions: str = "eu",
+    refresh: bool = False,
+    ttl_seconds: float | None = None,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+) -> dict[tuple[str, str, str], dict[str, tuple[float, float, float]]]:
+    """**全部**书商的 1X2,键同 `fetch_pinnacle_lookup`:``(norm_home, norm_away, date)``
+    → ``{bookmaker_key: (home, draw, away)}``(含 vig 的十进制赔率)。
+
+    ## 为什么要它
+
+    我们**每场已经收到 15–22 家**的报价(2026-09-01 实测:113 场里每场 4–24 家,
+    中位 ~18),但 `fetch_pinnacle_lookup` 只留 Pinnacle 一家,其余随 TTL 缓存过期
+    **一起丢掉**。⇒ 实测竞彩在售 693 场里,`odds_api` 来源的 351 场**只有 1%**
+    还能找回多书商数据 —— 不是覆盖不够,是**没存**。
+
+    用途是给单锚做**离散度**参照,已测两条:
+      · 单锚会夸大:法乙那场 Pinnacle 是 13 家里最看好客胜的 ⇒
+        单锚 EV **+16.7%** vs 13 家中位 **+8.8%** vs 最保守 **−0.6%**;
+      · 63 场重叠样本上,「Pinnacle 过 +5% 闸而 17 家共识不过」的腿有 **5** 条
+        (Canada 客胜 +5.6%→−0.7% · Panama 平局 +9.0%→+3.4% …)。
+    ⛔ 但那 63 场**全是世界杯 + 全是缓存没过期的**,人口偏斜 ⇒ 只能当「机制存在」
+    的证据,**不是**「影响多大」的估计。⇒ 先存,攒够了在完整人口上重量。
+
+    ⭐ **零额外调用、零额外配额**:`fetch_current_odds` 是 TTL 缓存的,而且同一批
+    事件调用方刚刚才取过 —— 这里只是把**本来就丢掉的那部分**读出来。
+
+    ⚠️ 与 `fetch_pinnacle_lookup` 的区别:那个是 **Pinnacle-STRICT**(没有 Pinnacle
+    就跳过整场,绝不拿软书顶 sharp 先验);这里**全收**,因为它的用途是**离散度**
+    不是先验。⛔ 别拿本函数的输出当 P 喂进 EV —— 那会绕过 Pinnacle-STRICT 这条设计。
+    """
+    out: dict[tuple[str, str, str], dict[str, tuple[float, float, float]]] = {}
+    events = fetch_current_odds(
+        sport_key, regions=regions, markets="h2h,totals",
+        refresh=refresh, ttl_seconds=ttl_seconds, cache_dir=cache_dir,
+    )
+    for e in events:
+        home, away = e.get("home_team"), e.get("away_team")
+        date = (e.get("commence_time") or "")[:10]
+        if not home or not away or not date:
+            continue
+        key = (_norm_team(home), _norm_team(away), date)
+        books: dict[str, tuple[float, float, float]] = {}
+        for b in e.get("bookmakers", []) or []:
+            bk = (b.get("key") or "").lower()
+            if not bk:
+                continue
+            h2h = _extract_h2h(b)
+            if not h2h:
+                continue
+            teams = h2h.get("teams", {})
+            ph, pa, pd_ = teams.get(home), teams.get(away), h2h.get("draw")
+            if ph is None or pa is None or pd_ is None:
+                continue
+            if not all(isinstance(x, (int, float)) and x > 1.0 for x in (ph, pd_, pa)):
+                continue
+            books[bk] = (float(ph), float(pd_), float(pa))
+        if books:
+            out[key] = books
+    return out
+
 def fetch_pinnacle_lookup(
     sport_key: str,
     *,
