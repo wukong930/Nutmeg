@@ -421,16 +421,17 @@ def _attach_book_consensus(preds: list) -> None:
         import sqlite3 as _sq
         import statistics as _st
 
-        from nutmeg.v4.data.sources.odds_api import _norm_team
+        from nutmeg.v4.data.sources.odds_api import SPORT_KEYS, _norm_team
+        from nutmeg.v4.data.team_match import same_team
         conn = _sq.connect(f"file:{db}?mode=ro", uri=True)
     except Exception:  # noqa: BLE001
         return
-    latest: dict[tuple, tuple] = {}
+    by_date: dict[str, list] = {}
     try:
         for md, h, a, books, n, cap in conn.execute(
                 "SELECT match_date, home_team, away_team, books, n_books, captured_at "
                 "FROM book_snapshots ORDER BY captured_at"):
-            latest[(md, _norm_team(h or ""), _norm_team(a or ""))] = (books, n, cap)
+            by_date.setdefault(md, []).append((h or "", a or "", books, n, cap))
     except Exception:  # noqa: BLE001
         return          # 表还不存在(新库)⇒ 静默跳过
     finally:
@@ -439,9 +440,26 @@ def _attach_book_consensus(preds: list) -> None:
     for pr in preds:
         try:
             d = pr.date.isoformat() if hasattr(pr.date, "isoformat") else str(pr.date)
-            row = latest.get((d, _norm_team(pr.home_team), _norm_team(pr.away_team)))
-            if not row:
+            # ⚠️ 这项赛事 Odds API 根本没有对应 sport ⇒ 标出来,别让 owner 等一个
+            #    永远不会来的东西(日联赛杯/意大利杯/德国杯…,同 JPN_J2/荷乙缺 key)。
+            if not SPORT_KEYS.get(getattr(pr, "league", None) or ""):
+                pr.bk_unavailable = True
                 continue
+            # ⭐ join 走 `team_match.same_team`(四级判据)而**不是**裸 `_norm_team`:
+            #    Odds API 用全称(`Lincoln City`)、盘面用 AF 短名(`Lincoln`),
+            #    裸归一对不上 —— 实测 12 场英冠只通了 1 场(West Ham 那场碰巧)。
+            #    ⛔ 唯一性:多于一个候选一律拒(宁可缺不可错)。
+            # 🚨 唯一性闸数的是**不同的比赛**,不是**行数**。
+            #    `book_snapshots` 是 append-only(线态变了就再写一行)⇒ 同一场常有多行。
+            #    2026-09-01 实犯:第一版写成 `len(cands) != 1`,把原本能用的英冠 2→0、
+            #    日职 5→0 全拒掉了,而总数因为别的联赛刚补进来**反而涨了**(17→24)——
+            #    聚合量掩盖了回归。⇒ 先按队名对折叠,再判唯一。
+            cands = [r for r in by_date.get(d, [])
+                     if same_team(r[0], pr.home_team) and same_team(r[1], pr.away_team)]
+            pairs = {(r[0], r[1]) for r in cands}
+            if len(pairs) != 1:
+                continue          # 0 = 没有;>1 = 真歧义(两场不同比赛都像)⇒ 宁可缺
+            row = max(cands, key=lambda r: str(r[4] or ""))[2:]   # 同一场取**最新**那行
             raw = _json.loads(row[0])
             # 每家先各自去vig(比例归一)—— 书商抽水各不相同,不归一没法比
             devigged = {}
@@ -713,7 +731,7 @@ def app_icon() -> Response:
 # change → the /version endpoint + the new-version banner trigger a reload so an
 # open tab never silently runs stale code (the recurring "refreshed but didn't
 # update" trap was an old tab running pre-fix JS).
-_FE_VERSION = "nutmeg-v162-fe-book-consensus"
+_FE_VERSION = "nutmeg-v163-fe-book-consensus-join"
 
 
 @router.get("/sw.js", include_in_schema=False)

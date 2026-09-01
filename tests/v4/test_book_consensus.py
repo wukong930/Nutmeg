@@ -195,3 +195,72 @@ def test_the_ev_cells_are_addressable() -> None:
     assert 'id="bk-ev-\' + idx + \'-\' + i + \'-c"' in h, "共识 EV 格没有 id"
     assert 'id="bk-ev-\' + idx + \'-\' + i + \'-l"' in h, "保守 EV 格没有 id"
     assert "getElementById('bk-ev-' + idx + '-' + i + '-' + pair[0])" in h, "刷新函数没按同一模式取格子"
+
+
+# ── join 层(2026-09-01 抽出 `team_match` 后新增)──────────────────────────
+def test_a_match_with_many_rows_still_resolves(tmp_path, monkeypatch) -> None:
+    """🚨 回归:`book_snapshots` 是 **append-only**,同一场比赛有多行(线态变了就再写)。
+
+    我第一版把唯一性闸写成 `len(cands) != 1` —— 数的是**行数**而不是**不同的比赛**
+    ⇒ 任何被抓过两次的场次一律被拒。实测后果:**英冠 2→0、日职 5→0**,
+    原本能用的两个联赛全废。
+
+    ⭐⭐ 而**总数反而从 17 涨到 24**(别的联赛刚补进来)——**聚合量把回归盖住了**,
+    是逐联赛那张表才看见的。同 memory `first-match-is-not-the-population`
+    「聚合量不是指纹」。⇒ 唯一性判据必须先按队名对**折叠**,再判唯一。
+    """
+    from nutmeg.v4.api import routes
+    _write(tmp_path, _books(), captured_at="2026-09-01T08:00:00+00:00")
+    _write(tmp_path, _books(pin=(2.20, 3.35, 3.50)), captured_at="2026-09-01T12:00:00+00:00")
+    conn = sqlite3.connect(tmp_path / "obs.db")
+    assert conn.execute("SELECT COUNT(*) FROM book_snapshots").fetchone()[0] == 2, "夹具没造出多行"
+    monkeypatch.setattr(routes, "_observation_db_path", lambda: str(tmp_path / "obs.db"))
+    p = _pred()
+    routes._attach_book_consensus([p])
+    assert p.bk_consensus is not None, "同一场多行就解析不出 —— 唯一性闸又数成行数了"
+    assert p.bk_captured_at == "2026-09-01T12:00:00+00:00", "没取最新那行"
+
+
+def test_the_join_survives_long_vs_short_names(tmp_path, monkeypatch) -> None:
+    """⭐ 承重:Odds API 用**全称**、盘面用 AF **短名**,join 必须过 `team_match`。
+
+    裸 `_norm_team` 时实测 12 场英冠只通了 1 场(West Ham 那场碰巧两侧都短)。
+    """
+    from nutmeg.v4.api import routes
+    from nutmeg.v4.observation.book_snapshots import record_book_snapshot
+    record_book_snapshot(tmp_path / "obs.db", match_date="2026-09-01",
+                         home_team="Lincoln City", away_team="Blackburn Rovers",
+                         books=_books())
+    monkeypatch.setattr(routes, "_observation_db_path", lambda: str(tmp_path / "obs.db"))
+    p = _pred(home_team="Lincoln", away_team="Blackburn", league="ENG_CHAMPIONSHIP")
+    routes._attach_book_consensus([p])
+    assert p.bk_consensus is not None, "全称↔短名对不上 —— join 没走 team_match"
+
+
+def test_a_league_with_no_odds_api_sport_is_marked_not_silent(tmp_path, monkeypatch) -> None:
+    """⚠️「这项赛事永远不会有」和「今天还没抓到」必须分开。
+
+    不分开的话 owner 会一直等一个不会来的东西(日联赛杯/意大利杯/德国杯
+    在 Odds API 上根本没有对应 sport,同 JPN_J2/荷乙缺 key)。
+    """
+    from nutmeg.v4.api import routes
+    _write(tmp_path, _books())
+    monkeypatch.setattr(routes, "_observation_db_path", lambda: str(tmp_path / "obs.db"))
+    p = _pred(league="JPN_LEAGUE_CUP")
+    routes._attach_book_consensus([p])
+    assert p.bk_unavailable is True and p.bk_consensus is None
+    q = _pred(league="ENG_CHAMPIONSHIP")
+    routes._attach_book_consensus([q])
+    assert q.bk_unavailable is False, "有 sport_key 的不该被标成无源"
+
+
+def test_the_shared_matcher_is_used_by_both_consumers() -> None:
+    """⛔ 一处定义:`polymarket_match` 与共识 join 必须用**同一套**判据。
+
+    2026-09-01 一天之内两个消费方各踩一次同一个病(全称 vs 短名)⇒
+    复制第三份就是平行入口。`polymarket_match` 按原名转发,行为不变。
+    """
+    from nutmeg.v4.data import polymarket_match as pm
+    from nutmeg.v4.data import team_match as tm
+    assert pm._core is tm._core and pm._resolve is tm._resolve
+    assert pm._prefix_extra is tm._prefix_extra

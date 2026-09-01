@@ -246,6 +246,10 @@ class SinglePrediction(BaseModel):
     bk_spread: list[float] | None = None      # 离散度(max−min,**百分点**)
     bk_n: int | None = None                   # 家数(含 Pinnacle)
     bk_captured_at: str | None = None         # 这批报价抓于何时
+    #: True = **这项赛事 Odds API 根本没有对应 sport**(日联赛杯/意大利杯/德国杯…)
+    #: ⇒ 多书商共识**永远不会有**,不是「今天没抓到」。
+    #: ⚠️ 必须和「有 key 但今天没数据」区分开 —— 否则 owner 会一直等一个不会来的东西。
+    bk_unavailable: bool = False
     jc_single_available: int | None = None
     jc_hc_single_available: int | None = None
     # V14 — when API-Football last refreshed this Pinnacle snapshot (ISO). The
@@ -362,6 +366,10 @@ class PendingFixture(BaseModel):
     bk_spread: list[float] | None = None      # 离散度(max−min,**百分点**)
     bk_n: int | None = None                   # 家数(含 Pinnacle)
     bk_captured_at: str | None = None         # 这批报价抓于何时
+    #: True = **这项赛事 Odds API 根本没有对应 sport**(日联赛杯/意大利杯/德国杯…)
+    #: ⇒ 多书商共识**永远不会有**,不是「今天没抓到」。
+    #: ⚠️ 必须和「有 key 但今天没数据」区分开 —— 否则 owner 会一直等一个不会来的东西。
+    bk_unavailable: bool = False
 
 
 class SpCalcResponse(BaseModel):

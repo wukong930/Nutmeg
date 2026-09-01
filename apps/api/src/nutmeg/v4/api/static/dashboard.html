@@ -2326,6 +2326,7 @@ const I18N = {
     leg_draw:         '平局',
     leg_away:         '客胜',
     bk_badge:         '多书商参照',
+    bk_none:          '此赛事无多书商源(Odds API 未上架)',
     bk_books:         '家',
     bk_consensus:     '共识',
     bk_low:           '最保守',
@@ -2921,6 +2922,7 @@ const I18N = {
     leg_draw:         'Draw',
     leg_away:         'Away',
     bk_badge:         'Book consensus',
+    bk_none:          'No multi-book source for this competition (not on The Odds API)',
     bk_books:         'books',
     bk_consensus:     'Consensus',
     bk_low:           'Most conservative',
@@ -6920,7 +6922,14 @@ function _hasBk(pr) {
 //    改闸须走预注册(同 δ / CLV 的规格)。
 // ⚠️ 共识**刻意排除 Pinnacle 自己**;`bk_n` 必须一起显示 —— 2 家的共识不是共识。
 function _bkHtml(pr, idx) {
-  if (!_hasBk(pr)) return '';
+  // ⚠️ 「这项赛事 Odds API 根本没有对应 sport」和「今天还没抓到」是**两件事**:
+  //    前者永远不会有(日联赛杯/意大利杯/德国杯…),后者 cron 下一轮就有。
+  //    不区分的话 owner 会一直等一个不会来的东西 ⇒ 前者给一行灰字,后者什么都不显示。
+  if (!_hasBk(pr)) {
+    return pr && pr.bk_unavailable
+      ? '<div class="text-xs mb-1 text-muted">' + IC('info') + ' ' + t('bk_none') + '</div>'
+      : '';
+  }
   const SP = [pr.jc_home, pr.jc_draw, pr.jc_away];
   const L = [t('leg_home'), t('leg_draw'), t('leg_away')];
   const maxSp = Math.max.apply(null, pr.bk_spread || [0]);
