@@ -24,6 +24,7 @@ unit-tested with literals (including the mandatory favorite-flip case).
 from __future__ import annotations
 
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -68,6 +69,9 @@ LONGSHOT_FLOOR = 0.15        # min(q, ask) below this → the "+EV" is a favouri
 POLY_TICK = 0.01             # Polymarket's price granularity. An EV smaller than one
                              # tick's relative value (TICK/ask) is inside the rounding
                              # noise — it can flip sign on the next tick → cap low.
+#: 并发拉 CLOB 盘口的线程数。⚠️ Polymarket 没有公开限流文档 ⇒ **取保守值**;
+#: 真被限流会由 `_request` 的重试/退避兜住,但那会比串行还慢 —— 调高前先实测。
+_BOOK_WORKERS = 8
 Q_BAND = (0.12, 0.88)        # only PRICE (fetch a CLOB orderbook for) a 让球/大小球 line
                              # whose fair q sits in this informative band. Polymarket
                              # lists a deep ladder (±5.5 spreads, O/U 8.5) that is all
@@ -298,8 +302,25 @@ def gaps_for_game(
         q = _q_for(mk.outcome_spec, mk.line, devig[0], devig[1], devig[2], grid)
         return q is not None and Q_BAND[0] <= q <= Q_BAND[1]
 
-    books = {mk.yes_token: fetch_book(mk.yes_token)
-             for mk in game.markets if _informative(mk)}
+    # 盘口并发拉取(2026-09-01)。⚠️ **只改快慢,不改任何数据** ——
+    # 取哪些腿、算什么、存什么全不变,只是别再一个一个等来回。
+    #
+    # 起因:英冠匹配修好后 `gaps computed` 从 841 涨到 1,687,一轮 CLOB 调用
+    # **1,659 次**串行 ≈ 10 分钟。⭐ 实测这一轮里 AF `/odds` 只有 **26 次**、
+    # AF `/fixtures` **0 次**(全缓存)—— 我先前从**代码顺序**推断「AF 配额才是
+    # 真代价」是错的(`fetch_odds` 写在前面,但绝大多数在 `return []` 前就退了)。
+    # 又一次「读出来的路径 ≠ 跑着的路径」⇒ 先数调用,再优化。
+    #
+    # 线程安全的两个前提都核过:`polymarket._client()` **每次新建** httpx.Client
+    # (不共享),且 book 调用 `ttl_seconds=0` ⇒ **不写缓存文件**,没有写竞争。
+    # 异常语义与串行版一致(`ex.map` 在取结果时抛,和逐个调一样)。
+    toks = list(dict.fromkeys(          # 去重:同一 token 别拉两次
+        mk.yes_token for mk in game.markets if _informative(mk)))
+    if len(toks) <= 1:
+        books = {t: fetch_book(t) for t in toks}
+    else:
+        with ThreadPoolExecutor(max_workers=min(_BOOK_WORKERS, len(toks))) as ex:
+            books = dict(zip(toks, ex.map(fetch_book, toks), strict=True))
     return compute_gaps(game, devig, books, env.get("update"),
                         p_over=p_over, grid=grid, now=now)
 
