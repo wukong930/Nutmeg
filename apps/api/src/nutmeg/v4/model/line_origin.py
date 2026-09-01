@@ -15,8 +15,10 @@ perfectly mirrors the CLOSING sharp line has zero true domestic bias, yet naïve
 scoring "竞彩 − open" would tag it with a big residual. So staleness must be
 credited with the FULL range the sharp line actually traversed. For each leg we
 take the observed Pinnacle fair-P **band** [lo, hi] = (min, max) over every
-snapshot. If 竞彩's de-vigged P sits INSIDE that band, some stale anchor could
-have produced it → staleness suffices, domestic is not required. Only the part
+PRE-KICKOFF snapshot (in-play lines are excluded upstream — crediting staleness
+with a range the pre-match market never offered would fake a zero residual).
+If 竞彩's de-vigged P sits INSIDE that band, some stale anchor could have
+produced it → staleness suffices, domestic is not required. Only the part
 where 竞彩 lands OUTSIDE the band is **irreducible domestic** — no stale-anchor
 story explains it:
 
@@ -47,8 +49,8 @@ class LineOriginSample:
     jc_p: tuple[float, float, float]      # 竞彩 WPO fair P (主,平,客)
     open_p: tuple[float, float, float]    # Pinnacle earliest-snapshot fair P
     close_p: tuple[float, float, float]   # Pinnacle latest-pre-kickoff fair P
-    band_lo: tuple[float, float, float]   # per-leg MIN fair P over all snapshots
-    band_hi: tuple[float, float, float]   # per-leg MAX fair P over all snapshots
+    band_lo: tuple[float, float, float]   # per-leg MIN fair P over pre-KO snapshots
+    band_hi: tuple[float, float, float]   # per-leg MAX fair P over pre-KO snapshots
     support: tuple[float, float, float] | None = None
 
     @property

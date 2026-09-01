@@ -35,11 +35,17 @@ def _key(date: str, home: str, away: str) -> tuple[str, str, str]:
 def _pinnacle_open_close(conn: sqlite3.Connection, since: str) -> dict[tuple, tuple]:
     """Per match key → (open_p, close_p, band_lo, band_hi, home, away).
 
-    open = earliest snapshot; close = latest snapshot before kickoff (or latest
-    overall when kickoff_utc is absent); band = per-leg (min, max) de-vigged fair
-    P over EVERY snapshot — the full range the sharp line traversed, which is what
-    staleness gets credited with. Each snapshot is WPO-de-vigged inside the loop;
-    un-de-viggable snapshots are skipped. Needs ≥2 distinct valid captures.
+    open/close/band are ALL computed over PRE-KICKOFF snapshots only (a row with
+    kickoff_utc absent can't be judged → kept). open = earliest such snapshot;
+    close = latest; band = per-leg (min, max) de-vigged fair P over them — the
+    full range the sharp line traversed, which is what staleness gets credited
+    with. An in-play snapshot must not widen that band any more than it may
+    become the close: it would hand staleness credit for a range the pre-match
+    market never offered, shrinking the irreducible-domestic residual toward a
+    false zero. Each snapshot is WPO-de-vigged inside the loop; un-de-viggable
+    snapshots are skipped. Needs ≥2 distinct valid **pre-kickoff** captures —
+    counting in-play rows there would let a degenerate 1-pre-KO sample pass
+    (open==close, band collapsed to a point). See tests/v4/test_reader_kickoff_guard.py.
     """
     rows = conn.execute(
         "SELECT match_date, home_team, away_team, captured_at, kickoff_utc, "
@@ -62,16 +68,42 @@ def _pinnacle_open_close(conn: sqlite3.Connection, since: str) -> dict[tuple, tu
             continue
         if cur is None:
             cur = acc[k] = {"raw": (h, a), "h": h, "a": a, "caps": set(),
-                            "open": None, "close": None,
-                            "lo": list(fair), "hi": list(fair)}
+                            "open": None, "close": None, "lo": None, "hi": None}
+        # ONE pre-kickoff gate for BOTH the band and the close — they must never
+        # drift apart. An in-play snapshot (a leading team's degenerate
+        # 1.06/…/53.96 line) is not a price the sharp market ever offered on the
+        # pre-match question, so it may neither become the close NOR widen the
+        # band that staleness gets credited with.
+        #
+        # ⚠️ 2026-09-02 实测的**真实严重性**(原提交只有叙述、没有数字):
+        #   2026-06 起 1,939 个合格样本里,带滚球快照的只有 **2 场**,
+        #   band 真被撑宽的 **1 场(0.1%)** —— Augsburg vs FC Schalke 04,
+        #   主胜 band 宽度 0.017 → 0.028(×1.6)。
+        #   ⭐ 而那一场恰好就是 `closing_odds` 那个**写入侧竞态**造出来的行
+        #   (captured_at 比 kickoff 晚 2s),该竞态已于同日根除。
+        #   ⇒ 本闸今天的实际影响 ≈ 0;它的价值是**纵深防御**:回填、换源、
+        #     或下一个写入侧 bug 都可能再把滚球行喂进来,而那时它已经在这儿了。
+        #   ⛔ 别据此把它删掉 —— 0.1% 是「上游刚被修好」的结果,不是「不会发生」。
+        before_ko = (ko is None) or (cap < ko)
+        if not before_ko:
+            continue
+        # ⚠️ 2026-09-02 —— `caps` 也搬进闸内。原来它在闸**之前**加,于是
+        #    「≥2 个不同快照」这条充足性判据会把**喂不进计算的行**算进分母:
+        #    1 个赛前 + 3 个滚球 ⇒ caps=4 过关,而 band/open/close 全部来自那 1 个
+        #    赛前快照 ⇒ open==close、band 退化成一个点,一个**退化样本冒充充足样本**。
+        #    ⭐ 实测(2026-08 起 1,419 场):靠滚球行凑够 ≥2 的 **0 场** ⇒ 今天零代价;
+        #    改的是**规则的自洽**(本函数 docstring 自己说「一道闸管全部」),
+        #    以及那个将来会咬人的口子。同族:分母里混进了分子用不了的行。
         cur["caps"].add(cap)
-        for i in range(3):
-            cur["lo"][i] = min(cur["lo"][i], fair[i])
-            cur["hi"][i] = max(cur["hi"][i], fair[i])
+        if cur["lo"] is None:
+            cur["lo"], cur["hi"] = list(fair), list(fair)
+        else:
+            for i in range(3):
+                cur["lo"][i] = min(cur["lo"][i], fair[i])
+                cur["hi"][i] = max(cur["hi"][i], fair[i])
         if cur["open"] is None or cap < cur["open"][0]:
             cur["open"] = (cap, fair)
-        before_ko = (ko is None) or (cap < ko)
-        if before_ko and (cur["close"] is None or cap > cur["close"][0]):
+        if cur["close"] is None or cap > cur["close"][0]:
             cur["close"] = (cap, fair)
 
     out: dict[tuple, tuple] = {}
@@ -158,7 +190,8 @@ def run(db: str | Path, since: str) -> int:
         print("   (高票腿更正 = 竞彩把隐含概率推到 sharp 区间之上,往人群那边,陈旧解释不了)")
     else:
         print("\n④ 散户票分档: 样本不足(需 ≥6 条带票的腿)——vote 攒够再看")
-    print("\n注:band=每腿全快照 WPO 去vig 公允 P 的 min/max;竞彩落区间内=让陈旧全占,"
+    print("\n注:band=每腿全「赛前」快照 WPO 去vig 公允 P 的 min/max(滚球快照不计入);"
+          "竞彩落区间内=让陈旧全占,"
           "只算落在区间外的部分为本土(最保守)。P=WPO,非保证收盘绝对水平。"
           "\n探索性——分解软水成因,不造 +EV;秋季线史攒厚再复读。")
     return 0
