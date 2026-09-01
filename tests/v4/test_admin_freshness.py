@@ -12,7 +12,7 @@ import pytest
 from nutmeg.v4.api.admin import _FRESHNESS_ROWS, _data_freshness
 
 
-def test_every_probe_resolves_against_the_live_schema(tmp_path):
+def test_every_probe_resolves_against_the_live_schema(tmp_path, production_observation_db):
     """⭐ 每个 (表, 列) 必须真的存在 —— 列改名 ⇒ 该行静默变「—」,不报错。
 
     用真库(只读)。库不在就跳过,不假装通过。
@@ -68,7 +68,7 @@ def test_static_backfill_archives_stay_out():
     assert not tables & {"pinnacle_close_history", "crown_close_history"}
 
 
-def test_freshness_returns_a_row_per_probe_plus_the_separate_db():
+def test_freshness_returns_a_row_per_probe_plus_the_separate_db(production_observation_db):
     """score_ev_forward.db 是**另一个库**,单独探 —— 行数应比常量多 1。"""
     rows = _data_freshness()
     if rows and "error" in rows[0]:
@@ -102,7 +102,7 @@ def test_companion_tables_are_not_also_standalone_rows():
         assert ct not in standalone, f"{ct} 既当姊妹表又单独占行 = 同一 cron 报两次"
 
 
-def test_companion_tables_resolve_against_the_live_schema():
+def test_companion_tables_resolve_against_the_live_schema(production_observation_db):
     """姊妹表/列改名 ⇒ note 静默消失,主行悄悄退回低报 13× —— 和主探针同一种阴。"""
     import os
     import sqlite3 as _sq
@@ -140,7 +140,7 @@ def test_join_key_columns_point_at_real_probed_tables():
         assert table in probed, f"{table} 没有探针行,守卫不会跑"
 
 
-def test_join_key_columns_exist_on_the_live_schema(tmp_path):
+def test_join_key_columns_exist_on_the_live_schema(tmp_path, production_observation_db):
     """列名写错 ⇒ 那条 SELECT 抛异常被吞 ⇒ 守卫静默失效(与哨兵自盲同族)。"""
     import os
 
