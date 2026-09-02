@@ -383,16 +383,55 @@ ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
     ('SAU_PRO_LEAGUE', 'Al-Ittihad'): 'Al-Ittihad FC',
     ('SAU_PRO_LEAGUE', 'Al-Khaleej'): 'Al Khaleej Saihat',
     ('SAU_PRO_LEAGUE', 'Al-Kholood'): 'Al Kholood',
+    ('SAU_PRO_LEAGUE', 'Al-Qadsiah'): 'Al-Qadisiyah FC',   # 1×1 槽 ×3
+    ('SAU_PRO_LEAGUE', 'Al-Shabab'): 'Al Shabab',          # 1×1 槽 ×1(仅收口拼法)
     ('SAU_PRO_LEAGUE', 'Al-Taawoun'): 'Al Taawon',
-    # 🚨 `Al-Shabab` / `Al-Qadsiah` **故意留空** —— 判不出。
-    # 2026-08-13T18:00 那个槽:closing 1 场、gather **2** 场
-    # (`Al Shabab/Al-Qadisiyah FC` 与 `Al Diriyah/Al-Ahli Jeddah`),
-    # 同槽指纹对**两个候选都是 0**,且四个 gather 名只在这一个槽出现过
-    # ⇒ 跨日排除法也够不着。
-    # ⚠️ 「`Al-Shabab` 显然对 `Al Shabab`」对人是显然的,**对判据是零证据** ——
-    #    而竞彩/OA 本来就不上架每一场沙特联,「另一场没有 closing 对应」
-    #    和「配错了」在数据上一模一样。补它就是照字面猜。
-    #    ⇒ 等更多快照让指纹撞上,或等某个槽变成 1×1。
+    ('SAU_PRO_LEAGUE', 'Diriyah Club'): 'Al Diriyah',      # 1×1 槽 ×2
+    # ── 沙特联 +3(2026-09-02):上面那条「等某个槽变成 1×1」的**退出条件到了**。
+    # 攒够 5 个比赛日后,重跑槽内排除法(只读 `v4_observation.db` + AF 缓存):
+    #   `Al-Qadsiah` → `Al-Qadisiyah FC`  **3 个**严格 1×1 槽
+    #        08-24T16:40 · 08-30T18:00 · 09-03T18:00
+    #   `Diriyah Club` → `Al Diriyah`     **2 个**严格 1×1 槽
+    #        08-26T18:00 · 09-03T18:00
+    #   `Al-Shabab` → `Al Shabab`         **1 个**严格 1×1 槽 08-30T16:05
+    # 「严格 1×1」= 该 (联赛, 开球分钟) 下 closing 侧恰好 1 对、AF 侧恰好 1 场。
+    # 7 个槽全部检查,**0 个反例**(另 2 个槽是 1×2,结论与上面一致但不算数)。
+    #
+    # ⭐ **「只有一场」不是「只缓存了一场」** —— 这是本条最容易假的一步。
+    # AF 2026 赛季第 5 轮在缓存里是**完整**的:9 场、fixture id 1603008–1603016
+    # **连号**、18 支队各出现**恰好 1 次**(联赛队表也正好 18 队)。
+    # 所以「那一分钟只有这一场」是**赛程事实**,不是采集缺口。
+    # (反面教训见 [[football-data-anchor-exhausted]]:把「没有」说成「没去看」。)
+    #
+    # ⭐ 同一套查询在**同槽的已知答案**上先验过:那几个槽里的
+    # `NEOM` / `Al Kholood` / `Al-Faisaly FC` 都被推成**它们自己**,推错了会当场露馅。
+    #
+    # ✅ 撞车闸(全库 4,079 个缓存文件 / 10,626 个 AF 队名):
+    #   · 词根 `diriyah` 全库**恰好 1 个** AF 队名(`Al Diriyah`, id 26738)
+    #   · 词根 `qad` 全库 2 个,另一个是科威特 `Al Qadsia`(id 3537, league 330),
+    #     **从不出现在 307**;而别名键是 (联赛, 名),沙特桶隔离它(同 Celta 那条)
+    #   · 三个 closing 名在 `odds_snapshots` 里**只在 SAU_PRO_LEAGUE 出现**
+    #   · 三对名字**从未在同一行互为对手**(各 0 行)
+    #   · 权威当季队表(`_teams` 缓存,0 次 API 调用)里每个词根**恰好 1 个**候选,
+    #     且 `Diriyah Club`/`Al-Qadsiah`/`Al-Shabab` **都不在队表里** ⇒ 不是并存的另一支队
+    #
+    # 🚨 **拼写在这里会判反,别信它**:`Al-Qadsiah` 去掉标点是 `alqadsiah`,
+    # 离科威特的 `Al Qadsia`(`alqadsia`)只差一个尾字母 h,离正确答案
+    # `Al-Qadisiyah FC`(`alqadisiyahfc`)反而远得多。**按相似度填会填成另一个国家的队。**
+    # 定案靠的是 fixture 身份(同一分钟、同一联赛、同一主客位),不是字形。
+    #
+    # ⚠️ 三条的**作用不一样**,别混:`Al-Shabab`→`Al Shabab` 在 `_norm_team` 下
+    # 本来就同键(标点被剥掉),overlay 一直是通的;补它只是收口**入库拼法**
+    # (省掉 `odds_snapshots` 里的双拼法劈开键)。另两条是真的 overlay 打不中 ——
+    # `diriyahclub`≠`aldiriyah`、`alqadsiah`≠`alqadisiyah` ⇒ 补前 EV 算不出来。
+    #
+    # 📌 第三条独立证据(**不是**上面那套用的):竞彩 09-04 场次
+    # 「迪里耶 vs 胡巴尔卡德西亚」,对手侧字典已解成 `Al-Qadisiyah FC`,
+    # 与 AF 的 `Al Diriyah vs Al-Qadisiyah FC` 同一场。三个源对上同一个身份。
+    #
+    # ⛔ 仍然留空:`Al-Ahli` → `Al-Ahli Jeddah`(2 个 1×1 槽 + 全部撞车闸也通过,
+    #    证据够)。**没补是因为它不在这次的任务范围里**,不是因为证据不足;
+    #    要补请单独走一次(它和上面两条一样,是真的 overlay 打不中)。
     # ── 意乙(2026-08-14 预埋,首场 08-22)
     ('ITA_SERIE_B', 'Cesena FC'): 'Cesena',
     ('ITA_SERIE_B', 'Südtirol'): 'Sudtirol',

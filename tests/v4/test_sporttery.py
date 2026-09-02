@@ -1,6 +1,8 @@
 """中国体育彩票 (竞彩) source — parse, name mapping, fail-soft."""
 from __future__ import annotations
 
+import pytest
+
 from nutmeg.v4.data.sources import sporttery
 from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
 
@@ -617,8 +619,6 @@ def test_no_zh_override_value_falls_through_to_english_on_the_card():
     import shutil
     import subprocess
     from pathlib import Path
-
-    import pytest
 
     from nutmeg.v4.data.sources.sporttery import _ZH_OVERRIDES
     from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH

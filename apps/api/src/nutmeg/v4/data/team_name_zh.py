@@ -1376,6 +1376,35 @@ _LIBERTADORES_SAUDI_2026_08: dict[str, str] = {
     # ⚠️ 放这里(主词典)而不是只放 _ZH_OVERRIDES:后者只修 join,卡片会继续显示
     #   英文名;主词典**一处同时修 join 和显示**。
     "Abha": "艾卜哈",                          # ×1(odds_snapshots 有 1 行佐证)
+    # 2026-09-02 哨兵 `test_live_listing_resolves_both_name_conventions` 报「在售 1 场
+    # 解不出」—— 第 20 支。同 Abha 的形态:本赛季新上来的队,竞彩**历史档案里没有**
+    # (`jingcai_odds_history` 的 沙职 只有 18 个中文名,`迪里%` 0 行)⇒ **整队不在词典**
+    # ⇒ 放主词典而不是 _ZH_OVERRIDES。
+    # ⚠️ 横幅按**比赛**点名:被点的那场 `迪里耶 vs 胡巴尔卡德西亚` 里,
+    #   `胡巴尔卡德西亚` 本来就解得出(简称 `胡巴卡德`→Al-Qadisiyah FC),真缺口只有主队。
+    #
+    # ⭐ 锚 = 开球时刻 + 联赛 + 已解出的另一侧,**不是按音猜**:
+    #   竞彩北京 2026-09-04 02:00 = UTC **2026-09-03T18:00**;本地 AF fixture 缓存里
+    #   该时刻全库 13 场,含 `Al-Qadisiyah FC` 的**恰好 1 场**、L307 沙职的也**恰好 1 场**:
+    #   fixture **1603010** `Pro League · 2026-09-03T18:00Z · Al Diriyah vs Al-Qadisiyah FC`。
+    # ⭐ 排除法再独立确认一次:当日竞彩上架沙职 3 场、AF 沙职当日也**正好 3 场**,
+    #   另两场两侧全已解析且逐场对上(15:55Z `Al-Fayha vs Al Kholood` = 迈季迈阿宽广/拉斯永恒、
+    #   16:30Z `NEOM vs Al Khaleej Saihat` = 新未来SC/赛哈特海湾)⇒ 只剩这一场。
+    # ⭐ 第三条独立链:`odds_snapshots` 有一条 closing 行 kickoff 同为 2026-09-03T18:00Z、
+    #   league=SAU_PRO_LEAGUE、`Diriyah Club vs Al-Qadsiah` ⇒ Odds API 侧同样指向这一场。
+    #
+    # ⚠️ 英文值取 **`Al Diriyah`**(gather/AF 侧)而不是 `Diriyah Club`(closing/Odds API 侧)
+    #   —— 同上面 `Al-Faisaly FC` vs `Al-Faisaly KSA FC` 那条:竞彩 SP 要 join 的是
+    #   `_gather_rows` 在用的那一侧。「值必须在盘面出现过」:`Al Diriyah` 在 odds_snapshots
+    #   有 25 行(cup_market 15 + predict_log 10,均 odds_source=api_football)。
+    # ✅ 撞车检查:AF 全库含 `Diriyah` 词根的名字**只有 1 个**(`Al Diriyah`, id 26738),
+    #   无第二支队可混;中文 `迪里耶` 在 TEAM_NAME_ZH 值集 / _ZH_OVERRIDES / _ZH_TO_EN
+    #   里都没被别的队占用(0 冲突)。竞彩这条的全称与简称同为 `迪里耶`,一条覆盖两个字段。
+    # ⚠️ 第三条链**本场未打通**(补词典 ≠ 能算 EV):closing 侧写 `Diriyah Club`/`Al-Qadsiah`,
+    #   而 ODDS_SOURCE_ALIASES 两条都没有(`Al-Qadsiah` 是 odds_source_aliases.py 里
+    #   **故意留空**的那条)⇒ 这场补完会显示竞彩 SP,但 Pinnacle 收盘线仍挂不上。
+    #   那是**另一条**缺口,不在本次改动范围内。
+    "Al Diriyah": "迪里耶",                     # ×1(AF fixture 1603010 锚定)
 }
 TEAM_NAME_ZH.update(_LIBERTADORES_SAUDI_2026_08)
 

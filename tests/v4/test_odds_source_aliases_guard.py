@@ -40,11 +40,13 @@ def test_no_key_conflicts() -> None:
     dict 字面量天然不会有重复键 —— 但**后写的会静默覆盖先写的**,
     所以这条真正钉的是「条数没有因为重键而缩水」。
     """
-    assert len(A) == 220, (
-        f"表大小 {len(A)},预期 220(210 + 08-18 的 8:`derive_odds_name_aliases.py` "
+    assert len(A) == 223, (
+        f"表大小 {len(A)},预期 223(210 + 08-18 的 8:`derive_odds_name_aliases.py` "
         f"推出 9 条,**采纳 8 条**;第 9 条 `Vitória SC→Guimaraes` 方向反了,"
         f"理由写在别名表里 · + 09-01 的 2:EFL_CUP 的 Coventry/Leeds,"
         f"08-25 才首次在杯赛两侧共现)。"
+        f"+ 09-02 的 3:沙特联 Al-Qadsiah / Al-Shabab / Diriyah Club —— "
+        f"08-16 留空的那批等到了严格 1×1 槽,理由写在别名表里。"
         f"若你有意增删,改这个数并在下面 per-league 表同步。")
 
 
@@ -101,8 +103,11 @@ def test_per_league_counts() -> None:
         "EFL_CUP": 39,
         # ── 解放者杯 3 + 沙特联 2(2026-08-14):回填后仅存的跨源劈开键 ──
         # ⚠️ 沙特联 2→10(2026-08-16):08-14 只看到 2 条,数据攒够才暴露系统性差异。
-        #   ⛔ Al-Shabab/Al-Qadsiah 故意留空 —— 那个槽 1×2、指纹两边都 0,判不出。
-        "COPA_LIBERTADORES": 5, "SAU_PRO_LEAGUE": 10,
+        #   ⚠️ 10→13(2026-09-02):08-16 故意留空的 Al-Shabab/Al-Qadsiah 等到了
+        #   严格 1×1 槽(各 1/3 个),连同 Diriyah Club(2 个)一并解开;
+        #   AF 第 5 轮缓存**完整**(9 场连号、18 队各 1 次)⇒「那分钟只有 1 场」
+        #   是赛程事实不是采集缺口。⛔ Al-Ahli 证据同样够但**不在当次范围**,仍留空。
+        "COPA_LIBERTADORES": 5, "SAU_PRO_LEAGUE": 13,
         # ── 土超 5 条(2026-08-15):此前 0 条,全是变音符/改名 ──
         "TUR_SUPER_LIG": 11,
     }, got

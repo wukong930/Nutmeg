@@ -170,7 +170,18 @@ NO_JINGCAI_ANCHOR: dict[str, tuple[str, ...]] = {
         "O'Higgins", "Huachipato", "Juventud", "Liverpool Montevideo",
         "Carabobo FC", "Nacional Potosí",   # ⚠️ 带重音 —— 我第一版敲成 Potosi 当场红了
     ),
-    "SAU_PRO_LEAGUE": ("Al-Faisaly FC", "Abha", "Al Diriyah"),
+    # ⚠️ `SAU_PRO_LEAGUE` 整条**已删**(2026-09-02)。它是两棵 worktree 分别改同一行、
+    # 而**谁单独落地都是错的**那种合并 —— 记在这里因为下次一定还会遇到:
+    #   · 一棵删 `Al Diriyah`(它给 team_name_zh 补了「迪里耶」,锚是 AF fixture 1603010)
+    #     ⇒ 留下 ("Al-Faisaly FC", "Abha")
+    #   · 另一棵删 `Al-Faisaly FC`/`Abha`(实测两者早已经 `_EN_OVERRIDES` 打得中,
+    #     豁免它们等于白挂一条)⇒ 留下 ("Al Diriyah",)
+    #   两个 diff 各自「看起来对」,直接取任一个都会把另外那些**继续豁免**。
+    # ⭐ 合并值不是拼出来的,是**量出来的**:落地后直接算护栏自己用的那个集合
+    #   `{_EN_OVERRIDES.get(en, en) for en in _ZH_TO_EN.values()}`(890 个,人口非平凡),
+    #   三个名字全部 in;再拿当季队表跑一遍 —— 豁免清空后沙职 18 队**零漏网**。
+    # ⛔ 留空元组也不行:一条永远为真的豁免就是下一次静默失效的种子
+    #   (见 [[hardcoded-guard-lists-rot]])。真没了就把 key 删掉。
 }
 
 
