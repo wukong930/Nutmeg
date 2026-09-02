@@ -14,6 +14,28 @@ NULL with a ``_NO_LINE`` sentinel for moneyline so it can sit in the primary key
 
 Design mirrors observation/prediction_log.py (denormalized, idempotent,
 cron-friendly). NOTHING here places an order — it only records what was observed.
+
+🚨 入库闸 · 盘中价拒写(2026-09-02)
+病情:实测 9,074 行里 **1,294 行(14.3%)的 ``recorded_at`` 晚于 ``kickoff_utc``**
+—— 拿的是**盘中**价。已结算子集(任何回测的人口)更糟:1,279/6,283 = **20.4%**。
+``confidence_tier`` 一条都挡不住(tier='high' 里 280/3,936 = 7.1%,reasons 全空):
+它量的是 **Pinnacle 报价的陈旧度**(``freshness_hours``),不是「离开球还有多久」。
+
+两处伤害,第二处才是真出血:
+  ① 复盘被毒。``ev = q_fair/poly_ask − 1`` 拿一条**赛前** Pinnacle 线去比一个
+     **盘中** ask —— 那不是错价测量,是范畴错误。一颗进球后的 0.98 会伪装成
+     +19.7% 的名义 EV(实测:剔掉盘中价后 tier=high & ev≥5% 的已实现 ROI 从
+     −1.00% 掉到 **−7.38%**,「+19.7% 预测」原本就是这么来的)。
+  ② **好行被覆盖。** PK 不含 ``recorded_at`` + ``ON CONFLICT DO UPDATE`` ⇒ 开球后
+     那次 cron 会把 T−3h 那条**合法赛前观测**原地冲掉。forward-only 的东西冲掉
+     就没了。⇒ 所以这道闸是**拒写**不是**打标**:拒写才能把好行留在原地。
+
+⚠️ 容差 = 0,与 ``jingcai_sp`` 的 +15min 宽限**故意相反**(见该模块闸 2):那里挡的是
+「冻结 SP 开球后不可能再变」,15 分钟只吸收名义开球偏差;这里挡的是「盘中价不是赛前
+错价」,而开球后 15 分钟内完全可能已经进球 —— 正宽限会把最毒的那批行放进来。
+
+⛔ 存量的 1,294 行**不动**(本次只堵新增)。消费方要干净人口,自己卡
+``recorded_at < kickoff_utc``。
 """
 from __future__ import annotations
 
@@ -38,6 +60,30 @@ __all__ = [
 # a PK column is treated as distinct by SQLite → the upsert would never dedup).
 # Real lines are half-integers within ±8.5, so -100.0 can never collide.
 _NO_LINE = -100.0
+
+#: 盘中价拒写的容差(秒)。0 = 开球即拒 —— 见模块头「⚠️ 容差 = 0」那段。
+_INPLAY_GRACE_S = 0
+
+
+def _is_inplay(kickoff_utc: object, observed: dt.datetime) -> bool:
+    """观测时刻 ``observed`` 是否已到/过开球?
+
+    kickoff 缺失或不可解析 → False(**fail-open**:一个坏时刻不该静默吃掉整批采集,
+    而落进来的行仍带得走 ``kickoff_utc``,消费方还能自己判)。
+
+    ⚠️ 判据用的是**传进来的观测时刻**而不是 ``now()``:写进 ``recorded_at`` 的就是
+    这个值,判闸的瞬间与落库的瞬间因此**恒等** —— closing_odds 那次赛前/赛后竞态
+    (闸读一次钟、写又读一次钟)就是这么来的。
+    """
+    if not kickoff_utc:
+        return False
+    try:
+        ko = dt.datetime.fromisoformat(str(kickoff_utc).strip())
+    except (ValueError, TypeError):
+        return False
+    if ko.tzinfo is None:  # 库里 155 行是裸时刻;按 UTC 读(全表其余行都带 +00)
+        ko = ko.replace(tzinfo=dt.UTC)
+    return observed >= ko + dt.timedelta(seconds=_INPLAY_GRACE_S)
 
 POLYMARKET_GAPS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS polymarket_gaps (
@@ -144,14 +190,26 @@ def _as_dict(gap: object) -> dict:
 
 def record_polymarket_gap(
     db_path: str, gap: object, *, recorded_at: dt.datetime | None = None
-) -> None:
+) -> bool:
     """Upsert one detected gap (a polymarket_gap.Gap or an equivalent dict).
 
     Idempotent on (match_date, fixture_id, outcome_spec, line): re-logging refreshes
     the price/EV/tier columns (prices move) but leaves a filled outcome intact.
+
+    → True 表示写了;**False = 盘中价拒写**(观测时刻已到/过开球,见模块头)。拒写
+    的行不会覆盖同键上那条合法的赛前观测 —— 这正是拒写而非打标的理由。
     """
     g = _as_dict(gap)
-    ts = (recorded_at or dt.datetime.now(dt.UTC)).isoformat(timespec="seconds")
+    observed = recorded_at or dt.datetime.now(dt.UTC)
+    if _is_inplay(g.get("kickoff_utc"), observed):
+        log.warning(
+            "拒写盘中价:fixture=%s %s line=%s observed=%s kickoff=%s — "
+            "赛前错价日志不收开球后报价(也不许它覆盖同键的赛前行)",
+            g.get("fixture_id"), g.get("outcome_spec"), g.get("line"),
+            observed.isoformat(timespec="seconds"), g.get("kickoff_utc"),
+        )
+        return False
+    ts = observed.isoformat(timespec="seconds")
     reasons = g.get("reasons")
     reasons_json = json.dumps(reasons, ensure_ascii=False) if reasons is not None else None
     line = float(g["line"]) if g.get("line") is not None else _NO_LINE
@@ -198,6 +256,7 @@ def record_polymarket_gap(
                 g.get("match_confidence"),
             ),
         )
+    return True
 
 
 def fetch_polymarket_gaps(db_path: str, *, settled_only: bool = False) -> list[dict]:

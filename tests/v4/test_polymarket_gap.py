@@ -255,9 +255,14 @@ class TestPersistenceAndSettle:
         g = compute_gaps(_game(), (0.50, 0.25, 0.25),
                          {"tokH": _book(0.40), "tokD": _book(0.30), "tokA": _book(0.40)},
                          FRESH, now=NOW)
+        # ⚠️ `recorded_at` 必须显式给,且必须**早于** `_game()` 的 kickoff
+        # (2026-06-06 16:00Z)。原来这里不传 ⇒ 用墙上时钟,而墙上时钟永远在这个
+        # 固定 kickoff 之后 ⇒ 2026-09-02 加的盘中价入库闸把三条全拒了。
+        # 见 observation/polymarket_gaps 模块头 + tests/v4/test_polymarket_inplay_gate.py。
+        logged_at = dt.datetime(2026, 6, 6, 14, 0, tzinfo=dt.UTC)
         for gap in g:               # log all 3 outcomes
-            record_polymarket_gap(db, gap)
-        record_polymarket_gap(db, g[0])   # re-log → idempotent
+            record_polymarket_gap(db, gap, recorded_at=logged_at)
+        record_polymarket_gap(db, g[0], recorded_at=logged_at)   # re-log → idempotent
         rows = fetch_polymarket_gaps(db)
         assert len(rows) == 3       # not 4
 

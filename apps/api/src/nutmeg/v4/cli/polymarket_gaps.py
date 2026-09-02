@@ -95,9 +95,14 @@ def main(argv: list[str] | None = None) -> int:
     # Persist EVERY gap (the measurement denominator), regardless of EV/tier.
     if not args.dry_run:
         ensure_polymarket_gaps_table(args.db)
-        for g in all_gaps:
-            record_polymarket_gap(args.db, g)
-        log.info("logged %d gaps to %s", len(all_gaps), args.db)
+        # 逐条记账:拒写是 fail-soft(返回 False + warning),不记就等于没装 —— 一次
+        # 静默的全量拒写会长得和「今天没比赛」一模一样。
+        written = sum(1 for g in all_gaps if record_polymarket_gap(args.db, g))
+        rejected = len(all_gaps) - written
+        log.info("logged %d gaps to %s", written, args.db)
+        if rejected:
+            log.warning("盘中价拒写 %d/%d 条(观测时刻已过开球,见 observation/"
+                        "polymarket_gaps 模块头)", rejected, len(all_gaps))
 
     # Display filtered.
     floor = _TIER_RANK.get(args.tier, 0)
