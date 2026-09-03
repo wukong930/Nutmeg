@@ -1112,7 +1112,22 @@ _AF_SPELLING_ALIASES_2026_08: dict[str, str] = {
     "GIL Vicente": "维森特",  # ← 词典 'Gil Vicente';竞彩「吉维森特」
     "GO Ahead Eagles": "前进之鹰",  # ← 词典 'Go Ahead Eagles'
     "Granada CF": "格拉纳达",  # ← 词典 'Granada'
-    "Guimaraes": "吉马良斯",  # ← 词典 'Vitoria Guimaraes'
+    # 2026-09-02:键从 `Guimaraes` 换成 `Vitória SC` —— **AF 在 2026-08-13 把这家俱乐部
+    # 改名了**(`odds_source_aliases.py` 行 54-64 独立记载同一件事,并正因此否决了反方向
+    # 的 alias)。本块的契约是「**当前**的 AF 拼法 → 词典中文名」,所以跟着上游改名走;
+    # `sporttery._EN_OVERRIDES` 那条同批改到 `Vitória SC`,两处必须同时动 —— 只改一处
+    # 会让反查对不回自己(`test_reverse_map_round_trips_for_every_chinese_name` 会红)。
+    # 症状(实测):`jingcai_sp` 4 场全部键在 `Guimaraes` 上,改名**之后**的 2 场
+    # `psc_home` 是 NULL(08-23 vs Nacional、08-31 客场 SC Braga),改名前的 2 场
+    # (08-08、08-14)反而有值 —— 时间切点正好落在 08-13。
+    # ⚠️ 撞车:`odds_snapshots` 里还有个**裸** `Vitoria` —— 那是 BRA_SERIE_A 的
+    #    巴西维多利亚,另一家俱乐部,⛔ 不许并进来。
+    # ✅ 值在盘面出现过:`Vitória SC` 110 行(旧拼法 `Guimaraes` 37 行,已停止增长)。
+    # ⚠️ 旧拼法就此不可达。这是**对的**(一个 zh 只能有一个 canonical),代价是
+    #    `test_cached_team_tables_fully_reachable` 会拿 2026-05/07 的**陈旧** AF
+    #    /teams 缓存报它 —— 那是缓存早于改名,不是词典缺口;刷新葡超 teams 缓存即消失。
+    #    ⛔ 别拿 `NO_CHINESE_NAME_EXISTS` 去消音(它有中文名)。
+    "Vitória SC": "吉马良斯",  # ← 词典 'Vitoria Guimaraes';AF 2026-08-13 改名后的拼法
     "PAU": "波城",  # ← 词典 'Pau';竞彩「波城FC」
     "RED Star FC 93": "巴黎红星",  # ← 词典 'Red Star';竞彩「圣旺红星」
     "SC Freiburg": "弗赖堡",  # ← 词典 'Freiburg'

@@ -635,6 +635,74 @@ _ZH_OVERRIDES: dict[str, str] = {
     #    (我们确实没注册这项赛事),编个假英文键只会把真信号消音。
     "布里斯托尔城": "Bristol City",
     "八户南源": "Vanraure Hachinohe",
+    # ── 2026-09-02 · 竞彩**全称**侧的系统性缺口(14 条)────────────────────────
+    # 起因是一次「盘面有、jingcai_sp 没有」的审计。审计给的 6 支队全部**不成立**
+    # (5 支竞彩根本没上架过、Leverkusen 本来就有行),但顺着人口重新数,量出了
+    # 另一个真缺口 —— 它藏在**第二条链**上:
+    #
+    #   · SP 链(`_canonical_from_any`)会**两个字段都试**(全称→简称)⇒ 这 14 支
+    #     靠简称解得出,`jingcai_sp` 一直是好的、盘面 `jc_home` 也一直有值;
+    #   · 而 `jingcai_vote` 的解析器只取 `homeTeamAllName or homeTeamAbbName`
+    #     (`observation/jingcai_vote.py:144`,单值 `zh_to_canonical`)⇒ **只有全称**。
+    #     全称不在表里 ⇒ `home_team/away_team` 写 NULL,散户 support% 那条 join 永远配不上。
+    #   实测:`jingcai_vote` 60 行(31 场)带 NULL 英文侧,全部由这 15 个全称写法造成。
+    #
+    # ⭐ 所以这批**不是**为了修 `jc_home`(它没坏),是修 vote 链 + 给 SP 链上第二道保险:
+    #    竞彩哪天不发 Abb 字段,SP 链就会跟着塌。
+    #
+    # 锚 = 开球时刻 + 联赛 + **已解出的另一侧**(逐条查 `odds_snapshots`),不是按音译:
+    #   西布罗姆维奇 08-15 14:00Z vs Norwich✓ / 08-23 11:00Z vs Burnley✓ / 09-02 vs Charlton✓
+    #   维戈塞尔塔   08-22 17:30Z vs Valencia✓ · 08-27 vs Osasuna✓ · 09-03 vs Real Sociedad✓
+    #   迈季迈阿宽广 08-14 16:50Z vs NEOM✓ · 08-20 vs Al-Hilal✓ · 09-03 vs Al Kholood✓
+    #   赛哈特海湾   08-28 18:00Z vs Al-Hilal✓ · 09-03 16:30Z vs NEOM✓
+    #   托特纳姆热刺 08-22 16:30Z vs Brentford✓ · 08-26 EFL_CUP vs Charlton✓
+    #   纽卡斯尔联   08-23 15:30Z vs Liverpool✓
+    #   利雅得胜利   08-21 16:00Z vs Al Riyadh✓ · 08-25 vs Al-Ettifaq✓
+    #   曼彻斯特联   08-22 11:30Z vs Hull City✓ · 08-30 15:30Z vs Ipswich✓
+    #   费城联合     08-16 22:00Z vs New York City FC✓
+    #   埃因霍温FC   08-21 18:00Z vs Den Bosch✓
+    #   埃尔沃斯堡   08-29 13:30Z vs Bayer Leverkusen✓
+    #   云达不来梅   08-30 13:30Z vs SC Freiburg✓
+    #   布赖代合作 / 穆拜赖兹征服 —— **第二轮**才锚住(对手第一轮才解出来,同
+    #     [[score-anchored-name-mapping]] 那条「拿第一轮结果再问一次同一批数据」):
+    #     布赖代合作 08-15 16:15Z:当日沙职含 Al Khaleej Saihat 的**唯一**一场
+    #                = `Al Taawon vs Al Khaleej Saihat`,竞彩侧它也是主 ⇒ Al Taawon
+    #     穆拜赖兹征服 08-15 18:00Z:当日沙职含 Al-Nassr 的**唯一**一场
+    #                = `Al-Nassr vs Al-Fateh`,竞彩侧它是客 ⇒ Al-Fateh
+    #
+    # ✅ 三道闸逐条实测(见本次会话):
+    #   ① 撞车:14 个中文键在 `_ZH_TO_EN`(= TEAM_NAME_ZH 值集 ∪ _ZH_OVERRIDES)
+    #      里**全部 0 占用** —— 它们此刻 `zh_to_canonical` 都返回 None,按定义无占用。
+    #   ② 「值必须在盘面出现过」:14 个值在 `odds_snapshots` 分别有
+    #      101/167/100/102/61/62/118/96/285/56/17/33/91/113 行,全部 >0。
+    #   ③ 🚨 **一支队两个 canonical** 的防线(Kyoto 那个失败形态):每个值都必须
+    #      **等于该队既有简称键今天吐出来的东西**,否则就是把一支队劈成两个。
+    #      逐条比过:西布朗/西布罗姆→West Brom · 塞尔塔→Celta Vigo · 迈季宽广→Al-Fayha ·
+    #      赛哈海湾→Al Khaleej Saihat · 热刺→Tottenham · 纽卡斯尔→Newcastle ·
+    #      利雅胜利→Al-Nassr · 曼联→Manchester United · 费城联/费城→Philadelphia Union ·
+    #      埃因FC→FC Eindhoven · 埃尔弗斯堡/埃沃斯堡→SV Elversberg · 云达不莱梅/不来梅→
+    #      Werder Bremen · 布赖合作→Al Taawon · 穆拜征服→Al-Fateh。**14/14 一致**。
+    #      ⭐ 顺带:③ 对最后两条是**独立佐证** —— 简称键早就在词典里且指向同一个值,
+    #         与我从盘面锚出来的答案对上了,两条互不相干的证据同时成立。
+    # ⚠️ 盘面同队两拼法时取**竞彩 SP 实际 join 的那一侧**(= gather/AF 侧,也是既有
+    #    简称键吐出的那个):`Tottenham` 而非 `Tottenham Hotspur`、`Newcastle` 而非
+    #    `Newcastle United`、`SV Elversberg` 而非 `Elversberg`。
+    # 📌 `迪里耶`(Al Diriyah)是今天在售名单里**唯一**解不出的名字,但它已在主仓
+    #    工作区被改好(未提交),**故意不在这里重复**,避免同一修复两处冲突。
+    "西布罗姆维奇": "West Brom",
+    "维戈塞尔塔": "Celta Vigo",
+    "迈季迈阿宽广": "Al-Fayha",
+    "赛哈特海湾": "Al Khaleej Saihat",
+    "托特纳姆热刺": "Tottenham",
+    "纽卡斯尔联": "Newcastle",
+    "利雅得胜利": "Al-Nassr",
+    "曼彻斯特联": "Manchester United",
+    "费城联合": "Philadelphia Union",
+    "埃因霍温FC": "FC Eindhoven",
+    "埃尔沃斯堡": "SV Elversberg",
+    "云达不来梅": "Werder Bremen",
+    "布赖代合作": "Al Taawon",
+    "穆拜赖兹征服": "Al-Fateh",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 
@@ -684,7 +752,20 @@ _EN_OVERRIDES: dict[str, str] = {
     "Sheffield United": "Sheffield Utd",
     "St. Pauli": "FC St. Pauli",
     "Verona": "Hellas Verona",
-    "Vitoria Guimaraes": "Guimaraes",
+    # 🚨 2026-09-02 改值(原 `"Guimaraes"`)。**AF 在 2026-08-13 把 team id 224
+    #    从 `Guimaraes` 改名为 `Vitória SC`**(该事实由 `odds_source_aliases.py`
+    #    行 54-64 独立记载,那里也正因此**否决**了反方向的 alias)。词典这一侧没跟上
+    #    ⇒ 竞彩 `吉马良斯` 解成陈旧的 `Guimaraes`,而盘面/收盘两侧都写 `Vitória SC`。
+    # 症状(实测):`jingcai_sp` 4 行 had/hhad 全部键在 `Guimaraes` 上,其中
+    #    改名**之后**的 2 场 `psc_home` 是 NULL(08-23 vs Nacional、08-31 SC Braga 客),
+    #    改名前的 2 场(08-08、08-14)反而有值 —— 时间切点正好落在 08-13。
+    # 锚(**同开球时刻 + 同对手**,两场独立,零歧义):
+    #    2026-08-08T17:00Z `Guimaraes vs Arouca` ≡ `Vitória SC vs Arouca`
+    #    2026-08-14T19:15Z `Sporting CP vs Guimaraes` ≡ `Sporting CP vs Vitória SC`
+    # ⚠️ 撞车:`odds_snapshots` 里还有个**裸** `Vitoria`(139+166 行)—— 那是
+    #    **BRA_SERIE_A 的巴西维多利亚**,另一家俱乐部,⛔ 不许并进来。
+    # ✅ 值在盘面出现过:`Vitória SC` 110 行(含 `src=closing` 55 行,即 join 目标本身)。
+    "Vitoria Guimaraes": "Vitória SC",
     "Wolfsburg": "VfL Wolfsburg",
     # 体检 Wave2 (2026-07-04) — ALIAS-SHADOWING class, measured against the LIVE
     # AF 2026-27 /teams tables (13 cron leagues + J1). TEAM_NAME_ZH keeps several

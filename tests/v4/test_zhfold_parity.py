@@ -61,6 +61,14 @@ _KNOWN_DIVERGENCE: dict[str, str] = {
     "Orlando City SC": "SC:同上",
     "Tochigi SC": "SC:同上",
     "Vitoria SC": "SC:同上",
+    # 2026-09-02 —— 同一家俱乐部的**带重音**拼法(AF 08-13 把 team 224 从 `Guimaraes`
+    # 改名成 `Vitória SC`,词典跟着上游走)。分歧与上面那条**逐字相同**(SC 被服务端剥),
+    # 不是新的一类。
+    # ⚠️ 执行本护栏「补进清单」这条处方前我量过它在遮什么:服务端折叠成 `vitoria` 的键有
+    #    三个(`Vitoria SC` / `Vitoria` / `Vitória SC`),其中 `Vitoria` 是**巴西**维多利亚
+    #    ——一处真撞车。但它是 `Vitoria SC` 早就带进来的**既有**状况(全词典这类撞车共 2 处,
+    #    另一处是 barcelona),本次一条也没新增。⇒ 钉住是对的,没有把新问题钉进清单。
+    "Vitória SC": "SC:同上(AF 2026-08-13 改名后的拼法;与 'Vitoria SC' 同一处分歧)",
     "Barcelona SC": "SC:同上(2026-08-09 随解放者杯队名一起进词典)",
     "Monagas SC": "SC:同上(2026-08-13 随涓流扫到的解放者杯档案队名进词典)。"
                   "已查:全词典折叠成 ('monagas',) 的只有它一个 ⇒ 无撞车,"
