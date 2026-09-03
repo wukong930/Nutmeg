@@ -186,18 +186,26 @@ def _apply_odds_api_overlay(row: dict, oa_lookup: dict,
 _ODDS_FETCH_CONCURRENCY = 6
 
 
-def _fetch_odds_safe(fid: int, cache_dir, refresh: bool):
+def _fetch_odds_safe(fid: int, cache_dir, refresh: bool, ttl_seconds: float):
     """fetch_odds wrapper for the concurrent pool: returns ('ok', payload) or
     ('err', exc) so one fixture's failure never aborts the whole batch.
 
     Passes the odds-cache TTL (体检 F1) so the gather's upcoming-fixture odds
     self-refresh instead of serving the permanent AF-mirror cache days-stale for
     leagues without a fresh-Pinnacle overlay. Only the gather opts in — the
-    cup-odds backfill / score_ev keep the permanent cache (no quota blowout)."""
+    cup-odds backfill / score_ev keep the permanent cache (no quota blowout).
+
+    🚨 ``ttl_seconds`` 由调用方给,**不再写死 2h**(2026-09-03)。写死那版的病和
+    `oa_ttl_seconds` 那段描述的**一模一样**,只是发生在 API-Football 这条腿上:
+    TTL 是**刷新触发器**不是只读闸 ⇒ 被动(非 🔄)加载时,任何缓存超龄的 fixture
+    都会发一次真请求。2026-07-17 那次修复只给 Odds API 那条腿装了表,AF 这条腿
+    漏掉了。实测账单(磁盘 mtime,零推理):一次**被动** `cup-market?days=7` 在
+    94 秒里写了 **468** 个 AF 缓存文件、把每分钟限流打红 **32** 次 ——
+    单分钟峰值 307 个,比 cron 的高峰(13:00 的 204)还大。"""
     try:
         return ("ok", api_football.fetch_odds(
             fid, cache_dir=cache_dir, refresh=refresh,
-            max_age_seconds=api_football._ODDS_CACHE_TTL_SECONDS))
+            max_age_seconds=ttl_seconds))
     except api_football.ApiFootballError as exc:
         return ("err", exc)
 
@@ -296,6 +304,7 @@ def _gather_rows(
     bettable_refresh_only: bool = False,
     oa_refreshed: set[str] | None = None,
     oa_ttl_seconds: float = 1800,
+    af_odds_ttl_seconds: float = api_football._ODDS_CACHE_TTL_SECONDS,
 ) -> tuple[list[dict], int, int]:
     """Walk leagues × today's fixtures × /odds and produce CSV-ready rows.
 
@@ -310,6 +319,14 @@ def _gather_rows(
     correct for the cron / 国际盘口 board, which can't score odds-less fixtures.
     Pass False (V12 W6 — 近期赛事 tab) to KEEP them as rows with psc_* = None so
     the UI can list them as '待开盘' until Pinnacle opens the line.
+
+    ``af_odds_ttl_seconds`` — 同一块表,装在 **API-Football** 那条腿上(2026-09-03)。
+    2026-07-17 只给 Odds API 装了 ``oa_ttl_seconds``,AF 这条腿的 TTL 仍写死在
+    ``_fetch_odds_safe`` 里(2h),于是被动加载照样按 TTL 刷新。实测一次被动
+    ``cup-market?days=7`` 打出 **468** 次 AF 调用 / 94 秒、限流打红 32 次。
+    默认值保持 ``_ODDS_CACHE_TTL_SECONDS``(2h)⇒ **cron 行为零变化**;
+    服务端传 6h(``routes._SERVING_OA_TTL_SECONDS``,与 OA 腿同一个常数)。
+    ⚠️ 别为了「和 cron 对齐」把服务端这个值调回 2h —— 那正是 OA 腿踩过的坑。
 
     ``oa_ttl_seconds`` — how stale a cached Odds API pull may be before a PASSIVE
     (non-🔄) load pays a credit to refresh it. This is the only meter on passive
@@ -472,6 +489,7 @@ def _gather_rows(
                     ex.submit(
                         _fetch_odds_safe, fid, cache_dir,
                         refresh_odds and _fixture_is_bettable(fx, bettable_pairs),
+                        af_odds_ttl_seconds,
                     ): fid
                     for fx, fid in pending
                 }

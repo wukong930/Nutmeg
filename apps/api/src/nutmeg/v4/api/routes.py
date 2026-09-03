@@ -2359,6 +2359,7 @@ def predictions_sp_calc(
                 bettable_refresh_only=bettable_only,
                 oa_refreshed=_oa_refreshed,
                 oa_ttl_seconds=_SERVING_OA_TTL_SECONDS,
+                af_odds_ttl_seconds=_SERVING_OA_TTL_SECONDS,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -2870,6 +2871,7 @@ def predictions_cup_market(
                 bettable_refresh_only=bettable_only,
                 oa_refreshed=_oa_refreshed,
                 oa_ttl_seconds=_SERVING_OA_TTL_SECONDS,
+                af_odds_ttl_seconds=_SERVING_OA_TTL_SECONDS,
             )
         except Exception:  # noqa: BLE001
             import logging
@@ -3241,6 +3243,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             # 2026-07-09 — refresh only 竞彩-bettable leagues/fixtures (§quota).
             bettable_refresh_only=req.bettable_only,
             oa_ttl_seconds=_SERVING_OA_TTL_SECONDS,
+            af_odds_ttl_seconds=_SERVING_OA_TTL_SECONDS,
         )
     except Exception as exc:  # noqa: BLE001
         # API-Football errors (rate limit, network, missing key) → return
