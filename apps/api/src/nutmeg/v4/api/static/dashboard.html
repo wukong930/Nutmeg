@@ -2350,7 +2350,15 @@ const I18N = {
     bk_consensus:     '共识',
     bk_low:           '最保守',
     bk_spread:        '离散',
-    bk_disclaimer:    '⚠️ 共识<b>排除 Pinnacle 自己</b>,只回答「它是不是在自说自话」。仅供临场参考,不参与判闸/排序/串关 —— 支持它的样本(63 场)全是世界杯且人口偏斜,只证明机制存在。EVₑ=按共识 · EVₗ=按最保守。',
+    bk_info_hint:     '点看说明',
+    bk_disclaimer:    '<p><b>它回答的唯一问题:</b>竞彩封盘后 Pinnacle 还在动 —— <b>那次移动是真信息,还是它一家的抖动?</b></p>'
+                    + '<p style="margin-top:8px">所以共识<b>排除 Pinnacle 自己</b> —— 含它的中位会被它拖着走,就答不了这个问题。</p>'
+                    + '<ul style="margin:8px 0 4px 18px;list-style:disc"><li><b>共识</b> = 其余各家的<b>中位数</b>(抗离群)</li>'
+                    + '<li><b>最保守</b> = 其余各家的<b>最小值</b>(单点,不是统计下界)</li>'
+                    + '<li><b>离散</b> = 最大 − 最小(pp)</li>'
+                    + '<li><b>EVₑ</b> = 按共识算 · <b>EVₗ</b> = 按最保守算,都是 P × 竞彩SP − 1</li></ul>'
+                    + '<p style="margin-top:8px;color:#b45309"><b>⚠️ 仅供临场参考,不参与判闸 / 排序 / 串关。</b></p>'
+                    + '<p style="margin-top:4px;color:var(--text-muted)">支持它的样本(63 场)全是世界杯且人口偏斜,只证明机制存在,不是「影响多大」的估计。已实测:书商之间的分歧(≤1.2pp)比封盘后漂移(|&gt;2pp| 占 29%)小一个数量级 —— 换句话说,<b>多加一个市场拿不到新信息</b>,这一层只用来看单锚是不是离群。</p>',
     poly_leg:         '腿',
     poly_sp:          '竞彩 SP',
     jc_age_stale_tip: '⚠️ 超 1 小时且临近开球:竞彩可能已调价,点 🎯 刷新竞彩再判断',
@@ -2947,7 +2955,15 @@ const I18N = {
     bk_consensus:     'Consensus',
     bk_low:           'Most conservative',
     bk_spread:        'Spread',
-    bk_disclaimer:    '⚠️ Consensus EXCLUDES Pinnacle itself — it answers "is Pinnacle talking to itself?". Reference only: never gates, ranks, or enters parlays. EVₑ = at consensus · EVₗ = at the most conservative book.',
+    bk_info_hint:     'Tap for details',
+    bk_disclaimer:    '<p><b>The one question it answers:</b> 竞彩 froze while Pinnacle kept moving — <b>was that move real information, or Pinnacle talking to itself?</b></p>'
+                    + '<p style="margin-top:8px">Hence the consensus <b>EXCLUDES Pinnacle itself</b> — including it would drag the median toward it and the question could not be answered.</p>'
+                    + '<ul style="margin:8px 0 4px 18px;list-style:disc"><li><b>Consensus</b> = <b>median</b> of the other books (outlier-robust)</li>'
+                    + '<li><b>Most conservative</b> = their <b>minimum</b> (a single point, not a statistical lower bound)</li>'
+                    + '<li><b>Spread</b> = max − min (pp)</li>'
+                    + '<li><b>EVₑ</b> at consensus · <b>EVₗ</b> at the most conservative, both P × 竞彩SP − 1</li></ul>'
+                    + '<p style="margin-top:8px;color:#b45309"><b>⚠️ Reference only: never gates, ranks, or enters parlays.</b></p>'
+                    + '<p style="margin-top:4px;color:var(--text-muted)">Its supporting sample (63 matches) is all World Cup and population-skewed — it shows the mechanism exists, not how big it is. Measured: cross-book disagreement (≤1.2pp) is an order of magnitude smaller than the post-freeze drift (|&gt;2pp| in 29% of matches), so <b>adding another market buys no new information</b>; this layer only tells you whether the single anchor is an outlier.</p>',
     poly_leg:         'Leg',
     poly_sp:          '竞彩 SP',
     jc_age_stale_tip: '⚠️ over 1h old near kickoff — 竞彩 may have repriced; hit 🎯 before judging',
@@ -7003,6 +7019,17 @@ function _bkHtml(pr, idx, ns) {
     //    藏在这里就等于彻底看不到——而「共识紧不紧」正是这个面板存在的理由。
     + ' \u00b7 ' + t('bk_spread') + ' ' + maxSp.toFixed(1) + 'pp' + (hot ? ' \u26a0\ufe0f' : '')
     + (age ? ' \u00b7 ' + age : '')
+    // ⓘ 说明(2026-09-03)—— 原本是表格下方一整块橙字,占掉三行竖向空间。
+    // ⭐ 放在 **summary** 而不是原文案的位置:这一层是**唯一**说明「不参与判闸/
+    //    排序/串关」的地方,而它已经在两层折叠里(联赛组 + 本 details)。收进弹窗
+    //    若还留在表格下方就成了三层;挂到常显的 summary 上,省了空间**且**更好找。
+    // ⚠️ `stopPropagation` 是必须的:summary 里的点击默认会 toggle 掉整个 details,
+    //    于是「点 ⓘ」会变成「点 ⓘ 顺便把面板折起来」。
+    + ' <span onclick="showInfo(t(\'bk_badge\'), t(\'bk_disclaimer\')); event.stopPropagation(); event.preventDefault();"'
+    + ' title="' + t('bk_info_hint') + '" role="button" tabindex="0" aria-label="' + t('bk_info_hint') + '"'
+    // ⚠️ 裸 ⓘ 在 375px 下实测只有 **12×17px** 的可点面积 —— owner 是在手机上看盘的。
+    //    `padding` + `inline-block` 把它撑到 ~28×21,不改行高也不推动 summary 的其它内容。
+    + ' style="cursor:pointer;color:var(--text-muted);display:inline-block;padding:2px 6px;margin:-2px -2px">\u24d8</span>'
     + '</summary><div class="mt-1 pl-2" style="border-left:2px solid #ccfbf1">'
     + '<div class="bk-scroll"><table class="text-xs"><thead><tr class="text-muted">'
     + '<th class="pr-3 text-left">' + t('poly_leg') + '</th>'
@@ -7012,7 +7039,7 @@ function _bkHtml(pr, idx, ns) {
     + '<th class="pr-3 text-right bk-opt">' + t('bk_spread') + '</th>'
     + '<th class="pr-3 text-right">EV\u2091</th>'
     + '<th class="text-right">EV\u2097</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
-    + '<div class="mt-1" style="color:#b45309">' + t('bk_disclaimer') + '</div></div></details>';
+    + '</div></details>';
 }
 //: 手填竞彩 SP 之后,就地刷新多书商面板的两列 EV。
 //

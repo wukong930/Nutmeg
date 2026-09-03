@@ -576,3 +576,48 @@ def test_the_landing_tab_shows_the_panel_too() -> None:
     up = h.index('id="tab-upcoming"')
     for cid in ("jc-bettable-spcalc", "today-spcalc-list", "cupmkt-list"):
         assert h.index(f'id="{cid}"') > up, f"{cid} 不在 tab-upcoming 里了,这条测试的前提变了"
+
+
+# ── ⓘ 说明弹窗(2026-09-03:橙字块 → summary 行的 ⓘ)────────────────────────
+def test_the_disclaimer_moved_into_an_info_popup_on_the_summary_line() -> None:
+    """免责文案从表格下方的橙字块,改成 `<summary>` 行末的 ⓘ 弹窗。
+
+    ⭐ **位置是有讲究的**:这一层是**唯一**说明「不参与判闸/排序/串关」的地方,
+    而它已经在两层折叠里(联赛组 + 本 details)。若把它收进弹窗**又留在表格下方**,
+    就变成三层才看得到。挂到**常显的 summary** 上,省了竖向空间(实测桌面 −36px
+    / −19%)**而且更好找**。
+
+    实测(活页面,375px):点击区 12×17 → 24×20;弹窗 343/375 装得下;无横向滚动。
+    """
+    js = _html()
+    # ⭐ 用本文件既有的 `_js_functions()`(按顶层 `}` 切),⛔ 别自己截固定字符窗口 ——
+    #    我第一版截 3000 字符,而新加的决策注释把 `</summary>` 推出了窗口,当场假红。
+    body = _js_functions()["_bkHtml"]
+    # ① 橙字块没了
+    assert "b45309" not in body, "表格下方那块橙字还在 —— 省不出空间"
+    # ② ⓘ 在 summary 里(必须在 '</summary>' 之前)
+    assert "</summary>" in body, "人口非平凡:切出来的函数体必须真含 summary"
+    head = body[:body.index("</summary>")]
+    assert "showInfo(" in head and "\\u24d8" in head, "ⓘ 不在 summary 行里"
+    # ③ 🚨 承重:必须 stopPropagation —— 否则点 ⓘ 会顺手把整个 details 折起来
+    assert "stopPropagation" in head, (
+        "ⓘ 没挡住冒泡 ⇒ 点它会 toggle 掉 details,面板当场折叠")
+    # ④ 复用既有弹窗,⛔ 不造第二套
+    assert "function showInfo(" in js
+
+
+def test_the_disclaimer_still_says_it_never_gates() -> None:
+    """⛔ 换了载体,那句话本身不许弄丢 —— 它是这一层唯一的红线声明。"""
+    js = _html()
+    # 🚨 必须钉在 **`bk_disclaimer` 的文案里**,不能只查全文有没有这几个字 ——
+    #    `不参与判闸` 在本文件里还出现在两条**无关注释**中(模型/市场背离那条,
+    #    以及 `_bkHtml` 自己的决策注释)。第一版查全文,空包弹「把文案里那句删掉」
+    #    照样绿,因为注释把它顶住了。
+    for lang, must in ((1, "不参与判闸"), (2, "never gates")):
+        blocks = [ln for ln in js.splitlines() if "bk_disclaimer" in ln or must in ln]
+        # 取 bk_disclaimer 定义之后、下一个键之前的那段
+        i = js.index("bk_disclaimer:", 0 if lang == 1 else js.index("bk_disclaimer:") + 10)
+        seg = js[i:i + 1600]
+        assert must in seg, f"红线声明从 bk_disclaimer 文案里消失了({must!r})"
+    # 人口非平凡:两处 bk_disclaimer(中/英)都必须存在,否则上面的切片是空的
+    assert js.count("bk_disclaimer:") == 2, "bk_disclaimer 不再是两处(中/英)"
