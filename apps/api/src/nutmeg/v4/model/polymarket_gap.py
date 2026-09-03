@@ -56,6 +56,22 @@ log = logging.getLogger(__name__)
 
 # Confidence thresholds (data-quality, not EV magnitude).
 FRESH_MAX_HOURS = 12.0       # Pinnacle line older than this → cap at low
+# ⛔ 2026-09-03 实测:**别收紧这个常数,没有数据支持。**
+# 人口 = 干净集(已结算 且 recorded_at < kickoff)5,584 行 / 499 场;决策集
+# (tier=high & ev≥5%)270 行 / 166 场。
+#  · 校准偏差按 freshness 分档**非单调**(+0.08/+1.29/+1.01/−0.00/+0.77 pp)。
+#    🚨 而且这把尺子在本表上**结构性退化**:88.4%(4,935/5,584)的行落在互补组里
+#    (1X2 三腿 / O/U 双腿的 q 与 y 各恒和 =1)⇒ 组内 Σ(y−q)≡0,聚类后偏差被
+#    **机械地**压成 0(8-16h 档 bias = −2.7e−18,机器零)。⇒ 只能看 Brier。
+#  · Brier 确实随陈旧变差,但**那是比赛难度不是锚陈旧**:同一批行上、同一时刻的
+#    Polymarket mid(它不随 Pinnacle 变旧)Brier 涨得**更多**,难度解释 116%;
+#    难度受控的配对技能差 = −0.0026 ± 0.0017(t=−1.49),方向还反着。
+#  · tier=high 内部(实测跨 0.95–10.18h)全 null,且最新鲜的 <2h 档是第二差的。
+#  · 功效:收紧提案真正会用到的 8h 切点上 MDE = 0.0371,**连 0.02 都测不出**;
+#    而配对尺子 MDE 只有 0.0048 ⇒ 「陈旧使 q 的 Brier 技能损失 >0.005」**被排除**。
+#  · 代价是实的:12→6h 会把 45% 的 high 行(决策集 55%)降级。
+# ⭐ 另:「high 的锚最旧 10.2h」不是窟窿,是**这个闸生效的结果** —— 916 行
+#    (干净人口的 16.4%)带 `stale_pinnacle` 已被 12h 闸压到 low。
 MIN_DEPTH_USD = 200.0        # USD resting at the ask below this → cap at low (thin)
 WIDE_SPREAD_FRAC = 0.10      # (ask − mid)/mid above this → cap at medium
 FAVORITE_TOL = 0.03          # |P_home − P_away| (or ask gap) below this = "too close

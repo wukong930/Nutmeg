@@ -540,24 +540,42 @@ def live_api_football_calls(request, _no_live_api_football):
 
 @pytest.fixture(autouse=True)
 def _no_forced_wc_fixture_fetch(monkeypatch, request):
-    """🩹 **止血贴,不是设计** —— 生产侧 `/today-recommendations` 每次都强制拉 WC 赛程。
+    """挡**测试环境**里的 WC 赛程拉取(缓存缺失/过期 ⇒ 真请求)。
 
-        routes.py:3416  today_recommendations → predictions_wc(...)     ← **无条件**
-        routes.py:3791    fetch_fixtures_for_league_season("WC", season)
-        api_football.py:502  _request("/fixtures", ..., refresh=True)   ← **写死**强制刷新
+    🚨 **这段注释原来的两条断言都是错的,2026-09-03 查实后改写。** 留着错的溯源
+    比没有溯源更坏 —— 我自己就照它把「生产在超支」写进了记忆,并据此开了任务。
 
-    ⇒ 任何碰这个端点的用例都是一次真实付费请求。实测被 AF 闸抓出 **12 条**,
-    横跨 4 个文件(test_today_recommendations / test_recommendation_version /
-    test_today_pool_and_sliders / test_serving_oa_quota),而它们此前**一条红都没有**
-    —— 调用点 fail-soft,花了钱照样全绿。
+        原写「routes.py:3416 today_recommendations → predictions_wc ← **无条件**」
+          ✗ routes.py:3414 是 `if "wc" in req.include:`,`git log -S` 证明这个闸
+            **从引入的第一个 commit 起就在**,从未缺席。
+        原写「api_football.py:502 `refresh=True` ← **写死**强制刷新」
+          ✗ 它在 `not refresh and season>=year-1` + `cf.exists() and age>6h`
+            的双层条件里,是 **TTL 触发**的刷新,不是写死。
 
-    ⛔ 为什么放在 conftest 而不是逐文件加:逐文件 = 一份**写死的名单**,而名单会掉队
-    —— 今天是 4 个文件,明天谁再写一条碰这个端点的用例就又漏一个,**且漏了不会红**。
-    这正是本仓刚刚点名过的形状(判闸钉子实测只盖 3/39)。
+    ⭐ 生产侧实测**零花费**:前端唯一的调用点(dashboard.html:8702)发的是
+    `include: ['single','parlay','pool']` —— **全部历史修订都不含 'wc'**
+    ⇒ WC block 在生产里一次都没执行过。WC `/fixtures` 的真实账单是
+    **4 次/天,全部来自 cron**(daily_wc_settle 3 次 + daily_wc_predict 1 次;
+    launchd 日志逐条可数,且缓存文件 mtime 与 cron 请求时刻相差 9ms)。
 
-    ⚠️ 这里**只挡测试**。生产那条 `refresh=True` 是另一件事(与
-    [[odds-api-serving-path-overspend]] 同族:额度真凶是**服务路径**不是 cron),
-    已另开任务去量。那条修好之后,本 fixture 应该连同这段注释一起删掉。
+    ## 那它挡的是什么
+
+    **测试环境**:`DEFAULT_CACHE_DIR` 是**相对 CWD** 的(api_football.py:52),
+    worktree / CI 没有 `data/` ⇒ 缓存缺失 ⇒ `refresh=False` 照样发真请求
+    (`refresh=False` ≠ 只读缓存);主仓里缓存龄一过 6h 也会触发。
+    测试侧人口:全 tests/ 有 **27** 个打这个端点的调用点,其中 **20** 个不传
+    `include` ⇒ 吃 `schemas.py:1145` 的默认值(**含 'wc'**)⇒ WC block 执行。
+
+    ⚠️ **但挡钱的不是它,是隔壁的 `_no_live_api_football`**(打在 `_client()` 这个
+    唯一出口上,会记账 + teardown 判红)。本 fixture 的作用是让那 ~20 条用例
+    **保持绿**而不是保持便宜。⇒ 删掉它不会烧钱,只会让一批测试变红。
+
+    ⛔ 放 conftest 而不是逐文件:逐文件 = 写死名单,而名单会掉队 —— 明天谁再写一条
+    碰这个端点的用例就又漏一个,**且漏了不会红**(判闸钉子实测只盖 3/39 的同族)。
+
+    ⛔ **没有退休条件。** 原文写「生产那条修好之后就把本 fixture 删掉」—— 那句话
+    建立在「生产在超支」这个**假前提**上,而且是这段里唯一会造成实际损害的一句:
+    后人照做会删掉一个让一批测试保持绿的 fixture,换不回任何额度。
 
     真要测这个函数本身的用例,申明 `real_wc_fixture_fetch` 豁免。
     """
