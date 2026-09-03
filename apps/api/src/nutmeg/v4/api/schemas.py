@@ -323,6 +323,15 @@ class PendingFixture(BaseModel):
     含 7 天后的未来场)⇒ 它的场次**永远**等不到自动开盘,而竞彩确实在卖。
     所以 `reason` 从「只有一个取值的装饰字段」变成了真的判据 —— 见下。
     """
+    #: True = **已开赛**(不是「Pinnacle 未开盘」)。两者都 `psc_home is None`,
+    #: 但意思相反:前者永远不会再有线,后者随时可能开。
+    #: 🚨 病情(owner 2026-09-03 实报):一场比赛开球前 5 分钟还在卡片上,
+    #: **一按 🔄 就整张消失** —— 后端 `min_kickoff_buffer_minutes=5` 那个
+    #: `continue` 既跳过了 /odds 调用(声明的目的)**也删掉了行**(未声明的副作用),
+    #: 而前端的同款闸只是把它移出「可投注」分组、卡片还在。同一条规则,
+    #: 一边降级一边删除。⇒ 服务路径改成 `keep_started=True`:不拉赔率(零额外配额)
+    #: 但照样出行,并由本字段区分状态。
+    started: bool = False
     home_team: str
     away_team: str
     league: str

@@ -162,3 +162,40 @@ def test_the_age_label_says_it_is_not_the_protection() -> None:
     assert "pb_age:" in js and "pb_age_tip:" in js
     tip = js[js.index("pb_age_tip:"):][:700]
     assert "开球闸" in tip and "不需要你按任何按钮" in tip, "没说清真正防陈旧的是什么"
+
+
+def test_every_serving_handler_that_buffers_also_keeps_started() -> None:
+    """🚨 传了开球缓冲的服务端点,**必须**同时传 `keep_started=True`。
+
+    否则那个端点会退回旧行为:一按 🔄,开球前 5 分钟的比赛整张卡消失
+    (owner 2026-09-03 实报)—— 因为那个 `continue` 既跳过 /odds **也删行**。
+
+    ⛔ **人口自己发现**,不写死「3 个 handler」:明天加第 4 个服务端点、
+    只补缓冲不补 `keep_started`,这条也得红。写死的数会掉队。
+    """
+    lines = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text(
+        encoding="utf-8").splitlines()
+    buf = [i for i, ln in enumerate(lines)
+           if f"min_kickoff_buffer_minutes={BUFFER_MIN}" in ln]
+    # 🚨 人口非平凡:找不到调用点就是发现器坏了,不是「服务端不缓冲」
+    assert len(buf) >= 3, f"只找到 {len(buf)} 个缓冲调用点 —— 发现器坏了"
+    missing = [i + 1 for i in buf if "keep_started=True" not in lines[i + 1]]
+    assert not missing, (
+        f"这些服务端点传了开球缓冲却没传 keep_started(行号 {missing})"
+        f" ⇒ 刷新时卡片会整张消失")
+
+
+def test_started_is_not_the_same_state_as_no_line_yet() -> None:
+    """⭐「已开赛」和「Pinnacle 未开盘」都是 `psc_home is None`,但意思相反 ——
+    前者永远不会再有线,后者随时可能开。界面上必须**分得开**,否则就是又一次
+    把「没有」说成「没去看」。"""
+    js = _js()
+    assert "pend_started_badge" in js, "已开赛没有自己的徽章 ⇒ 会被贴成「待开盘」"
+    i = js.index("function _pendingCardHtml")
+    body = js[i:i + 2000]
+    assert "pf.started" in body, "卡片渲染没读 started"
+    # ⚠️ 已开赛的卡不该给「手填 Pinnacle」面板 —— 填了也买不到,显示 ≠ 可操作
+    assert "!started && _pendIsJcSelling" in body, (
+        "已开赛的卡仍会弹出手填面板 —— 那是给「今天还能下注」的场用的")
+    schemas = (REPO / "apps/api/src/nutmeg/v4/api/schemas.py").read_text(encoding="utf-8")
+    assert "started: bool = False" in schemas, "PendingFixture 没有 started 字段"

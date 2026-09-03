@@ -550,6 +550,76 @@ class TestKickoffBufferFilter:
         # api_calls = 1 fixtures + 1 odds = 2
         assert n_calls == 2
 
+    # ── keep_started(2026-09-03)———————————————————————————————
+    # owner 实报:一场比赛开球前 5 分钟还在卡片上,**一按 🔄 就整张消失**。
+    # 根因:上面那个开球闸的 `continue` 同时做了两件事,而注释声明的目的只有第一件
+    # (「skip API /odds call ... to save quota」)—— 它顺带把**行**也删了。
+    # 而前端的同款闸只是把它移出「可投注」分组、卡片还在 ⇒ 同一条规则,
+    # 一边降级一边删除。`keep_started=True` 把两件事拆开。
+
+    def test_keep_started_emits_a_row_without_spending_quota(self, tmp_path):
+        """🚨 承重:出行,但**不发 /odds 请求**(零额外配额是这条改动的前提)。"""
+        fixtures = {"EPL": [
+            self._fixture(1, hour_offset=5, status="NS", home="Future", away="Match"),
+            self._fixture(2, hour_offset=-0.2, status="NS", home="Just", away="Started"),
+        ]}
+        odds = {1: _envelope(bookmakers=[_bookmaker_with_1x2()]),
+                2: _envelope(bookmakers=[_bookmaker_with_1x2()])}
+        now = dt.datetime(2026, 5, 28, 10, 0, 0, tzinfo=dt.UTC)
+        with self._patch_fixtures(fixtures), self._patch_odds(odds) as m:
+            rows, n_calls, _ = _gather_rows(
+                ["EPL"], dt.date(2026, 5, 28), cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+                require_odds=False, min_kickoff_buffer_minutes=5,
+                keep_started=True, now_utc=now,
+            )
+        by = {r["home_team"]: r for r in rows}
+        assert set(by) == {"Future", "Just"}, f"已开赛那场没留下:{list(by)}"
+        assert by["Just"].get("started") is True, "留下了但没打 started 标记"
+        assert by["Future"].get("started") in (None, False), "把没开赛的也标成已开赛了"
+        # 🚨 零额外配额:/odds 只对没开赛那场调过一次
+        called = [c.args[0] for c in m.call_args_list]
+        assert called == [1], f"给已开赛的场发了付费请求:{called}"
+
+    def test_default_still_drops_it_so_the_cron_is_unchanged(self, tmp_path):
+        """⚠️ 对照组:默认 `keep_started=False` 必须**照旧删行**。
+
+        `cli/predict_log.py` 那条 cron 依赖「删行」产生上午/下午两套不同的推荐集
+        (见 `_gather_rows` docstring 的 V12 W0 那段)。改服务路径不能顺手改它。
+        """
+        fixtures = {"EPL": [
+            self._fixture(1, hour_offset=5, status="NS", home="Future", away="Match"),
+            self._fixture(2, hour_offset=-0.2, status="NS", home="Just", away="Started"),
+        ]}
+        odds = {1: _envelope(bookmakers=[_bookmaker_with_1x2()])}
+        now = dt.datetime(2026, 5, 28, 10, 0, 0, tzinfo=dt.UTC)
+        with self._patch_fixtures(fixtures), self._patch_odds(odds):
+            rows, _, n_skipped = _gather_rows(
+                ["EPL"], dt.date(2026, 5, 28), cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+                require_odds=False, min_kickoff_buffer_minutes=5,
+                now_utc=now,
+            )
+        assert [r["home_team"] for r in rows] == ["Future"]
+        assert n_skipped == 1
+
+    def test_started_rows_carry_no_pinnacle_line(self, tmp_path):
+        """已开赛的行 `psc_*` 必须为空 —— 它没被拉过赔率,凭空有线就是数据造假。"""
+        fixtures = {"EPL": [self._fixture(2, hour_offset=-0.2, status="NS",
+                                          home="Just", away="Started")]}
+        now = dt.datetime(2026, 5, 28, 10, 0, 0, tzinfo=dt.UTC)
+        with self._patch_fixtures(fixtures), self._patch_odds({}):
+            rows, _, _ = _gather_rows(
+                ["EPL"], dt.date(2026, 5, 28), cache_dir=tmp_path,
+                bookmaker_id=PINNACLE_BOOKMAKER_ID,
+                refresh_fixtures=False, refresh_odds=False,
+                require_odds=False, min_kickoff_buffer_minutes=5,
+                keep_started=True, now_utc=now,
+            )
+        assert len(rows) == 1 and rows[0]["psc_home"] is None
+
     def test_filter_drops_kickoff_within_buffer(self, tmp_path):
         """status=NS but kickoff is within buffer → still dropped.
 

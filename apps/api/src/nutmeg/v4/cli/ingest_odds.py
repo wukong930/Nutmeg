@@ -296,6 +296,7 @@ def _gather_rows(
     refresh_odds: bool,
     require_odds: bool = True,
     min_kickoff_buffer_minutes: int = 0,
+    keep_started: bool = False,
     now_utc: Optional[dt.datetime] = None,
     snapshot_db: str | Path | None = None,
     snapshot_source: str = "gather",
@@ -457,6 +458,9 @@ def _gather_rows(
 
         # fetch-perf B (V14) — phase 1: time-window filter → fixtures needing /odds
         pending: list[tuple[dict, int]] = []
+        #: 已开赛但要留在盘面上的(`keep_started`)。⚠️ **不进 `pending`** ——
+        #: 进了就会在 phase 2 被拉一次 /odds,而这条改动的前提是**零额外配额**。
+        started_fixtures: list[tuple[dict, int]] = []
         for fixture in fixtures:
             fid = fixture.get("fixture", {}).get("id")
             if fid is None:
@@ -485,7 +489,21 @@ def _gather_rows(
                                 "skip fixture %s: kickoff %s <= cutoff %s",
                                 fid, iso_date, cutoff_utc.isoformat(),
                             )
-                            n_skipped += 1
+                            # 🚨 **这一个 `continue` 原来同时做了两件事**,而上面注释
+                            # 声明的目的只有第一件:「skip API /odds call ... to save
+                            # quota」。它顺带把**行**也删了 ⇒ owner 实报:一场比赛
+                            # 开球前 5 分钟还在卡片上,**一按 🔄 就整张消失**
+                            # (前端的同款闸只是把它移出「可投注」分组、卡片还在
+                            # ⇒ 同一条规则两边一个「降级」一个「删除」)。
+                            # ⇒ `keep_started=True` 时把两件事拆开:**不拉赔率
+                            # (配额分文不动),但照样出行**并打上 `started`。
+                            # ⚠️ 默认仍是 False —— `predict_log` 那条 cron 依赖
+                            #    「删行」来产生上午/下午两套不同的推荐集(见上方
+                            #    V12 W0 那段),那里的行为一点都不能变。
+                            if keep_started:
+                                started_fixtures.append((fixture, fid))
+                            else:
+                                n_skipped += 1
                             continue
                     except (ValueError, TypeError):
                         # Bad/missing ISO timestamp — let it through, the
@@ -560,6 +578,25 @@ def _gather_rows(
                     bookmaker_id=bookmaker_id, source=snapshot_source,
                 ):
                     n_snapshots += 1
+
+        # phase 3 — 已开赛但要留在盘面上的行(`keep_started`)。
+        # 🚨 **零额外配额**:`envelope=None`,不发任何 /odds 请求;`psc_*` 因此为空。
+        # ⚠️ 也**不写线史快照** —— 这些行没有新的线,写进去只会制造重复状态。
+        # ⚠️ `require_1x2_odds=False` 是必须的:它们本来就没赔率,按 require_odds
+        #    去丢等于这条改动白做。
+        for fixture, fid in started_fixtures:
+            row = fixture_envelope_to_csv_row(
+                fixture, None, league,
+                sharp_bookmaker_id=bookmaker_id, require_1x2_odds=False,
+            )
+            if row is None:
+                n_skipped += 1
+                continue
+            # ⭐ 这个标记是全部意义所在:没有它,`psc_home is None` 会让这些行落进
+            #   **待开盘(Pinnacle 未开盘)**,而它们其实是**已开赛** —— 两个状态在
+            #   界面上长得一样,就等于把「没有」说成「没去看」的又一次。
+            row["started"] = True
+            rows.append(row)
 
     if snapshot_db is not None and n_snapshots:
         log.info("line snapshots: +%d new state(s) → %s", n_snapshots, snapshot_db)

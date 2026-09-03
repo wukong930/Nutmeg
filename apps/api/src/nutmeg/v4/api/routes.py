@@ -2410,6 +2410,7 @@ def predictions_sp_calc(
                 refresh_fixtures=False, refresh_odds=refresh_odds,
                 require_odds=False,
                 min_kickoff_buffer_minutes=5,
+                keep_started=True,
                 # ⭐ `record_line_history=false` 的调用方(snapshot_board cron)
                 # 只读不写 —— 见 `_SERVING_OA_TTL_SECONDS` 上方那段。
                 snapshot_db=(_observation_db_path() if record_line_history else None),
@@ -2435,6 +2436,10 @@ def predictions_sp_calc(
             if not r.get("home_team") or not r.get("away_team"):
                 continue
             pending.append(PendingFixture(
+                # ⭐ `started` 把「**已开赛**」和「**Pinnacle 未开盘**」分开 ——
+                # 两者都是 `psc_home is None`,不分的话前者会被贴上后者的标签,
+                # 又一次「把『没有』说成『没去看』」。
+                started=bool(r.get("started")),
                 home_team=r["home_team"],
                 away_team=r["away_team"],
                 league=r["league"],
@@ -2919,6 +2924,7 @@ def predictions_cup_market(
                 refresh_fixtures=False, refresh_odds=refresh_odds,
                 require_odds=False,
                 min_kickoff_buffer_minutes=5,
+                keep_started=True,
                 # 体检 A1 — the 市场模式 board (incl. 🔄 refresh) feeds the
                 # odds_snapshots line history; near-KO refreshes are exactly
                 # the closing-line evidence CLV needs.
@@ -2944,6 +2950,7 @@ def predictions_cup_market(
                 preds.append(mp)
             elif r.get("home_team") and r.get("away_team"):
                 pending.append(PendingFixture(
+                    started=bool(r.get("started")),
                     home_team=r["home_team"], away_team=r["away_team"],
                     league=r["league"], date=r["date"],
                     kickoff_utc=(r.get("kickoff_utc") or None),
@@ -3297,6 +3304,7 @@ def today_recommendations(req: TodayRecommendationsRequest) -> TodayRecommendati
             # near-kickoff Pinnacle (fixtures stay cached; only odds drift).
             refresh_odds=req.refresh_odds,
             min_kickoff_buffer_minutes=5,
+            keep_started=True,
             snapshot_db=_observation_db_path(),
             snapshot_source="today_rec",
             use_odds_api=_odds_api_available(),

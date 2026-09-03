@@ -2288,6 +2288,7 @@ const I18N = {
     spcalc_pending_title:'{ic:hourglass} 待开盘 (Pinnacle 未开盘)',
     spcalc_pending_hint:'Pinnacle 尚未开出盘口 → 模型缺少关键先验, 暂不计算 EV (避免误导)。开盘后这些比赛会自动出现在上方可计算列表。',
     spcalc_pending_badge:'{ic:hourglass} 待开盘',
+    pend_started_badge: '{ic:hourglass} 已开赛',
     cupmkt_load_btn:'💹 加载市场模式盘口',
     cupmkt_hint:'杯赛(欧冠/欧联/欧协联 + 五大国内杯 + 世界杯/欧洲杯)+ 日职联(模型未训练·分布外)。一律以 Pinnacle 公允价为准(非模型),填竞彩 SP 算 EV。⚠️ 杯赛淘汰赛: 竞彩胜平负 = 90 分钟赛果(加时/点球不算)。',
     h_spcalc:'{chip:std} 标准模式',
@@ -2897,6 +2898,7 @@ const I18N = {
     spcalc_pending_title:'{ic:hourglass} Awaiting Pinnacle line',
     spcalc_pending_hint:'Pinnacle has not opened a line yet → the model lacks a key prior, so EV is not computed (avoids misleading picks). These fixtures move to the calculable list above once the line opens.',
     spcalc_pending_badge:'{ic:hourglass} no line yet',
+    pend_started_badge: '{ic:hourglass} kicked off',
     cupmkt_load_btn:'💹 Load market-mode odds',
     cupmkt_hint:'Cups (UCL/UEL/UECL + big domestic cups + World Cup/Euro) + J1 League (model untrained / out-of-distribution). All priced off Pinnacle fair value (NOT the model); enter 竞彩 SP for EV. ⚠️ Cup knockouts: 竞彩 1X2 settles on the 90-min result (ET/penalties excluded).',
     h_spcalc:'{chip:std} Standard mode',
@@ -8215,8 +8217,17 @@ function _pendPromote(preds, pending) {
 }
 
 function _pendingCardHtml(pf, i) {
-  const sell = _pendIsJcSelling(pf);
-  const badge = sell
+  // ⭐ 2026-09-03 —— **已开赛**要和「待开盘」分开。两者都 `psc_home is None`,
+  //    但意思相反:前者永远不会再有线,后者随时可能开。owner 实报的病是「开球前
+  //    5 分钟还在,一按 🔄 整张消失」——后端那个 `continue` 连行一起删了。现在行留着
+  //    (零额外配额,不拉赔率),这里给它自己的徽章,别贴成「Pinnacle 未开盘」。
+  // ⚠️ 已开赛的卡**不给手填面板**(`sell` 那套):那是给「今天还能下注」的场用的,
+  //    对一场已经开球的比赛,填了也买不到 —— 显示≠可操作,别把两者混在一起。
+  const started = !!pf.started;
+  const sell = !started && _pendIsJcSelling(pf);
+  const badge = started
+    ? `<span class="chip-outcome text-xs whitespace-nowrap" style="background:#f1f5f9;color:#64748b">${_expandIcons(t('pend_started_badge'))}</span>`
+    : sell
     ? `<span class="chip-outcome text-xs whitespace-nowrap" style="background:#eef2ff;color:#4338ca">${_expandIcons(t('pend_jc_badge'))}</span>`
     : `<span class="chip-outcome chip-outcome-pending text-xs whitespace-nowrap">${_expandIcons(t('spcalc_pending_badge'))}</span>`;
   // 竞彩在卖的场次多一块手填 Pinnacle 面板。输入形状与卡内 `cupman-*` 一致
