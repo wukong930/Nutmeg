@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from nutmeg.v4.data.sources import odds_api as OA
-from v4.test_book_consensus import _attach
+from v4.test_book_consensus import _attach, _pred
 
 
 def _q(h, d, a):
@@ -130,3 +130,75 @@ class TestLivePullLedger:
         hits = [str(f) for f in files if pat.search(f.read_text(encoding="utf-8"))]
         assert len(hits) == 1 and hits[0].endswith("odds_api.py"), (
             f"endpoint 字面量出现在多处:{hits}")
+
+
+class TestSameRulerAsTheMainEv:
+    """P1-①:共识必须和它要对照的那个 EV 用**同一把尺子**(WPO)。
+
+    实测(388 场 / 21,180 条报价):比例归一 vs WPO 逐条 |ΔP| 中位 0.669pp、
+    p90 2.01pp;逐场共识中位位移 中位 1.169pp,换算 EV(×SP≈3)≈ 3.5pp,
+    而面板绿灯线是 5% —— 两把不同刻度的尺子并排、还共用同一套上色阈值。
+    """
+
+    def test_consensus_matches_the_production_wpo_devig(self, tmp_path, monkeypatch):
+        """⭐ 行为断言:拿生产的 `devig(method='wpo')` 独立算一遍,必须逐位相同。
+
+        ⛔ 不写「源码里有没有 `method="wpo"`」那种语法断言 —— 换个等价写法就假红,
+        而真正换回比例归一时它可能照样绿。
+        """
+        from nutmeg.v4.model.devig import devig
+        import statistics as st
+        books = {f"bk{i}": [1.90 + i * 0.05, 3.50, 4.20 - i * 0.05] for i in range(6)}
+        p = _attach(tmp_path, monkeypatch, books)
+        assert p.bk_consensus, "人口非平凡:必须真算出共识"
+
+        want = [st.median([devig(o, method="wpo")[i] for o in books.values()])
+                for i in range(3)]
+        for got, exp in zip(p.bk_consensus, want, strict=True):
+            assert abs(got - exp) < 1e-9, (
+                f"共识不是 WPO 口径:{p.bk_consensus} vs {want}")
+
+    def test_it_differs_from_the_old_proportional_ruler(self, tmp_path, monkeypatch):
+        """🚨 人口非平凡:样本必须真能分开两把尺子,否则上一条空洞为真。"""
+        import statistics as st
+        books = {f"bk{i}": [1.90 + i * 0.05, 3.50, 4.20 - i * 0.05] for i in range(6)}
+        p = _attach(tmp_path, monkeypatch, books)
+        prop = [st.median([(1 / o[i]) / sum(1 / x for x in o) for o in books.values()])
+                for i in range(3)]
+        moved = max(abs(a - b) for a, b in zip(p.bk_consensus, prop, strict=True)) * 100
+        assert moved > 0.3, f"样本分不开两把尺子(只差 {moved:.3f}pp)—— 上一条测不出东西"
+
+
+class TestThreeStatesAreDistinguishable:
+    """P1-③:「没接入」/「有快照但没连上」/「今天还没抓到」是**三**件事。
+
+    原来后两者都渲染成空白 ⇒ owner 无从知道该去补词典。实测一次 79 场的 sp-calc
+    里 3 场落在第二态,其中 `PSG vs Monaco` 是**竞彩当天在售**的。
+    """
+
+    def test_name_mismatch_is_flagged_not_blank(self, tmp_path, monkeypatch):
+        from nutmeg.v4.api import routes
+        # 库里有这一天的快照,但队名是另一场
+        _attach(tmp_path, monkeypatch, {f"bk{i}": [2.0, 3.4, 3.6] for i in range(6)})
+        p = _pred(home_team="Nowhere United", away_team="Elsewhere FC")
+        routes._attach_book_consensus([p])
+        assert p.bk_consensus is None
+        assert p.bk_no_match is True, "队名没连上却没标记 ⇒ 渲染成空白,和『今天没抓到』分不开"
+        assert p.bk_unavailable is False, "这不是『没接入』"
+
+    def test_no_snapshot_that_day_is_not_flagged(self, tmp_path, monkeypatch):
+        """⚠️ 对照组:今天真没抓到**不该**标 —— 否则会把 cron 没跑误报成词典问题。"""
+        from nutmeg.v4.api import routes
+        import datetime as dt
+        _attach(tmp_path, monkeypatch, {f"bk{i}": [2.0, 3.4, 3.6] for i in range(6)})
+        p = _pred(date=dt.date(2030, 1, 1))          # 那天库里一行都没有
+        routes._attach_book_consensus([p])
+        assert p.bk_no_match is False, "把『今天没抓到』误标成了词典问题"
+
+    def test_unavailable_still_wins(self, tmp_path, monkeypatch):
+        """没接入的赛事优先标『没接入』,不落到第二态。"""
+        from nutmeg.v4.api import routes
+        _attach(tmp_path, monkeypatch, {f"bk{i}": [2.0, 3.4, 3.6] for i in range(6)})
+        p = _pred(league="JPN_LEAGUE_CUP")           # 不在 SPORT_KEYS
+        routes._attach_book_consensus([p])
+        assert p.bk_unavailable is True and p.bk_no_match is False

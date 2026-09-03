@@ -2340,7 +2340,12 @@ const I18N = {
     leg_draw:         '平局',
     leg_away:         '客胜',
     bk_badge:         '多书商参照',
-    bk_none:          '此赛事无多书商源(Odds API 未上架)',
+    // ⚠️ 2026-09-03 改口径:原文是『Odds API 未上架』—— 把「**我们没接**」说成
+    //    「**人家没有**」。实测我们自己 2026-06-11 的 `/sports` 缓存里**就有**
+    //    `soccer_germany_dfb_pokal`,只是它没进 SPORT_KEYS。其余几项(日联赛杯等)
+    //    确实是 Odds API 没有 ⇒ 新措辞对两边都成立,不再替上游背锅也不再甩锅。
+    bk_none:          '本项目未接入该赛事的多书商源',
+    bk_nomatch:       '有快照但这场没对上(队名待补)',
     bk_books:         '家',
     bk_consensus:     '共识',
     bk_low:           '最保守',
@@ -2936,7 +2941,8 @@ const I18N = {
     leg_draw:         'Draw',
     leg_away:         'Away',
     bk_badge:         'Book consensus',
-    bk_none:          'No multi-book source for this competition (not on The Odds API)',
+    bk_none:          'Multi-book source not wired up for this competition',
+    bk_nomatch:       'Snapshot exists but this fixture did not match (team name)',
     bk_books:         'books',
     bk_consensus:     'Consensus',
     bk_low:           'Most conservative',
@@ -6940,9 +6946,20 @@ function _bkHtml(pr, idx, ns) {
   //    前者永远不会有(日联赛杯/意大利杯/德国杯…),后者 cron 下一轮就有。
   //    不区分的话 owner 会一直等一个不会来的东西 ⇒ 前者给一行灰字,后者什么都不显示。
   if (!_hasBk(pr)) {
-    return pr && pr.bk_unavailable
-      ? '<div class="text-xs mb-1 text-muted">' + IC('info') + ' ' + t('bk_none') + '</div>'
-      : '';
+    // 三态,不是两态(2026-09-03 补第三态):
+    //   ① bk_unavailable —— 本项目未接入该赛事的多书商源 ⇒ **永远不会有**;
+    //   ② bk_no_match    —— 这一天**有**快照,只是这一场没连上(队名对不上)
+    //                       ⇒ 该去补词典,不是等下一轮 cron;
+    //   ③ 其它           —— 今天还没抓到 ⇒ 下一轮就有,不打扰。
+    // 原来 ② 和 ③ 都渲染成空白 ⇒ owner 无从知道该去补词典。实测一次 79 场的
+    // sp-calc 里 3 场落在 ②,其中 `PSG vs Monaco` 是**竞彩当天在售**的场次。
+    if (pr && pr.bk_unavailable) {
+      return '<div class="text-xs mb-1 text-muted">' + IC('info') + ' ' + t('bk_none') + '</div>';
+    }
+    if (pr && pr.bk_no_match) {
+      return '<div class="text-xs mb-1 text-muted">' + IC('info') + ' ' + t('bk_nomatch') + '</div>';
+    }
+    return '';
   }
   // 🚨 id 必须带命名空间:标准模式(_SPCALC.preds)和杯赛/市场模式(_CUPMKT.preds)
   //    各自从 0 开始编号,共用 `bk-ev-{idx}-…` 会**撞号**——2026-09-01 实测活页面上

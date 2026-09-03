@@ -246,10 +246,19 @@ class SinglePrediction(BaseModel):
     bk_spread: list[float] | None = None      # 离散度(max−min,**百分点**)
     bk_n: int | None = None                   # 家数(含 Pinnacle)
     bk_captured_at: str | None = None         # 这批报价抓于何时
-    #: True = **这项赛事 Odds API 根本没有对应 sport**(日联赛杯/意大利杯/德国杯…)
+    #: True = **本项目未接入该赛事的多书商源**(该赛事不在 `SPORT_KEYS` 里)。
+    #: ⚠️ 2026-09-03 订正措辞:原文写「Odds API 根本没有对应 sport」并点名德国杯,
+    #: 而我们自己 2026-06-11 的 `/sports` 缓存里**就有** `soccer_germany_dfb_pokal`
+    #: —— 那是**我们没接**,不是人家没有(日联赛杯等则确实是人家没有)。
+    #: 把两者都说成后者,正是本仓反复犯的「把『没有』说成『没去看』」的反向版。
     #: ⇒ 多书商共识**永远不会有**,不是「今天没抓到」。
     #: ⚠️ 必须和「有 key 但今天没数据」区分开 —— 否则 owner 会一直等一个不会来的东西。
     bk_unavailable: bool = False
+    #: 第三态(2026-09-03):这一天**有**多书商快照,只是这一场**没连上**(队名对不上)。
+    #: ⚠️ 和 `bk_unavailable`(Odds API 结构性没有该赛事)、和「今天一行都没抓到」
+    #: 三者互斥。原来后两者都渲染成空白 ⇒ owner 看不出「该去补词典」。
+    #: 实测:一次 79 场的 sp-calc 里 3 场落在这一态,其中一场是竞彩当天在售的。
+    bk_no_match: bool = False
     jc_single_available: int | None = None
     jc_hc_single_available: int | None = None
     # V14 — when API-Football last refreshed this Pinnacle snapshot (ISO). The
@@ -366,10 +375,19 @@ class PendingFixture(BaseModel):
     bk_spread: list[float] | None = None      # 离散度(max−min,**百分点**)
     bk_n: int | None = None                   # 家数(含 Pinnacle)
     bk_captured_at: str | None = None         # 这批报价抓于何时
-    #: True = **这项赛事 Odds API 根本没有对应 sport**(日联赛杯/意大利杯/德国杯…)
+    #: True = **本项目未接入该赛事的多书商源**(该赛事不在 `SPORT_KEYS` 里)。
+    #: ⚠️ 2026-09-03 订正措辞:原文写「Odds API 根本没有对应 sport」并点名德国杯,
+    #: 而我们自己 2026-06-11 的 `/sports` 缓存里**就有** `soccer_germany_dfb_pokal`
+    #: —— 那是**我们没接**,不是人家没有(日联赛杯等则确实是人家没有)。
+    #: 把两者都说成后者,正是本仓反复犯的「把『没有』说成『没去看』」的反向版。
     #: ⇒ 多书商共识**永远不会有**,不是「今天没抓到」。
     #: ⚠️ 必须和「有 key 但今天没数据」区分开 —— 否则 owner 会一直等一个不会来的东西。
     bk_unavailable: bool = False
+    #: 第三态(2026-09-03):这一天**有**多书商快照,只是这一场**没连上**(队名对不上)。
+    #: ⚠️ 和 `bk_unavailable`(Odds API 结构性没有该赛事)、和「今天一行都没抓到」
+    #: 三者互斥。原来后两者都渲染成空白 ⇒ owner 看不出「该去补词典」。
+    #: 实测:一次 79 场的 sp-calc 里 3 场落在这一态,其中一场是竞彩当天在售的。
+    bk_no_match: bool = False
 
 
 class SpCalcResponse(BaseModel):

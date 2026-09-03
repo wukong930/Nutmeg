@@ -428,6 +428,7 @@ def _attach_book_consensus(preds: list) -> None:
 
         from nutmeg.v4.data.sources.odds_api import SPORT_KEYS, _norm_team
         from nutmeg.v4.data.team_match import same_team
+        from nutmeg.v4.model.devig import devig as _devig
         conn = _sq.connect(f"file:{db}?mode=ro", uri=True)
     except Exception:  # noqa: BLE001
         return
@@ -459,7 +460,9 @@ def _attach_book_consensus(preds: list) -> None:
         try:
             d = pr.date.isoformat() if hasattr(pr.date, "isoformat") else str(pr.date)
             # ⚠️ 这项赛事 Odds API 根本没有对应 sport ⇒ 标出来,别让 owner 等一个
-            #    永远不会来的东西(日联赛杯/意大利杯/德国杯…,同 JPN_J2/荷乙缺 key)。
+            #    永远不会来的东西。⚠️ 措辞是「**本项目未接入**」而不是「Odds API 没有」:
+            #    两类都落在这里 —— 日联赛杯确实人家没有,德国杯我们缓存里**就有**
+            #    (只是没进 SPORT_KEYS)。别替上游背锅,也别甩锅给上游。
             if not SPORT_KEYS.get(getattr(pr, "league", None) or ""):
                 pr.bk_unavailable = True
                 continue
@@ -476,19 +479,41 @@ def _attach_book_consensus(preds: list) -> None:
                      if same_team(r[0], pr.home_team) and same_team(r[1], pr.away_team)]
             pairs = {(r[0], r[1]) for r in cands}
             if len(pairs) != 1:
+                # 🚨 **第三态**(2026-09-03):这一天**有**快照,只是这一场没连上
+                # (队名对不上,或两场都像)。原来它和「今天一行都没抓到」一样渲染成
+                # **空白** ⇒ owner 无从知道该去补词典。实测那次 sp-calc 79 场里 3 场
+                # 落在这里,其中 `PSG vs Monaco` 是**竞彩当天在售**的场次
+                # (board 写 'Monaco'、快照写 'AS Monaco')。
+                # ⚠️ 判据是「这一天有没有快照」而不是「全表有没有」:后者会把
+                #    「今天 cron 还没跑」也误标成词典问题。
+                if by_date.get(d):
+                    pr.bk_no_match = True
                 continue          # 0 = 没有;>1 = 真歧义(两场不同比赛都像)⇒ 宁可缺
             row = max(cands, key=lambda r: str(r[4] or ""))[2:]   # 同一场取**最新**那行
             raw = _json.loads(row[0])
-            # 每家先各自去vig(比例归一)—— 书商抽水各不相同,不归一没法比
+            # 每家先各自去vig —— 书商抽水各不相同,不归一没法比。
+            # 🚨 **必须和主 EV 同一把尺子**(2026-09-03 换)。原来这里是手写的比例归一,
+            # 而这一层要对照的那个 EV(卡片主 EV / `p_*_market`,经
+            # `_pinnacle_devig_1x2` → `model.devig`)全是 **WPO**。两把不同刻度的尺子
+            # 并排、还共用同一套上色阈值。实测(388 场 / 21,180 条报价):
+            #   逐条报价 |P_比例归一 − P_WPO|  中位 0.669pp · p90 2.01pp · max 14.38pp
+            #   逐场共识中位的位移            中位 1.169pp · p90 2.81pp · max 4.98pp
+            #   换算成 EV(×SP≈3)            中位 ≈ 3.5pp,而绿灯线是 5%
+            # ⇒ 这是**正确性修复,不是盈利修复**(同 δ₁ₓ₂ 那条的定性)。
+            # ⚠️ `method="wpo"` **显式传,不吃默认值** —— 默认参数编码了「给哪条路径用」,
+            #    本仓刚踩过(`implied_handicap_lines(c1=False)` 是 eval 惯例)。
+            # ✅ 实测 21,180 条报价里 WPO 求解回退基本法 **0 条** ⇒ 不引入新失败模式。
             devigged = {}
+            _overround = {}
             for k, o in raw.items():
+                p_fair = _devig(o, method="wpo")
+                if not p_fair:
+                    continue
                 try:
-                    inv = [1.0 / float(x) for x in o]
+                    _overround[k] = sum(1.0 / float(x) for x in o) - 1.0
                 except (TypeError, ValueError, ZeroDivisionError):
                     continue
-                tot = sum(inv)
-                if tot > 0:
-                    devigged[k] = [x / tot for x in inv]
+                devigged[k] = list(p_fair)
             others = [v for k, v in devigged.items() if k != "pinnacle"]
             if len(devigged) < _BK_MIN_BOOKS or len(others) < 2:
                 continue
@@ -508,8 +533,7 @@ def _attach_book_consensus(preds: list) -> None:
             # ⚠️ 阈值在 0.28–0.45 之间等价:实测正常报价抽水 p99 = 0.189,
             #    退化簇最小值 0.453,中间是空的。
             _clean = [v for k, v in devigged.items()
-                      if k != "pinnacle" and sum(v) > 0
-                      and (sum(1.0 / float(x) for x in raw[k]) - 1.0) <= _BK_MAX_OVERROUND]
+                      if k != "pinnacle" and _overround.get(k, 9e9) <= _BK_MAX_OVERROUND]
             _band = _clean if len(_clean) >= 2 else others   # 全退化则退回原样,别给空
             pr.bk_consensus = [_st.median([v[i] for v in others]) for i in range(3)]
             pr.bk_low = [min(v[i] for v in _band) for i in range(3)]
