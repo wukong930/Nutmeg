@@ -362,6 +362,40 @@ def _cache_path(endpoint: str, params: dict[str, Any], cache_dir: Path) -> Path:
     return cache_dir / safe_endpoint / f"{h}.json"
 
 
+#: {endpoint: 上一次真发请求并写盘成功的 unix 时刻}。⚠️ **进程内状态,不落盘** ——
+#: 它回答的是「在**这一次进程**里,刚才那次拉取是不是真的花了钱」,不是「缓存有多新」。
+#: 两者不同:缓存可能是别的进程 30 秒前写的,那时读它同样零成本,但本进程没法知道,
+#: 而**漏判是安全方向**(少采一次快照),误判才会花钱。
+_LAST_LIVE: dict[str, float] = {}
+
+
+def _odds_endpoint(sport_key: str) -> str:
+    """当前赔率的 endpoint 路径。**唯一构造点** —— `was_last_odds_pull_live` 和
+    `fetch_current_odds` 必须拼出同一个字符串,所以只许有一份实现。
+    ⛔ 调用方别自己 `f"sports/{sk}/odds"`:两份字面量会悄悄漂开,而漂开的后果是
+    判据**静默常闭**(长得和「今天没比赛」一样),不会有人发现。"""
+    return f"sports/{sport_key}/odds"
+
+
+def was_last_odds_pull_live(sport_key: str, *, within_seconds: float = 300.0) -> bool:
+    """本进程刚刚真拉过这个 sport 的当前赔率(并写盘成功)?
+
+    给「读同一份缓存」的旁路消费方(多书商快照)判断自己是不是**零边际成本**。
+    """
+    return was_last_call_live(_odds_endpoint(sport_key), within_seconds=within_seconds)
+
+
+def was_last_call_live(endpoint: str, *, within_seconds: float = 300.0) -> bool:
+    """本进程刚刚(``within_seconds`` 内)真拉过 ``endpoint`` 并写盘成功?
+
+    用途:让「读同一份缓存」的旁路消费方知道自己是**零边际成本**的。
+    ⚠️ 时间窗不是缓存 TTL —— 它防的是「同一进程跑了很久、几小时前那次拉取被当成
+    刚刚」。默认 5 分钟远大于一轮采集的耗时,又远小于任何 TTL。
+    """
+    t = _LAST_LIVE.get(endpoint)
+    return t is not None and (time.time() - t) <= within_seconds
+
+
 def _request(
     endpoint: str,
     params: dict[str, Any],
@@ -428,6 +462,12 @@ def _request(
     _tmp = cf.with_name(f"{cf.name}.{os.getpid()}.tmp")
     _tmp.write_text(json.dumps(body, separators=(",", ":")))
     _tmp.replace(cf)
+    # ⭐ 记一笔「这个 endpoint 刚被**真的**拉了一次、缓存刚被重写」。
+    #    消费方(多书商快照)靠它判断「现在读缓存是零边际成本的」——
+    #    ⛔ **判据必须问这里,不许调用方自己手抄 params 去比对缓存 mtime**:
+    #    那是语法代理,`fetch_current_odds` 的默认参数一漂,判据就静默常闭,
+    #    而「静默常闭」在这条路上长得和「今天没比赛」一模一样。
+    _LAST_LIVE[endpoint] = time.time()
     # Log quota state
     quota_remaining = r.headers.get("x-requests-remaining", "?")
     last_cost = r.headers.get("x-requests-last", "?")
@@ -453,7 +493,7 @@ def fetch_current_odds(
     `markets` is comma-separated: h2h (=1X2) / spreads / totals / outrights.
     Default 'eu' + 'h2h' matches what we need for cup_odds backfill.
     """
-    endpoint = f"sports/{sport_key}/odds"
+    endpoint = _odds_endpoint(sport_key)
     params = {"regions": regions, "markets": markets, "oddsFormat": odds_format}
     body = _request(endpoint, params, cache_dir=cache_dir, refresh=refresh,
                     ttl_seconds=ttl_seconds)

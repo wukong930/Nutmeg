@@ -427,14 +427,29 @@ def _gather_rows(
                 #      (`refresh=False` **不等于**只读缓存:`_request` 的判据是
                 #       `cf.exists() and not refresh and fresh_enough`,文件不在就直接
                 #       fall through 去发请求 —— 见本函数 `oa_ttl_seconds` 那段。)
-                #   2. `league_oa_refresh` —— 只在**真发生了实时拉取**的那一次采集。
-                #      ⛔ 不能无条件挂:面板每 60s 轮询一次 sp-calc,13 联赛 × 3 天
-                #      = 39 次/分钟的重复读盘+去重写,而**日常采集本来就有 cron**
-                #      (`closing_odds` 走同一个 `capture_books_for_sport`)。
-                #      顺带被 `oa_refreshed` 天然去重成「一次 🔄 = 每 sport 一次」。
+                #   2. **这个 sport 刚刚真被拉过**(`was_last_call_live`)——
+                #      ⛔ 仍然不能无条件挂:面板每 60s 轮询一次 sp-calc,13 联赛 × 3 天
+                #      = 39 次/分钟的重复读盘+去重写。缓存命中时 `_LAST_LIVE` 不动,
+                #      所以被动轮询天然不触发。
+                #
+                #      🚨 **2026-09-03 放宽**(原判据是 `league_oa_refresh`,即「这次
+                #      请求要求刷新」)。实测那个判据把**每天 4 次已经付过钱的 cron
+                #      拉取**全挡在门外:`daily_predict` 3 次/天 × ~33 sport
+                #      (58 credit/轮)、`daily_odds` 1 次/天 × 13 联赛(26 credit)——
+                #      缓存刚被它们重写,我们却因为 `refresh=False` 不去读,
+                #      **零边际成本的全盘面快照每天白扔 4 次**。
+                #      后果实测:面板上共识的中位年龄 **43.4 小时**,最新一条 10.2h,
+                #      161 场里 90 场看的还是建表当天那次手动回填。
+                #
+                #      ⭐ 判据问 `odds_api` **自己**,不手抄 params 去比缓存 mtime ——
+                #      那是语法代理:`fetch_current_odds` 的默认参数一漂,判据就静默
+                #      常闭,而「静默常闭」长得和「今天没比赛」一模一样。
                 #   3. `snapshot_db` —— `record_line_history=false` 的调用方
                 #      (snapshot_board cron)是**只读**的,不许在那条路上写库。
-                if oa_ok and league_oa_refresh and snapshot_db:
+                #      ⚠️ 实测它是**冗余保险**:六个调用方里没有任何一个「过了条件 2
+                #      却栽在条件 3」。留着,但别把它当成在保护你(⇒ 见 hardcoded-guard 那课)。
+                _pulled_live = odds_api.was_last_odds_pull_live(sport_key)
+                if oa_ok and _pulled_live and snapshot_db:
                     from nutmeg.v4.observation.book_snapshots import (
                         capture_books_for_sport,
                     )

@@ -386,6 +386,11 @@ def _should_record_session(req_record_flag: bool) -> Optional[str]:
 #: ⚠️ 阈值不是拍的:实测每场家数 3–25、均 18;3 家以下的场次共识和单锚没区别。
 _BK_MIN_BOOKS = 5
 
+#: 单条报价自身抽水的上限(`Σ1/o − 1`)。超过 ⇒ 退化占位价,不进 `bk_low`/`bk_spread`。
+#: ⚠️ 实测正常报价抽水 **p99 = 0.189**、退化簇最小值 **0.453**,中间是空的
+#: ⇒ 0.28–0.45 任取等价,不是一个需要调的旋钮。见 `_attach_book_consensus` 里那段。
+_BK_MAX_OVERROUND = 0.30
+
 
 def _attach_book_consensus(preds: list) -> None:
     """给卡片挂**多书商共识 + 离散度**(⛔ 只显示,不判闸)。
@@ -426,11 +431,24 @@ def _attach_book_consensus(preds: list) -> None:
         conn = _sq.connect(f"file:{db}?mode=ro", uri=True)
     except Exception:  # noqa: BLE001
         return
+    # ⚡ 只取**这批卡片真会用到的日期**。原来是无 WHERE 无 LIMIT 全表扫,而这张表是
+    # append-only、每次卡片渲染都跑一遍、面板 60s 轮询、三个端点都调。今天只有 1.7ms
+    # (1,038 行)所以不疼 —— 但下面那条采集闸放宽后日增量会放大数倍,这一行是它的
+    # **前置依赖**,不是独立优化。`idx_book_snapshots_match` 首列正是 `match_date`。
+    # ⚠️ 用 `preds` 手里已有的最早日期,不另立一个「保留 N 天」常数:常数会和上游
+    #    窗口(sp-calc days=3 / cup-market days=7)悄悄漂开,而漂开的方向是**静默少给**。
+    _dates = [d for d in (
+        (p.date.isoformat() if hasattr(getattr(p, "date", None), "isoformat")
+         else str(getattr(p, "date", "") or "")) for p in preds) if d]
+    if not _dates:
+        conn.close()
+        return
     by_date: dict[str, list] = {}
     try:
         for md, h, a, books, n, cap in conn.execute(
                 "SELECT match_date, home_team, away_team, books, n_books, captured_at "
-                "FROM book_snapshots ORDER BY captured_at"):
+                "FROM book_snapshots WHERE match_date >= ? ORDER BY captured_at",
+                (min(_dates),)):
             by_date.setdefault(md, []).append((h or "", a or "", books, n, cap))
     except Exception:  # noqa: BLE001
         return          # 表还不存在(新库)⇒ 静默跳过
@@ -474,9 +492,28 @@ def _attach_book_consensus(preds: list) -> None:
             others = [v for k, v in devigged.items() if k != "pinnacle"]
             if len(devigged) < _BK_MIN_BOOKS or len(others) < 2:
                 continue
+            # 🚨 **退化报价只污染 min/spread,不污染中位。** 实测(388 场 / 7,060 条报价):
+            # 67 条报价自身抽水 >30%(典型 `[1.08, 1.08, 1.08]`,全部来自交易所无流动性
+            # 时段),它们推 median 的中位是 **0.0000pp**,却把显示离散度打歪最坏
+            # **45.98pp** —— 60/388 场虚高 >5pp,41 场 >10pp。
+            #
+            # ⛔ 这是**数据有效性闸,不是书商筛选**:判据只看报价自身,不看是谁报的。
+            #    「按交易量筛书商」已实测证伪且方向相反(出现率越高离共识越远,
+            #    r=+0.484);而写死一份书商名单会悄悄失效(本仓实测:钉子只盖 3/39)。
+            #
+            # ⚠️ 退化报价**仍然进 `devigged`**(参与家数计数与中位),只在 min/spread
+            #    里排除 —— 若在上面的循环里 `continue`,`devigged` 会缩小,而
+            #    `_BK_MIN_BOOKS` 闸在循环之后才判 ⇒ 实测会让 1 场(2026-09-12
+            #    Heerenveen vs SC Telstar)**整块面板消失**。
+            # ⚠️ 阈值在 0.28–0.45 之间等价:实测正常报价抽水 p99 = 0.189,
+            #    退化簇最小值 0.453,中间是空的。
+            _clean = [v for k, v in devigged.items()
+                      if k != "pinnacle" and sum(v) > 0
+                      and (sum(1.0 / float(x) for x in raw[k]) - 1.0) <= _BK_MAX_OVERROUND]
+            _band = _clean if len(_clean) >= 2 else others   # 全退化则退回原样,别给空
             pr.bk_consensus = [_st.median([v[i] for v in others]) for i in range(3)]
-            pr.bk_low = [min(v[i] for v in others) for i in range(3)]
-            pr.bk_spread = [(max(v[i] for v in others) - min(v[i] for v in others)) * 100.0
+            pr.bk_low = [min(v[i] for v in _band) for i in range(3)]
+            pr.bk_spread = [(max(v[i] for v in _band) - min(v[i] for v in _band)) * 100.0
                             for i in range(3)]
             pr.bk_n = int(row[1])
             pr.bk_captured_at = row[2]

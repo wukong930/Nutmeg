@@ -515,11 +515,19 @@ def test_the_capture_never_raises(tmp_path, monkeypatch) -> None:
 def test_the_refresh_hook_requires_all_three_conditions() -> None:
     """🚨 接线的那个 `if` 必须同时卡三条 —— 少任何一条都是一个真损失:
 
-      · `oa_ok`            少了它 ⇒ Pinnacle 那次失败时缓存文件可能不存在 ⇒ **真消费**;
-      · `league_oa_refresh` 少了它 ⇒ 面板每 60s 轮询,13 联赛 × 3 天 = **39 次/分钟**
-                            的重复读盘+去重写(而日常采集本来就有 cron);
-      · `snapshot_db`      少了它 ⇒ `record_line_history=false` 的只读调用方
-                            (snapshot_board cron)会开始写库。
+      · `oa_ok`         少了它 ⇒ Pinnacle 那次失败时缓存文件可能不存在 ⇒ **真消费**;
+      · `_pulled_live`  少了它 ⇒ 面板每 60s 轮询,13 联赛 × 3 天 = **39 次/分钟**
+                        的重复读盘+去重写;
+      · `snapshot_db`   少了它 ⇒ `record_line_history=false` 的只读调用方
+                        (snapshot_board cron)会开始写库。
+
+    🚨 **2026-09-03 第二条换了名字也换了理由**(原 `league_oa_refresh` = 「这次请求
+    要求刷新」)。实测那个判据把每天 4 次**已经付过钱**的 cron 拉取全挡在门外
+    (`daily_predict` 3×/天 × ~33 sport、`daily_odds` 1×/天 × 13 联赛),
+    后果是面板共识的中位年龄 **43.4 小时**。新判据是「这个 sport 刚刚**真被拉过**」
+    (`odds_api.was_last_odds_pull_live`),它同样挡得住被动轮询 —— 因为
+    **缓存命中不记账**(那条由 `test_book_consensus_p0.py` 的
+    `test_cache_hit_must_not_record` 钉住,别删)。
 
     ⚠️ 用 AST 而不是 grep:字符串断言在有人把 `and` 改成 `or` 时照样绿。
     """
@@ -538,7 +546,7 @@ def test_the_refresh_hook_requires_all_three_conditions() -> None:
     assert isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And), \
         "闸不是 and —— 换成 or 就等于没闸"
     names = {n.id for n in ast.walk(test) if isinstance(n, ast.Name)}
-    assert names == {"oa_ok", "league_oa_refresh", "snapshot_db"}, \
+    assert names == {"oa_ok", "_pulled_live", "snapshot_db"}, \
         f"三条件不全或多了别的:{names}"
 
 
