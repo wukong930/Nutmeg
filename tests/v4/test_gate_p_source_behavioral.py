@@ -192,6 +192,9 @@ const t = (k) => k, _hcOutcomeLabel = (o) => o, fmtMoney = (x) => 'CNY' + Number
 const _frzBandHtml = () => '', _frzHalfEv = () => 0, _evRelTag = () => '';
 const _isWideBook = () => false, _jcStaleCaptureHc = () => {{}};
 const _sweetBoardScheduleRefresh = () => {{}}, _parlayRender = undefined;
+// `_bestLegRefresh` 桩 —— ⭐ 最优腿徽章(2026-09-03)。按本 harness 自己的分界线:
+// 它无返回值、只写徽章那一格,**不流进 evLo / pass / 注额** ⇒ 纯显示,可以桩。
+const _bestLegRefresh = () => {{}};
 // `_hcEvHtml` 桩 —— 读过源码才敢桩:它把入参拼成一段 HTML 就 return,没有任何
 // 返回值回流到 evLo / pass / 注额(frzHalf、_evRelTag、± 带全部只影响这一格长什么样)
 // ⇒ 纯显示,可以桩。桩**只印下界**(判闸真正用的那个数),不印点估:真函数印的是
@@ -379,6 +382,9 @@ const t = (k) => k, outcomeLabel = (o) => o, fmtMoney = (x) => 'CNY' + Number(x)
 const _frzBandHtml = () => '', _frzHalfEv = () => 0, _evRelTag = () => '';
 const _isWideBook = () => false, _modelPStale = () => false;
 const _jcStaleCapture = () => '', _sweetBoardScheduleRefresh = () => {{}};
+// `_bestLegRefresh` 桩 —— ⭐ 最优腿徽章(2026-09-03)。按本 harness 自己的分界线:
+// 它无返回值、只写徽章那一格,**不流进 evLo / pass / 注额** ⇒ 纯显示,可以桩。
+const _bestLegRefresh = () => {{}};
 const _parlayRender = undefined, _spcalcSaveManual = () => {{}};
 {_consts('_TODAY_REC_GATE', '_PMKT_DIVERGE_PP')}
 {_fn('_mktP')}

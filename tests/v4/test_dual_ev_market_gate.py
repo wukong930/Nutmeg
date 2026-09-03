@@ -113,6 +113,9 @@ const _spcalcStake = (p, sp, bankroll, kelly) => p * 1000;   // 可辨认:注额
 const _parlayRender = undefined;
 const _jcStaleCapture = () => {{}};
 const _sweetBoardScheduleRefresh = () => {{}};
+// `_bestLegRefresh` 桩 —— ⭐ 最优腿徽章(2026-09-03)。按本 harness 自己的分界线:
+// 它无返回值、只写徽章那一格,**不流进 evLo / pass / 注额** ⇒ 纯显示,可以桩。
+const _bestLegRefresh = () => {{}};
 
 {_const('_PMKT_DIVERGE_PP')}
 {_fn('_mktP')}

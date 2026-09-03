@@ -2212,6 +2212,24 @@ const I18N = {
     jc_kicked_norec:  '⏹ 已开赛,不能记账',
     jc_morning_hint:  '竞彩分批上架:当日新场多在北京 09:25–09:45 晨批发布(北欧等小联赛常当天才开售),此刻名单可能不全;09:45 后点 🎯 刷新竞彩立取,或等 09:50 / 11:05 自动补捕。',
     spcalc_enter_sp:  '输入竞彩 SP 看 EV',
+    best_leg_label:   '最优腿',
+    best_leg_gate:    '判闸 EV',
+    best_leg_pass:    '过闸',
+    best_leg_fail:    '未过闸',
+    best_leg_info_t:  '这颗 ⭐ 是怎么选出来的',
+    best_leg_info_b:  '<p>把这场的 <b>6 条腿</b>(胜/平/负 + 让球三腿)放进<b>同一个池</b>,'
+      + '按 <b>EV 下界</b>从高到低排,第一名就是 ⭐。这和串关构造器用的是同一套规则。</p>'
+      + '<p style="margin-top:8px"><b>为什么它常常不是那一列里最好看的数?</b><br>'
+      + '腿行上印的是<b>点估</b>,而绿灯由<b>下界</b>决定 —— 让球腿的下界要减掉更大的 δ,'
+      + '所以它点估好看、下界未必。实测 <b>75%</b> 的卡两者指向不同的腿。'
+      + '⭐ 跟的是<b>判闸那个数</b>,也就是徽章上印出来的那个。</p>'
+      + '<p style="margin-top:8px"><b>⚠️ ⭐ 不等于「该下这一注」。</b>'
+      + '只有徽章显示<b>过闸</b>时它才是候选;显示<b>未过闸</b>时,它只是这场里'
+      + '<b>最不差</b>的一条,正确的动作是<b>不下</b>。</p>'
+      + '<p style="margin-top:8px"><b>它更赚钱吗?没有证据。</b>8 月 380 场回测:'
+      + '下界最优腿 ROI −0.88%、点估最优腿 −6.38%,但两者不同的 207 场上配对差的 '
+      + '95% 置信区间是 <b>[−11.2%, +31.5%]</b>,<b>包含 0</b>。'
+      + '这个功能修的是「你读的数不是判闸的数」,不是「这样下注更赚」。</p>',
     spcalc_mkt:       '市',
     spcalc_mkt_tip:   'Pinnacle 去 vig(WPO)的市场公允概率 —— **判闸用的就是它**',
     spcalc_ev_model:  'EV模型',
@@ -2823,6 +2841,24 @@ const I18N = {
     jc_kicked_norec:  '⏹ Kicked off — cannot record',
     jc_morning_hint:  '竞彩 lists same-day additions in a ~09:25–09:45 (Beijing) morning batch (Nordic & minor leagues often matchday-only), so this slate may be incomplete; hit 🎯 after ~09:45, or the 09:50 / 11:05 auto-captures pull them in.',
     spcalc_enter_sp:  'Enter 竞彩 SP for EV',
+    best_leg_label:   'Best leg',
+    best_leg_gate:    'gate EV',
+    best_leg_pass:    'passes gate',
+    best_leg_fail:    'below gate',
+    best_leg_info_t:  'How this \u2b50 is chosen',
+    best_leg_info_b:  '<p>All <b>6 legs</b> (1X2 + the three handicap legs) go into <b>one pool</b>'
+      + ' ranked by <b>EV lower bound</b>; the top one gets the \u2b50. Same rule the parlay builder uses.</p>'
+      + '<p style="margin-top:8px"><b>Why is it often not the best-looking number in the column?</b><br>'
+      + 'Rows print the <b>point estimate</b>, but the gate uses the <b>lower bound</b> \u2014 handicap legs'
+      + ' subtract a much larger \u03b4. Measured: on <b>75%</b> of cards the two disagree.'
+      + ' The \u2b50 follows the <b>gating number</b>, which is the one printed on the badge.</p>'
+      + '<p style="margin-top:8px"><b>\u26a0\ufe0f \u2b50 does not mean \"bet this\".</b>'
+      + ' It is a candidate only when the badge says <b>passes gate</b>. When it says <b>below gate</b>,'
+      + ' it is merely the <b>least bad</b> leg and the correct action is <b>no bet</b>.</p>'
+      + '<p style="margin-top:8px"><b>Is it more profitable? No evidence.</b> 380 settled August matches:'
+      + ' lower-bound-best ROI \u22120.88% vs point-estimate-best \u22126.38%, but on the 207 where they'
+      + ' differ the paired 95% CI is <b>[\u221211.2%, +31.5%]</b> \u2014 it <b>contains 0</b>.'
+      + ' This fixes \"the number you read is not the number that gates\", not \"this wins more\".</p>',
     spcalc_mkt:       'Mkt',
     spcalc_mkt_tip:   'Pinnacle de-vig (WPO) market fair prob — this is what the gate uses',
     spcalc_ev_model:  'EV(model)',
@@ -6196,6 +6232,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
           <span class="text-xs text-muted font-normal ml-auto">${_fmtKickoff(pr)}${_frzBadgeHtml(pr)}</span>
         </div>
         ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx, 'sp')}
+        <div id="bestleg-spcalc-${idx}" class="text-xs mb-2" style="display:none"></div>
         ${/* 2026-08-05 — Pinnacle 原盘 + 大小球,原来只有市场模式卡有。
               ⭐ **不是为了好看**:标准模式的 1X2 走模型 P,但**让球是 Pinnacle
               市场反推的**(routes.py `_model_board_handicap_lines`,从去vig 的
@@ -6460,6 +6497,98 @@ function _jcStaleCaptureHc(pr, hcspClass, lineSelId, idx) {
   }, 1200);
 }
 
+//: ⭐ 2026-09-03 —— 可投注卡片上标出**最优腿**(owner:「我读判断计算结果的能力不行」)。
+//:
+//: ## 它修的是一个真缺陷,不是「多加一个数字」
+//: 腿行上印的是**点估** `ev`,而绿灯由**下界** `evLo` 决定 —— owner 看到的那个数
+//: **不是**决定绿灯的那个数。今天真实盘面 8 张有腿的卡实测:**6/8 = 75%** 的卡,
+//: 「点估最优腿」和「下界最优腿」**不是同一条**,且 6 例形态一致 —— 点估最优是
+//: 让球腿、下界最优是 1X2 腿(δ 让让球腿的下界宽得多,见 delta-gate 那条)。
+//: ⇒ 靠肉眼扫那一列数字挑腿,四次里有三次会挑到系统自己不认的那条。
+//:
+//: ## 🚨 它**不是**「这条腿更赚钱」的主张 —— 那个测过了,站不住
+//: 8 月 380 场已结算、用生产函数重算两条边界:
+//:     点估最优腿  命中 31.6%  中位SP 3.50  ROI −6.38%
+//:     下界最优腿  命中 43.4%  中位SP 2.74  ROI −0.88%
+//: 命中率差 +21.7pp 看着很大,**换算成 ROI 就站不住**:两者不同的 207 场上配对差
+//: +10.1%、95%CI **[−11.2, +31.5]**(含 0)。命中率高只是因为赔率短 —— 正是
+//: `Δp × SP = ΔROI`,拿命中率下结论会判反。
+//: ⇒ 定性:**正确性/透明度修复,不是盈利修复**(同 δ₁ₓ₂ 那次)。
+//:
+//: ## ⛔ 因此徽章必须带两样东西,少一样都会变成误导
+//: ① **判闸用的那个数**(evLo)—— 否则它看起来在和屏幕上的数字打架;
+//: ② **过闸状态** —— 今天 **0/8 过闸**,不标状态就等于给 8 场发了 8 个推荐,
+//:    把「最不差」读成「推荐」。这正是 owner 说「涉及最终判断」的风险点。
+//:
+//: ⛔ 口径**复用 `_boardLegs`**(六腿一池按 evLo,串关池 `_parlayPool` 用的同一个),
+//: 绝不另写一套:卡片自己的 `best` 只看 3 条 1X2 腿,而最优腿可能在让球段。
+//:
+//: ⚠️ 判闸门槛**按模式取**:标准模式是可调的 `_SPCALC.minEv`,市场模式是固定的
+//: `_TODAY_REC_GATE`。写死一个会造出「徽章说过闸、同一张卡的行却是红的」。
+const _BEST_LEG_MODES = ['spcalc', 'cup'];
+function _bestLegGate(mode) {
+  if (mode === 'cup') return _TODAY_REC_GATE;
+  const v = _SPCALC && _SPCALC.minEv;
+  return typeof v === 'number' ? v : _TODAY_REC_GATE;
+}
+//: 腿 → 它那一行的 EV span。**四套寻址**(两模式 × 1X2/让球),两套 id 两套 class:
+//:   spcalc 1X2 `#spcalc-ev-i-o`   · spcalc 让球 `#spcalc-hcev-i-o`
+//:   cup    1X2 `.cupev[i][o]`     · cup    让球 `.cuphcev[i][o]`
+//: ⚠️ 我第一版把 cup 也当成 id 寻址,是错的 —— 那会让 ⭐ 在市场模式静默不出现。
+function _bestLegEvEl(mode, idx, o) {
+  const hc = o.indexOf('hc') === 0;
+  const oc = hc ? o.slice(2) : o;
+  if (mode === 'cup') {
+    return document.querySelector(
+      `.${hc ? 'cuphcev' : 'cupev'}[data-idx="${idx}"][data-outcome="${oc}"]`);
+  }
+  return document.getElementById(`spcalc-${hc ? 'hcev' : 'ev'}-${idx}-${oc}`);
+}
+//: 卡片级刷新:算最优腿 → 写徽章行 → 把那颗 ⭐ **搬**到中标的腿行。
+//: ⭐ 每张卡的 ⭐ 是**唯一一个带 id 的节点**,靠 `insertBefore` 搬家(搬家自带
+//: 从旧父节点摘除)⇒ **结构上不可能出现两颗** ——「手填改了 SP、最优腿换了人,
+//: 旧 ⭐ 留在原地」这个幽灵不需要靠「记得清理」来防。
+//: ⛔ 整体 try 兜住:这是显示层,坏了绝不许拖垮主 EV 计算(同 `_bkEvRefresh`)。
+function _bestLegRefresh(idx, mode) {
+  try {
+    const preds = (mode === 'cup' ? _CUPMKT : _SPCALC).preds || [];
+    const pr = preds[idx];
+    const line = document.getElementById(`bestleg-${mode}-${idx}`);
+    if (!pr || !line) return;
+    const legs = _boardLegs(pr, idx, mode);
+    const best = legs && legs.length ? legs[0] : null;
+    const old = document.getElementById(`beststar-${mode}-${idx}`);
+    if (!best) {
+      if (old) old.remove();
+      line.style.display = 'none';
+      line.textContent = '';
+      return;
+    }
+    const gate = _bestLegGate(mode);
+    const pass = best.evLo >= gate;
+    const num = (best.evLo >= 0 ? '+' : '') + (best.evLo * 100).toFixed(1) + '%';
+    line.style.display = '';
+    line.innerHTML =
+      `<span style="color:${pass ? '#059669' : 'var(--text-muted)'};`
+      + `font-weight:${pass ? 600 : 400}">\u2b50 ${t('best_leg_label')} `
+      + `<b>${best.label}</b> · ${t('best_leg_gate')} ${num} · `
+      + `${pass ? t('best_leg_pass') : t('best_leg_fail')}</span>`
+      + ` <span role="button" tabindex="0" onclick="_bestLegInfo()" `
+      + `style="cursor:pointer;color:var(--text-muted);padding:2px 6px" `
+      + `aria-label="${t('best_leg_info_t')}">\u24d8</span>`;
+    const el = _bestLegEvEl(mode, idx, best.o);
+    if (!el) { if (old) old.remove(); return; }
+    const star = old || document.createElement('span');
+    star.id = `beststar-${mode}-${idx}`;
+    star.title = t('best_leg_info_t');
+    star.style.cssText = 'margin-right:4px';
+    star.textContent = '\u2b50';
+    el.insertBefore(star, el.firstChild);
+  } catch (_) { /* noop */ }
+}
+function _bestLegInfo() { showInfo(t('best_leg_info_t'), t('best_leg_info_b')); }
+
+
 function _spcalcRecalc(idx) {
   const pr = _SPCALC.preds[idx];
   // 多书商参照的两列 EV 跟着实时 SP 走(**就地更新**,不重渲 ⇒ <details> 不会被收起)。
@@ -6561,6 +6690,7 @@ function _spcalcRecalc(idx) {
   // V12 W5 — keep the 串关篮子 in sync when a leg's SP changes.
   if (typeof _parlayRender === 'function') _parlayRender();
   _jcStaleCapture(_SPCALC.preds[idx], 'spcalc-sp', idx, 'had');   // 体检 — 标准模式静默捕获
+  _bestLegRefresh(idx, 'spcalc');   // ⭐ 最优腿徽章 —— 与榜/串关池同源(_boardLegs)
   _sweetBoardScheduleRefresh();   // 🍬 手填 SP 边打边进榜(防抖,全局榜)
 }
 
@@ -6679,6 +6809,7 @@ function _spcalcHcRecalc(idx) {
     verdict.removeAttribute('style');
   }
   _jcStaleCaptureHc(_SPCALC.preds[idx], 'spcalc-hcsp', 'spcalc-hcline-' + idx, idx);   // 体检 — 标准模式让球捕获
+  _bestLegRefresh(idx, 'spcalc');   // ⭐ 最优腿徽章 —— 与榜/串关池同源(_boardLegs)
   _sweetBoardScheduleRefresh();   // 🍬 手填 SP 边打边进榜(防抖,全局榜)
 }
 // 🔄 刷新盘口 — one-off live Pinnacle pull (refresh_odds). Reloads the whole
@@ -7350,6 +7481,7 @@ function _cupCardHtml(pr, idx) {
         </span>
       </div>
       ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx, 'cup')}
+      <div id="bestleg-cup-${idx}" class="text-xs mb-2" style="display:none"></div>
       ${_pinRawHtml(pr)}
       ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _foldAttrs('mb', _fk))}${manual}
     </div>`;
@@ -7397,6 +7529,7 @@ function _cupRecalc(idx) {
     }
   });
   _jcStaleCapture(_CUPMKT.preds[idx], 'cupsp', idx, 'had');   // 体检 — 市场模式静默捕获
+  _bestLegRefresh(idx, 'cup');   // ⭐ 最优腿徽章 —— 与榜/串关池同源(_boardLegs)
   _sweetBoardScheduleRefresh();   // 🍬 手填 SP 边打边进榜(防抖,全局榜)
 }
 
@@ -7452,6 +7585,7 @@ function _cupHcRecalc(idx) {
     }
   });
   _jcStaleCaptureHc(_CUPMKT.preds[idx], 'cuphcsp', 'cuphcline-' + idx, idx);   // 体检 — 市场模式让球捕获
+  _bestLegRefresh(idx, 'cup');   // ⭐ 最优腿徽章 —— 与榜/串关池同源(_boardLegs)
   _sweetBoardScheduleRefresh();   // 🍬 手填 SP 边打边进榜(防抖,全局榜)
 }
 // V12 W8 — record a market-mode 让球 pick for tracking. Server recomputes the
