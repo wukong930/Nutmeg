@@ -174,3 +174,67 @@ class TestNoSecondWritePath:
         assert hits, "人口非平凡:一条 INSERT 都没找到 ⇒ 是发现器坏了,不是没有写入路径"
         assert [p.name for p in hits] == ["polymarket_gaps.py"], (
             f"出现了第二条写入路径,它绕过盘中价闸:{[str(p) for p in hits]}")
+
+
+class TestReadOutletFiltersLegacyInplayRows:
+    """写入闸只挡新增;**存量 1,294 行**是它上线前写的,每个消费方都还会读到。
+
+    ⭐ 修在唯一读出口 `fetch_polymarket_gaps`,不逐消费方打补丁,也不动存量数据。
+    """
+
+    def _seed(self, db):
+        """一条赛前行 + 一条盘中行。⚠️ 盘中那条必须**绕过写入闸**直接落库,否则
+        这个测试测的是闸而不是读出口 —— 那样它会空洞为真。"""
+        import sqlite3
+
+        from nutmeg.v4.observation.polymarket_gaps import ensure_polymarket_gaps_table
+        pre = _gaps(ask=0.40, at=PRE)[0]
+        assert record_polymarket_gap(db, pre, recorded_at=PRE) is True
+        ensure_polymarket_gaps_table(db)
+        with sqlite3.connect(db) as conn:      # 直插:模拟闸上线**之前**写下的那批
+            conn.execute(
+                "INSERT INTO polymarket_gaps (match_date, fixture_id, outcome_spec, line,"
+                " recorded_at, kickoff_utc, q_fair, poly_ask, ev, confidence_tier)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                ("2026-06-06", 111, "DRAW", -100.0, POST.isoformat(timespec="seconds"),
+                 "2026-06-06 16:00:00+00", 0.25, 0.98, -0.745, "high"))
+
+    def test_legacy_inplay_rows_are_not_served(self, tmp_path):
+        db = str(tmp_path / "obs.db")
+        self._seed(db)
+
+        allrows = fetch_polymarket_gaps(db, include_inplay=True)
+        served = fetch_polymarket_gaps(db)
+
+        # 🚨 人口非平凡:脏行必须真的在库里,否则「过滤掉了」空洞为真
+        assert len(allrows) == 2, f"种子没落库,后面全是空断言:{allrows}"
+        assert any(r["outcome_spec"] == "DRAW" for r in allrows), "盘中那条没进库"
+
+        assert len(served) == 1
+        assert served[0]["outcome_spec"] == "HOME_WIN", "被服务的应是赛前那条"
+
+    def test_prematch_rows_are_not_over_filtered(self, tmp_path):
+        """对照组:出口不能顺手把合法赛前行也滤掉(过滤器最常见的坏法是过严)。"""
+        db = str(tmp_path / "obs.db")
+        for g in _gaps(ask=0.40, at=PRE):
+            assert record_polymarket_gap(db, g, recorded_at=PRE) is True
+        assert len(fetch_polymarket_gaps(db)) == 3
+
+    def test_row_whose_kickoff_is_unparseable_is_still_served(self, tmp_path):
+        """fail-open 在读出口也必须成立 —— 坏时刻不该让整行消失。"""
+        db = str(tmp_path / "obs.db")
+        g = _gaps(ask=0.40, at=POST, kickoff="TBD")[0]
+        assert record_polymarket_gap(db, g, recorded_at=POST) is True
+        assert len(fetch_polymarket_gaps(db)) == 1
+
+    def test_string_compare_would_have_gotten_this_wrong(self):
+        """🚨 钉住那个陷阱本身:两列字面量格式不同,裸字符串比会判反。
+
+        `recorded_at` 用 `T` 分隔、`kickoff_utc` 用空格 ⇒ `T`(0x54) > ` `(0x20)
+        ⇒ 同一天的行,**开球前 4 小时**会被判成「已开球」。所以过滤必须解析后再比。
+        """
+        from nutmeg.v4.observation.polymarket_gaps import _is_inplay, _parse_utc
+        rec, ko = "2026-06-30T17:21:12+00:00", "2026-06-30 21:00:00+00"
+
+        assert not (rec < ko), "前提变了:这两个字面量的裸比较已不再判反,本条要重写"
+        assert _is_inplay(ko, _parse_utc(rec)) is False, "解析后必须判成赛前"

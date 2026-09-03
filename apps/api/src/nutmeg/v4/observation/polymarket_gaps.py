@@ -1,11 +1,22 @@
 """Polymarket mispricing-gap log (READ-ONLY measurement, NO betting).
 
-Persists detected gaps over time so we can answer, weeks later, the only honest
-question about this experiment: **were the high-confidence gaps actually real,
-and did the favorite-flip guard remove the losers?** Each row stores our fair
-``q``, the Polymarket ask, the EV, the confidence tier + reasons, and (filled
-after kickoff) whether the bought YES would have resolved true — so a report can
-score realized hit-rate by tier.
+Persists ONE row per (match, spec, line) so we can answer, weeks later, the only
+honest question about this experiment: **were the high-confidence gaps actually
+real, and did the favorite-flip guard remove the losers?** Each row stores our
+fair ``q``, the Polymarket ask, the EV, the confidence tier + reasons, and
+(filled after kickoff) whether the bought YES would have resolved true — so a
+report can score realized hit-rate by tier.
+
+🚨 **这张表不是时间序列,别指望它能算 ΔP。** 原来这里写的是「persists gaps **over
+time**」—— 那句话是假的:PK 不含 ``recorded_at`` 且写入是 ``ON CONFLICT DO UPDATE``
+⇒ 每个键**永远只有最后一次赛前观测**(实测 10,267/10,282 = 99.9% 的键只有 1 个时点)。
+2026-09-02 有一整条测量线按那句话去算「Poly 封盘后往哪动」,跑完才发现可算场次 = 0。
+⇒ 承诺改成与结构一致,而不是反过来。
+
+⛔ **也不要为此改 PK 或加 append-only 旁路表。** 那样做唯一的消费者(「Poly 的漂移
+是不是独立信号」)已经在同一天被判掉:同一批比赛上 Poly 的位移只有 Pinnacle 自己
+序列的 60%、|>2pp| 只有 27%、而覆盖率是 0% 对 62% —— 修好采集最好也只是追平一个
+**已经免费、已经在 `odds_snapshots` 里**的序列。要真需要时点序列,读那张表。
 
 Covers 胜平负 (HOME_WIN/DRAW/AWAY_WIN), 让球 (HANDICAP_HOME/AWAY + line) and 大小球
 (OVER/UNDER + line) — one row per (match, spec, line). ``line`` is stored NOT
@@ -65,6 +76,24 @@ _NO_LINE = -100.0
 _INPLAY_GRACE_S = 0
 
 
+def _parse_utc(value: object) -> dt.datetime | None:
+    """本表里的时刻字面量 → aware UTC datetime;不可解析 → None。
+
+    🚨 **不要用 SQL 直接比这两列的字符串。** 本表同时存着两种字面量:
+    ``recorded_at`` 是 ``2026-06-30T17:21:12+00:00``(我们自己写的),
+    ``kickoff_utc`` 是 ``2026-06-30 21:00:00+00``(上游给的)。分隔符
+    ``T``(0x54)> 空格(0x20)⇒ 同一天的行,裸字符串比会把**开球前 4 小时**判成
+    「已开球」。实测第一行就中招。所以任何赛前/赛后判定都必须**解析后**再比。
+    """
+    if not value:
+        return None
+    try:
+        d = dt.datetime.fromisoformat(str(value).strip())
+    except (ValueError, TypeError):
+        return None
+    return d.replace(tzinfo=dt.UTC) if d.tzinfo is None else d
+
+
 def _is_inplay(kickoff_utc: object, observed: dt.datetime) -> bool:
     """观测时刻 ``observed`` 是否已到/过开球?
 
@@ -75,14 +104,9 @@ def _is_inplay(kickoff_utc: object, observed: dt.datetime) -> bool:
     这个值,判闸的瞬间与落库的瞬间因此**恒等** —— closing_odds 那次赛前/赛后竞态
     (闸读一次钟、写又读一次钟)就是这么来的。
     """
-    if not kickoff_utc:
+    ko = _parse_utc(kickoff_utc)  # 库里 155 行是裸时刻;`_parse_utc` 按 UTC 读
+    if ko is None:
         return False
-    try:
-        ko = dt.datetime.fromisoformat(str(kickoff_utc).strip())
-    except (ValueError, TypeError):
-        return False
-    if ko.tzinfo is None:  # 库里 155 行是裸时刻;按 UTC 读(全表其余行都带 +00)
-        ko = ko.replace(tzinfo=dt.UTC)
     return observed >= ko + dt.timedelta(seconds=_INPLAY_GRACE_S)
 
 POLYMARKET_GAPS_SCHEMA = """
@@ -259,9 +283,24 @@ def record_polymarket_gap(
     return True
 
 
-def fetch_polymarket_gaps(db_path: str, *, settled_only: bool = False) -> list[dict]:
-    """Return all polymarket_gaps rows as dicts (newest match first). The moneyline
-    ``line`` sentinel is surfaced as None."""
+def fetch_polymarket_gaps(
+    db_path: str, *, settled_only: bool = False, include_inplay: bool = False
+) -> list[dict]:
+    """Return polymarket_gaps rows as dicts (newest match first). The moneyline
+    ``line`` sentinel is surfaced as None.
+
+    🚨 **默认剔除盘中价行**(``recorded_at`` ≥ ``kickoff_utc``)。写入闸(2026-09-02)
+    只挡新增,而库里**存量 1,294 行**是它上线之前写的 —— 每一个消费方都会读到它们,
+    而 `ev = q_fair/poly_ask − 1` 在盘中价上是**范畴错误**(赛前 Pinnacle 线比盘中
+    ask),一颗进球后的 0.98 会伪装成大 EV。看板的「命中复盘」按 tier 统计命中率,
+    正是本表 docstring 声称要回答的那个问题,而它被这批行毒着。
+    ⇒ 修在**唯一读出口**而不是逐消费方打补丁,也不动存量数据(记事实不记选择)。
+
+    ``include_inplay=True`` 才拿得到它们 —— 只有「数一数历史脏行」这类用途才该传。
+
+    ⚠️ 过滤**必须在 Python 侧**做,不能写进 SQL:见 `_parse_utc` 里那条,两列的
+    时刻字面量格式不同,裸字符串比会把开球前 4 小时判成已开球。
+    """
     ensure_polymarket_gaps_table(db_path)
     with open_db(db_path) as conn:
         where = "WHERE outcome IS NOT NULL" if settled_only else ""
@@ -271,6 +310,10 @@ def fetch_polymarket_gaps(db_path: str, *, settled_only: bool = False) -> list[d
         )
         cols = [c[0] for c in cur.description]
         rows = [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+    if not include_inplay:
+        rows = [r for r in rows
+                if not ((obs := _parse_utc(r.get("recorded_at"))) is not None
+                        and _is_inplay(r.get("kickoff_utc"), obs))]
     for r in rows:
         if r.get("line") == _NO_LINE:
             r["line"] = None
