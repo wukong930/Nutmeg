@@ -35,16 +35,48 @@ def test_green_emits_nothing() -> None:
     assert _f([], [], [], [], []) == ""
 
 
+def _kinds_of(out: str) -> set[str]:
+    """从「报警类别: A · B」那行里解析出类别集合(不做子串匹配)。"""
+    if not out:
+        return set()
+    body = out.split("报警类别: ", 1)[1].split("  ←", 1)[0]
+    return {x.strip() for x in body.split(" · ") if x.strip()}
+
+
 def test_each_source_names_itself() -> None:
-    """⭐ 承重:五个驱动源各自被点名。这就是那条推送本该说的话。"""
-    want = {0: "捕获表停更", 1: "额度", 2: "模型供应链", 3: "联赛标签", 4: "涓流"}
-    for i, label in want.items():
-        args = [[], [], [], [], []]
+    """⭐ 承重:**每一个**已声明的驱动源各自被点名。
+
+    ⛔ 原来这里写死 `want = {0..4}` 五个类别 —— 而此后加的「行量断崖」(2026-09-01)、
+    「探针失明」(2026-09-01)、「缺口曲线停更」(2026-09-04)**三类一条都没被覆盖**,
+    测试却一路绿。正是 memory `hardcoded-guard-lists-rot` 的形状:
+    **「一直绿」不是它在保护你的证据。**
+    ⇒ 改成从 `_ALARM_KIND_LABELS` **自己发现人口**;以后加第 9 类,漏接线就会红。
+    """
+    from nutmeg.v4.cli.data_freshness import _ALARM_KIND_LABELS
+
+    n = len(_ALARM_KIND_LABELS)
+    # 🚨 人口非平凡:退化成 0/1 类时下面的循环空转也会「全绿」
+    assert n >= 8, f"报警类别只剩 {n} 个 —— 断言变空洞,请核对是不是被删了"
+    for i, label in enumerate(_ALARM_KIND_LABELS):
+        args = [[] for _ in range(n)]
         args[i] = ["x"]
         out = _f(*args)
-        assert label in out, f"第 {i} 个源没被点名:{out!r}"
-        others = [v for k, v in want.items() if k != i]
-        assert not [o for o in others if o in out], f"点名了不该点的:{out!r}"
+        got = _kinds_of(out)
+        assert got == {label}, f"第 {i} 个源({label})点名结果是 {got!r}"
+
+
+def test_alarm_kinds_line_accepts_every_declared_kind() -> None:
+    """⭐ 接线完整性:`alarm_kinds_line` 的形参个数必须跟得上标签个数。
+
+    `_alarm_kinds` 内部是 `zip(..., strict=True)` ⇒ 少传一个会抛;但那只在
+    **有人真的调用它**时才暴露。这条把它提前到测试里。
+    """
+    from nutmeg.v4.cli.data_freshness import _ALARM_KIND_LABELS
+
+    n = len(_ALARM_KIND_LABELS)
+    all_on = _f(*[["x"] for _ in range(n)])
+    assert _kinds_of(all_on) == set(_ALARM_KIND_LABELS), \
+        f"全响时漏了:{set(_ALARM_KIND_LABELS) - _kinds_of(all_on)}"
 
 
 def test_multiple_sources_are_all_listed() -> None:

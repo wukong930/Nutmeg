@@ -885,6 +885,130 @@ def check_jingcai_trickle(
     return (info, alarms)
 
 
+#: 竞彩队名缺口曲线(`logs/sporttery_unmapped_history.jsonl`,2026-08-20 起 append-only)。
+#: 建它的时候**有意没写读者**:阈值需要先量节律,而当时那个文件一行都还没有
+#: ⇒ 按「护栏老红时先量它还要红多久」的顺序,拍数大概率假红。
+#: 2026-09-04 攒够 355 行 / 16 天后补上本读者。
+_UNMAPPED_HISTORY = "logs/sporttery_unmapped_history.jsonl"
+
+
+def check_unmapped_gap(
+    history_path: str | Path = _UNMAPPED_HISTORY,
+    *,
+    now: datetime | None = None,
+    lookback_days: int = 7,
+) -> tuple[list[str], list[str]]:
+    """竞彩队名缺口曲线 —— 只报「曲线停更」,**不对缺口率判闸**。
+
+    ## 为什么只报停更
+
+    这条曲线测的是「**名字解不解得出**」,**不是**「盘面有没有价」。分子来自
+    `summarize_unmapped`,该函数从不碰赔率:实测 07-21~08-20 的 291 场「名字解出来了」
+    里 10 场(3.4%)盘面**零行**。⇒ **曲线变绿 ≠ 窟窿变小**,唯一有效的盘面验收是
+    去查 `jc_home is null`。对这样一个量判闸,等于用词典闸冒充盘面闸。
+
+    再者人口太小:16 天里去重后只有 **5** 场未映射 / 286 场(1.75%),逐日率在
+    0% 和 11.76% 之间跳,而跳一格只要 2 场。此刻给它定一个率阈值没有依据。
+    ⇒ **率只报数,不报警。** 有依据了再谈,而且要走预注册。
+
+    ## 🚨 分母陷阱:跨轮聚合**只能**去重
+
+    `matches_seen` 是**每轮**全部在售场次的裸列表,一天跑 ~16 轮而一场在售 1–3.3 天
+    ⇒ 直接跨轮求和会被在售时长加权。实测本文件:去重分母 286,裸求和 11,144,
+    **放大 39×**。所以两边都按 `(联赛, 日期, 场次号)` 去重:
+    分母取 `matches_seen`,分子取 `names[2:5]`(同一套键)。
+    ⚠️ `(联赛, 日期)` **不是**唯一键(实测 54.7% 的格子装不止一场)—— 场次号不能省。
+
+    ## ⭐ 年龄只按 `trigger == "cron"` 的行算
+
+    文件有两个写入源:cron 和 owner 手按 🎯(实测 220 / 135)。**cron 死掉而 owner
+    照常按按钮时,文件仍在长** —— 「最后一行多久前」这类探针会一路绿。
+    那正是 `check_volume_cliff` 要守的那类形状(还在写但源塌了),这里提前避掉。
+
+    返回 `(info, alarms)`,与本模块其它探针同构。
+    """
+    import json
+
+    now = now or datetime.now(UTC)
+    path = Path(history_path)
+    info: list[str] = []
+
+    if not path.exists():
+        return ([], [
+            f"竞彩缺口曲线文件不存在({path}) — 写入方可能从没成功跑过。"
+            f"⛔ 别把「没有曲线」读成「没有缺口」"
+        ])
+
+    rows: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    if not rows:
+        return ([], ["竞彩缺口曲线文件是空的 — 同上,不是「没有缺口」"])
+
+    def _ts(r: dict) -> datetime | None:
+        try:
+            t = datetime.fromisoformat(str(r["t"]))
+        except (KeyError, ValueError):
+            return None
+        return t if t.tzinfo else t.replace(tzinfo=UTC)
+
+    cron = [r for r in rows if r.get("trigger") == "cron" and _ts(r)]
+    alarms: list[str] = []
+    if not cron:
+        alarms.append(
+            f"竞彩缺口曲线 {len(rows)} 行里**一条 cron 行都没有** — 全是手按的。"
+            f"⛔ 文件在长不等于采集在跑"
+        )
+    else:
+        last = max(_ts(r) for r in cron)          # type: ignore[type-var]
+        age_h = (now - last).total_seconds() / 3600.0
+        info.append(
+            f"竞彩缺口曲线: {len(rows)} 行(cron {len(cron)} / 手按 {len(rows) - len(cron)}),"
+            f"最后一条 **cron** 行 {age_h:.1f}h 前"
+        )
+        if age_h > _PROBE_BLIND_HOURS:
+            alarms.append(
+                f"竞彩缺口曲线 {age_h / 24:.1f} 天没有 cron 行(红线 "
+                f"{_PROBE_BLIND_HOURS:.0f}h)— 采集侧可能停了。"
+                f"⚠️ 手按的行不算数:它掩盖不了 cron 死掉"
+            )
+
+    # —— 缺口率(去重后)。⛔ 只报数,不进 alarms,理由见 docstring ——
+    cut = now - timedelta(days=lookback_days)
+    win = [r for r in rows if (t := _ts(r)) and t >= cut]
+    seen = {tuple(m) for r in win for m in (r.get("matches_seen") or [])
+            if isinstance(m, list) and len(m) >= 3}
+    bad = {tuple(m[2:5]) for r in win for m in (r.get("names") or [])
+           if isinstance(m, list) and len(m) >= 5}
+    # ⭐ 分子**限制在分母的人口里**(`bad & seen`),两个作用:
+    #   ① 率结构上不可能 >100%;
+    #   ② 分子若取了**另一套键**(比如误用 `m[0:2]` 拿队名),交集会塌成 0 ——
+    #      而只比「个数」是分辨不出来的(空包弹实测:换键后计数完全相同)。
+    bad &= seen
+    if seen:
+        naive = sum(len(r.get("matches_seen") or []) for r in win)
+        info.append(
+            f"  近 {lookback_days} 天:去重场次 {len(seen)} · 未映射 {len(bad)} "
+            f"= **{len(bad) / len(seen) * 100:.2f}%**"
+            f"(⚠️ 裸求和分母会是 {naive},放大 {naive / len(seen):.0f}× —— 跨轮**必须**去重)"
+        )
+        written = sum(int((r.get("rows_written") or {}).get("had") or 0) for r in win)
+        info.append(
+            f"  同窗 had 行落库 {written} 条 ——「名字解出来了」≠「行落库了」≠「盘面有价」;"
+            f"⛔ 曲线变绿别读成窟窿变小,盘面验收只认 `jc_home is null`"
+        )
+    elif win:
+        info.append(f"  近 {lookback_days} 天有 {len(win)} 行但一场在售场次都没有(赛程空窗?)")
+
+    return (info, alarms)
+
+
 #: 「行量断崖」监视的表 → 时间列。只放**有稳定日节律**的捕获表。
 #: ⛔ 别放 `jingcai_sp`(上架量本身随赛程波动)、`league_predictions`(赛程驱动)。
 _VOLUME_CLIFF_TABLES: dict[str, str] = {
@@ -1086,7 +1210,7 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date,
 
 #: 非零退出的五个驱动源。顺序 = 报告里的呈现顺序。
 _ALARM_KIND_LABELS = ("捕获表停更", "额度", "模型供应链", "联赛标签", "涓流",
-                       "行量断崖", "探针失明")
+                       "行量断崖", "探针失明", "缺口曲线停更")
 
 #: 配额探针连续瞎多久算「失明」(小时)。哨兵一天跑 3 轮 ⇒ 24h 覆盖 3 轮:
 #: 单轮网络抖动**不会**误报(保留 2026-07-15 那条设计:抖动 ≠ 配额红线),
@@ -1185,7 +1309,7 @@ def _any_alarm(*groups) -> bool:
 
 def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
                      label_alarms, trickle_alarms, cliff_alarms=(),
-                     blind_alarms=()) -> str:
+                     blind_alarms=(), gapcurve_alarms=()) -> str:
     """→ 追加到报告末尾的「报警类别」行(全绿时返回空串)。
 
     ⭐ 2026-08-24 加。起因:桌面推送写死「捕获表停长,**某 cron 可能死了**」,
@@ -1199,7 +1323,8 @@ def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
     (`&&` 必须写成 `&amp;&amp;`,21/23 个文件曾因此是无效 XML)。
     """
     kinds = _alarm_kinds(crit_stale, quota_alarms, supply_alarms,
-                         label_alarms, trickle_alarms, cliff_alarms, blind_alarms)
+                         label_alarms, trickle_alarms, cliff_alarms, blind_alarms,
+                         gapcurve_alarms)
     if not kinds:
         return ""
     return ("\n\n报警类别: " + " · ".join(kinds)
@@ -1223,6 +1348,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="跳过模型供应链探针 (artifact/源树/parquet;缺目录本就自动跳过)")
     p.add_argument("--no-league-labels", action="store_true",
                    help="跳过联赛标签双轨探针 (劈开的写法 / 标签表不认识的联赛)")
+    p.add_argument("--no-gapcurve", action="store_true",
+                   help="跳过竞彩缺口曲线探针")
     p.add_argument("--no-trickle", action="store_true",
                    help="跳过竞彩历史涓流进度探针 (回填进度 / 零新增真假判据)")
     args = p.parse_args(argv)
@@ -1279,6 +1406,17 @@ def main(argv: list[str] | None = None) -> int:
                 f" — 回填进度**没有被检查**,别据此判断它扫完没扫完"
             ]
 
+    gapcurve_info: list[str] = []
+    gapcurve_alarms: list[str] = []
+    if not args.no_gapcurve:
+        try:
+            gapcurve_info, gapcurve_alarms = check_unmapped_gap(now=now)
+        except Exception as exc:  # noqa: BLE001
+            gapcurve_alarms = [
+                f"竞彩缺口曲线探针自己炸了: {type(exc).__name__}: {exc}"
+                f" — 采集是否还在跑**没有被检查**"
+            ]
+
     if args.porcelain:
         for s in statuses:
             status = "OK" if not s.stale else ("STALE" if s.critical else "OLD")
@@ -1306,6 +1444,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"TRICKLE\t{q}")
         for q in trickle_alarms:
             print(f"TRICKLE-STUCK\t{q}")
+        for q in gapcurve_info:
+            print(f"GAPCURVE\t{q}")
+        for q in gapcurve_alarms:
+            print(f"GAPCURVE-STALL\t{q}")
     else:
         report = render(statuses, db_path, today, now)
         if supply_info or supply_alarms:
@@ -1325,6 +1467,11 @@ def main(argv: list[str] | None = None) -> int:
             report += "\n\n  — 竞彩历史涓流(2026-08-08:上次它「扫完了」是假信号,丢了 4,751 场)—"
             report += "".join(f"\n  · {q}" for q in trickle_info)
             report += "".join(f"\n  ✗ {q}" for q in trickle_alarms)
+        if gapcurve_info or gapcurve_alarms:
+            report += ("\n\n  — 竞彩队名缺口曲线(2026-08-20 起有历史,09-04 才补上读者)—"
+                       "\n  ⚠️ 它测「名字解不解得出」,**不测盘面有没有价**;只对停更报警,率不判闸")
+            report += "".join(f"\n  · {q}" for q in gapcurve_info)
+            report += "".join(f"\n  ✗ {q}" for q in gapcurve_alarms)
         if quota_alarms:
             report += "\n" + "\n".join(f"⚠️ 配额: {q}" for q in quota_alarms)
         if probe_fails:
@@ -1341,7 +1488,7 @@ def main(argv: list[str] | None = None) -> int:
         # 报告里给出类别,推送文案改成类别中立(见 setup_local_pipeline.sh)。
         report += alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
                                    label_alarms, trickle_alarms, cliff_alarms,
-                                   blind_alarms)
+                                   blind_alarms, gapcurve_alarms)
         print(report)
         if args.out:
             Path(args.out).write_text(report + "\n", encoding="utf-8")
@@ -1350,7 +1497,8 @@ def main(argv: list[str] | None = None) -> int:
             #    (2026-09-01 实测,我自己也是这么丢掉那次读数的)。
             #    这份只会被下一次**报警**覆盖。
             if _any_alarm(crit_stale, quota_alarms, supply_alarms, label_alarms,
-                          trickle_alarms, cliff_alarms, blind_alarms):
+                          trickle_alarms, cliff_alarms, blind_alarms,
+                          gapcurve_alarms):
                 ap = alarm_path_for(args.out)
                 if ap:
                     try:
@@ -1374,10 +1522,11 @@ def main(argv: list[str] | None = None) -> int:
     record_run(history,
                kinds=_alarm_kinds(crit_stale, quota_alarms, supply_alarms,
                                   label_alarms, trickle_alarms, cliff_alarms,
-                                  blind_alarms),
+                                  blind_alarms, gapcurve_alarms),
                probe_ok=probe_ok, now=now)
     return 1 if _any_alarm(crit_stale, quota_alarms, supply_alarms, label_alarms,
-                           trickle_alarms, cliff_alarms, blind_alarms) else 0
+                           trickle_alarms, cliff_alarms, blind_alarms,
+                           gapcurve_alarms) else 0
 
 
 if __name__ == "__main__":
