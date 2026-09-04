@@ -2377,6 +2377,15 @@ const I18N = {
                     + '<li><b>离散</b> = 最大 − 最小(pp)</li>'
                     + '<li><b>EVₑ</b> = 按共识算 · <b>EVₗ</b> = 按最保守算,都是 P × 竞彩SP − 1</li></ul>'
                     + '<p style="margin-top:8px;color:#b45309"><b>⚠️ 仅供临场参考,不参与判闸 / 排序 / 串关。</b></p>'
+                    + '<p style="margin-top:8px"><b>年龄变琥珀 ⚠️ 是什么意思?</b>'
+                    + '这组报价<b>一小时以上没变过</b>,而这场<b>6 小时内开球</b>。'
+                    + '本层每场的刷新间隔<b>中位 6.5 小时</b>(实测 n=2,124)⇒ 开赛前<b>多半等不到下一次刷新</b>,'
+                    + '你现在看到的多半就是最终值。<b>会不会来?</b>实测处在这个状态的场次,其后 30 分钟内'
+                    + '真出现新报价的只有 <b>约 2%</b>(临开球的场次高些,也只到 3.5%)—— 所以'
+                    + '🔄 刷新盘口是唯一<b>可靠</b>的更新途径,但它会花 API 额度,值不值得你自己判。</p>'
+                    + '<p style="margin-top:4px;color:var(--text-muted)">⚠️ 它<b>不是</b>「数据有多旧」——'
+                    + '报价没变就不写新行,所以时间戳大往往只是说<b>线没动</b>(对共识面板反而是好消息)。'
+                    + '这个提示问的是「<b>它还来得及更新吗</b>」,不是「它有多旧」。</p>'
                     + '<p style="margin-top:4px;color:var(--text-muted)">支持它的样本(63 场)全是世界杯且人口偏斜,只证明机制存在,不是「影响多大」的估计。已实测:书商之间的分歧(≤1.2pp)比封盘后漂移(|&gt;2pp| 占 29%)小一个数量级 —— 换句话说,<b>多加一个市场拿不到新信息</b>,这一层只用来看单锚是不是离群。</p>',
     poly_leg:         '腿',
     poly_sp:          '竞彩 SP',
@@ -3001,6 +3010,14 @@ const I18N = {
                     + '<li><b>Spread</b> = max − min (pp)</li>'
                     + '<li><b>EVₑ</b> at consensus · <b>EVₗ</b> at the most conservative, both P × 竞彩SP − 1</li></ul>'
                     + '<p style="margin-top:8px;color:#b45309"><b>⚠️ Reference only: never gates, ranks, or enters parlays.</b></p>'
+                    + '<p style="margin-top:8px"><b>What does an amber age mean?</b> '
+                    + 'These quotes have not changed for over an hour, and kickoff is <b>within 6 hours</b>. '
+                    + 'Median refresh interval for one fixture is <b>6.5h</b> (measured, n=2,124), so it will most likely '
+                    + '<b>not refresh again</b> before kickoff. Measured: only <b>~2%</b> of fixtures in this state get new quotes '
+                    + 'within 30 min (3.5% near kickoff). 🔄 refresh is the only <b>reliable</b> update, but it spends API quota.</p>'
+                    + '<p style="margin-top:4px;color:var(--text-muted)">⚠️ It is <b>not</b> "how old the data is": unchanged quotes '
+                    + 'are not re-recorded, so an old timestamp usually just means <b>the line has not moved</b> (good news here). '
+                    + 'This flag asks "<b>can it still update?</b>", not "how old is it?".</p>'
                     + '<p style="margin-top:4px;color:var(--text-muted)">Its supporting sample (63 matches) is all World Cup and population-skewed — it shows the mechanism exists, not how big it is. Measured: cross-book disagreement (≤1.2pp) is an order of magnitude smaller than the post-freeze drift (|&gt;2pp| in 29% of matches), so <b>adding another market buys no new information</b>; this layer only tells you whether the single anchor is an outlier.</p>',
     poly_leg:         'Leg',
     poly_sp:          '竞彩 SP',
@@ -7090,6 +7107,83 @@ function _hasBk(pr) {
 //    **全是世界杯 + 全是缓存未过期的**,人口偏斜 ⇒ 只证明机制存在,不是影响多大。
 //    改闸须走预注册(同 δ / CLV 的规格)。
 // ⚠️ 共识**刻意排除 Pinnacle 自己**;`bk_n` 必须一起显示 —— 2 家的共识不是共识。
+//: ⚖️ 2026-09-04 —— 多书商共识的陈旧提示。**只做「开球相对」那半边,不做平线。**
+//:
+//: ## 为什么不是复用 `_ODDS_STALE_MIN`(原方案),而这不算推翻那条纪律
+//: 「复用现成常数、别发明第三个」是对的 —— 错在此前只看见规则的**一半**。
+//: `_oddsFreshnessHtml` 的 `pr._manual` 分支里那条是**复合**规则:
+//:     stale = mins > _ODDS_STALE_MIN || (mins > 60 && hrsToKo < 3)
+//: 前半是平线,后半是开球相对。实测(25 次真实看盘会话 × 771 次卡片渲染,
+//: 人口 = 竞彩在售 ∧ 未开球 ∧ 面板真会渲染)点亮率:
+//:     A 平线 120min ................ 63.9%
+//:     B 字面复用整条复合规则 ....... 63.9%   ← 平线那项把另一半完全淹掉
+//:     C  >60m ∧ 距开球<3h .......... 0.8%
+//:     D  >60m ∧ 距开球<6h .......... 3.0%   ← 本实现
+//:     E  ≥24h ...................... 21.3%
+//: ⇒ 复用的是**后半边**。前半边在这一层必须丢掉,理由见下。
+//:
+//: ## 🚨 平线在这一层为什么必须丢掉(两条,任一条都足够)
+//: ① **它是额度放大器。** 徽章变琥珀确实有动作可做 —— 按 🔄 刷新盘口
+//:    (`refresh_odds=true` ⇒ 强制 live pull ⇒ 真写新快照;实测 33 个批次里
+//:    **6 个 / 632 行 = 27.5% 来自 serving 路径**)。但那颗按钮**花真钱**。
+//:    一个在 64–79% 的卡上点亮、而处方是「去按付费刷新」的徽章,正对着本项目
+//:    第一条烧钱教训(额度真凶=服务路径不是 cron)。
+//: ② **它测的是时钟不是卡片。** 阈值 120min 远小于本层刷新周期,时钟扫描:
+//:    离上一轮 cron +90min 时点亮 65.2%,+120min 一步跳到 **100.0%**。
+//:    92% 的卡年龄恰等于最近两个批次时刻 —— 那是**批次属性**,不是卡片属性。
+//:
+//: ⛔ 反过来,**下面这两条论证是错的,别再用**(实测打掉过):
+//:    ·「陈旧了 owner 也没动作可做」—— 错,🔄 就是动作(见 ①)。
+//:    ·「点亮 2/3 ⇒ 是底色不是警告」作为通则不成立:同一块面板的离散度琥珀
+//:      (`d>=3`)已经点亮 78.1%,而且注释写着是**故意**改成常显的。
+//:
+//: ## ⚠️ `bk_captured_at` 不是「我们上次去看的时刻」
+//: `record_book_snapshot` 按 payload **去重**(线没变就不写行)⇒ 它是
+//: 「**这组报价上次变动**的时刻」。实测被平线判陈旧的 277/277(100%)在其
+//: `captured_at` 之后都跑过采集。⇒ 「数字大」的主因是**线没动**,而对一个共识
+//: 面板,线不动恰恰是好消息 —— 这也是平线会把好消息涂成警告的原因。
+//: 开球相对那半边不吃这个亏:它问的不是「有多旧」,是「**它还来得及更新吗**」。
+//:
+//: ## `6` 从哪来 —— **量出来的,不是数 cron 槽数出来的**
+//: 🚨 我第一版写的是「本层挂在 4 个 cron 槽上 ⇒ 24/4 = 6h」。**那个推导是假的**,
+//: 而且打脸的是我自己当天早些时候刚查出来的事:**有第 5 个写入者** ——
+//: `closing_odds.py:174` 也调 `capture_books_for_sport`,`StartInterval 1800`
+//: (每 30 分钟)、`lookahead_minutes=75`(专挑开球前 75 分钟的联赛)。
+//: 实测:194 个采集时刻里 **47% 落在那 4 个槽之外**;写入的提前量密度
+//: 「开球前 0–1.25h」比「1.25–6h」高 **11.5 倍**。
+//: ⇒ 「开赛前**不会再有任何一次**自动采集」这个**全称量词是错的**。
+//:
+//: ⭐ 但数字 `6` 反而是对的 —— 只是理由换了。正确的量具是**同场相邻快照的间隔**:
+//: n=2,124,p10 0.50h · p25 1.50h · **中位 6.50h** · p75 14.9h · p90 46.6h
+//: (其中 ≤0.6h 的 12.3% 就是那台 30 分钟 cron 的指纹)。
+//: ⇒ 「距开球 < 6h」= **已经进入「多半等不到下一次刷新」的区间**。实测佐证:
+//: 处在琥珀态的观测点,其后 30 分钟内真出现新行的概率 **0–1.25h 段 2.2%、
+//: 3–6h 段 0.8%**(closing 覆盖的场次高些,也只有 3.5%)—— 会来,但别指望。
+//:
+//: ⏰ **维护钩子(别再数槽位)**:改这个数之前,**重量一次同场相邻间隔的中位数**。
+//: 增删 cron 槽本身不构成改它的理由 —— 槽数和这个中位数不是一回事(上面那次就是
+//: 照着槽数推,推出了个碰巧正确的数和一句错误的话)。
+//: ⚠️ 这和 Pinnacle 那层的 `<3h` 是**不同的理由**(那条是 σ_P(h)=A·h^B:越近开球
+//: 线动得越快),所以两个数不同是对的,别去「统一」。
+const _BK_KO_WINDOW_H = 6;
+//: 下界 `60` 分钟**复用**既有复合规则里的同一个字面量
+//: (见 `_oddsFreshnessHtml` 的 `pr._manual` 分支;⛔ 那里没有叫 `_cupManualHtml` 的函数,
+//:  我第一版就是这么写的 —— 引一个不存在的名字,读者 grep 不到只能选择相信注释)。
+//: ⚠️ 必须 `hrsToKo > 0`:卡片开赛后仍留在盘面上(2026-09-03 `keep_started`),
+//: 不加这一条,已开赛的卡会**永久**挂着琥珀 —— 而那时它既不能下注也无从更新。
+//: 实测口径也正是「未开球」那批,加它才和测出来的 3.0% 同人口。
+function _bkStale(pr) {
+  if (!pr || !pr.bk_captured_at) return false;
+  const ts = Date.parse(pr.bk_captured_at);
+  if (isNaN(ts)) return false;
+  const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  const ko = pr.kickoff_utc ? Date.parse(pr.kickoff_utc) : NaN;
+  if (isNaN(ko)) return false;          // 无开球时刻 ⇒ 判不了「来不来得及」⇒ 不喊
+  const hrsToKo = (ko - Date.now()) / 3600000;
+  return mins > 60 && hrsToKo > 0 && hrsToKo < _BK_KO_WINDOW_H;
+}
+
+
 function _bkHtml(pr, idx, ns) {
   // ⚠️ 「这项赛事 Odds API 根本没有对应 sport」和「今天还没抓到」是**两件事**:
   //    前者永远不会有(日联赛杯/意大利杯/德国杯…),后者 cron 下一轮就有。
@@ -7120,6 +7214,7 @@ function _bkHtml(pr, idx, ns) {
   const maxSp = Math.max.apply(null, pr.bk_spread || [0]);
   const hot = maxSp >= 6;   // ⚠️ 原来的 `warm`(≥3pp 才显示离散)已删:离散改成常显
   const age = pr.bk_captured_at ? _bkAge(pr.bk_captured_at) : '';
+  const bkStale = _bkStale(pr);   // ⚖️ 只在「快开球了且它多半不会再更新」时喊
   const rows = [0, 1, 2].map(function (i) {
     const sp = SP[i], c = pr.bk_consensus[i], lo = pr.bk_low[i], d = pr.bk_spread[i];
     const ev = function (P) {
@@ -7151,7 +7246,8 @@ function _bkHtml(pr, idx, ns) {
     // ⚠️ 离散**常显**(原本 <3pp 就藏):窄屏下表里那一列被 `bk-opt` 裁掉了,
     //    藏在这里就等于彻底看不到——而「共识紧不紧」正是这个面板存在的理由。
     + ' \u00b7 ' + t('bk_spread') + ' ' + maxSp.toFixed(1) + 'pp' + (hot ? ' \u26a0\ufe0f' : '')
-    + (age ? ' \u00b7 ' + age : '')
+    + (age ? ' \u00b7 ' + (bkStale
+        ? '<span style="color:#d97706">\u26a0\ufe0f ' + age + '</span>' : age) : '')
     // ⓘ 说明(2026-09-03)—— 原本是表格下方一整块橙字,占掉三行竖向空间。
     // ⭐ 放在 **summary** 而不是原文案的位置:这一层是**唯一**说明「不参与判闸/
     //    排序/串关」的地方,而它已经在两层折叠里(联赛组 + 本 details)。收进弹窗
