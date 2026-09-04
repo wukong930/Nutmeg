@@ -203,7 +203,10 @@ console.log(JSON.stringify(_bkStale({{
 class TestWiredIntoTheSummary:
     """规则对了但没接线 = 屏幕上什么都不会变。"""
 
-    def _render(self, age_min: int, ko_h: float, spread: float = 2.0,
+    #: ⚠️ 默认 1.0 而非 2.0 —— 2026-09-04 离散切点从 3/6 换成 2.0/4.6 之后,
+    #:    2.0 已经落进琥珀档,fixture 会自己把 `#d97706` 带进 HTML,
+    #:    「不该点亮时没有琥珀」那条就永远红。灰档必须**跟着刻度走**。
+    def _render(self, age_min: int, ko_h: float, spread: float = 1.0,
                 *, no_bk: bool = False) -> str:
         src = f"""
 const NOW = {_NOW_MS};
@@ -213,6 +216,9 @@ const _foldAttrs = () => '', _foldKey = () => 'k';
 {_fn('_hasBk')}                       // ⭐ 生产原文,不打桩:它决定这块面板渲不渲
 {_const('_ODDS_STALE_MIN')}
 {_const('_BK_KO_WINDOW_H')}
+{_const('_BK_DISP_AMBER')}
+{_const('_BK_DISP_RED')}   // 2026-09-04 离散换 p90−p10 后 `_bkHtml` 依赖它们
+{_fn('_bkDispCol')}
 {_fn('_bkAge')}
 {_fn('_bkStale')}
 {_fn('_bkHtml')}
@@ -255,7 +261,7 @@ console.log(JSON.stringify(_bkHtml(pr, 0, 'sp')));
     def test_the_ambiguous_colour_check_would_have_been_wrong(self):
         """⭐ 钉住上一条为什么要收紧:离散 ≥3pp 时,整段 HTML **必然**含 `#d97706`,
         而那张卡**不该**被判陈旧。用「整段含不含这个色」当判据会假红。"""
-        far_wide = self._render(600, 20, spread=4.0)
+        far_wide = self._render(600, 20, spread=3.0)   # 新刻度下仍在琥珀档(2.0≤d<4.6)
         assert "#d97706" in far_wide, "离散 4pp 没染色 —— 这条前提不成立了,请重看 dCol"
         assert not self._AGE_AMBER.search(self._summary(far_wide)), \
             "年龄被误染 —— 收紧后的判据本身出问题了"

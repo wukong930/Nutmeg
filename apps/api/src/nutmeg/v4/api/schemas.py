@@ -243,7 +243,7 @@ class SinglePrediction(BaseModel):
     #: 三元组顺序 = (主胜, 平局, 客胜),与 `jc_home/draw/away` 对齐。
     bk_consensus: list[float] | None = None   # 非-Pinnacle 书商去vig 后的**中位**
     bk_low: list[float] | None = None         # 最保守(最小)的那一家
-    bk_spread: list[float] | None = None      # 离散度(max−min,**百分点**)
+    bk_spread: list[float] | None = None      # 离散度(**p90−p10**,百分点;2026-09-04 从 max−min 换来)
     bk_n: int | None = None                   # 家数(含 Pinnacle)
     bk_captured_at: str | None = None         # 这批报价抓于何时
     #: True = **本项目未接入该赛事的多书商源**(该赛事不在 `SPORT_KEYS` 里)。
@@ -381,7 +381,7 @@ class PendingFixture(BaseModel):
     #: 三元组顺序 = (主胜, 平局, 客胜),与 `jc_home/draw/away` 对齐。
     bk_consensus: list[float] | None = None   # 非-Pinnacle 书商去vig 后的**中位**
     bk_low: list[float] | None = None         # 最保守(最小)的那一家
-    bk_spread: list[float] | None = None      # 离散度(max−min,**百分点**)
+    bk_spread: list[float] | None = None      # 离散度(**p90−p10**,百分点;2026-09-04 从 max−min 换来)
     bk_n: int | None = None                   # 家数(含 Pinnacle)
     bk_captured_at: str | None = None         # 这批报价抓于何时
     #: True = **本项目未接入该赛事的多书商源**(该赛事不在 `SPORT_KEYS` 里)。

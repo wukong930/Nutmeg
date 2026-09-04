@@ -48,19 +48,38 @@ class TestDegenerateQuoteDoesNotSkewSpread:
 
         assert clean.bk_spread and poisoned.bk_spread, "人口非平凡:两边都必须真算出来"
         # 🚨 承重:同一条退化报价,对 spread 是灾难、对中位只是噪声
-        assert max(poisoned.bk_spread) < 10.0, (
+        # ⭐ 收紧到 5.0(旧值 10.0):换 p90−p10 后有闸时实测 0.8pp、无闸 17.9pp,
+        #    10.0 落在中间空档里显得像随手取的。5.0 仍远离 0.8,且低于红线 4.6 的
+        #    一个身位 —— 「有闸的时候不许亮红」这句话本身就是判据。
+        assert max(poisoned.bk_spread) < 5.0, (
             f"退化报价仍在污染 spread:{poisoned.bk_spread}")
         moved = max(abs(a - b) for a, b in
                     zip(clean.bk_consensus, poisoned.bk_consensus, strict=True)) * 100
         assert moved < 1.2, f"共识中位被推了 {moved:.2f}pp,超出实测上限 1.12pp"
 
     def test_the_sample_really_is_poisonous(self, tmp_path, monkeypatch):
-        """⚠️ 人口非平凡:先证明**不修的话**这个样本真的会炸,否则上一条空洞为真。"""
+        """⚠️ 人口非平凡:先证明**不修的话**这个样本真的会炸,否则上一条空洞为真。
+
+        ⭐ 2026-09-04 离散换成 `p90−p10` 后这条门槛从 30pp 降到 12pp —— **不是放水,
+        是量级真变了**,实测(6 家干净 + k 条退化,`[1.08,1.08,1.08]`):
+
+            退化条数   max−min     p90−p10
+              0         1.0pp       0.8pp
+              1        43.5pp      **17.9pp**   ← 只削弱 2.4×,仍是红线(4.6pp)的 3.9 倍
+              2        43.5pp      43.4pp       ← 完全被毒倒
+
+        🚨 **所以退化闸对 `bk_spread` 仍然必要** —— 我一度以为 p90−p10 抗住了单条
+        退化报价,那是错的:总共只有 7 家时 p90 的插值点(index 5.4)**够得到最高那条**。
+        抗离群是**家数的函数**,不是统计量自带的保证。同一条曲线也解释了为什么
+        `routes.py` 里写着「家数很少时新统计量退化成接近极差」。
+        ⛔ 而 `bk_low`(最小值,单点顺序统计量)完全没被 p90−p10 保护到 —— 实测
+        主胜腿 min 在 0/1/2 条退化下都是 7.8%,闸是它**唯一**的防线。
+        """
         from nutmeg.v4.api import routes
         monkeypatch.setattr(routes, "_BK_MAX_OVERROUND", 99.0)   # 等于没闸
         p = _attach(tmp_path, monkeypatch,
                     dict(self._FAV, exchange_dead=list(self._DEGENERATE)))
-        assert max(p.bk_spread) > 30.0, (
+        assert max(p.bk_spread) > 12.0, (
             f"样本不够毒({max(p.bk_spread):.1f}pp)—— 上一条测不出任何东西")
 
     def test_the_degenerate_quote_still_counts_toward_n_books(self, tmp_path, monkeypatch):

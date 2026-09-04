@@ -339,10 +339,16 @@ def test_the_spread_is_always_shown_not_only_when_wide() -> None:
     #    判据必须是行为:那一行**在拼上离散之前不能有任何条件**。
     lines = [ln.strip() for ln in body.splitlines() if "maxSp.toFixed" in ln]
     assert len(lines) == 1, f"summary 里拼离散的行应恰好 1 条,实际 {len(lines)}"
-    ln = lines[0]
-    before = ln.split("maxSp.toFixed")[0]
-    assert "?" not in before, f"离散被条件包住了 ⇒ 紧盘面上窄屏会彻底看不到它:{ln}"
-    assert ln.startswith("+ ' \\u00b7 ' + t('bk_spread')"), f"离散不是无条件拼上去的:{ln}"
+    # ⚠️ 2026-09-04:表达式被拆成两行(离散那个数要带颜色,见 test_bk_dispersion)
+    #    ⇒ 原来「这一行必须以 `+ ' · ' + t('bk_spread')` 开头」按字面已不成立。
+    #    但**意图没变**:离散不许被任何条件包住。所以判据改成:把这一段**连续的
+    #    `+ …` 表达式拼回来**再判,而不是盯住某一行的开头。
+    idx = body.index(lines[0]) if lines[0] in body else body.index("maxSp.toFixed")
+    seg = body[:idx + len(lines[0])]
+    expr = seg[seg.rindex("+ ' \\u00b7 ' + t('bk_spread')"):]
+    before = expr.split("maxSp.toFixed")[0]
+    assert "?" not in before, f"离散被条件包住了 ⇒ 紧盘面上窄屏会彻底看不到它:{expr}"
+    assert "t('bk_spread')" in before, f"离散不是无条件拼在标签后面的:{expr}"
 
 
 # ── join 层(2026-09-01 抽出 `team_match` 后新增)──────────────────────────

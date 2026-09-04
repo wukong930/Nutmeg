@@ -386,6 +386,25 @@ def _should_record_session(req_record_flag: bool) -> Optional[str]:
 #: ⚠️ 阈值不是拍的:实测每场家数 3–25、均 18;3 家以下的场次共识和单锚没区别。
 _BK_MIN_BOOKS = 5
 
+def _pctl(xs: list[float], q: float) -> float:
+    """线性插值分位数(numpy 默认 / `statistics.quantiles(method="inclusive")` 同款)。
+
+    ⭐ 存在的唯一理由:**定切点时用的就是这把尺子**。分位数有七八种定义,换一种
+    2.0pp / 4.6pp 这两个数就不再落在它们该在的百分位上 —— 那时切点是错的而没人看得出来。
+    ⇒ 这里显式写死插值方式,并由 `test_bk_dispersion` 钉住已知答案。
+    """
+    if not xs:
+        return 0.0
+    s = sorted(xs)
+    if len(s) == 1:
+        return s[0]
+    k = (len(s) - 1) * q
+    lo = int(k)
+    if lo + 1 >= len(s):
+        return s[-1]
+    return s[lo] + (s[lo + 1] - s[lo]) * (k - lo)
+
+
 #: 单条报价自身抽水的上限(`Σ1/o − 1`)。超过 ⇒ 退化占位价,不进 `bk_low`/`bk_spread`。
 #: ⚠️ 实测正常报价抽水 **p99 = 0.189**、退化簇最小值 **0.453**,中间是空的
 #: ⇒ 0.28–0.45 任取等价,不是一个需要调的旋钮。见 `_attach_book_consensus` 里那段。
@@ -537,7 +556,35 @@ def _attach_book_consensus(preds: list) -> None:
             _band = _clean if len(_clean) >= 2 else others   # 全退化则退回原样,别给空
             pr.bk_consensus = [_st.median([v[i] for v in others]) for i in range(3)]
             pr.bk_low = [min(v[i] for v in _band) for i in range(3)]
-            pr.bk_spread = [(max(v[i] for v in _band) - min(v[i] for v in _band)) * 100.0
+            # ⚖️ 2026-09-04 —— 离散度从 `max − min` 换成 **`p90 − p10`**(预注册见下)。
+            #
+            # 🚨 换的理由是**统计量不稳健**,不是「琥珀太常见」:
+            # `max−min` 是两个**单点顺序统计量**之差,家数越多机械地越大。
+            # 决定性实验(同一场 · 同一时刻 · 同一批报价,只随机抽 k 家 ⇒ 联赛/热度/
+            # 时间/真实分歧全部被物理钉死):≥切点触发率 k=5 **18.4%** → k=22 **60.8%**,
+            # 中位放大 1.47×。⇒ 两张卡的离散数字**此前不可直接比大小**。
+            #
+            # ⭐ 切点由**预注册的规则**唯一确定,不是挑出来的:
+            #   规则(量数据**之前**declare):**保持两个切点各自的百分位位置不变。**
+            #   实测 `max−min` 逐卡 maxSp 分布上 3pp = 第 31.0 百分位、6pp = 第 95.9;
+            #   `p90−p10` 分布上同样两个百分位 = **2.0pp / 4.6pp**(前端两个常数)。
+            #   ⛔ 故意**不**顺手让琥珀变稀有 —— 没有任何测量说明 3pp 那个位置是错的,
+            #      只说明它常见;同时改尺子和改刻度就无法归因是哪一半带来的变化。
+            #   实测点亮率几乎不动(灰 31.0→32.1% · 琥珀 64.9→63.3% · 红 4.1→4.6%),
+            #   正是这条规则预期的结果。
+            #
+            # ✅ 预注册的通过条件(先定后测):换尺子后家数机械依赖**必须变小**。
+            #    实测跨度 **+42.4pp → +21.3pp**(砍一半)⇒ 通过。
+            #    ⛔ 若没变窄,处方是**回滚**,不是靠调切点掩盖。
+            #
+            # ⚠️ 已知边界(诚实停):`p90−p10 / max−min` 的比值随家数下降
+            #    (5-7 家 0.958 · 8-9 家 0.763 · 20+ 家 0.675)—— 家数很少时新统计量
+            #    **退化成接近极差**,抗离群基本不生效。曲线**没有拐点** ⇒ 定不出有依据的
+            #    最小家数,故**不加**额外的家数闸(`_BK_MIN_BOOKS=5` 照旧);
+            #    受影响的只有 band 5-7 家那 1.1% 的卡。
+            #    ⛔ 别为了「看起来严谨」拍一个最小值 —— 那是把没有依据的数字写成常数。
+            pr.bk_spread = [(_pctl([v[i] for v in _band], 0.9)
+                             - _pctl([v[i] for v in _band], 0.1)) * 100.0
                             for i in range(3)]
             pr.bk_n = int(row[1])
             pr.bk_captured_at = row[2]

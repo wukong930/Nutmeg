@@ -2374,7 +2374,7 @@ const I18N = {
                     + '<p style="margin-top:8px">所以共识<b>排除 Pinnacle 自己</b> —— 含它的中位会被它拖着走,就答不了这个问题。</p>'
                     + '<ul style="margin:8px 0 4px 18px;list-style:disc"><li><b>共识</b> = 其余各家的<b>中位数</b>(抗离群)</li>'
                     + '<li><b>最保守</b> = 其余各家的<b>最小值</b>(单点,不是统计下界)</li>'
-                    + '<li><b>离散</b> = 最大 − 最小(pp)</li>'
+                    + '<li><b>离散</b> = <b>p90 − p10</b>(pp,抗离群)—— 2026-09-04 从「最大 − 最小」换来:极差是两个单点,家数越多机械地越大(实测同一场抽 5 家 vs 22 家,触发率 18%→61%),两张卡不可比。切点 2.0/4.6pp 由「保持旧切点的百分位位置」这条**预注册规则**算出,不是挑的。</li>'
                     + '<li><b>EVₑ</b> = 按共识算 · <b>EVₗ</b> = 按最保守算,都是 P × 竞彩SP − 1</li></ul>'
                     + '<p style="margin-top:8px;color:#b45309"><b>⚠️ 仅供临场参考,不参与判闸 / 排序 / 串关。</b></p>'
                     + '<p style="margin-top:8px"><b>年龄变琥珀 ⚠️ 是什么意思?</b>'
@@ -3007,7 +3007,7 @@ const I18N = {
                     + '<p style="margin-top:8px">Hence the consensus <b>EXCLUDES Pinnacle itself</b> — including it would drag the median toward it and the question could not be answered.</p>'
                     + '<ul style="margin:8px 0 4px 18px;list-style:disc"><li><b>Consensus</b> = <b>median</b> of the other books (outlier-robust)</li>'
                     + '<li><b>Most conservative</b> = their <b>minimum</b> (a single point, not a statistical lower bound)</li>'
-                    + '<li><b>Spread</b> = max − min (pp)</li>'
+                    + '<li><b>Spread</b> = <b>p90 − p10</b> (pp, outlier-robust) \u2014 switched from max\u2212min on 2026-09-04: the range is two single order statistics and grows mechanically with book count (measured, same match: 5 books 18% vs 22 books 61% trigger rate), so two cards were not comparable. Cut-points 2.0/4.6pp come from a <b>pre-registered rule</b> (preserve the old cut-points\u2019 percentile positions), not hand-picked.</li>'
                     + '<li><b>EVₑ</b> at consensus · <b>EVₗ</b> at the most conservative, both P × 竞彩SP − 1</li></ul>'
                     + '<p style="margin-top:8px;color:#b45309"><b>⚠️ Reference only: never gates, ranks, or enters parlays.</b></p>'
                     + '<p style="margin-top:8px"><b>What does an amber age mean?</b> '
@@ -7184,6 +7184,23 @@ function _bkStale(pr) {
 }
 
 
+//: 离散度三档切点(pp)。⭐ **由预注册的规则唯一确定,不是挑出来的**:
+//: 规则(量数据**之前**declare)= 保持旧切点各自的百分位位置不变。
+//: 实测 `max−min` 逐卡分布上 3pp = 第 31.0 百分位、6pp = 第 95.9;
+//: 换到 `p90−p10` 后同样两个百分位处 = **2.0 / 4.6**。
+//: ⚠️ 服务端 `routes.py` 那段注释是这两个数的**完整出处**(含通过条件与已知边界),
+//: 改它们之前先读那里。⛔ 尤其别只改一个数「看看效果」—— 两个切点是同一次校准出来的。
+//: ⏰ 重标钩子:**先在当时的盘面上重跑一遍那条百分位规则**,别凭感觉挪。
+const _BK_DISP_AMBER = 2.0;
+const _BK_DISP_RED = 4.6;
+//: 离散度三档配色。⭐ **唯一定义点** —— 表格里那一列和 <summary> 上那个数共用它。
+//: 写两遍必漂:2026-09-04 之前 summary 上那个数**根本没有颜色**,就是因为配色只写在
+//: 表格列的 style 里(见下方 `_bkDispCol` 的调用点)。
+function _bkDispCol(d) {
+  return d >= _BK_DISP_RED ? '#dc2626' : (d >= _BK_DISP_AMBER ? '#d97706' : '#64748b');
+}
+
+
 function _bkHtml(pr, idx, ns) {
   // ⚠️ 「这项赛事 Odds API 根本没有对应 sport」和「今天还没抓到」是**两件事**:
   //    前者永远不会有(日联赛杯/意大利杯/德国杯…),后者 cron 下一轮就有。
@@ -7212,7 +7229,9 @@ function _bkHtml(pr, idx, ns) {
   const SP = [pr.jc_home, pr.jc_draw, pr.jc_away];
   const L = [t('leg_home'), t('leg_draw'), t('leg_away')];
   const maxSp = Math.max.apply(null, pr.bk_spread || [0]);
-  const hot = maxSp >= 6;   // ⚠️ 原来的 `warm`(≥3pp 才显示离散)已删:离散改成常显
+  const hot = maxSp >= _BK_DISP_RED;   // ⚠️ 原来的 `warm`(≥3pp 才显示离散)已删:离散改成常显
+  //: ⛔ 这里读常数,不写字面量 —— 2026-09-04 换统计量时它曾是写死的 `6`,
+  //:    差点出现「表格里已经是新刻度、而 summary 的 ⚠️ 还按旧刻度」。
   const age = pr.bk_captured_at ? _bkAge(pr.bk_captured_at) : '';
   const bkStale = _bkStale(pr);   // ⚖️ 只在「快开球了且它多半不会再更新」时喊
   const rows = [0, 1, 2].map(function (i) {
@@ -7222,7 +7241,7 @@ function _bkHtml(pr, idx, ns) {
         (P * sp - 1 >= 0.05 ? '#059669' : (P * sp - 1 >= 0 ? '#64748b' : '#dc2626')) +
         '">' + ((P * sp - 1) * 100).toFixed(1) + '%</span>' : '<span class="text-muted">--</span>';
     };
-    const dCol = d >= 6 ? '#dc2626' : (d >= 3 ? '#d97706' : '#64748b');
+    const dCol = _bkDispCol(d);
     return '<tr><td class="pr-3">' + L[i] + '</td>'
       // `bk-opt` = 窄屏丢掉的列(见 <style> 里那段);EV 两列**永远不带**这个类。
       + '<td class="pr-3 text-right text-muted bk-opt">' + (sp ? Number(sp).toFixed(2) : '--') + '</td>'
@@ -7245,7 +7264,17 @@ function _bkHtml(pr, idx, ns) {
     + IC('board') + ' ' + t('bk_badge') + ' \u00b7 ' + pr.bk_n + ' ' + t('bk_books')
     // ⚠️ 离散**常显**(原本 <3pp 就藏):窄屏下表里那一列被 `bk-opt` 裁掉了,
     //    藏在这里就等于彻底看不到——而「共识紧不紧」正是这个面板存在的理由。
-    + ' \u00b7 ' + t('bk_spread') + ' ' + maxSp.toFixed(1) + 'pp' + (hot ? ' \u26a0\ufe0f' : '')
+    // 🚨 2026-09-04 —— 这个数**必须带颜色**,因为它是手机上唯一的载体。
+    //    上面 `.bk-opt` 那条原生 @media(max-width:640px)把离散**整列**裁掉,
+    //    而三档配色此前只写在那一列的 style 上 ⇒ **窄屏下三色刻度根本不存在**,
+    //    只剩这里一个无色数字。而 owner 就是在手机上看盘的。
+    //    ⛔ 修法不是去掉那条 @media —— 那条是 2026-09-01 量 `getBoundingClientRect`
+    //    修出来的(当时 EVₑ/EVₗ 在 375px 下被挤出屏幕),去掉等于把那个 bug 复原。
+    //    ⭐ 正确修法是**把颜色带到已经常显的这个数上** —— 这本来就是当初把离散
+    //    提到 summary 的理由(见上方那条注释),只是颜色忘了跟过来。
+    + ' \u00b7 ' + t('bk_spread')
+    + ' <span style="color:' + _bkDispCol(maxSp) + '">' + maxSp.toFixed(1) + 'pp</span>'
+    + (hot ? ' \u26a0\ufe0f' : '')
     + (age ? ' \u00b7 ' + (bkStale
         ? '<span style="color:#d97706">\u26a0\ufe0f ' + age + '</span>' : age) : '')
     // ⓘ 说明(2026-09-03)—— 原本是表格下方一整块橙字,占掉三行竖向空间。
