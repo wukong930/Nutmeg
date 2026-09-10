@@ -66,6 +66,28 @@ PINNED: dict[str, dict] = {
     # ⚠️ 这条**锚不到 odds_snapshots**:Pinnacle 从没覆盖过日联赛杯,该场 0 行。
     #    ⇒ 用 `af_fixture` 锚(AF 赛程缓存里的那一条),见下面锚定断言的两条路。
     #    「南源」按音完全对不上 Vanraure —— 翻译法必错,只有 fixture 锚拿得到。
+    # ── 2026-09-10 横幅「整个联赛的在售场次全部解不出:巴甲」(1/19)──
+    # ⭐ 横幅只点了 1 场,但**普查**发现档案里巴甲有 **8 个**写法解不出。
+    #    这三条锚得到,另外 5 条锚不到 ⇒ 故意没补(理由写在 sporttery.py 那段)。
+    #    判类要 grep **英文键**:三支的英文名词典**本来就有**,只是竞彩换了写法。
+    "科里蒂巴": {          # 词典写「库里蒂巴」——「库/科」同音异形,眼睛最容易跳过
+        "en": "Coritiba",
+        "anchor": ("Atletico Paranaense", "away"),
+        "date": "2026-09-12", "league": "BRA_SERIE_A",
+        "already_ok": ("巴拉纳竞技", "Atletico Paranaense"),
+    },
+    "沙佩科": {            # 词典写「沙佩科恩斯」—— 竞彩用短写法
+        "en": "Chapecoense-sc",
+        "anchor": ("Flamengo", "away"),
+        "date": "2026-07-23", "league": "BRA_SERIE_A",
+        "already_ok": ("弗拉门戈", "Flamengo"),
+    },
+    "达伽马": {            # 词典写「瓦斯科达伽马」—— 同样是短写法
+        "en": "Vasco DA Gama",
+        "anchor": ("Santos", "away"),
+        "date": "2026-08-16", "league": "BRA_SERIE_A",
+        "already_ok": ("桑托斯", "Santos"),
+    },
     "八户南源": {
         "en": "Vanraure Hachinohe",
         "anchor": ("Tochigi City", "away"),
@@ -198,3 +220,36 @@ def test_the_two_red_stars_never_collapse_into_one() -> None:
     if bg is not None:
         assert bg != paris, "贝红星被映射成了巴黎红星 —— 两支不同的俱乐部"
         assert "Zvezda" in bg or "Crvena" in bg, f"贝红星 被映射到 {bg!r}"
+
+
+def test_the_unanchored_brazilians_were_not_guessed() -> None:
+    """⛔ 2026-09-10 普查:巴甲有 8 个写法解不出,只有 3 个锚得到。
+
+    另外 5 个(戈竞技 ×185 · 尤文图德 ×182 · 库亚巴 ×165 · 阿瓦伊 ×67 · 累体育 ×59)
+    **故意没补** —— 档案英文列全空、盘面赛程只覆盖 2026-07-16→09-14 够不着它们的比赛、
+    皇冠档案里一场巴西联赛都没有。⇒ **没有锚就不写**。
+
+    ⭐ 本断言对「补没补」**不敏感**,只对「补错」敏感(同「两颗红星」那条):
+    哪天有人拿到锚补上了,它照样绿;但补成一个**盘面上不存在的英文名**就会红 ——
+    那正是「按音猜」会产生的东西。
+    """
+    import sqlite3
+
+    from nutmeg.v4.data.sources.sporttery import zh_to_canonical
+
+    db = REPO / "data/v4_observation.db"
+    if not db.exists():
+        pytest.skip("观测库不在这个 checkout 里")
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    board = {r[0] for r in conn.execute(
+        "SELECT DISTINCT home_team FROM odds_snapshots WHERE league='BRA_SERIE_A'")}
+    board |= {r[0] for r in conn.execute(
+        "SELECT DISTINCT away_team FROM odds_snapshots WHERE league='BRA_SERIE_A'")}
+    # 🚨 人口非平凡:盘面必须真有巴甲球队,否则下面的 `in board` 全是空洞为真
+    assert len(board) >= 15, f"盘面巴甲只有 {len(board)} 支 —— 断言变空洞,请先看数据"
+    for zh in ("戈竞技", "尤文图德", "库亚巴", "阿瓦伊", "累体育"):
+        en = zh_to_canonical(zh)
+        if en is None:
+            continue                      # 仍未补 —— 合规
+        assert en in board, (
+            f"「{zh}」被补成了 {en!r},而盘面巴甲名单里没有它 —— 疑似按音猜的")
