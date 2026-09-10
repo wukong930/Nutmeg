@@ -66,6 +66,14 @@ PINNED: dict[str, dict] = {
     # ⚠️ 这条**锚不到 odds_snapshots**:Pinnacle 从没覆盖过日联赛杯,该场 0 行。
     #    ⇒ 用 `af_fixture` 锚(AF 赛程缓存里的那一条),见下面锚定断言的两条路。
     #    「南源」按音完全对不上 Vanraure —— 翻译法必错,只有 fixture 锚拿得到。
+    # ── 2026-09-10 `test_jingcai_listed_teams_are_fully_reachable` 点名的沙职缺口 ──
+    # ⭐ 这条的锚**在档案同一行里**(对家英文已填),不用跨表配对。
+    "哈马费萨": {          # 词典写「哈马赫费萨利」—— 竞彩用短写法
+        "en": "Al-Faisaly FC",
+        "anchor": ("Al-Hilal Saudi FC", "home"),
+        "date": "2026-08-14", "league": "SAU_PRO_LEAGUE",
+        "already_ok": ("利雅新月", "Al-Hilal Saudi FC"),
+    },
     # ── 2026-09-10 横幅「整个联赛的在售场次全部解不出:巴甲」(1/19)──
     # ⭐ 横幅只点了 1 场,但**普查**发现档案里巴甲有 **8 个**写法解不出。
     #    这三条锚得到,另外 5 条锚不到 ⇒ 故意没补(理由写在 sporttery.py 那段)。

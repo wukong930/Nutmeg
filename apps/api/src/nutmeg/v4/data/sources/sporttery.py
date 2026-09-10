@@ -137,6 +137,13 @@ _ZH_OVERRIDES: dict[str, str] = {
     #    **全是空**,盘面赛程只覆盖 2026-07-16→09-14 够不着它们的比赛,皇冠档案里
     #    **一场巴西联赛都没有**。⇒ 没有锚就不写 —— 错映射是静默污染,比缺映射更坏。
     #    ⚠️ 它们多半是往季降级队(盘面当前 20 支巴甲**全部**有中文),真回来了横幅会再点名。
+    # ── 沙职 SAU_PRO_LEAGUE(2026-09-10,`test_jingcai_listed_teams_are_fully_reachable` 点名)──
+    # ⭐ 锚在档案**同一行**里:2026-08-15「利雅新月 vs 哈马费萨」,而该行 `home_team`
+    #    已填 `Al-Hilal Saudi FC`;盘面 2026-08-14(北京→UTC 差一天)SAU_PRO_LEAGUE 里
+    #    `Al-Hilal Saudi FC` 主场的对手集 = {'Al-Faisaly FC'} —— **唯一**。
+    #    词典写「哈马赫费萨利」,竞彩用短写法「哈马费萨」⇒ 又是情况①。
+    #    ⚠️ 盘面沙特联只有一支带 Faisaly 的队,不存在两个 Al-Faisaly 的歧义。
+    "哈马费萨": "Al-Faisaly FC",            # 词典写作「哈马赫费萨利」
     "科里蒂巴": "Coritiba",                 # 词典写作「库里蒂巴」
     "沙佩科": "Chapecoense-sc",             # 词典写作「沙佩科恩斯」
     "达伽马": "Vasco DA Gama",              # 词典写作「瓦斯科达伽马」
