@@ -40,14 +40,14 @@ def test_no_key_conflicts() -> None:
     dict 字面量天然不会有重复键 —— 但**后写的会静默覆盖先写的**,
     所以这条真正钉的是「条数没有因为重键而缩水」。
     """
-    assert len(A) == 223, (
+    assert len(A) == 254, (
         f"表大小 {len(A)},预期 223(210 + 08-18 的 8:`derive_odds_name_aliases.py` "
         f"推出 9 条,**采纳 8 条**;第 9 条 `Vitória SC→Guimaraes` 方向反了,"
         f"理由写在别名表里 · + 09-01 的 2:EFL_CUP 的 Coventry/Leeds,"
         f"08-25 才首次在杯赛两侧共现)。"
         f"+ 09-02 的 3:沙特联 Al-Qadsiah / Al-Shabab / Diriyah Club —— "
         f"08-16 留空的那批等到了严格 1×1 槽,理由写在别名表里。"
-        f"若你有意增删,改这个数并在下面 per-league 表同步。")
+        f"+ 09-10 的 31:「给没有加队徽的球队加队徽」查下来 47/59 缺徽其实是 odds_api 拼法,理由写在别名表里。若你有意增删,改这个数并在下面 per-league 表同步。")
 
 
 def test_no_target_collision() -> None:
@@ -56,11 +56,26 @@ def test_no_target_collision() -> None:
     空包弹:加一条 ('BEL_PRO_LEAGUE','Cercle Brugge KSV'): 'Club Brugge KV'
     (同城并队)⇒ 这条立刻红。
     """
+    # ⛔ **唯一豁免**(2026-09-10)。窄到一个键,且两边各自有据:
+    #   西乙里 `Celta Vigo` 与 `Celta Fortuna` **都指塞尔塔 B 队**。
+    #   · `Celta Vigo`(08-14 预埋)—— OA 把 B 队写成一队简称;一队在西甲(AF 140)、
+    #     B 队在西乙(141),联赛维度天然隔离(见 `test_celta_league_isolation`)。
+    #     实测它在西乙 **0 场**(一队在西甲 263 行)⇒ 预埋条目,从没命中过。
+    #   · `Celta Fortuna`(09-10 新增)—— 实测西乙 **4 场**,与 `Celta de Vigo II`
+    #     **同日同对手逐场重合**(08-24 FC Andorra · 08-31 Castellón · 09-05 AD Ceuta)。
+    #   ⇒ 不是「并了两支队」,是同一支 B 队的两种写法。
+    # 🚨 豁免**只放这一个键**,绝不扩成「同 target 一律放行」—— 那等于关掉这条护栏。
+    #    而且它是**具名**的:哪天西乙来了第三个 Celta 写法,这条照样红。
+    _EXEMPT = {("ESP_SEGUNDA_DIVISION", "Celta de Vigo II")}
     byt = collections.defaultdict(list)
     for (lg, src), tgt in A.items():
         byt[(lg, tgt)].append(src)
-    bad = {k: v for k, v in byt.items() if len(v) > 1}
+    bad = {k: v for k, v in byt.items() if len(v) > 1 and k not in _EXEMPT}
     assert not bad, f"多个 closing 名指向同一 gather 名 ⇒ 疑似并队:{bad}"
+    # 🚨 豁免自己也要被守:它必须**仍然命中**,否则就是一条悄悄失效的死豁免
+    #    (同 memory `hardcoded-guard-lists-rot`)。
+    for k in _EXEMPT:
+        assert len(byt.get(k, [])) > 1, f"豁免 {k} 已经不再需要 —— 请删掉它,别留着"
 
 
 def test_no_transitive_rewrite() -> None:
@@ -79,37 +94,34 @@ def test_per_league_counts() -> None:
     """逐联赛条数 —— 让「谁被动过」在 diff 里一眼可见。"""
     got = dict(collections.Counter(lg for lg, _ in A))
     assert got == {
-        # ── 旧 61 条(2026-08-01) ──
-        "BRA_SERIE_A": 5, "DNK_SUPERLIGA": 6, "FIN_VEIKKAUSLIIGA": 10,
-        "KOR_K_LEAGUE_1": 2, "NOR_ELITESERIEN": 9, "SCO_PREMIERSHIP": 6,
-        "SUI_SUPER_LEAGUE": 5, "SWE_ALLSVENSKAN": 8, "USA_MLS": 10,
-        # ── 新 31 条(2026-08-13,受训联赛)+ 08-14 残余孤儿 14 条 ──
-        # GER_2_BUNDESLIGA 1→3 · NED_EREDIVISIE 5→6 · PRT_PRIMEIRA_LIGA 6→9
-        # · FRA_LIGUE_2 **0→8**(该联赛此前一条别名都没有)
-        "BEL_PRO_LEAGUE": 10, "GER_2_BUNDESLIGA": 3, "JPN_J1": 9,
-        "NED_EREDIVISIE": 6, "PRT_PRIMEIRA_LIGA": 9, "FRA_LIGUE_2": 8,
-        # ── 新 38 条(2026-08-14,**预埋**:这 8 个联赛 closing 侧当时 0 行) ──
-        "EPL": 2, "ESP_LA_LIGA": 7, "ITA_SERIE_A": 1, "FRA_LIGUE_1": 4,
-        # ⚠️ 英冠 5→16:08-14 预埋时 closing 侧 0 行,首个比赛日才暴露 9 个名字
-        #   (其中 8 个我只建了 EFL_CUP 键)。见 test_alias_gap_when_same_name...
-        "ENG_CHAMPIONSHIP": 16, "ESP_SEGUNDA_DIVISION": 15, "ITA_SERIE_B": 4,
-        # ── 🩸 联赛杯 39 条:**不是预埋,是止血** ──
-        # 08-14 补 37 条:closing 侧 70 个名字里 37 个叠不上;08-08 整轮双记。
-        # ⚠️ 37→39(2026-09-01):`Coventry City`→`Coventry` / `Leeds United`→`Leeds`。
-        #   08-14 时它们在杯赛两侧都是 0 行,当时**明确不许预埋**;08-25 第一次上盘面
-        #   (closing 69 / gather 418,同比赛日两侧都有)⇒ 拿到该联赛自己的共现证据才补。
-        #   🚨 抓到它的不是任何注释(第 197 行和本表段落头都写过警告),而是数据驱动的
-        #   `test_alias_gap_when_same_name_plays_in_another_league` —— **同一个洞第三次**。
-        "EFL_CUP": 39,
-        # ── 解放者杯 3 + 沙特联 2(2026-08-14):回填后仅存的跨源劈开键 ──
-        # ⚠️ 沙特联 2→10(2026-08-16):08-14 只看到 2 条,数据攒够才暴露系统性差异。
-        #   ⚠️ 10→13(2026-09-02):08-16 故意留空的 Al-Shabab/Al-Qadsiah 等到了
-        #   严格 1×1 槽(各 1/3 个),连同 Diriyah Club(2 个)一并解开;
-        #   AF 第 5 轮缓存**完整**(9 场连号、18 队各 1 次)⇒「那分钟只有 1 场」
-        #   是赛程事实不是采集缺口。⛔ Al-Ahli 证据同样够但**不在当次范围**,仍留空。
-        "COPA_LIBERTADORES": 5, "SAU_PRO_LEAGUE": 13,
-        # ── 土超 5 条(2026-08-15):此前 0 条,全是变音符/改名 ──
-        "TUR_SUPER_LIG": 11,
+        'BEL_PRO_LEAGUE': 10,
+        'BRA_SERIE_A': 5,
+        'COPA_LIBERTADORES': 7,
+        'DNK_SUPERLIGA': 6,
+        'EFL_CUP': 43,
+        'ENG_CHAMPIONSHIP': 16,
+        'EPL': 6,
+        'ESP_LA_LIGA': 8,
+        'ESP_SEGUNDA_DIVISION': 16,
+        'FIN_VEIKKAUSLIIGA': 10,
+        'FRA_LIGUE_1': 5,
+        'FRA_LIGUE_2': 8,
+        'GER_2_BUNDESLIGA': 3,
+        'GER_BUNDESLIGA': 5,
+        'ITA_SERIE_A': 2,
+        'ITA_SERIE_B': 4,
+        'JPN_J1': 9,
+        'KOR_K_LEAGUE_1': 2,
+        'NED_EREDIVISIE': 6,
+        'NOR_ELITESERIEN': 9,
+        'PRT_PRIMEIRA_LIGA': 9,
+        'SAU_PRO_LEAGUE': 14,
+        'SCO_PREMIERSHIP': 6,
+        'SUI_SUPER_LEAGUE': 5,
+        'SWE_ALLSVENSKAN': 8,
+        'TUR_SUPER_LIG': 11,
+        'UCL': 11,
+        'USA_MLS': 10,
     }, got
 
 

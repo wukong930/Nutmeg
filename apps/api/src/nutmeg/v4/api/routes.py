@@ -975,6 +975,18 @@ def rules() -> LotteryRulesResponse:
 
 _TEAM_LOGOS_DIR = Path("data/external/team_logos")
 
+#: API-Football 对没有队徽的球队返回的**默认占位图**的 sha256。
+#: 由 `test_team_logo_placeholder` 从磁盘**自己发现**并核对 —— ⛔ 别手抄一个哈希:
+#: 抄错了它就永远匹配不上,而症状是「占位图照常显示」,没人会当 bug 报。
+_AF_PLACEHOLDER_SHA256 = (
+    "7670cc2d08b0b4a846ac6ec076c99d3767c4d2b9322e2d31cd05871422ddbbda"
+)
+
+
+def _sha256(b: bytes):
+    from hashlib import sha256 as _s
+    return _s(b)
+
 
 @router.get("/team-logo/{slug}", include_in_schema=False)
 def team_logo_endpoint(slug: str) -> Response:
@@ -995,6 +1007,19 @@ def team_logo_endpoint(slug: str) -> Response:
     candidate = _TEAM_LOGOS_DIR / f"{slug}.png"
     if not candidate.exists():
         raise HTTPException(status_code=404, detail="logo not cached")
+    # ⛔ 2026-09-10 —— API-Football 对没有队徽的球队返回**一张默认占位图**。
+    # 实测:8 支英格兰低级别队(Broadfields United / Loughborough University /
+    # Thetford Town …)的 PNG **逐字节相同**,而它们是 **4 个不同的 AF team id**
+    # ⇒ 那不是巧合,是 AF 的默认图。渲染它 = 卡片上一个空白圆,比字母缩写更差
+    # (缩写至少能认出是哪支队)。⇒ 当成「没有队徽」处理,让前端 `onerror` 退回缩写。
+    #
+    # ⚠️ 判据是**内容哈希**,不是文件大小。本仓栽过:三个队都是 90381B 我以为是同一张
+    # 占位图,查 SHA256 才发现 236 个同尺寸文件里有 229 种内容 —— 90381 只是常见尺寸。
+    # 现在这张占位图**也是** 90381B,而 `Knowle`(真队徽)同样 90381B、哈希不同。
+    # ⇒ 按大小判会同时误杀真徽、放过占位图。
+    _blob = candidate.read_bytes()
+    if _sha256(_blob).hexdigest() == _AF_PLACEHOLDER_SHA256:
+        raise HTTPException(status_code=404, detail="AF placeholder crest")
     return Response(
         content=candidate.read_bytes(),
         media_type="image/png",

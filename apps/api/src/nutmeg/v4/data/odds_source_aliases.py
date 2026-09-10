@@ -36,6 +36,58 @@
 from __future__ import annotations
 
 ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
+    # ── 2026-09-10 · 31 条,同一形状的第二批(触发语与 08-18 那批逐字相同:
+    #    owner「给没有加队徽的球队加队徽」)────────────────────────────────────
+    # ⭐ 先量口径:人口取**盘面实际出场**的队(⛔ 不用 AF `/teams` 队表 —— 那正是
+    #    2026-08-10 漏掉 61 支的原因)。864 支里俱乐部 815,缺徽 59。
+    #    59 拆开是**两个问题**:12 支 AF fixture 缓存里有身份锚定的 logo URL(真缺,
+    #    已下载,0 次 API 调用);**47 支根本不是队徽问题** —— 它们是 odds_api 侧的
+    #    拼法,AF 从不这么写,所以缓存里没有它们的 URL。给它们下第二份 PNG 只会
+    #    让圆标好看,同时把 join 缺口盖掉。⇒ 归一到 gather 侧,一次修好两样。
+    #
+    # 🚨 锚法(⛔ 绝不按名字相似):一支队一天在一个联赛只打一场 ⇒ 若「同日+同联赛+
+    #    同对手+同方位」出现两个名字,必是同队。逐条要求**候选唯一**且**零对阵**。
+    #    ⚠️ 对手本身也可能是两种拼法 ⇒ 比较前先把对手归一,并**迭代到不动点**
+    #    (第 2 轮 0 新增)。我第一版没归一对手,11 条被误报成冲突,而那些「不同的
+    #    对手」恰恰是同一支队的两种写法 —— 那是**额外证据**,不是冲突。
+    #    ⚠️ `(联赛, 名)` 是**精确键**:我第一版把已有别名按名字去重、丢了联赛维度,
+    #    于是漏算了 UCL 那一批(那条已红的 `test_alias_gap_when_same_name_plays_
+    #    in_another_league` 点名的正是它们)。
+    #
+    # ⛔ 同批**故意没补** 4 条(两道锚都够不着,`odds_snapshots` 里没有任何同场对照):
+    #    COPA_LIBERTADORES 'Universidad Católica (CHI)' / 'Cerro Porteño' ·
+    #    UCL 'AEK Athens' / 'LASK'。没有锚就不写。
+    ('COPA_LIBERTADORES', 'Estudiantes La Plata'): 'Estudiantes L.P.',    # 同场锚 1 次 · 拉普大学
+    ('COPA_LIBERTADORES', 'Palmeiras-SP'): 'Palmeiras',                   # 同场锚 1 次 · 帕尔梅拉斯
+    ('EFL_CUP', 'Brighton and Hove Albion'): 'Brighton',                  # 同场锚 1 次 · 布莱顿
+    ('EFL_CUP', 'Ipswich Town'): 'Ipswich',                               # 同场锚 2 次 · 伊普斯维奇
+    ('EFL_CUP', 'Newcastle United'): 'Newcastle',                         # 同场锚 2 次 · 纽卡斯尔
+    ('EFL_CUP', 'Tottenham Hotspur'): 'Tottenham',                        # 同场锚 2 次 · 热刺
+    ('EPL', 'Brighton and Hove Albion'): 'Brighton',                      # 同场锚 3 次 · 布莱顿
+    ('EPL', 'Ipswich Town'): 'Ipswich',                                   # 同场锚 4 次 · 伊普斯维奇
+    ('EPL', 'Newcastle United'): 'Newcastle',                             # 同场锚 2 次 · 纽卡斯尔
+    ('EPL', 'Tottenham Hotspur'): 'Tottenham',                            # 同场锚 3 次 · 热刺
+    ('ESP_LA_LIGA', 'CA Osasuna'): 'Osasuna',                             # 同场锚 5 次 · 奥萨苏纳
+    ('ESP_SEGUNDA_DIVISION', 'Celta Fortuna'): 'Celta de Vigo II',        # 同场锚 3 次 · 塞尔塔B
+    ('FRA_LIGUE_1', 'AS Monaco'): 'Monaco',                               # 同场锚 4 次 · 摩纳哥
+    ('GER_BUNDESLIGA', 'Augsburg'): 'FC Augsburg',                        # 同场锚 3 次 · 奥格斯堡
+    ('GER_BUNDESLIGA', 'Borussia Monchengladbach'): 'Borussia Mönchengladbach',# 同场锚 2 次 · 门兴格拉德巴赫
+    ('GER_BUNDESLIGA', 'Elversberg'): 'SV Elversberg',                    # 同场锚 1 次 · 埃尔弗斯堡
+    ('GER_BUNDESLIGA', 'SC Paderborn'): 'SC Paderborn 07',                # 同场锚 3 次 · 帕德博恩
+    ('GER_BUNDESLIGA', 'TSG Hoffenheim'): '1899 Hoffenheim',              # 同场锚 3 次 · 霍芬海姆
+    ('ITA_SERIE_A', 'Atalanta BC'): 'Atalanta',                           # 同场锚 4 次 · 亚特兰大
+    ('SAU_PRO_LEAGUE', 'Al-Ahli'): 'Al-Ahli Jeddah',                      # 同场锚 6 次 · 吉达国民
+    ('UCL', 'Atlético Madrid'): 'Atletico Madrid',                        # 同场锚 1 次 · 马德里竞技
+    ('UCL', 'Bodø/Glimt'): 'Bodo/Glimt',                                  # 别联赛已有别名 + 本联赛 gather 侧存在 · 博德闪耀
+    ('UCL', 'Club Brugge'): 'Club Brugge KV',                             # 同场锚 1 次 · 布鲁日
+    ('UCL', 'Fenerbahce'): 'Fenerbahçe',                                  # 同场锚 1 次 · 费内巴切
+    ('UCL', 'Inter Milan'): 'Inter',                                      # 同场锚 1 次 · 国际米兰
+    ('UCL', 'Porto'): 'FC Porto',                                         # 同场锚 1 次 · 波尔图
+    ('UCL', 'RC Lens'): 'Lens',                                           # 同场锚 1 次 · 朗斯
+    ('UCL', 'Sabah FK'): 'Sabah FA',                                      # 同场锚 1 次 · 萨巴赫
+    ('UCL', 'Sporting Lisbon'): 'Sporting CP',                            # 同场锚 1 次 · 葡萄牙体育
+    ('UCL', 'Viking FK'): 'Viking',                                       # 同场锚 1 次 · 维京
+    ('UCL', 'ŠK Slovan Bratislava'): 'Slovan Bratislava',                 # 同场锚 1 次 · 布拉迪斯拉发斯洛万
     # ── 2026-08-18 · `derive_odds_name_aliases.py` 推出 9 条,**采纳 8 条** ─────────
     # 触发:owner「对没加队徽和没翻译队名的队进行处理」。`team_assets_check` 报
     # 队名缺 27 / 队徽缺 15,查下来其中一批是**同一家俱乐部两套拼法**:
