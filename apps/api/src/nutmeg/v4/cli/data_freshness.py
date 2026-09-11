@@ -661,19 +661,30 @@ def check_model_supply_chain(
                 info.append(
                     f"未吸收比赛: {n_new} 场晚于 cutoff {cutoff},其中**可训练** {n_trainable} 场"
                     f"(红线 {UNABSORBED_MATCHES_ALARM};休赛期为 0 属正常)")
-                # ⭐ 闸判在**可训练**行上 —— 不可训练的新比赛买不到任何东西。
+                # ⭐ 两种落后要分开报,因为**处方不同** —— 但两种都是落后。
+                #
+                # 🚨 2026-09-11 订正:我一度把「可训练 0 行」写成「重训买不到东西」,
+                #    那是错的。重训产出两样东西,它们的输入不是同一套:
+                #      ① booster(CatBoost-λ)+ 温度校准 ← `psc_home.notna()` 的行
+                #      ② team_state 快照(Elo / 近期进球 / 射门 / 射正)
+                #         ← `pre_cutoff = feats[feats.date < cutoff]`,**不筛赔率**
+                #    而 serving 每场比赛的 Elo/form 正是从 ② 读的(`persist.py` 那段
+                #    "Per-row Elo + form from team_state snapshot")。
+                #    ⇒ 没有 Pinnacle 的新比赛**推不动 ①,但照样推进 ②**。
+                #    (这也正是 2026-07-15 那次解冻重训能成功的原因,见记忆
+                #     `pinnacle-dead-in-footballdata-2026-01`。)
                 if n_trainable > UNABSORBED_MATCHES_ALARM:
                     alarms.append(
                         f"源树里有 {n_trainable} 场**可训练**比赛晚于训练 cutoff {cutoff},"
                         f"artifact 从没见过它们"
                         f" — 重训现在能真的买到东西了(不是「artifact 老了」,是「它落后了」)")
                 elif n_new > UNABSORBED_MATCHES_ALARM:
-                    # 不报警,但必须说出来 —— 「有 503 场新比赛却一场都训不了」本身是
-                    # 个需要人看的事实(上游把 Pinnacle 列删了),只是处方不是「重训」。
-                    info.append(
-                        f"  ⚠️ 这 {n_new} 场里可训练的只有 {n_trainable} 场 ⇒ **重训买不到东西**。"
-                        f"football-data 自 2627 起不再发 Pinnacle 列,而训练行要 psc_home 非空。"
-                        f"处方是**换锚**(`pinnacle_close_history`),不是重训")
+                    alarms.append(
+                        f"源树里有 {n_new} 场比赛晚于训练 cutoff {cutoff},其中可训练 "
+                        f"{n_trainable} 场 — **booster 拿不到新行,但 team_state 快照落后了**"
+                        f"(serving 的 Elo/form 从它读)。重训仍然买得到东西,只是买到的是"
+                        f"②不是①。⚠️ 前提:`--validation-days` 必须撑到让验证窗跨过最后一个"
+                        f"有 Pinnacle 的日子(2026-01-14),否则温度校准硬失败")
     else:
         info.append(f"训练源树 {src}: 不存在 — 跳过")
 

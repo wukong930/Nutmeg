@@ -217,24 +217,46 @@ class TestBacklogThatCannotBeTrainedOn:
     (同族:`guard-remedy-is-not-neutral`;闸现在判在可训练行上。)
     """
 
-    def test_new_matches_without_pinnacle_do_not_demand_a_retrain(self, tmp_path):
+    def test_new_matches_without_pinnacle_get_the_team_state_prescription(self, tmp_path):
+        """🚨 订正:「可训练 0 行」**不等于**「重训买不到东西」。
+
+        重训产出两样东西,输入不是同一套:
+          ① booster + 温度校准 ← `psc_home.notna()` 的行
+          ② team_state 快照(Elo/近期进球/射门/射正)← `pre_cutoff`,**不筛赔率**
+        serving 每场比赛的 Elo/form 从 ② 读 ⇒ 没有 Pinnacle 的新比赛推不动 ①,
+        **但照样推进 ②**。所以它仍然该报警,只是处方不同。
+        """
         src = _sources(tmp_path, n_after=503, pinnacle=False)
         info, alarms = check_model_supply_chain(
             dt.date(2026, 9, 11), artifact_dir=_artifact(tmp_path),
             sources_dir=src, external_dir=tmp_path / "nope")
         line = next(x for x in info if "未吸收比赛" in x)
-        # 人口非平凡:必须真有 503 场,否则「不报警」空洞为真
+        # 人口非平凡:必须真有 503 场,否则下面的断言空洞为真
         assert "503 场" in line and "可训练** 0 场" in line, line
-        assert not [a for a in alarms if "可训练" in a or "重训" in a], alarms
-        assert any("重训买不到东西" in x for x in info), "没说清为什么不报警"
+        hit = [a for a in alarms if "team_state" in a]
+        assert hit, f"team_state 落后了却不报警:{alarms}"
+        assert "booster 拿不到新行" in hit[0], hit[0]
+        # ⚠️ 处方必须带那个前提,否则照着做会撞温度校准硬失败
+        assert "validation-days" in hit[0], "处方没说验证窗要撑开"
 
-    def test_the_same_backlog_with_pinnacle_does_alarm(self, tmp_path):
-        """⭐ 对照:唯一的差别是那三列在不在。没有这条,上一条可能只是「探针瞎了」。"""
-        src = _sources(tmp_path, n_after=503, pinnacle=True)
-        _, alarms = check_model_supply_chain(
-            dt.date(2026, 9, 11), artifact_dir=_artifact(tmp_path),
-            sources_dir=src, external_dir=tmp_path / "nope")
-        assert [a for a in alarms if "可训练" in a], f"同样 503 场、带 Pinnacle 却不报:{alarms}"
+    def test_the_two_kinds_of_backlog_get_different_prescriptions(self, tmp_path):
+        """⭐ 对照:唯一差别是那三列在不在 ⇒ 两条报警**都在,但不是同一条**。
+
+        没有这条,上一条可能只是「探针把两种情况混成一句话」。
+        """
+        a, b = tmp_path / "a", tmp_path / "b"
+        a.mkdir(); b.mkdir()
+        no_pin = check_model_supply_chain(
+            dt.date(2026, 9, 11), artifact_dir=_artifact(a),
+            sources_dir=_sources(a, n_after=503, pinnacle=False),
+            external_dir=tmp_path / "nope")[1]
+        with_pin = check_model_supply_chain(
+            dt.date(2026, 9, 11), artifact_dir=_artifact(b),
+            sources_dir=_sources(b, n_after=503, pinnacle=True),
+            external_dir=tmp_path / "nope")[1]
+        assert [a for a in no_pin if "team_state" in a], no_pin
+        assert [a for a in with_pin if "可训练" in a and "team_state" not in a], with_pin
+        assert no_pin != with_pin, "两种积压给了同一条处方 —— 那这个区分是假的"
 
     def test_count_returns_both_numbers(self, tmp_path):
         src = _sources(tmp_path, n_after=7, pinnacle=False)
