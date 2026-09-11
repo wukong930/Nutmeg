@@ -62,8 +62,15 @@ def _artifact(tmp_path: Path, cutoff: str | None = "2026-06-01") -> Path:
     return art
 
 
-def _sources(tmp_path: Path, n_after: int, cutoff: str = "2026-06-01") -> Path:
-    """造一棵最小 football-data 树:n_after 场晚于 cutoff + 几场早于 cutoff。"""
+def _sources(tmp_path: Path, n_after: int, cutoff: str = "2026-06-01",
+             *, pinnacle: bool = True) -> Path:
+    """造一棵最小 football-data 树:n_after 场晚于 cutoff + 几场早于 cutoff。
+
+    ⭐ ``pinnacle=True``(默认)才是**积压的真实形状** —— 探针问的是「重训能不能
+    买到东西」,而 `train.py` 的训练行要求 `psc_home.notna()`。2026-09-11 之前这个
+    fixture 不带 `PSCH`,于是它造出来的「积压」其实一行都训不了,而探针照样报警 ——
+    测试和被测语义分家了。``pinnacle=False`` 现在专门用来测那一支。
+    """
     src = tmp_path / "src"
     (src / "europe" / "2526").mkdir(parents=True)
     rows = []
@@ -78,6 +85,8 @@ def _sources(tmp_path: Path, n_after: int, cutoff: str = "2026-06-01") -> Path:
     # ⚠️ `_read_europe_csv` 对缺 `Div` 是**抛异常**,不是返回空 —— 少这一列会让
     # 整个探针走 None 分支,测试就变成在测「探针坏掉时的样子」而不是它的行为。
     out.insert(0, "Div", "E0")
+    if pinnacle:
+        out["PSCH"], out["PSCD"], out["PSCA"] = 2.10, 3.40, 3.60
     out.to_csv(src / "europe" / "2526" / "E0.csv", index=False)
     return src
 
@@ -102,11 +111,11 @@ class TestCutoffReading:
 class TestCountingSeparatesAbsenceFromBlindness:
     def test_counts_only_matches_after_the_cutoff(self, tmp_path):
         src = _sources(tmp_path, n_after=17)
-        assert _count_matches_after(src, "2026-06-01") == 17
+        assert _count_matches_after(src, "2026-06-01") == (17, 17)
 
     def test_offseason_is_a_real_zero(self, tmp_path):
         """0 = 「去看了,确实没有」—— 休赛期的正确答案,不该报警。"""
-        assert _count_matches_after(_sources(tmp_path, n_after=0), "2026-06-01") == 0
+        assert _count_matches_after(_sources(tmp_path, n_after=0), "2026-06-01") == (0, 0)
 
     def test_unreadable_source_is_none_not_zero(self, tmp_path, monkeypatch):
         """⭐ None ≠ 0。把读失败折成 0 就是又一次「分不出没有和没去看」——
@@ -188,6 +197,47 @@ def test_the_real_tree_is_currently_a_true_zero():
         pytest.skip("生产数据不在(CI)")
     cutoff = _training_cutoff(art)
     assert cutoff == "2026-06-01", f"cutoff 变了({cutoff})— 本文件的叙述要重查"
-    n = _count_matches_after(src, cutoff)
-    assert n is not None, "探针读不了真源树"
-    assert n >= 0
+    counted = _count_matches_after(src, cutoff)
+    assert counted is not None, "探针读不了真源树"
+    n_total, n_trainable = counted
+    assert n_total >= 0 and n_trainable >= 0
+    # 🚨 2026-09-11 的事实:源树里 503 场新比赛,可训练 0 场(football-data 自 2627
+    #    起不发 Pinnacle 列)。这条红了 = 上游把列加回来了,或者换了锚 ⇒ 重训才真
+    #    的买得到东西,届时本文件的叙述要重查。
+    assert n_trainable == 0, (
+        f"可训练行从 0 变成 {n_trainable} 了 —— 上游发 Pinnacle 了?去重读这条的叙述")
+
+
+class TestBacklogThatCannotBeTrainedOn:
+    """🚨 2026-09-11:源树里 503 场新比赛,**可训练 0 场** —— 处方是空的。
+
+    football-data 自赛季 `2627` 起把 Pinnacle(`PS*`/`PSC*`)整组列删了(13/13 个 div),
+    而 `train.py:297` 的训练/验证行要求 `psc_home.notna()`。探针当时数的是「有几场新
+    比赛」,于是照旧喊「重训现在能真的买到东西了」—— 一条**假处方**。
+    (同族:`guard-remedy-is-not-neutral`;闸现在判在可训练行上。)
+    """
+
+    def test_new_matches_without_pinnacle_do_not_demand_a_retrain(self, tmp_path):
+        src = _sources(tmp_path, n_after=503, pinnacle=False)
+        info, alarms = check_model_supply_chain(
+            dt.date(2026, 9, 11), artifact_dir=_artifact(tmp_path),
+            sources_dir=src, external_dir=tmp_path / "nope")
+        line = next(x for x in info if "未吸收比赛" in x)
+        # 人口非平凡:必须真有 503 场,否则「不报警」空洞为真
+        assert "503 场" in line and "可训练** 0 场" in line, line
+        assert not [a for a in alarms if "可训练" in a or "重训" in a], alarms
+        assert any("重训买不到东西" in x for x in info), "没说清为什么不报警"
+
+    def test_the_same_backlog_with_pinnacle_does_alarm(self, tmp_path):
+        """⭐ 对照:唯一的差别是那三列在不在。没有这条,上一条可能只是「探针瞎了」。"""
+        src = _sources(tmp_path, n_after=503, pinnacle=True)
+        _, alarms = check_model_supply_chain(
+            dt.date(2026, 9, 11), artifact_dir=_artifact(tmp_path),
+            sources_dir=src, external_dir=tmp_path / "nope")
+        assert [a for a in alarms if "可训练" in a], f"同样 503 场、带 Pinnacle 却不报:{alarms}"
+
+    def test_count_returns_both_numbers(self, tmp_path):
+        src = _sources(tmp_path, n_after=7, pinnacle=False)
+        assert _count_matches_after(src, "2026-06-01") == (7, 0)
+        src2 = _sources(tmp_path / "b", n_after=7, pinnacle=True)
+        assert _count_matches_after(src2, "2026-06-01") == (7, 7)

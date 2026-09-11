@@ -483,11 +483,20 @@ def _artifact_age_reading(artifact_dir: Path) -> tuple[date, str] | None:
     return datetime.fromtimestamp(meta.stat().st_mtime, UTC).date(), _MTIME
 
 
-def _count_matches_after(sources_dir: Path, cutoff: str) -> int | None:
-    """源树里日期严格晚于 ``cutoff`` 的比赛行数;读不了给 None(≠0)。
+def _count_matches_after(sources_dir: Path, cutoff: str) -> tuple[int, int] | None:
+    """源树里晚于 ``cutoff`` 的 ``(比赛数, **可训练**行数)``;读不了给 None(≠0)。
 
     ⚠️ **None 和 0 必须分开**:0 = 「去看了,确实没有」(休赛期的正确答案),
     None = 「没看成」。把读失败折成 0 就是又一次「分不出没有和没去看」。
+
+    🚨 2026-09-11 加的第二个数。这条探针的**问题**是「重训能不能买到东西」,
+    而它当时量的是「有几场新比赛」—— 两者在 2026-09-11 分家了:
+    football-data 自赛季 **2627 起把 Pinnacle(`PS*`/`PSC*`)整组列删了**,
+    于是源树里躺着 503 场新比赛,而 `train.py` 的训练/验证行要求 `psc_home.notna()`
+    ⇒ **可训练行 0**。探针照旧喊「重训现在能真的买到东西了」,处方是空的。
+    (同族:`guard-remedy-is-not-neutral` —— 护栏自带的处方不是中立的。)
+
+    ⭐ 判据用的就是 `train.py` 那一条 `psc_home.notna()`,不是另造一个近似。
     """
     try:
         import pandas as pd
@@ -495,9 +504,12 @@ def _count_matches_after(sources_dir: Path, cutoff: str) -> int | None:
         from nutmeg.v4.data.ingest import load_all_matches
         df = load_all_matches(sources_dir)
         if df.empty:
-            return 0
-        dates = pd.to_datetime(df["date"], errors="coerce")
-        return int((dates > pd.Timestamp(cutoff)).sum())
+            return (0, 0)
+        fresh = df[pd.to_datetime(df["date"], errors="coerce") > pd.Timestamp(cutoff)]
+        # ⚠️ 必须 to_numeric:缺列时 ingest 填 pd.NA ⇒ object dtype(见 features.market
+        #    的 `_safe_devig`,同一天同一个根因)。
+        trainable = pd.to_numeric(fresh["psc_home"], errors="coerce").notna().sum()
+        return (int(len(fresh)), int(trainable))
     except Exception:  # noqa: BLE001 — 探针坏了要说出来,不能装作「没有新数据」
         return None
 
@@ -641,17 +653,27 @@ def check_model_supply_chain(
         if cutoff is None:
             info.append("未吸收比赛: 跳过 — artifact metadata 里没有 training_cutoff")
         else:
-            n_new = _count_matches_after(src, cutoff)
-            if n_new is None:
+            counted = _count_matches_after(src, cutoff)
+            if counted is None:
                 info.append("未吸收比赛: 探针失败(源树读不了)— 非报警,连续出现修探针")
             else:
+                n_new, n_trainable = counted
                 info.append(
-                    f"未吸收比赛: {n_new} 场晚于 cutoff {cutoff}"
+                    f"未吸收比赛: {n_new} 场晚于 cutoff {cutoff},其中**可训练** {n_trainable} 场"
                     f"(红线 {UNABSORBED_MATCHES_ALARM};休赛期为 0 属正常)")
-                if n_new > UNABSORBED_MATCHES_ALARM:
+                # ⭐ 闸判在**可训练**行上 —— 不可训练的新比赛买不到任何东西。
+                if n_trainable > UNABSORBED_MATCHES_ALARM:
                     alarms.append(
-                        f"源树里有 {n_new} 场比赛晚于训练 cutoff {cutoff},artifact 从没见过它们"
+                        f"源树里有 {n_trainable} 场**可训练**比赛晚于训练 cutoff {cutoff},"
+                        f"artifact 从没见过它们"
                         f" — 重训现在能真的买到东西了(不是「artifact 老了」,是「它落后了」)")
+                elif n_new > UNABSORBED_MATCHES_ALARM:
+                    # 不报警,但必须说出来 —— 「有 503 场新比赛却一场都训不了」本身是
+                    # 个需要人看的事实(上游把 Pinnacle 列删了),只是处方不是「重训」。
+                    info.append(
+                        f"  ⚠️ 这 {n_new} 场里可训练的只有 {n_trainable} 场 ⇒ **重训买不到东西**。"
+                        f"football-data 自 2627 起不再发 Pinnacle 列,而训练行要 psc_home 非空。"
+                        f"处方是**换锚**(`pinnacle_close_history`),不是重训")
     else:
         info.append(f"训练源树 {src}: 不存在 — 跳过")
 

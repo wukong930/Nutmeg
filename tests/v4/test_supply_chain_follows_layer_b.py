@@ -368,6 +368,10 @@ class TestUnabsorbedProbeAlsoFollowsThePointer:
         frame = pd.DataFrame(rows, columns=["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"])
         frame["FTR"] = "H"
         frame.insert(0, "Div", "E0")
+        # ⚠️ 必须带 Pinnacle 收盘列:闸判在**可训练**行上(`psc_home.notna()`,同
+        #    train.py)。不带的话这条测的就成了「积压训不了」,而不是「cutoff 有没有
+        #    跟着 Layer B 指针走」—— 换个轴、还恒绿。
+        frame["PSCH"], frame["PSCD"], frame["PSCA"] = 2.10, 3.40, 3.60
         frame.to_csv(src / "E0.csv", index=False)
 
         info, alarms = check_model_supply_chain(
