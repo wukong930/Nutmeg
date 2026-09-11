@@ -21,7 +21,22 @@ EPS = 1e-9
 
 
 def _safe_devig(home: pd.Series, draw: pd.Series, away: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
-    """Devig 1X2 odds; return (p_h, p_d, p_a, overround). NaN-safe row-wise."""
+    """Devig 1X2 odds; return (p_h, p_d, p_a, overround). NaN-safe **and dtype-safe**.
+
+    🚨 2026-09-11:这里原本直接 `1.0 / home`,只做到 NaN-safe。**NaN-safe ≠ dtype-safe。**
+    `ingest._read_europe_csv` 在原始列缺失时填 `pd.NA` ⇒ 那一片是 **object dtype**,
+    concat 之后整列跟着变 object,`np.log` 当场抛
+    `TypeError: loop of ufunc does not support argument 0 of type float`。
+
+    真实触发者:football-data.co.uk 自赛季 **2627 起把 Pinnacle(PS*/PSC*)整组列删了**
+    —— 13/13 个 div 全没有(见记忆 `pinnacle-dead-in-footballdata-2026-01`,那条当时
+    记的是「行停在 2026-01-14」,现在是**列本身从 schema 里消失**)。
+    ⚠️ 同文件下面十行的 `_safe_devig_two_way` 一直是 `pd.to_numeric(errors="coerce")`,
+       两个孪生函数只有一个做了强制 —— 缺的那个就是崩的那个。
+    """
+    home = pd.to_numeric(home, errors="coerce")
+    draw = pd.to_numeric(draw, errors="coerce")
+    away = pd.to_numeric(away, errors="coerce")
     inv_h = 1.0 / home
     inv_d = 1.0 / draw
     inv_a = 1.0 / away
