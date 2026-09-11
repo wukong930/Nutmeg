@@ -178,12 +178,44 @@ def test_only_trained_divs_are_fetched():
 
 @pytest.mark.parametrize("season,div", [("2526", "D2")])
 def test_live_url_shape_still_holds(season, div):
-    """拿真站核一次形状(联网才跑)。URL 模式变了这条会红。"""
-    import httpx
+    """拿真站核一次形状(联网才跑)。URL 模式变了这条会红。
+
+    ⛔ **必须走生产的 `fetch_one`,不许自己再 `httpx.get` 一遍。**
+
+    病史(2026-09-11):原来这里手搓 `httpx.get(url)`,而**没有** `follow_redirects=True`。
+    站点后来把 `www.football-data.co.uk` 302 到 `football-data.co.uk`(去掉 www)⇒
+    这条断言 `302 == 200` 失败,红了一阵子 —— 而**生产的 `fetch_one` 一直带
+    `follow_redirects=True`,从头到尾都是好的**。
+    ⇒ 典型的「测试复刻了生产逻辑、然后比生产更严」⇒ **假红**
+    (memory `reusing-the-function-is-not-reusing-the-calibration` 的镜像面:
+     那边是复刻导致覆盖为零,这边是复刻导致假红。**假红比假绿更贵** —— 它训练人
+     忽略红灯,而这条红了一阵子之后我们确实开始把它当背景噪声了)。
+
+    ⭐ 改成调生产函数后,这条测的东西**更准**了:它现在问的是
+    「**生产这条路还能不能把 CSV 拿回来**」,而不是「某个我另写的 URL 请求返回 200 吗」。
+    """
     try:
-        r = httpx.get(mod.BASE_URL.format(season=season, div=div), timeout=20)
-    except httpx.HTTPError:
-        pytest.skip("离线")
-    assert r.status_code == 200
-    assert _looks_like_csv(r.content), r.content[:80]
-    assert _data_rows(r.content) > 200, "整季应有 300 行量级"
+        body, note = mod.fetch_one(season, div, timeout=20.0)
+    except Exception as exc:  # noqa: BLE001 —— 网络异常一律当离线
+        pytest.skip(f"离线:{type(exc).__name__}")
+    if body is None and "网络" in note:
+        pytest.skip(f"离线:{note}")
+    assert note == "ok", f"生产 fetch_one 拿不到 {season}/{div}:{note}"
+    assert _looks_like_csv(body), body[:80]
+    assert _data_rows(body) > 200, "整季应有 300 行量级"
+
+
+def test_production_fetch_follows_redirects():
+    """🚨 上一条之所以能绿,全靠 `fetch_one` 跟随重定向 —— 把那个前提钉死。
+
+    拆掉 `follow_redirects=True`,站点的 www→非 www 跳转会让它拿回 302、
+    `fetch_one` 判成 `❌ HTTP 302` ⇒ **整棵训练源树静默停更**,
+    而体检看的是源树 mtime(可以被手动放一次文件清零)⇒ 不一定喊。
+    ⭐ 这条是**语法断言**,但守的是一个**不可省的默认参数** —— 同
+    「默认参数编码了给哪条路径用」那条。
+    """
+    import inspect
+
+    src = inspect.getsource(mod.fetch_one)
+    assert "follow_redirects=True" in src, (
+        "fetch_one 不再跟随重定向 —— 站点 www→非www 的 302 会让它整棵树停更")
