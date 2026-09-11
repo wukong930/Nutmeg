@@ -66,6 +66,21 @@ PINNED: dict[str, dict] = {
     # ⚠️ 这条**锚不到 odds_snapshots**:Pinnacle 从没覆盖过日联赛杯,该场 0 行。
     #    ⇒ 用 `af_fixture` 锚(AF 赛程缓存里的那一条),见下面锚定断言的两条路。
     #    「南源」按音完全对不上 Vanraure —— 翻译法必错,只有 fixture 锚拿得到。
+    # ── 2026-09-11 横幅「整个联赛的在售场次全部解不出:日乙」──
+    # ⭐ 第三种变体机制:**意译 vs 音译**(词典「仙台维加塔」= Vegalta 音译;
+    #    竞彩「仙台七夕」= Vega+Altair 的牛郎织女典故)。按音对不上,只有 fixture 锚拿得到。
+    "仙台七夕": {
+        "en": "Vegalta Sendai",
+        "anchor": ("Consadole Sapporo", "away"),
+        "date": "2026-09-13", "league": "JPN_J2",
+        "already_ok": ("札幌冈萨多", "Consadole Sapporo"),
+    },
+    "秋田闪电": {          # 词典写「秋田蓝色闪电」—— 长短写法
+        "en": "Blaublitz Akita",
+        "anchor": ("Kataller Toyama", "away"),
+        "date": "2026-08-15", "league": "JPN_J2",
+        "already_ok": ("富山胜利", "Kataller Toyama"),
+    },
     # ── 2026-09-10 `test_jingcai_listed_teams_are_fully_reachable` 点名的沙职缺口 ──
     # ⭐ 这条的锚**在档案同一行里**(对家英文已填),不用跨表配对。
     "哈马费萨": {          # 词典写「哈马赫费萨利」—— 竞彩用短写法
@@ -228,6 +243,44 @@ def test_the_two_red_stars_never_collapse_into_one() -> None:
     if bg is not None:
         assert bg != paris, "贝红星被映射成了巴黎红星 —— 两支不同的俱乐部"
         assert "Zvezda" in bg or "Crvena" in bg, f"贝红星 被映射到 {bg!r}"
+
+
+def test_the_unanchored_j2_teams_were_not_guessed() -> None:
+    """⛔ 2026-09-11 普查:日乙 14 个写法解不出,只有 2 个锚得到。
+
+    另外 12 个(熊本深红 ×404 · 群马温泉 ×391 · 爱媛FC ×332 · 磐城FC ×300 ·
+    山口雷诺 ×300 · 枥木SC ×290 · 金泽塞维 ×232 · 琉球FC ×221 · 盛冈仙鹤 ×182 ·
+    藤枝MYFC ×162 · 今治FC ×86 · 相模原SC ×12)**故意没补**:它们的档案比赛最晚停在
+    2021–2025,而 `odds_snapshots` 的日乙赛程只覆盖 2026-08-07→09-13、
+    AF fixture 缓存只到 2026-05-23 —— **两条锚源都够不着**。
+
+    ⭐ 本断言对「补没补」不敏感、只对「补错」敏感(同「两颗红星」「巴甲」两条):
+    哪天它们再上架、当场就有锚,补上了照样绿;但补成一个**盘面日乙名单里没有的
+    英文名**就红 —— 那正是「按音猜」会产生的东西。
+    ⚠️ 日乙尤其危险:`仙台七夕` 证明了竞彩会用**意译**(Vegalta→七夕),
+    按音去猜必错。
+    """
+    import sqlite3
+
+    from nutmeg.v4.data.sources.sporttery import zh_to_canonical
+
+    db = REPO / "data/v4_observation.db"
+    if not db.exists():
+        pytest.skip("观测库不在这个 checkout 里")
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    board = {r[0] for r in conn.execute(
+        "SELECT DISTINCT home_team FROM odds_snapshots WHERE league='JPN_J2'")}
+    board |= {r[0] for r in conn.execute(
+        "SELECT DISTINCT away_team FROM odds_snapshots WHERE league='JPN_J2'")}
+    # 🚨 人口非平凡:盘面必须真有日乙球队,否则 `in board` 全是空洞为真
+    assert len(board) >= 15, f"盘面日乙只有 {len(board)} 支 —— 断言变空洞,请先看数据"
+    for zh in ("熊本深红", "群马温泉", "爱媛FC", "磐城FC", "山口雷诺", "枥木SC",
+               "金泽塞维", "琉球FC", "盛冈仙鹤", "藤枝MYFC", "今治FC", "相模原SC"):
+        en = zh_to_canonical(zh)
+        if en is None:
+            continue                      # 仍未补 —— 合规
+        assert en in board, (
+            f"「{zh}」被补成了 {en!r},而盘面日乙名单里没有它 —— 疑似按音猜的")
 
 
 def test_the_unanchored_brazilians_were_not_guessed() -> None:
