@@ -1031,6 +1031,101 @@ def check_unmapped_gap(
     return (info, alarms)
 
 
+#: 训练源树的根(`load_all_matches` 自己拼 `root/europe`)。
+#: ⚠️ 传 `.../europe` 会让它去找 `europe/europe` ⇒ **静默返回 0 行**。我踩过一次。
+_TRAIN_SOURCE_ROOT = Path("data/historical_sources/football_data_co_uk")
+
+
+def check_training_source_season(
+    root: str | Path = _TRAIN_SOURCE_ROOT,
+    *,
+    now: datetime | None = None,
+    probe_upstream: bool = True,
+) -> tuple[list[str], list[str]]:
+    """训练源树**有没有当前赛季** —— mtime 那条探针结构上看不见的维度。
+
+    ## 病史(2026-09-11)
+
+    源树停在 `2526`,**整个 `2627` 目录不存在**;而上游 13/13 个 div 都有数据、
+    共 503 场。体检当时报「训练源树: 最新 CSV 2026-07-15 · 58d(红线 120d)」⇒ **绿的**。
+
+    ⭐ 因为 mtime 量的是「**多久没进新文件**」,不是「**最新赛季在不在**」——
+    这两件事在换季时会分家:上赛季的补录/勘误一直在写(mtime 新鲜),
+    而新赛季一个文件都没拉过。⛔ 且 `ingest_football_data` **没有任何 cron 在跑**,
+    它是手动的 ⇒ 没人碰就永远停在上个赛季。
+    (同族:`health-check-guardrails` 里「mtime 可被手动放一次文件清零」。)
+
+    ## 🚨 判据里**没有任何拍出来的常数**
+
+    第一版我想用「源树最新比赛日落后今天 N 天」。量了一下:近 3 年最大空窗 **68 天**
+    (今夏休赛期),而这次的缺口是 **103 天** —— 两者只差 35 天,阈值没有安全边际,
+    而且 `japan/JPN.csv` 已停更 9 个月、不再填夏窗 ⇒ 往后空窗只会更长。**放弃这条路。**
+
+    ⇒ 改成**直接问上游**:本地缺哪个 div,就用生产的 `fetch_one` 去确认上游有没有。
+      · 休赛期上游本来就 404 ⇒ **天然不误报**,不需要任何日期闸;
+      · 上游有、本地没有 ⇒ 这就是缺口本身,没有解释空间。
+
+    ⭐ **健康时零网络开销**:13 个 div 本地都在 ⇒ 一个请求都不发。
+       只有本地缺了才去问,而那时本来就该问。
+    ⚠️ 网络失败一律 fail-soft 成 info —— 「查不了」和「没缺口」必须分开
+       (同 `_trickle_recovery_line` 那条:传错库时说「未查」,绝不报 0)。
+    """
+    now = now or datetime.now(UTC)
+    from nutmeg.v4.cli.ingest_football_data import (
+        TRAINED_DIVS,
+        _data_rows,
+        fetch_one,
+        season_codes_for,
+    )
+
+    info: list[str] = []
+    alarms: list[str] = []
+    cur = season_codes_for(now.date())[-1]
+    europe = Path(root) / "europe"
+    if not europe.is_dir():
+        return ([], [f"训练源树的 europe/ 不在({europe}) — 整棵树没了,别读成「没有缺口」"])
+
+    have: dict[str, int] = {}
+    for div in TRAINED_DIVS:
+        f = europe / cur / f"{div}.csv"
+        have[div] = _data_rows(f.read_bytes()) if f.exists() else 0
+    missing = sorted(d for d, n in have.items() if n == 0)
+    total = sum(have.values())
+    info.append(f"训练源树当前赛季 {cur}: {len(TRAINED_DIVS) - len(missing)}/{len(TRAINED_DIVS)} "
+                f"个 div · {total} 场")
+    if not missing:
+        return (info, alarms)
+
+    if not probe_upstream:
+        info.append(f"  缺 {len(missing)} 个 div {missing} — 未向上游确认(probe_upstream=False)")
+        return (info, alarms)
+
+    # 只为缺的那几个 div 问上游。上游 404 = 该赛季/该联赛还没发布 ⇒ 不是缺口。
+    upstream_has: list[str] = []
+    unknown: list[str] = []
+    for div in missing:
+        try:
+            body, note = fetch_one(cur, div, timeout=20.0)
+        except Exception as exc:  # noqa: BLE001
+            unknown.append(f"{div}({type(exc).__name__})")
+            continue
+        if body is not None:
+            upstream_has.append(f"{div}:{_data_rows(body)}场")
+        elif note.startswith("❌"):
+            unknown.append(f"{div}{note}")
+    if unknown:
+        info.append(f"  {len(unknown)} 个 div 查不了上游:{unknown[:4]} — **未查**,不等于没缺口")
+    if upstream_has:
+        alarms.append(
+            f"训练源树缺当前赛季 {cur} 的 {len(upstream_has)} 个 div,而**上游有数据**:"
+            f"{upstream_has[:6]}{'…' if len(upstream_has) > 6 else ''}。"
+            f"⇒ 跑 `nutmeg-ingest-football-data --seasons {cur} --apply`。"
+            f"⚠️ mtime 那条探针看不见这个 —— 它量的是「多久没进新文件」不是「最新赛季在不在」")
+    elif not unknown:
+        info.append(f"  缺的 {len(missing)} 个 div 上游也还没发布(404)⇒ 不是缺口")
+    return (info, alarms)
+
+
 #: 「行量断崖」监视的表 → 时间列。只放**有稳定日节律**的捕获表。
 #: ⛔ 别放 `jingcai_sp`(上架量本身随赛程波动)、`league_predictions`(赛程驱动)。
 _VOLUME_CLIFF_TABLES: dict[str, str] = {
@@ -1232,7 +1327,7 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date,
 
 #: 非零退出的五个驱动源。顺序 = 报告里的呈现顺序。
 _ALARM_KIND_LABELS = ("捕获表停更", "额度", "模型供应链", "联赛标签", "涓流",
-                       "行量断崖", "探针失明", "缺口曲线停更")
+                       "行量断崖", "探针失明", "缺口曲线停更", "训练源树缺赛季")
 
 #: 配额探针连续瞎多久算「失明」(小时)。哨兵一天跑 3 轮 ⇒ 24h 覆盖 3 轮:
 #: 单轮网络抖动**不会**误报(保留 2026-07-15 那条设计:抖动 ≠ 配额红线),
@@ -1331,7 +1426,7 @@ def _any_alarm(*groups) -> bool:
 
 def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
                      label_alarms, trickle_alarms, cliff_alarms=(),
-                     blind_alarms=(), gapcurve_alarms=()) -> str:
+                     blind_alarms=(), gapcurve_alarms=(), season_alarms=()) -> str:
     """→ 追加到报告末尾的「报警类别」行(全绿时返回空串)。
 
     ⭐ 2026-08-24 加。起因:桌面推送写死「捕获表停长,**某 cron 可能死了**」,
@@ -1346,7 +1441,7 @@ def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
     """
     kinds = _alarm_kinds(crit_stale, quota_alarms, supply_alarms,
                          label_alarms, trickle_alarms, cliff_alarms, blind_alarms,
-                         gapcurve_alarms)
+                         gapcurve_alarms, season_alarms)
     if not kinds:
         return ""
     return ("\n\n报警类别: " + " · ".join(kinds)
@@ -1370,6 +1465,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="跳过模型供应链探针 (artifact/源树/parquet;缺目录本就自动跳过)")
     p.add_argument("--no-league-labels", action="store_true",
                    help="跳过联赛标签双轨探针 (劈开的写法 / 标签表不认识的联赛)")
+    p.add_argument("--no-season", action="store_true",
+                   help="跳过训练源树赛季探针(它可能向 football-data 发少量请求)")
     p.add_argument("--no-gapcurve", action="store_true",
                    help="跳过竞彩缺口曲线探针")
     p.add_argument("--no-trickle", action="store_true",
@@ -1439,6 +1536,17 @@ def main(argv: list[str] | None = None) -> int:
                 f" — 采集是否还在跑**没有被检查**"
             ]
 
+    season_info: list[str] = []
+    season_alarms: list[str] = []
+    if not args.no_season:
+        try:
+            season_info, season_alarms = check_training_source_season(now=now)
+        except Exception as exc:  # noqa: BLE001
+            season_alarms = [
+                f"训练源树赛季探针自己炸了: {type(exc).__name__}: {exc}"
+                f" — 当前赛季在不在**没有被检查**"
+            ]
+
     if args.porcelain:
         for s in statuses:
             status = "OK" if not s.stale else ("STALE" if s.critical else "OLD")
@@ -1470,6 +1578,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"GAPCURVE\t{q}")
         for q in gapcurve_alarms:
             print(f"GAPCURVE-STALL\t{q}")
+        for q in season_info:
+            print(f"TRAIN-SEASON\t{q}")
+        for q in season_alarms:
+            print(f"TRAIN-SEASON-GAP\t{q}")
     else:
         report = render(statuses, db_path, today, now)
         if supply_info or supply_alarms:
@@ -1489,6 +1601,11 @@ def main(argv: list[str] | None = None) -> int:
             report += "\n\n  — 竞彩历史涓流(2026-08-08:上次它「扫完了」是假信号,丢了 4,751 场)—"
             report += "".join(f"\n  · {q}" for q in trickle_info)
             report += "".join(f"\n  ✗ {q}" for q in trickle_alarms)
+        if season_info or season_alarms:
+            report += ("\n\n  — 训练源树当前赛季(2026-09-11:源树停在上赛季而 mtime 探针一路绿)—"
+                       "\n  ⚠️ mtime 量「多久没进新文件」,**不是**「最新赛季在不在」")
+            report += "".join(f"\n  · {q}" for q in season_info)
+            report += "".join(f"\n  ✗ {q}" for q in season_alarms)
         if gapcurve_info or gapcurve_alarms:
             report += ("\n\n  — 竞彩队名缺口曲线(2026-08-20 起有历史,09-04 才补上读者)—"
                        "\n  ⚠️ 它测「名字解不解得出」,**不测盘面有没有价**;只对停更报警,率不判闸")
@@ -1510,7 +1627,7 @@ def main(argv: list[str] | None = None) -> int:
         # 报告里给出类别,推送文案改成类别中立(见 setup_local_pipeline.sh)。
         report += alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
                                    label_alarms, trickle_alarms, cliff_alarms,
-                                   blind_alarms, gapcurve_alarms)
+                                   blind_alarms, gapcurve_alarms, season_alarms)
         print(report)
         if args.out:
             Path(args.out).write_text(report + "\n", encoding="utf-8")
@@ -1520,7 +1637,7 @@ def main(argv: list[str] | None = None) -> int:
             #    这份只会被下一次**报警**覆盖。
             if _any_alarm(crit_stale, quota_alarms, supply_alarms, label_alarms,
                           trickle_alarms, cliff_alarms, blind_alarms,
-                          gapcurve_alarms):
+                          gapcurve_alarms, season_alarms):
                 ap = alarm_path_for(args.out)
                 if ap:
                     try:
@@ -1544,11 +1661,11 @@ def main(argv: list[str] | None = None) -> int:
     record_run(history,
                kinds=_alarm_kinds(crit_stale, quota_alarms, supply_alarms,
                                   label_alarms, trickle_alarms, cliff_alarms,
-                                  blind_alarms, gapcurve_alarms),
+                                  blind_alarms, gapcurve_alarms, season_alarms),
                probe_ok=probe_ok, now=now)
     return 1 if _any_alarm(crit_stale, quota_alarms, supply_alarms, label_alarms,
                            trickle_alarms, cliff_alarms, blind_alarms,
-                           gapcurve_alarms) else 0
+                           gapcurve_alarms, season_alarms) else 0
 
 
 if __name__ == "__main__":

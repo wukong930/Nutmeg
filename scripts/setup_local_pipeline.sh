@@ -18,6 +18,7 @@
 #  14. com.nutmeg.sporttery_vote              11:10/17:00/23:20 daily — 竞彩 散户支持比例 (getVoteV1 → jingcai_vote); 3 windows survive a sleeping laptop
 #  15. com.nutmeg.polymarket_gaps             10:00/16:00/23:30 daily — Polymarket 错价缺口时间序列 (只读测量, record+settle); FORCES proxy (外网)
 #  16. com.nutmeg.closing_odds                每 30 分 (StartInterval) — Pinnacle 收盘锚 (fetch_pinnacle_lookup → odds_snapshots source=closing); 修 ③ 锚陈旧
+#  17. com.nutmeg.football_data_pull          05:30/16:30 daily — 训练源树当前赛季 CSV (football-data.co.uk); 2026-09-11 前它**完全是手动的**
 # (also installed, predating this header's numbering: com.nutmeg.sporttery_ingest/sporttery_open + score_ev_forward_*)
 #
 # All read NUTMEG_API_FOOTBALL_KEY from .env via the shell wrapper
@@ -729,6 +730,31 @@ install_job "com.nutmeg.monthly_elo_refresh" \
 install_job "com.nutmeg.weekly_clubelo_refresh" \
   5 0 1 \
   "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_external --source clubelo --refresh --skip-coverage-card || true"
+
+# Job 17: 训练源树当前赛季 CSV — football-data.co.uk (05:30 + 16:30 daily)
+#
+# 🚨 2026-09-11 之前这个 CLI **完全没有 cron**,是纯手动的。后果实测:源树停在赛季
+#    `2526`,整个 `2627` 目录不存在,而上游 13/13 个 div 已有 503 场 —— 空了 103 天
+#    没人发现。⚠️ 体检当时是**绿的**:那条 mtime 探针量的是「多久没进新文件」,
+#    上赛季的补录一直在写 ⇒ 它结构上看不见「最新赛季在不在」。
+#    (补的探针:`data_freshness.check_training_source_season`,现在直接问上游。)
+#
+# 为什么是 daily 而不是 weekly(clubelo 那种):
+#   这个 job 漏跑的代价不是「这周没更新」,而是**整季静默腐烂** —— 上面那 103 天就是。
+#   周作业在会睡的笔记本上只有一个唤醒窗口,是最脆的一档;这里给两个窗口。
+#   代价可以忽略:CLI 幂等,**行数无变化时根本不写盘**(连 mtime 都不动),
+#   且有防缩水闸(远端抽风给半截文件时拒绝覆盖,同 clubelo 自毁那族)。
+#
+# 05:30 排在 11:30 体检**之前** ⇒ 体检看到的是当天已刷新的树,而不是隔夜的。
+#
+# ⚠️ 它现在买不到模型改进:football-data 自赛季 2627 起把 Pinnacle(PS*/PSC*)整组列
+#    删了,而 `train.py` 的训练行要求 `psc_home.notna()` ⇒ 这些新行**一行都进不了训练**。
+#    装它是为了「树不再静默停摆」,不是为了涨分。(新增的 PP* 不是 Pinnacle 改名:
+#    PPC 抽水中位 6.93%,而 2526 真 PSC 是 2.87%。)
+install_job "com.nutmeg.football_data_pull" \
+  5 30 "" \
+  "$ENV_PREFIX && $VENV_PY -m nutmeg.v4.cli.ingest_football_data --apply --quiet || true" \
+  "16:30"
 
 # Job 11: V12 W8j model-board + V14 市场模式 prediction accuracy (09:00/15:30/21:00 daily)
 # Logs the 1X2 prediction for every UPCOMING match (model board for the 13 trained
