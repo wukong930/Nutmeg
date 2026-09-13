@@ -7486,7 +7486,19 @@ const _openFolds = (() => {
     // 开球日 < 昨天的直接丢:不 prune 会无限增长(同 _cupManWrite)。留一天缓冲 ——
     // 深夜场按 UTC 日期算可能落在「昨天」,当场清掉会让人以为折叠没记住。
     const cut = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    return new Set(raw.filter(k => typeof k === 'string' && _foldKeyDate(k) >= cut));
+    // ⭐ 2026-09-13 —— 键分两类,**只有比赛级的会过期**:
+    //   · 比赛级(`hc::`/`mb::`/`bk::`)最后一段是开球日 ⇒ 按 cut 清;
+    //   · 板级单例(`mktw::tossup`)压根没有日期段,它不随任何比赛过期。
+    // 🚨 改成显式判断,不是因为之前会误删,而是因为之前**只是侥幸没删** ——
+    //    `_foldKeyDate('mktw::tossup')` 返回 'tossup',而 't' 的字符序恰好大于
+    //    '2026-…' 的 '2' 所以活了下来。板级键改个名(比如 '0-tossup')就会被静默
+    //    清掉,而症状是「折叠偶尔记不住」,没人会查到 prune 头上。
+    const dated = /^\d{4}-\d{2}-\d{2}$/;
+    return new Set(raw.filter(k => {
+      if (typeof k !== 'string') return false;
+      const d = _foldKeyDate(k);
+      return dated.test(d) ? d >= cut : true;
+    }));
   } catch (_) { return new Set(); }   // 隐私模式/脏数据 —— 退回本次会话内有效
 })();
 function _saveFolds() {
@@ -8374,7 +8386,16 @@ function renderMarketPred(preds) {
     : `<div class="text-sm text-muted py-2">${t('mkt_no_strong')}</div>`;
   if (weak.length) {
     const b = _mktGroupsHtml(weak, a.nextUid, 'mktw:');
-    html += `<details class="mt-4 pt-3" style="border-top:1px dashed var(--border-subtle)">`
+    // 🚨 2026-09-13 —— 原本是**裸** <details>。而 `renderMarketPred` 每次重渲都整片
+    //    重建 innerHTML ⇒ 用户展开的「势均力敌」区会被弹回收起,里面那 14 场当场
+    //    从视野里消失。上报的症状就是这个:展开折叠区看到某场 → 点 🎯 刷新竞彩盘口
+    //    → 它「消失了」。⚠️ 触发它的那场强度 0.1579,离 0.15 阈值只差 0.008,前一晚
+    //    还在弱档里 —— 卡在阈值上的场次会在两档之间来回跳。
+    //    同文件另外 5 处卡片级 <details> 早就挂了 `_foldAttrs`(6272/6308/7262/7537/7611),
+    //    7256 行的注释还写着「这个坑仓库里已经踩过一次」—— 这是漏掉的那一处。
+    //    (记忆 `dashboard-responsive-depends-on-cdn`:卡片整片重建 ⇒ <details> 必接 _foldAttrs。)
+    // ⭐ 这个折叠是**板级单例**,不是每场一个 ⇒ fk 用常量,不走 `_foldKey(pr)`。
+    html += `<details class="mt-4 pt-3" ${_foldAttrs('mktw', 'tossup')} style="border-top:1px dashed var(--border-subtle)">`
       + `<summary class="text-sm text-muted cursor-pointer">${t('mkt_tossup_fold')} (${weak.length})</summary>`
       + `<div class="mt-2 space-y-2">${b.html}</div></details>`;
   }

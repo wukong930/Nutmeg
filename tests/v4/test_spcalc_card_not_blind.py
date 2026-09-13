@@ -376,3 +376,97 @@ out.extra_writes = _LS.writes - n0;
             j = js.rindex("<details", 0, i)
             tag = js[j:js.index(">", j) + 1]
             assert "_foldAttrs('hc'" in tag, f"{label}的让球折叠没有折叠记忆:{tag}"
+
+
+class TestTossupFoldRemembersItsState:
+    """🚨 2026-09-13 —— 「势均力敌」折叠区是**裸** <details>,重渲就弹回收起。
+
+    ## 病史
+
+    报告的症状:一场日职比赛在「刷新竞彩盘口」之后从面板上消失了。
+
+    查了三层,**哪一层都没消失**:竞彩官方仍在售、当轮采集抓到了、
+    市场模式板的活接口里也有它(SP 已预填)。
+
+    真正的机制在前端:`renderMarketPred` 把场次按 `|P主 − P客| ≥ 0.15` 分强弱两档,
+    弱档整个塞进一个折叠区(当天 50 场里 **14 场**在里面),而那个 <details>
+    **没挂 `_foldAttrs`** ⇒ 每次整片重渲都回到收起状态。
+    而 🎯「刷新竞彩盘口」正是一次整片重渲(`loadCupMarket` → `renderMarketPred`)。
+
+    ⚠️ 触发它的那场恰好卡在阈值上:强度 **0.1579**,离 0.15 只差 0.008;
+    前一晚 Pinnacle 主客同价时强度约 0.13、**在弱档里**。
+    卡在阈值上的场次会在两档之间来回跳,所以「昨天在折叠里、今天在外面」两种都见得到。
+
+    ⭐ 同文件另外 5 处卡片级 <details> 早就挂了 `_foldAttrs`;7256 行的注释还写着
+       「这个坑仓库里已经踩过一次并留了注释」—— 这是漏掉的第六处。
+       (同族 [[the-twin-already-has-the-fix]]:孪生的那些早就修好了。)
+    """
+
+    def test_the_tossup_details_carries_fold_memory(self):
+        js = _js()
+        i = js.index("t('mkt_tossup_fold')")
+        j = js.rindex("<details", 0, i)
+        tag = js[j:js.index(">", j) + 1]
+        assert "_foldAttrs('mktw'" in tag, f"「势均力敌」折叠没有折叠记忆:{tag}"
+
+    def test_it_is_a_board_level_singleton_not_per_match(self):
+        """⭐ 这个折叠是**整块**的,不是每场一个 ⇒ 不能用 `_foldKey(pr)`。
+
+        用了的话:弱档里 14 场共用一个 <details>,键却取自其中某一场 —— 明天那场
+        走了,折叠状态跟着消失,而用户看到的是「有时记得有时不记得」。
+        """
+        js = _js()
+        i = js.index("t('mkt_tossup_fold')")
+        tag = js[js.rindex("<details", 0, i):js.index(">", js.rindex("<details", 0, i)) + 1]
+        assert "_foldKey(" not in tag, f"板级折叠用了比赛级的键:{tag}"
+
+    def test_opening_it_survives_a_rerender(self):
+        """⭐ 承重:语法接上不等于机制活着(同本文件 `test_the_fold_memory_actually_remembers`)。
+
+        跑**整段生产源码原文**,不重写任何逻辑。
+        """
+        d = _run_folds("""
+out.before = _foldAttrs('mktw', 'tossup');
+_onFoldToggle(el('mktw::tossup', true));       // 用户展开「势均力敌」
+out.after  = _foldAttrs('mktw', 'tossup');     // 重渲时再问一次
+out.match  = _foldAttrs('hc', _foldKey(pr1));  // ⚠️ 趁"还开着"查隔离
+_onFoldToggle(el('mktw::tossup', false));
+out.closed = _foldAttrs('mktw', 'tossup');
+""")
+        assert " open" not in d["before"], "还没展开就带 open"
+        assert " open" in d["after"], (
+            "展开后重渲没返回 open —— 折叠记忆是死的,🎯 刷新仍会把那 14 场收起来")
+        assert " open" not in d["closed"], "用户手动收起后仍记成展开"
+        assert " open" not in d["match"], "板级折叠展开把比赛级折叠也带开了(kind 不隔离)"
+
+    def test_the_board_level_key_survives_the_daily_prune(self):
+        """🚨 prune 按「键的最后一段是不是过期日期」清,而板级键没有日期段。
+
+        改之前它**只是侥幸活着**:`_foldKeyDate('mktw::tossup')` 返回 `'tossup'`,
+        而 `'t' > '2'` 恰好让 `>= cut` 成立。现在是显式规则。
+        """
+        import json
+        d = _run_folds("out.kept = [..._openFolds];",
+                       preload=json.dumps(["mktw::tossup"]))
+        assert "mktw::tossup" in d["kept"], "板级折叠被按日 prune 误删了"
+
+    def test_the_exemption_is_a_rule_not_a_character_ordering_accident(self):
+        """⭐ 判据「这是一个点还是一条轴」——「'tossup' 活下来了」可以纯属字符序。
+
+        用一个**排在日期之前**的名字(`0-x`:`'0' < '2'`)。旧写法必删它,
+        新写法必留它。⇒ 这条绿了才证明豁免是按「有没有日期段」判的。
+        """
+        import json
+        d = _run_folds("out.kept = [..._openFolds];", preload=json.dumps(["mktw::0-x"]))
+        assert "mktw::0-x" in d["kept"], (
+            "豁免只对字符序靠后的名字生效 —— 那不是规则,是巧合;"
+            "板级键改个名就会被静默清掉,而症状是「折叠偶尔记不住」")
+
+    def test_stale_match_folds_are_still_pruned(self):
+        """⚠️ 加豁免不许把 prune 关掉 —— 否则修一个洞挖一个更大的。"""
+        import json
+        old = "hc::" + _q("A|B|2020-01-01T10:00:00Z")
+        d = _run_folds("out.kept = [..._openFolds];",
+                       preload=json.dumps([old, "mktw::tossup"]))
+        assert "mktw::tossup" in d["kept"], "板级键被删"
+        assert old not in d["kept"], "2020 年的比赛级折叠还留着 —— prune 被豁免规则架空了"
