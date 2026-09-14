@@ -7512,16 +7512,26 @@ function _foldKey(pr) {
 function _onFoldToggle(el) {
   const k = el.getAttribute('data-fold');
   if (!k) return;
+  // 2026-09-14 —— 支持**默认展开**的折叠(Polymarket 未结算列表)。
+  // ⭐ `_openFolds` 的语义统一成「**用户把它扳离了默认**」,而不是「它是开的」。
+  //    默认收起时两者等价(所以既有 6 处调用逐字不变);默认展开时才分岔。
+  //    默认值写在 DOM 上(`data-fold-default`),这样 toggle 处理器不需要知道
+  //    是谁渲染的 —— 否则又是一处「两边各存一份真相」。
+  const _defOpen = el.getAttribute('data-fold-default') === 'open';
+  const _toggled = _defOpen ? !el.open : !!el.open;
   // 回声守卫(抄 `_sweetBoardSaveOpen`:5238):toggle 是异步任务,且 Chrome 对
   // **插入即展开**的 <details> 也补发一次 toggle。状态没变 = 回声,不写盘 ——
   // 每张卡每次重渲都写一遍 localStorage 是纯浪费,而且给竞态留门。
-  if (_openFolds.has(k) === !!el.open) return;
-  if (el.open) _openFolds.add(k); else _openFolds.delete(k);
+  if (_openFolds.has(k) === _toggled) return;
+  if (_toggled) _openFolds.add(k); else _openFolds.delete(k);
   _saveFolds();
 }
-function _foldAttrs(kind, fk) {
+function _foldAttrs(kind, fk, defaultOpen) {
   const key = kind + '::' + fk;
-  return `data-fold="${key}" ontoggle="_onFoldToggle(this)"` + (_openFolds.has(key) ? ' open' : '');
+  const toggled = _openFolds.has(key);          // 集合语义 = 用户扳离了默认
+  const open = defaultOpen ? !toggled : toggled;
+  return `data-fold="${key}"${defaultOpen ? ' data-fold-default="open"' : ''}`
+    + ` ontoggle="_onFoldToggle(this)"` + (open ? ' open' : '');
 }
 function _cupCardHtml(pr, idx) {
   const _fk = _foldKey(pr);
@@ -8761,6 +8771,7 @@ function renderCupMarket(preds, pending) {
 const PM_L = {
   zh:{win:'胜平负',hcp:'让球',tot:'大小球',fair:'公允',home:'主',away:'客',over:'大',under:'小',draw:'平',
     diverge:'共识背离',model:'模型对照',finished:'已结束',review:'命中复盘',pending:'待结算',
+    upcoming:'未结算赛事',
     empty:'看板由 cron 累积(3×/日)。暂无数据 —— 下个窗口或手动 nutmeg-polymarket-gaps 后显示。',
     discT:'免责 · 定位',
     discB:'⚠ <b>只读研究 / 交叉校验,非下注 venue</b>(Polymarket 封中国大陆)。+EV 含风险,<b>非无风险套利</b>。公允 P = Pinnacle 去vig(与竞彩板同源)。',
@@ -8768,6 +8779,7 @@ const PM_L = {
     modB:'「模型」是我们自己的 CatBoost/Elo 模型对该场的预测,作为<b>独立第三票</b>参考。<br><br>它<b>不进 EV</b>(模型打不过收盘线,V12 结论),只用于三方三角:<br>• 三方一致 → 有效市场<br>• 模型+Pinnacle 一致但 <b>Polymarket 背离</b> → Polymarket 错价候选<br>• 翻盘时模型站哪边 → 判断是 Pinnacle 陈旧还是 Polymarket 错<br><br>仅有模型的比赛(世界杯 / 13 训练联赛)显示。'},
   en:{win:'1X2',hcp:'AH',tot:'O/U',fair:'fair',home:'H',away:'A',over:'O',under:'U',draw:'D',
     diverge:'consensus split',model:'model',finished:'Finished',review:'hit review',pending:'pending',
+    upcoming:'Upcoming (unsettled)',
     empty:'Board accumulates via cron (3×/day). No data yet — appears after the next window or a manual nutmeg-polymarket-gaps run.',
     discT:'Disclaimer',
     discB:'⚠ <b>Read-only research / cross-check, NOT a betting venue</b> (Polymarket blocks mainland China). +EV carries risk, <b>not arbitrage</b>. Fair P = Pinnacle de-vig (same source as the 竞彩 board).',
@@ -8838,12 +8850,30 @@ async function loadPolymarket(){
   try{ const r=await fetch(API+'/observation/polymarket-board'); data=await r.json(); }
   catch(_){ el.innerHTML='<p class="text-sm text-muted">'+pmL('empty')+'</p>'; return; }
   const ms=(data&&data.matches)||[], fin=(data&&data.finished)||[];
-  let html = ms.length ? ms.map(m=>_pmCard(m)).join('') : '<p class="text-sm text-muted">'+pmL('empty')+'</p>';
+  const SUM='cursor:pointer;color:var(--text-muted);font-size:13px;user-select:none';
+  const WRAP='margin-top:4px;border-top:1px solid var(--border,rgba(128,128,128,.22));padding-top:10px';
+  // ① 未结算(未开赛)列表也收进折叠 —— 实测 66 张卡,不折叠要滚很久。
+  //    ⭐ **默认展开**:这是本板的主内容,首次进来就藏起来比滚动更糟。
+  //    折叠状态持久化(`_foldAttrs` 的 defaultOpen 分支),用户收起就一直收起。
+  let html = ms.length
+    ? '<details '+_foldAttrs('pm','upcoming',true)+'>'
+      +'<summary style="'+SUM+'">'+pmL('upcoming')+' ('+ms.length+')</summary>'
+      +'<div style="margin-top:10px">'+ms.map(m=>_pmCard(m)).join('')+'</div></details>'
+    : '<p class="text-sm text-muted">'+pmL('empty')+'</p>';
   if(fin.length){
-    html += '<details style="margin-top:4px;border-top:1px solid var(--border,rgba(128,128,128,.22));padding-top:10px">'
-      +'<summary style="cursor:pointer;color:var(--text-muted);font-size:13px;user-select:none">'
-      +pmL('finished')+' · '+pmL('review')+' ('+fin.length+')</summary>'
-      +'<div style="margin-top:10px">'+fin.map(m=>_pmCard(m,true)).join('')+'</div></details>';
+    // ② 🚨 2026-09-14 —— owner:「以前已结算命中的腿会打 ✅,现在没有」。
+    //    渲染没坏(16,923 条腿里 15,747 条有 outcome_hit),坏的是**顺序**:
+    //    `finished` 按开球倒序,而最新结束的还没结算 ⇒ 这个折叠一打开,
+    //    头几十张全是「待结算」、一个 ✓/✗ 都没有,✅ 被埋在下面。
+    //    ⇒ **已结算的排前面**(组内仍按时间倒序),待结算的沉底并在标题上报数。
+    //    ⚠️ 只改展示顺序,不动端点 —— 时间倒序是它的契约,别在两处各排一次。
+    const done=fin.filter(m=>m.home_goals!=null&&m.away_goals!=null);
+    const wait=fin.filter(m=>m.home_goals==null||m.away_goals==null);
+    const cnt = pmL('review')+' ('+done.length+')'
+      + (wait.length?' · '+pmL('pending')+' '+wait.length:'');
+    html += '<details style="'+WRAP+'" '+_foldAttrs('pm','finished')+'>'
+      +'<summary style="'+SUM+'">'+pmL('finished')+' · '+cnt+'</summary>'
+      +'<div style="margin-top:10px">'+done.concat(wait).map(m=>_pmCard(m,true)).join('')+'</div></details>';
   }
   el.innerHTML = html;
 }

@@ -235,7 +235,10 @@ global.localStorage = {{ getItem: k => _LS.get(k), setItem: (k, v) => _LS.set(k,
 {_fold_module()}
 const pr1 = {{ home_team: 'A', away_team: 'B', kickoff_utc: {json.dumps(_tomorrow())} }};
 const pr2 = {{ home_team: 'C', away_team: 'D', kickoff_utc: {json.dumps(_tomorrow())} }};
-const el = (k, open) => ({{ open, getAttribute: () => k }});
+// 2026-09-14:桩要**按属性名**返回,否则 `data-fold-default` 会拿到 k、
+// 默认展开那条分支永远测不到(旧桩 `getAttribute: () => k` 对任何属性都返回 k)。
+const el = (k, open, defOpen) => ({{ open,
+  getAttribute: (a) => a === 'data-fold-default' ? (defOpen ? 'open' : null) : k }});
 const out = {{}};
 {body}
 console.log(JSON.stringify(out));
@@ -470,3 +473,129 @@ out.closed = _foldAttrs('mktw', 'tossup');
                        preload=json.dumps([old, "mktw::tossup"]))
         assert "mktw::tossup" in d["kept"], "板级键被删"
         assert old not in d["kept"], "2020 年的比赛级折叠还留着 —— prune 被豁免规则架空了"
+
+
+class TestDefaultOpenFolds:
+    """⭐ 2026-09-14 —— `_foldAttrs` 新增第三参 `defaultOpen`(Polymarket 未结算列表)。
+
+    ## 语义
+
+    `_openFolds` 从「它是开的」改成「**用户把它扳离了默认**」。
+    默认收起时两者等价 ⇒ 既有 6 处调用**逐字不变**;只有默认展开时才分岔。
+    默认值存在 DOM 上(`data-fold-default="open"`),toggle 处理器据此判断,
+    不需要知道是谁渲染的 —— 否则又是一处「两边各存一份真相」。
+
+    ## 为什么默认展开
+
+    Polymarket 板的未结算列表是**主内容**(实测 66 张卡)。加折叠是为了能收起,
+    不是为了首次进来就藏起来。而默认收起的「命中复盘」保持原样。
+    """
+
+    def test_default_open_renders_open_until_the_user_collapses_it(self):
+        d = _run_folds("""
+out.fresh = _foldAttrs('pm', 'upcoming', true);          // 没碰过 ⇒ 应当是开的
+_onFoldToggle(el('pm::upcoming', false, true));          // 用户收起
+out.after_close = _foldAttrs('pm', 'upcoming', true);
+out.ls = _LS.get('nutmeg_open_folds');
+_onFoldToggle(el('pm::upcoming', true, true));           // 又展开(回到默认)
+out.after_open = _foldAttrs('pm', 'upcoming', true);
+out.ls2 = _LS.get('nutmeg_open_folds');
+""")
+        assert " open" in d["fresh"], "默认展开的折叠首次渲染却是收起的"
+        assert " open" not in d["after_close"], (
+            "用户收起后重渲又弹开了 —— 默认展开那支没有持久化")
+        assert "pm::upcoming" in (d["ls"] or ""), "收起没写盘"
+        assert " open" in d["after_open"], "恢复默认后应当又是开的"
+        assert "pm::upcoming" not in (d["ls2"] or ""), (
+            "回到默认后键还留在集合里 —— 集合语义应是「扳离默认」,会无限增长")
+
+    def test_it_carries_the_default_attribute_so_the_handler_can_tell(self):
+        d = _run_folds("""
+out.open_kind = _foldAttrs('pm', 'upcoming', true);
+out.closed_kind = _foldAttrs('pm', 'finished');
+""")
+        assert 'data-fold-default="open"' in d["open_kind"]
+        assert "data-fold-default" not in d["closed_kind"], (
+            "默认收起的折叠不该带这个属性 —— 带了会让处理器反过来判")
+
+    def test_the_old_default_closed_behaviour_is_byte_for_byte_unchanged(self):
+        """🚨 承重回归条:我改的是**被 6 处调用**的共享函数。
+
+        默认收起那支必须和改动前完全一样,否则让球/净胜球/多书商那几个折叠会反过来。
+        """
+        d = _run_folds("""
+const k = _foldKey(pr1);
+out.before = _foldAttrs('hc', k);
+_onFoldToggle(el('hc::' + k, true));
+out.after = _foldAttrs('hc', k);
+_onFoldToggle(el('hc::' + k, false));
+out.closed = _foldAttrs('hc', k);
+out.ls = _LS.get('nutmeg_open_folds');
+""")
+        assert " open" not in d["before"]
+        assert " open" in d["after"], "默认收起的折叠展开后没记住 —— 旧行为被改坏了"
+        assert " open" not in d["closed"]
+        assert "data-fold-default" not in d["before"], "旧调用不该被塞进新属性"
+
+
+class TestPolymarketBoardFolds:
+    """🚨 owner:「已结算命中的腿以前打 ✅,现在没有」。
+
+    渲染**没坏** —— 实测 16,923 条腿里 15,747 条有 `outcome_hit`。坏的是**顺序**:
+    端点按开球倒序返回,而最新结束的还没结算(48h 内的正常延迟),
+    于是「命中复盘」一打开,头几十张全是「待结算」、一个 ✓/✗ 都没有。
+    ⇒ 展示层把**已结算的排前面**,待结算的沉底并在标题上单独报数。
+    ⚠️ 只改展示顺序,不动端点 —— 时间倒序是它的契约,别在两处各排一次。
+    """
+
+    def _sort_src(self) -> str:
+        """把生产源码里那三行**原文**抠出来跑,不重写(重写就测不到生产那份)。"""
+        js = _js()
+        i = js.index("const done=fin.filter(")
+        j = js.index("done.concat(wait)", i)
+        return js[i:js.index("\n", j)]
+
+    def test_settled_matches_sort_ahead_of_pending(self):
+        """⭐ 跑**生产源码原文**,只把它引用的外部符号打桩;顺序从它自己拼出的
+        html 里读出来 —— 不在测试里复刻 `done.concat(wait)`,那样就测不到生产那份。
+        """
+        import json
+        import re
+        import subprocess
+
+        # 造 3 已结算 + 2 待结算,**交错**排列(端点按时间倒序的真实形状)
+        fin = [{"id": 1, "home_goals": None, "away_goals": None},
+               {"id": 2, "home_goals": 1, "away_goals": 0},
+               {"id": 3, "home_goals": None, "away_goals": 2},
+               {"id": 4, "home_goals": 0, "away_goals": 0},
+               {"id": 5, "home_goals": 3, "away_goals": 1}]
+        body = f"""
+const fin = {json.dumps(fin)};
+const pmL = () => '', WRAP = '', SUM = '', _foldAttrs = () => '';
+const _pmCard = (m, f) => '[' + m.id + ']';     // 卡片内容不重要,顺序才是
+let html = '';
+{self._sort_src()}
+console.log(html);
+"""
+        r = subprocess.run(["node", "-e", body], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stderr[:1500]
+        order = [int(x) for x in re.findall(r"\[(\d+)\]", r.stdout)]
+        assert order == [2, 4, 5, 1, 3], f"已结算没排到前面:{order}"
+        # 🚨 人口非平凡:交错样本里两组都得非空,否则这条断言空洞为真
+        assert len([m for m in fin if m["home_goals"] is not None]) >= 2
+        assert fin[0]["home_goals"] is None, "输入第一条必须是待结算,否则测不出重排"
+
+    def test_the_upcoming_list_is_folded_and_defaults_open(self):
+        js = _js()
+        i = js.index("pmL('upcoming')")
+        tag = js[js.rindex("<details", 0, i):js.index(">", js.rindex("<details", 0, i)) + 1]
+        assert "_foldAttrs('pm','upcoming',true)" in tag, f"未结算列表没接折叠记忆:{tag}"
+
+    def test_the_finished_summary_reports_both_counts(self):
+        """待结算数**单独报** —— 否则「命中复盘 (1304)」会让人以为都复盘得了。"""
+        js = _js()
+        i = js.index("const done=fin.filter(")
+        seg = js[i:js.index("el.innerHTML = html;", i)]   # ⚠️ 必须从 i 之后找
+        assert len(seg) > 200, f"提取器坏了,只抠到 {len(seg)} 字符"
+        assert "pmL('review')" in seg and "pmL('pending')" in seg
+        assert "done.length" in seg and "wait.length" in seg
