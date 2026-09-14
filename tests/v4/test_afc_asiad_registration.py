@@ -175,9 +175,10 @@ class TestTheHonestLimits:
         assert all(h.endswith(" U23") and a.endswith(" U23") for h, a in ag), (
             f"Asian Games 里出现了非 U23 的条目 —— 可能是女足进来了:{ag}")
 
-    def test_we_do_not_harvest_these_competitions(self) -> None:
-        """🚨 订正:这条原来叫「没有赔率覆盖」,docstring 写着「⇒ 这两场算不出 EV」。
-        **那个推论是错的。**
+    def test_afc_is_now_harvested_and_the_asian_games_still_is_not(self) -> None:
+        """🚨 两次订正,方向相反,记在一起:
+
+        ① 这条原来叫「没有赔率覆盖」,docstring 写着「⇒ 这两场算不出 EV」。**推论是错的。**
 
         `odds_snapshots` 没有这两个赛事 = **我们没去采**,不等于**源里没有**。
         实测 AF 的 Pinnacle 镜像对亚冠精英**有线**(见下一条断言)。
@@ -195,7 +196,15 @@ class TestTheHonestLimits:
         with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as c:
             lgs = {r[0] for r in c.execute("select distinct league from odds_snapshots") if r[0]}
         assert len(lgs) > 20, f"人口非平凡:只有 {len(lgs)} 个联赛"
-        for bad in ("AFC_CHAMPIONS_LEAGUE_ELITE", "AFC_CL_ELITE", "ASIAN_GAMES", "ASIAD"):
+        # ⭐ 2026-09-14 翻面:注册生效后系统**真的开始采集**亚冠了 ——
+        #   这条原本断言「AFC_CL_ELITE 不在库里」并据此说「算不出 EV」。
+        #   护栏按它自己写的处方红了(「回来重判」),而重判的结论是**注册成功**:
+        #   实测 12 行 `cup_market` 快照,例如 Beijing Guoan vs Pohang Steelers
+        #   psc 1.95/3.79/3.42。这是整条链跑通的端到端证据,比原来那条强。
+        assert "AFC_CL_ELITE" in lgs, (
+            "注册后仍然没采到亚冠的赔率 —— 六条腿里有一条没生效,或 API 没重启")
+        # 亚运女足**没有**跟着一起来:它连 AF fixture 都没有(见上一类)。
+        for bad in ("ASIAN_GAMES", "ASIAD"):
             assert bad not in lgs
         assert not any(x.endswith("_W") or x.startswith("W_") for x in lgs), \
             f"出现了女足联赛 —— 覆盖变了,回来重判:{lgs}"

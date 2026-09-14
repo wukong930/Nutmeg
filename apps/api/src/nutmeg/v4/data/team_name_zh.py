@@ -1536,6 +1536,45 @@ _AFC_CL_ELITE_SCORE_ANCHORED: dict[str, str] = {
 TEAM_NAME_ZH.update(_AFC_CL_ELITE_SCORE_ANCHORED)
 
 
+# -- 亚冠乙 16 支 · 同一套比分锚定(2026-09-14)------------------------------
+#
+# 起因:亚冠精英注册后仍有 8 支队没有中文名。竞彩**根本不上架**它们的本国联赛
+# (档案 81 个联赛里没有中超/泰超/伊朗/卡塔尔/乌兹/约旦/越南),亚洲俱乐部赛事
+# 只有「亚冠精英」和「亚冠乙」两项 ⇒ **亚冠乙是它们唯一可能的锚源**。
+# 实测那 8 支里有 6 支在亚冠乙的 AF 赛程里出现过,而竞彩有 565 行亚冠乙档案。
+#
+# ⇒ 回填 AF 亚冠乙赛程(id=18,2023-2026,509 场)→ 比分锚定:
+#   AF 已完赛 378 场 × 竞彩带比分 45 场 → 唯一命中 34 场 → 三闸全过 25 条,
+#   **0 冲突**,其中 16 条是词典里没有的(下表)。
+#
+# ⭐ 其中 2 条正是精英那 8 支里的:`Beijing Guoan`→北京国安、`Ratchaburi`→**叻武里**。
+#   ⚠️ 「叻武里」这条是本批最好的反例:按音猜会写成「叻丕」(Ratchaburi 府的常见译名),
+#      而竞彩用的是「叻武里」。**猜必错** —— 同「棉农 vs 帕赫塔科尔」。
+#   ⇒ 这 2 支已从 `registry_coverage.NO_JINGCAI_ANCHOR` 撤下(它们现在可达了,
+#      留在豁免名单里就是一条假豁免)。
+#
+# ⚠️ 只是用亚冠乙**锚队名**,**没有**把它注册进市场模式 —— 那是另一个决定。
+_AFC_CL_TWO_SCORE_ANCHORED: dict[str, str] = {
+    "Al Ahli Doha": "多哈国民",                      # x4
+    "Persib Bandung": "万隆",                        # x4
+    "Ratchaburi": "叻武里",                          # x4
+    "Tampines Rovers": "淡宾尼士",                   # x4
+    "Arkadag": "阿卡达格",                           # x3
+    "Home United": "狮城水手",                       # x3
+    "Khalidiya": "哈马永恒",                         # x3
+    "Al Wihdat": "安曼联",                           # x2
+    "Andijan": "安集延",                             # x2
+    "Beijing Guoan": "北京国安",                     # x2
+    "Goa": "果阿FC",                               # x2
+    "Selangor": "雪兰莪",                            # x2
+    "Al Zawra'a": "巴格扎乌",                        # x1
+    "Eastern": "香港东方",                           # x1
+    "Muharraq": "穆哈拉格",                          # x1
+    "Wofoo Tai Po": "香港大埔",                      # x1
+}
+TEAM_NAME_ZH.update(_AFC_CL_TWO_SCORE_ANCHORED)
+
+
 # HARVEST-BEGIN
 _JINGCAI_VOTE_HARVEST: dict[str, str] = {
 }
@@ -1620,5 +1659,7 @@ def coverage_by_league() -> Dict[str, int]:
         "AFC_ASIAD_2026_09":       len(_AFC_ASIAD_2026_09),
         # 2026-09-14 — 亚冠精英 36 支,比分锚定产出(见上方长注释).
         "AFC_CL_ELITE_ANCHORED":   len(_AFC_CL_ELITE_SCORE_ANCHORED),
+        # 2026-09-14 — 亚冠乙 16 支,同一套比分锚定.
+        "AFC_CL_TWO_ANCHORED":     len(_AFC_CL_TWO_SCORE_ANCHORED),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }

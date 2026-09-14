@@ -182,8 +182,11 @@ NO_JINGCAI_ANCHOR: dict[str, tuple[str, ...]] = {
     #     决定性检验:补完之后竞彩档案 69 支里**只剩 3 支**解不出
     #     (中央海岸/费萨里已补,波斯波利闸③ 作废)—— **Tractor Sazi 不在其中**
     #     ⇒ 竞彩在这项赛事里从没上架过它。
+    # ⭐ 2026-09-14 当天就少了 2 支:`Beijing Guoan`/`Ratchaburi` 从**亚冠乙**档案
+    #   锚到了(北京国安 / 叻武里)。⇒ 它们已可达,留在这里就是一条**假豁免**。
+    #   剩下 6 支在亚冠乙里也没被竞彩上架过(或闸没过)⇒ 目前确实没有任何锚。
     "AFC_CL_ELITE": (
-        "Beijing Guoan", "Tractor Sazi", "Ratchaburi", "Port FC",
+        "Tractor Sazi", "Port FC",
         "Al Shamal", "Neftchi", "Al Hussein", "Công An Nhân Dân",
     ),
     "COPA_LIBERTADORES": (
