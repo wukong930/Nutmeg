@@ -62,6 +62,12 @@ LEAGUES: dict[str, tuple[int, int, str]] = {
     "COPA_LIBERTADORES": (49, 13, "解放者杯"),
     "SAU_PRO_LEAGUE": (2068446, 307, "沙职"),
     "UEFA_SUPER_CUP": (71, 531, "欧超杯"),
+    # 2026-09-14 owner 授权注册亚冠精英进市场模式后,覆盖率工具报 19/36 队字典打不中。
+    # ⚠️ 竞彩**上架过**它们(上海海港 380 行、布里兰 303 行…)⇒ 按 NO_JINGCAI_ANCHOR
+    #    的规矩那是**真缺口**,不能豁免,必须跑这里。
+    # ⚠️ 跑之前回填了 AF 历史赛程(league=17,2021-2026 六个赛季,826 场)——
+    #    原缓存只有 2026-08 起的 20 场,和竞彩档案只重叠 1 天,离线锚不出任何东西。
+    "AFC_CL_ELITE": (1, 17, "亚冠精英"),
     # ⭐ 对照组 —— 词典**已经完整**的联赛。跑它是为了回答
     # 「这个方法能不能复现已知正确答案」,而不是只看它在缺口上吐了多少条。
     # 巴甲是最好的对照:同为南美、同样的北京-UTC 跨日问题、同样的西语队名。
@@ -235,6 +241,17 @@ def anchor(code: str, *, validate: bool = False) -> None:
         if az not in settled:
             pass2[az][aen] += 1
     for zh, cnts in pass2.items():
+        # 🚨 2026-09-14 修:这里原本**只**检查本轮自己的计数,漏了「它在第一轮
+        #    就已经是冲突」这一种。后果:一个被闸③ 判过死刑的中文名,只要第二轮
+        #    给它找到一个候选就会被**复活进 accepted**,而它同时还印在冲突列表里
+        #    —— 同一份输出自相矛盾,而读的人多半只看 ✅ 那半。
+        #    活例:亚冠精英的「波斯波利」→ 冲突 {Nagoya Grampus:1, Persepolis FC:1},
+        #    却出现在 ✅ 里(×1 ⟵同场传播)。
+        #    ⭐ 上面第一轮的 `闸②′` 一直是对的(`if me in accepted or me in conflicts
+        #       or me in rescued: continue`)—— 两条传播路径只有一条守了闸,
+        #       又是「孪生的那个早就修好了」那族。
+        if zh in conflicts:
+            continue
         if len(cnts) > 1:                       # 闸③ 照旧
             conflicts[zh] = dict(cnts)
             accepted.pop(zh, None)
