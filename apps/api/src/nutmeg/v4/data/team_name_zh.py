@@ -1424,6 +1424,43 @@ _LIBERTADORES_SAUDI_2026_08: dict[str, str] = {
 TEAM_NAME_ZH.update(_LIBERTADORES_SAUDI_2026_08)
 
 
+# ── 亚冠精英 + 亚运女足(2026-09-14 横幅:「整个联赛的在售场次全部解不出」)──
+# 三支**整队不在词典** ⇒ 放这里而不是 _ZH_OVERRIDES(这一处同时修 join 和显示)。
+# 撞车检查:5 个中文串(含两个简称)在 TEAM_NAME_ZH 值集 / _ZH_OVERRIDES / _ZH_TO_EN
+# 里**全部 0 占用**,3 个英文键也都没被占;`China`/`China PR`→中国、`Hong Kong`→香港
+# 是**男足**那三条,与本批互不干扰。
+#
+# ⚠️ 三条的**锚强度不一样**,别当成一批:
+#
+# ① `Pakhtakor` ← 棉农 —— 第①档锚(当前在售那场本身),最强的一种。
+#    竞彩:[亚冠精英] 周一007 · 北京 09-15 02:15 = UTC 2026-09-14T18:15 · 吉达国民 vs 棉农
+#    AF  : fixture 1629915 `AFC Champions League Elite` 2026-09-14T18:15
+#          `Al-Ahli Jeddah` vs `Pakhtakor`
+#    开球时刻 / 赛事 / **已解出的主队**(吉达国民→Al-Ahli Jeddah,词典本来就有)三者
+#    同时对上,且该时刻该赛事只有 3 场、主队唯一 ⇒ 对手没有第二种可能。
+#    ⭐ 顺带印证「意译 vs 音译」那条变体机制:Paxtakor 在乌兹别克语里就是**「棉农」**。
+#       按音猜(帕赫塔科尔)必错,而按音猜正是最容易顺手做的那件事。
+#
+# ② `China W` / `Hong Kong W` ← 中国女足 / 中国香港女足 —— **队实体锚住了,赛事没锚住**。
+#    AF 名册里这两个实体带稳定 id(`China W`=1723、`Hong Kong W`=17896),最近一次
+#    出现 2026-09-09,赛事标 `Friendlies Women`。AF **显式区分年龄组**
+#    (`China PR U20 W` 是另一条)⇒ 不带后缀的就是成年国家队,名字本身没有歧义。
+#    🚨 但 fixture 缓存里 **56 个女足赛事中没有「亚运女足」**,`Asian Games` 那个赛事
+#       只有男足 U23 的 14 场 ⇒ **第①档锚不存在**,我没法从数据确认亚运女足这场
+#       AF 会用哪个实体。补它只保证「名字是对的」,不保证「join 得上」。
+#
+# ⚠️ 而且这两个赛事**都不在赔率覆盖里**:odds_snapshots 的 39 个联赛既无亚冠精英
+#    也无亚运女足(⚠️ 我一度用 `league LIKE '%ELITE%'` 查,命中的是 NOR_ELITE**SERIEN**
+#    —— 语法代理又骗了我一次)。⇒ 补完横幅会闭嘴,但这两场**算不出 EV**,
+#    那是横幅看不见的另一条链。补它买到的是「名字/卡片正确」,不是「可下注」。
+_AFC_ASIAD_2026_09: dict[str, str] = {
+    "Pakhtakor": "棉农",
+    "China W": "中国女足",
+    "Hong Kong W": "中国香港女足",
+}
+TEAM_NAME_ZH.update(_AFC_ASIAD_2026_09)
+
+
 # HARVEST-BEGIN
 _JINGCAI_VOTE_HARVEST: dict[str, str] = {
 }
@@ -1504,5 +1541,7 @@ def coverage_by_league() -> Dict[str, int]:
         "JINGCAI_VOTE_HARVEST":    len(_JINGCAI_VOTE_HARVEST),
         # 2026-08-09 — 解放者杯 + 沙职,**比分锚定**产出(见上方长注释).
         "LIBERTADORES_SAUDI":      len(_LIBERTADORES_SAUDI_2026_08),
+        # 2026-09-14 — 亚冠精英 + 亚运女足(横幅「整个联赛全解不出」).
+        "AFC_ASIAD_2026_09":       len(_AFC_ASIAD_2026_09),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }
