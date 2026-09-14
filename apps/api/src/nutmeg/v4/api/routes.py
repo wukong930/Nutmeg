@@ -2709,6 +2709,13 @@ _CUP_MARKET_COMPETITIONS = [
     #                key 休赛期 active=False,自激活前会走「竞彩在售+手填」那条路。
     "COPA_LIBERTADORES", "UEFA_SUPER_CUP", "SAU_PRO_LEAGUE",
     "NED_EERSTE_DIVISIE", "EFL_CUP",
+    # 补亚冠精英(2026-09-14 owner 授权)。⭐ 它**不是**因为数据源没给才缺席 ——
+    # AF 的 Pinnacle 镜像一直有线(6 场里 5 场),缺的是这张表上的一行:
+    # 不在名单上,定价引擎根本不会去取。判据教训:说「没有 X」之前分清
+    # 「库里没有」和「源里没有」(odds_snapshots 没有它 = 我们没采,不是源没有)。
+    # ⚠️ 竞彩对亚冠常**只开让球不开 1X2**(2026-09-14 那场就是:had=None,
+    #    hhad=2.29/3.90/2.29 让球 −2,且**不可单关**)⇒ 多数腿要走让球重构那条链。
+    "AFC_CL_ELITE",
     # 补韩国杯(2026-08-18 owner)。线源实测(⛔ 别外推,逐条数过):
     #   · Odds API → 175/175 sport 全表核过,韩国只有 `soccer_korea_kleague1`,
     #                **没有** cup 这个 sport ⇒ 这条路对 294 永远空;

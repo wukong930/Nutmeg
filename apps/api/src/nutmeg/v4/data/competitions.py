@@ -257,6 +257,30 @@ CUP_COMPETITIONS: dict[str, Competition] = {
     # ⚠️ 三个 AF id 全部 **live 核过**(`/leagues?search=`),不是凭印象:
     # 「Super Cup」一个词搜出 **59 条**(德/土/埃/意/比/智/捷/沙都有),
     # 认 UEFA 那个必须看 id=531 + country=World。猜名字在这里必错。
+    "AFC_CL_ELITE": Competition(
+        code="AFC_CL_ELITE",
+        display_zh="亚冠精英 (AFC 冠军联赛精英)",
+        display_en="AFC Champions League Elite",
+        competition_type="club_cup",
+        api_football_id=17,          # 缓存实证:league id=17 name="AFC Champions League Elite"
+                                     # (country=World)。⚠️ 亚冠乙=18,别串。
+        has_knockouts=True,
+        has_group_stage=True,
+        has_two_legged_ties=True,
+        notes=(
+            "2026-09-14 owner 授权注册。竞彩写作「亚冠精英」——**实证**自 "
+            "`jingcai_odds_history.league_cn`(3435 行;同库另有「亚冠乙」565 行,"
+            "对应 AF id=18,本条不含它)。不是照全名意译的。"
+            "赛季历:111 个比赛日 2021-09→2026-08,**1/6/7 月全空、8 月→次年 5 月**"
+            " ⇒ 秋春制,**不**进 CALENDAR_YEAR_LEAGUES(同荷乙/沙职;"
+            "与解放者杯的日历年制相反 —— 那条注释里的坑在这里不适用)。"
+            "赔率来源:Odds API **没有**这个 sport key(故意不补,见 odds_api 注释),"
+            "只走 AF 的 Pinnacle 镜像 —— 实测 2026-09-14/15 那 6 场里 **5 场有 Pinnacle**"
+            "(fixture 1629915 = 9 家含 Pinnacle,1.22/6.70/10.04)。"
+            "⚠️ 抽水 6.85% 远高于 Pinnacle 常态(~2-3%)⇒ 像赛前快照而非锐利收盘线,"
+            "拿它当锚前值得先量几场 CLV。"
+        ),
+    ),
     "COPA_LIBERTADORES": Competition(
         code="COPA_LIBERTADORES",
         display_zh="解放者杯 (南美)",

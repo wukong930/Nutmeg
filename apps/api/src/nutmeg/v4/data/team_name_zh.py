@@ -1461,6 +1461,81 @@ _AFC_ASIAD_2026_09: dict[str, str] = {
 TEAM_NAME_ZH.update(_AFC_ASIAD_2026_09)
 
 
+# -- 亚冠精英 36 支 · **比分锚定**产出(2026-09-14 owner 授权注册进市场模式后)--
+#
+# ## 为什么需要这一批
+# 注册完跑 `registry_coverage`,报硬缺口:AF 当季 36 支队里 **19 支中文字典打不中**。
+# ⛔ 不能往 `NO_JINGCAI_ANCHOR` 里塞 —— 那个白名单的语义是「竞彩**从未上架过**」,
+#    而实测竞彩上架过它们,量还很大(上海海港 380 行、布里兰 303 行、柔佛 255 行)。
+#    房子的规矩写得很死:「上架过而解析不出,那是**真缺口**,该去跑锚定器」。
+#
+# ## ⛔ 那条最顺手的路是死的
+# 「档案里有中英文两列,配对就行」—— **不成立**。实测 `jingcai_odds_history` 里
+# 亚冠精英带英文的 24 支,**24/24 的英文恰好等于我们词典现在解出来的值**,零条独立。
+# 那一列是我们自己的词典回流(同 `jingcai-vote-en-side-is-our-own-dict`),
+# 对解不出的队永远零证据 —— 能解出的才会被写上英文。
+#
+# ## 锚是比分,不是翻译
+# `scripts/anchor_team_names_by_score.py`:竞彩档案(日期,中文,比分)× AF fixtures
+# (UTC 日期,英文,比分),±1 天窗内同比分**恰好一场**才算命中,三道闸全过才收。
+# 本轮:AF 已完赛 681 场 × 竞彩带比分 232 场 -> 唯一命中 181 场 -> **三闸全过 62 条**
+# (其中 36 条是词典里没有的,即下表)。
+# ⚠️ 跑之前**回填了 AF 历史赛程**(league=17,2021-2026 六季 826 场)—— 原缓存只有
+#    2026-08 起的 20 场,和竞彩档案只重叠 1 天,离线一条都锚不出来。
+#
+# ## 🚨 顺手修了锚定器的一个闸漏
+# 第二轮消歧那段**没检查「这个名字第一轮已经是冲突」**,于是被闸③ 判过死刑的中文名
+# 只要第二轮找到一个候选就会复活进 ✅,而它同时还印在冲突列表里。
+# 活例就是本轮的「波斯波利」—— 冲突计数里 Nagoya Grampus 和 Persepolis FC 各 1,
+# 它却出现在 ✅ 里。修完 63->62,✅ 与冲突的交集为空;对照组(巴甲)仍 21/21 100%。
+# ⭐ 第一轮的 `闸②′` 一直是对的 —— 两条传播路径只有一条守了闸,又是
+#   `the-twin-already-has-the-fix` 那族。
+#
+# ✅ 撞车:36 个中文名与 36 个英文键在 TEAM_NAME_ZH 值集 / _ZH_OVERRIDES / _ZH_TO_EN
+#    里**全部 0 占用**。⛔ 闸③ 作废的 2 条(利雅新月、波斯波利)**没有**收。
+# 注:`xN` = 被多少场独立比赛指向同一答案(闸② 要求 >=2;x1 的是同场传播救回的,
+#    确定性来自「同场另一侧已钉死」而不是次数)。
+_AFC_CL_ELITE_SCORE_ANCHORED: dict[str, str] = {
+    "Buriram United": "布里兰",                        # x14
+    "Shandong Luneng": "山东泰山",                     # x13
+    "Al Sadd": "多哈萨德",                             # x12
+    "SHANGHAI SIPG": "上海海港",                       # x12
+    "Johor Darul Takzim FC": "柔佛",                   # x10
+    "Shabab Al Ahli Dubai": "迪拜国青",                # x10
+    "Al Ain": "阿布艾因",                              # x8
+    "Shanghai Shenhua": "上海申花",                    # x8
+    "Al-Duhail SC": "多哈杜海",                        # x7
+    "Nasaf": "纳萨夫",                                 # x7
+    "Al Wahda FC": "阿布联",                           # x5
+    "Al-Gharafa": "赖扬加拉",                          # x5
+    "Al-Rayyan SC": "赖扬",                            # x5
+    "Sharjah FC": "沙迦",                              # x5
+    "Al Shorta": "鲁警察",                             # x4
+    "Chengdu Better City": "成都蓉城",                 # x4
+    "Hangzhou Greentown": "浙江FC",                  # x4
+    "Al-Wasl FC": "迪拜连接",                          # x3
+    "BG Pathum United": "巴吞联",                      # x3
+    "Bangkok United": "曼谷联",                        # x3
+    "Daegu FC": "大邱FC",                            # x3
+    "Sepahan FC": "塞帕汉",                            # x3
+    "Esteghlal FC": "德独立",                          # x2
+    "Foolad FC": "胡齐斯坦",                           # x2
+    "Ha Noi": "河内FC",                              # x2
+    "Kaya": "伊洛卡雅",                                # x2
+    "Navbahor": "纳曼干",                              # x2
+    "Olmaliq": "阿马雷克",                             # x2
+    "Wuhan Three Towns": "武汉三镇",                   # x2
+    "Al Quwa Al Jawiya": "巴空军",                     # x1
+    "Al-Jazira": "贾兹拉",                             # x1
+    "Istiqlol": "杜独立",                              # x1
+    "Jeonnam Dragons": "全南天龙",                     # x1
+    "Kitchee": "香港杰志",                             # x1
+    "Mumbai City": "孟买城",                           # x1
+    "Nassaji Mazandaran": "纳萨吉",                    # x1
+}
+TEAM_NAME_ZH.update(_AFC_CL_ELITE_SCORE_ANCHORED)
+
+
 # HARVEST-BEGIN
 _JINGCAI_VOTE_HARVEST: dict[str, str] = {
 }
@@ -1543,5 +1618,7 @@ def coverage_by_league() -> Dict[str, int]:
         "LIBERTADORES_SAUDI":      len(_LIBERTADORES_SAUDI_2026_08),
         # 2026-09-14 — 亚冠精英 + 亚运女足(横幅「整个联赛全解不出」).
         "AFC_ASIAD_2026_09":       len(_AFC_ASIAD_2026_09),
+        # 2026-09-14 — 亚冠精英 36 支,比分锚定产出(见上方长注释).
+        "AFC_CL_ELITE_ANCHORED":   len(_AFC_CL_ELITE_SCORE_ANCHORED),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }

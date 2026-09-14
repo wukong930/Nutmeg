@@ -65,6 +65,9 @@ MARKET_MODE_LEAGUES: tuple[str, ...] = (
     #   · 沙职     → sport key 有但休赛期 active=False;⚠️ AF **不给赔率**(上赛季已完赛
     #                的 5 场也 0/5)⇒ Odds API 是它唯一的鲜线源,字典缺 18。
     "COPA_LIBERTADORES", "UEFA_SUPER_CUP", "SAU_PRO_LEAGUE",
+    # 补(2026-09-14 owner)。预期 warn:Odds API **无**亚冠 sport key(同荷乙/欧超杯),
+    # AF 的 Pinnacle 镜像供线(实测 6 场里 5 场有 Pinnacle)。
+    "AFC_CL_ELITE",
 )
 
 #: 已服务但**故意不进**覆盖率检查的赛事 → 理由。
@@ -165,6 +168,24 @@ NO_CHINESE_NAME_EXISTS: frozenset[str] = frozenset({
 #: ⛔ 往这里加名字前先问:这支队竞彩真的没上架过吗?(去 jingcai_odds_history 数一遍。)
 #: 如果上架过而解析不出,那是**真缺口**,该去跑锚定器,不是往这里加一行。
 NO_JINGCAI_ANCHOR: dict[str, tuple[str, ...]] = {
+    # -- 亚冠精英(2026-09-14 owner 授权注册)--------------------------------
+    # 注册后覆盖率报 19/36 队打不中。**先跑了锚定器**(这个白名单的规矩要求的):
+    # 回填 AF 历史赛程 826 场 -> 比分锚定三闸全过 62 条(36 条是新的)-> 19 降到 8,
+    # 再补 2 条写法变体(中央海岸/费萨里)进 `_ZH_OVERRIDES`。剩下的就是这 8 支。
+    #
+    # ⛔ 逐支核实过「竞彩到底上架过没有」,不是锚不到就往这里扔。
+    #   判据 = 该队每一场**已完赛**的 AF 比赛日 ±1 天内,竞彩亚冠精英档案里
+    #   有没有同比分的场次。7 支是 **0 候选** ⇒ 竞彩从未上架:
+    #     Beijing Guoan(AF 14 场/完赛 6)· Ratchaburi(15/6)· Port FC(16/8)
+    #     Al Shamal(8/0)· Neftchi(8/0)· Al Hussein(1/1)· Cong An Nhan Dan(9/1)
+    #   ⚠️ Tractor Sazi 的粗筛有 83 个候选,但那只是「1:0 这种比分撞车多」,不是证据。
+    #     决定性检验:补完之后竞彩档案 69 支里**只剩 3 支**解不出
+    #     (中央海岸/费萨里已补,波斯波利闸③ 作废)—— **Tractor Sazi 不在其中**
+    #     ⇒ 竞彩在这项赛事里从没上架过它。
+    "AFC_CL_ELITE": (
+        "Beijing Guoan", "Tractor Sazi", "Ratchaburi", "Port FC",
+        "Al Shamal", "Neftchi", "Al Hussein", "Công An Nhân Dân",
+    ),
     "COPA_LIBERTADORES": (
         "Argentinos JRS", "Universidad Catolica", "Club Guarani", "2 de Mayo",
         "O'Higgins", "Huachipato", "Juventud", "Liverpool Montevideo",
