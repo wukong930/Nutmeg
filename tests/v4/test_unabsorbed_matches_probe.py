@@ -187,23 +187,37 @@ class TestTouchingFilesCannotSilenceIt:
 def test_the_real_tree_is_currently_a_true_zero():
     """拿真源树核一次(存在才跑)。
 
-    2026-08-05 实测:football-data 语料止于 2026-05-31 = cutoff,cutoff 之后
-    **0 场**。所以「artifact 该重训了」当时是错的 —— 重训会一行都加不进去。
-    这条红了说明新赛季数据进来了,那时重训才真的买得到东西。
+    ## 三次读数,同一条探针
+
+    · 2026-08-05  语料止于 2026-05-31 = cutoff,之后 **0 场** ⇒ 当时「该重训了」是错的。
+    · 2026-09-11  拉了赛季 2627 ⇒ **503 场 / 可训练 0**。探针喊「重训能买到东西」,
+                  而那对 booster 是空话(见下面 `TestBacklogThatCannotBeTrainedOn`)。
+    · 2026-09-15  **换盘后**(cutoff 2026-06-01 → 2026-09-15)⇒ 又回到 **0 / 0**。
+                  那次重训买到的是 `team_state`(445→466 对,231 对状态变了),
+                  不是 booster —— 训练行反而少了 11 行(验证窗 227→340 天挪走的)。
+
+    ⇒ **「积压 = 0」在这条探针上有两种完全不同的含义**:「没有新比赛」和
+      「新比赛都已吸收」。它分不出来,也不需要分 —— 判据是「重训还能不能买到东西」。
     """
     src = Path("data/historical_sources/football_data_co_uk")
     art = Path("data/v4_model_cat")
     if not (src.exists() and (art / "metadata.json").exists()):
         pytest.skip("生产数据不在(CI)")
     cutoff = _training_cutoff(art)
-    assert cutoff == "2026-06-01", f"cutoff 变了({cutoff})— 本文件的叙述要重查"
+    # ⚠️ 2026-09-15 —— 这里原本写死 `cutoff == "2026-06-01"`。那条**每次重训都会红**,
+    #    而「重训了」是例行事件、没有信息量;它这次确实把我叫回来重查叙述了,
+    #    但代价是它会一直这么叫。⇒ 改成只断言**格式合法**,把信号留给下面那条。
+    #    (同 `hardcoded-guard-lists-rot`:写死的值会让护栏变成噪声源。)
+    assert cutoff and len(cutoff) == 10 and cutoff[4] == "-", f"cutoff 形状不对:{cutoff}"
     counted = _count_matches_after(src, cutoff)
     assert counted is not None, "探针读不了真源树"
     n_total, n_trainable = counted
     assert n_total >= 0 and n_trainable >= 0
-    # 🚨 2026-09-11 的事实:源树里 503 场新比赛,可训练 0 场(football-data 自 2627
-    #    起不发 Pinnacle 列)。这条红了 = 上游把列加回来了,或者换了锚 ⇒ 重训才真
-    #    的买得到东西,届时本文件的叙述要重查。
+    # 🚨 **有信号的那条**:可训练行必须是 0。
+    #    football-data 自赛季 2627 起把 Pinnacle(`PS*`/`PSC*`)整组列删了,而
+    #    `train.py` 的训练行要求 `psc_home.notna()` ⇒ 结构上不可能再长出可训练行。
+    #    这条红了 = **上游把列加回来了,或者换了锚** —— 那才是值得被叫醒的事,
+    #    届时本文件的叙述要重查。它不随重训漂移(与 cutoff 无关)。
     assert n_trainable == 0, (
         f"可训练行从 0 变成 {n_trainable} 了 —— 上游发 Pinnacle 了?去重读这条的叙述")
 

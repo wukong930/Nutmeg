@@ -78,6 +78,12 @@ data/v4_model/experiments/
 data/v4_model/
 data/v4_model_cat/
 data/v4_model_cat_lineups/
+# 🚨 2026-09-15 —— 换盘时发现:上面三行是**精确目录名**,而备份/退役盘叫
+# `data/v4_model_cat.bak-<ts>-<why>/`、`data/v4_model_cat.superseded-<ts>/`
+# ⇒ 当时有 **4 个 artifact 目录**在这个**公开仓库**里既未忽略也未提交。
+# 从没漏出去(一直是 `??`),但一次 `git add -A` 就会把 booster 二进制推上公网。
+# ⇒ 按前缀收口,不再逐个目录名维护(同「写死名单的护栏会悄悄失效」)。
+data/v4_model*/
 
 # Local SQLite databases (observation layer, dev only)
 *.db
