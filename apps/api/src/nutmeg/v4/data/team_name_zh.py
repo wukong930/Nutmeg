@@ -1575,6 +1575,31 @@ _AFC_CL_TWO_SCORE_ANCHORED: dict[str, str] = {
 TEAM_NAME_ZH.update(_AFC_CL_TWO_SCORE_ANCHORED)
 
 
+# -- 亚运男足(2026-09-15 横幅:「整个联赛的在售场次全部解不出:亚运男足」)--
+#
+# 在售**只有 1 场**(周二003),两侧都解不出 ⇒ 整联赛 0%,横幅据此点名整个联赛。
+#
+# ⭐ 第①档锚(当前在售那场本身),最强的一种:
+#   竞彩 2026-09-15 10:30Z · 卡塔尔亚足 vs 韩国亚运男足
+#   AF   `Asian Games` 同日 **只有 3 场**(06:30 / 10:00 / 10:30),
+#        10:30 那一格**唯一**:fixture 1639451 `Qatar U23` vs `Korea Republic U23`
+#        (team id 10954 / 10177)。开球时刻 + 赛事 + **主客顺序**三者同时对上。
+#   ⇒ 对手没有第二种可能;名字对应由**位置**确定,不是我按 Qatar=卡塔尔 翻的。
+#
+# ⚠️ 亚运男足是 **U23**(女足那边是成年队,见上面 `China W` 那条)。AF 显式区分
+#    年龄组,所以 `Qatar U23` / `Korea Republic U23` 和词典里已有的成年队
+#    `Qatar`→卡塔尔、`Korea Republic`→韩国 是**四条互不冲突**的映射。
+#    撞车检查:4 个中文串(含 2 个简称)与 2 个英文键全部 0 占用。
+#
+# ⚠️ 与亚运**女**足不同,这项赛事 AF 有完整赛程(14 场 U23)⇒ 名字补完是**能 join 的**。
+#    但 `odds_snapshots` 仍无 `ASIAN_GAMES` 覆盖 ⇒ 依旧算不出 EV,那是另一条链。
+_ASIAD_MEN_2026_09: dict[str, str] = {
+    "Qatar U23": "卡塔尔亚足",
+    "Korea Republic U23": "韩国亚运男足",
+}
+TEAM_NAME_ZH.update(_ASIAD_MEN_2026_09)
+
+
 # HARVEST-BEGIN
 _JINGCAI_VOTE_HARVEST: dict[str, str] = {
 }
@@ -1661,5 +1686,7 @@ def coverage_by_league() -> Dict[str, int]:
         "AFC_CL_ELITE_ANCHORED":   len(_AFC_CL_ELITE_SCORE_ANCHORED),
         # 2026-09-14 — 亚冠乙 16 支,同一套比分锚定.
         "AFC_CL_TWO_ANCHORED":     len(_AFC_CL_TWO_SCORE_ANCHORED),
+        # 2026-09-15 — 亚运男足(fixture 身份锚).
+        "ASIAD_MEN_2026_09":       len(_ASIAD_MEN_2026_09),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }

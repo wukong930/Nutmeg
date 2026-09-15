@@ -775,6 +775,14 @@ _ZH_OVERRIDES: dict[str, str] = {
     #   (Nagoya Grampus / Persepolis FC 各 1),整条作废。宁缺勿错。
     "中央海岸": "Central Coast Mariners",
     "费萨里": "Al-Faisaly FC",
+    # -- 亚运男足(2026-09-15 横幅)· **简称**那一半 ------------------------
+    # 全称已在 team_name_zh(`Qatar U23`/`Korea Republic U23`,锚见那边的长注释)。
+    # 竞彩这场同时给两种长度:`卡塔尔亚足`/`卡塔尔亚`、`韩国亚运男足`/`韩国亚`。
+    # ⚠️ 简称短到只剩「卡塔尔亚」「韩国亚」—— 正因为短才更要走锚而不是眼看:
+    #    撞车检查过,两串在 TEAM_NAME_ZH 值集 / 本表 / _ZH_TO_EN 里 0 占用,
+    #    也不是任何已有中文名的子串。
+    "卡塔尔亚": "Qatar U23",
+    "韩国亚": "Korea Republic U23",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

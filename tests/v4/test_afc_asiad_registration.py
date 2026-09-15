@@ -394,3 +394,97 @@ def test_the_archive_english_column_is_our_own_dictionary_flowing_back() -> None
     assert not independent, (
         f"档案里出现了**独立**于我们词典的英文 {independent[:5]} —— "
         "那条配对路重新可走了,回来重判这 19 支")
+
+
+class TestAsianGamesMenAnchored:
+    """🏟️ 亚运**男**足(2026-09-15 横幅「整个联赛的在售场次全部解不出」)。
+
+    ## 和亚运女足的关键差别
+
+    女足那边 AF fixture 缓存**根本没有**这个赛事 ⇒ 只能锚队实体、join 不到东西。
+    男足有:`Asian Games` 里是 14 场 **U23**(见 `TestTheHonestLimits`)。
+    ⇒ 这批是**第①档锚**(当前在售那场本身),最强的一种。
+
+    ## 锚
+
+        竞彩  2026-09-15 10:30Z · 卡塔尔亚足 vs 韩国亚运男足(在售**仅此 1 场**)
+        AF    `Asian Games` 同日 3 场(06:30/10:00/**10:30**),10:30 那格**唯一**:
+              fixture 1639451 `Qatar U23` vs `Korea Republic U23`
+
+    开球时刻 + 赛事 + **主客顺序**三者同时对上 ⇒ 名字对应由**位置**确定,
+    不是按 Qatar=卡塔尔 翻的。
+
+    ⚠️ 补完仍**算不出 EV**:`ASIAN_GAMES` 不在市场模式注册表、也不在 odds 覆盖里。
+    """
+
+    PAIRS = {"卡塔尔亚足": "Qatar U23", "卡塔尔亚": "Qatar U23",
+             "韩国亚运男足": "Korea Republic U23", "韩国亚": "Korea Republic U23"}
+
+    @pytest.mark.parametrize("zh", sorted(PAIRS))
+    def test_both_spellings_resolve(self, zh: str) -> None:
+        assert zh_to_canonical(zh) == self.PAIRS[zh]
+
+    def test_the_senior_national_teams_are_untouched(self) -> None:
+        """🚨 U23 和成年队是 AF 里**不同的实体**。补 U23 不许动成年队那两条。"""
+        assert TEAM_NAME_ZH.get("Qatar") == "卡塔尔"
+        assert TEAM_NAME_ZH.get("Korea Republic") == "韩国"
+        assert zh_to_canonical("卡塔尔") == "Qatar"
+
+    def test_the_anchor_is_a_unique_fixture_at_that_kickoff(self) -> None:
+        """⭐ 断言挂在**被测对象**上:我们的映射必须等于 fixture 说的那两个名字。
+
+        (不是「缓存里写着 Qatar U23」—— 那是缓存的事实,改了词典它照样绿。)
+        """
+        rows = _af_rows()
+        slot = {r[4]: r for r in rows
+                if r[0] == "2026-09-15T10:30:00" and r[1] == "Asian Games"}
+        assert len(slot) == 1, f"该时刻该赛事不唯一({len(slot)} 场)⇒ 锚不成立"
+        _, _, home, away, *_ = next(iter(slot.values()))
+        assert zh_to_canonical("卡塔尔亚足") == home, f"主队锚到 {home!r}"
+        assert zh_to_canonical("韩国亚运男足") == away, f"客队锚到 {away!r}"
+
+    def test_the_abbreviations_went_to_the_override_table(self) -> None:
+        assert _ZH_OVERRIDES.get("卡塔尔亚") == "Qatar U23"
+        assert _ZH_OVERRIDES.get("韩国亚") == "Korea Republic U23"
+        assert "卡塔尔亚足" not in _ZH_OVERRIDES, "全称该走 team_name_zh(它还负责显示)"
+
+
+class TestNationalVariantsGetFlagsNotInitials:
+    """🏳️ 国家队的**年龄组 / 女足**变体原本掉进「队徽/字母缩写」那条路。
+
+    `_NATION_FLAG` 是**精确名**映射,`Qatar U23` 查不到 ⇒ 卡片上显示 "Qa"。
+
+    ⭐ 为什么用 4 条精确映射而不是「剥掉后缀再查」的通用规则:
+       实测全词典里剥后恰好等于国家名的**只有这 4 条、且 4 条全是真国家队**(零误判)。
+       但通用规则会给**俱乐部青年队**发国旗(AF 命名成 `<俱乐部> U19/U21`),
+       只要进来一支名字恰好等于国名的俱乐部青年队就静默错。
+       省 4 行不值这个风险 —— 同 [[guard-remedy-is-not-neutral]] 的「处方不是中立的」。
+    """
+
+    def _flags(self) -> dict:
+        import json
+        import subprocess
+        js = (REPO / "apps/api/src/nutmeg/v4/api/static/dashboard.html").read_text()
+        i = js.index("const _NATION_FLAG = {"); j = js.index("function teamLogo(name)")
+        src = js[i:j] + "\nconsole.log(JSON.stringify(_NATION_FLAG));"
+        r = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stderr[:1500]
+        return json.loads(r.stdout)
+
+    def test_the_four_variants_have_flags(self) -> None:
+        f = self._flags()
+        assert len(f) > 100, f"人口非平凡:只解析到 {len(f)} 个国家"
+        for name, flag in (("Qatar U23", "🇶🇦"), ("Korea Republic U23", "🇰🇷"),
+                           ("China W", "🇨🇳"), ("Hong Kong W", "🇭🇰")):
+            assert f.get(name) == flag, f"{name} 没有国旗(会退回字母缩写):{f.get(name)!r}"
+
+    def test_club_youth_teams_do_not_get_a_flag(self) -> None:
+        """🚨 这条是上面那个设计决定的**承重面**:通用剥后缀会把这些染上国旗。"""
+        f = self._flags()
+        for club in ("Roma U20", "Swansea City U21", "Jong PSV U21", "Bayern Munich W"):
+            assert club not in f, f"{club} 拿到了国旗 —— 俱乐部被当成国家了"
+
+    def test_the_senior_entries_still_there(self) -> None:
+        f = self._flags()
+        for n in ("Qatar", "Korea Republic", "China", "Hong Kong"):
+            assert f.get(n), f"{n} 的国旗掉了"
