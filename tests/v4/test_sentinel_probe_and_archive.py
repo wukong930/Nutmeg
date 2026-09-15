@@ -218,6 +218,16 @@ def _run(tmp_path, db, today):
          "--db", str(db), "--out", str(out), "--today", today,
          "--no-quota", "--no-supply", "--no-league-labels", "--no-trickle"],
         capture_output=True, text=True)
+    # 🚨 2026-09-15 —— 夹具的自我守卫要**分得出「报警」和「崩溃」**。
+    #    下面每条测试都写着 `assert rc == 1, "夹具没造出报警"`,而 Python
+    #    traceback **也是退出 1** ⇒ 那句断言会被一次崩溃满足,后面的判断全建在
+    #    错误前提上。实测踩到:加第 10 个报警类别时漏接了存档处那个 `_any_alarm`,
+    #    `zip(strict=True)` 正确地抛了 ValueError、main 崩了,而测试报的是
+    #    「报警轮没有另存」—— 指向了错误的地方,查了一圈才发现是崩溃。
+    #    ⇒ 同 `first-match-is-not-the-population` 的「对照实验的第一条断言是
+    #      『这个对照成立吗』」。
+    assert "Traceback (most recent call last)" not in r.stderr, (
+        "哨兵崩了(不是报警)——退出码 1 在这里是假信号:\n" + r.stderr[-1500:])
     return r.returncode, out, r
 
 

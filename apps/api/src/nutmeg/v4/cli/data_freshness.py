@@ -1137,6 +1137,116 @@ def check_training_source_season(
     return (info, alarms)
 
 
+#: 活 API 的基址(同 `snapshot_board._DEFAULT_BASE`;daemon 只绑 127.0.0.1)。
+_API_BASE = "http://127.0.0.1:8080/api/v4"
+
+
+def check_dict_vintage(
+    api_base: str = _API_BASE, *, timeout: float = 10.0,
+) -> tuple[list[str], list[str]]:
+    """活 daemon 的队名词典**是不是源码那一代** —— 「改了没重启」的结构约束。
+
+    ## 病史(2026-09-15,同一个坑第二次)
+
+    横幅点名 3 场竞彩比赛「队名解不出」,而其中 **2 场的映射前一天就已提交**
+    (`叻武里`/`北京国安`)。源码解得出,**活进程解不出** —— 因为那批只走了
+    「提交 / 推送」,没走「重启」,而 `_ZH_TO_EN` 是 **import 时建表**、
+    uvicorn 无 `--reload`。
+    ⇒ 症状是「横幅在点已经修好的名字」,而它和「真的还没修」**长得一模一样**。
+
+    ⭐ 口头纪律已经写在两处注释里(横幅端点的 docstring、横幅正文),仍然复发
+    ⇒ 按 `discipline-belongs-in-the-tool`:**口头说第二遍的纪律该变成代码里的拒绝**。
+
+    ## 判据:同缓存 · 同纯函数 · 两个进程
+
+    ⭐ 这是一个**零代理**的比较,不是「数条目数」那种语法代理:
+
+      · 源码侧:本进程 `fetch_lottery_matches(refresh=False, ttl_seconds=10**9)`
+        (**只认缓存、绝不发请求**)→ `summarize_unmapped`
+      · daemon 侧:`GET /observation/jingcai-unmapped` —— 它读**同一个缓存文件**、
+        调**同一个纯函数**
+
+    `home_en` 是 `fetch_lottery_matches` 在**读取时**用进程内词典填的 ⇒ 同样的输入、
+    同样的代码,两边结果不同**只可能**是词典代次不同。
+
+    ## 两条判据,严重程度不同
+
+    ① **daemon 解不出而源码解得出** ⇒ **报警**。这是会被看见的缺陷:
+       横幅正在点名已经修好的队,而人会照着它去补已经存在的条目。
+    ② 词典条目数不等但在售场次不受影响 ⇒ 只报 info。已提交未生效,
+       但今天没有人看得见 —— 按「统计量要算在**会被看见的人口**上」,不升级成报警。
+
+    ⚠️ **fail-soft 成「未查」而不是「没漂移」**:daemon 没起、端点改了形状、
+       缓存不在 —— 这三种都只出 info。把「查不了」折成「没问题」是本仓反复
+       踩过的那一类(同 `_trickle_recovery_line`、`curl-404-masquerades-as-empty-result`)。
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    info: list[str] = []
+    alarms: list[str] = []
+
+    def _get(path: str):
+        req = urllib.request.Request(f"{api_base}{path}", headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 — 固定本地地址
+            return json.loads(r.read().decode("utf-8"))
+
+    # ── 源码侧(本进程) ─────────────────────────────────────────────
+    try:
+        from nutmeg.v4.cli.ingest_sporttery import summarize_unmapped
+        from nutmeg.v4.data.sources.sporttery import fetch_lottery_matches
+        from nutmeg.v4.data.team_name_zh import TEAM_NAME_ZH
+
+        src_matches = fetch_lottery_matches(refresh=False, ttl_seconds=10**9)
+        src_n_dict = len(TEAM_NAME_ZH)
+    except Exception as exc:  # noqa: BLE001
+        return ([f"词典代次: **未查** — 源码侧读不了({type(exc).__name__})"], [])
+    if not src_matches:
+        return (["词典代次: **未查** — 没有竞彩缓存(等下次抓取)"], [])
+    src_bad = {(u["home_cn"], u["away_cn"]) for u in summarize_unmapped(src_matches)["unmapped"]}
+
+    # ── daemon 侧 ──────────────────────────────────────────────────
+    try:
+        live = _get("/observation/jingcai-unmapped")
+        live_dict = _get("/team-name-zh")
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
+        return ([f"词典代次: **未查** — 活 API 取不到({type(exc).__name__})"
+                 f";⚠️「查不了」不等于「没漂移」"], [])
+    if not live.get("ok"):
+        return ([f"词典代次: **未查** — 横幅端点说 {live.get('reason')!r}"], [])
+    live_bad = {(u.get("home_cn"), u.get("away_cn")) for u in (live.get("unmapped") or [])}
+    live_n_dict = len(live_dict) if isinstance(live_dict, dict) else None
+
+    # ── ① 会被看见的缺陷 ───────────────────────────────────────────
+    stale = live_bad - src_bad
+    regressed = src_bad - live_bad
+    info.append(f"词典代次: 在售 {len(src_matches)} 场 · 源码解不出 {len(src_bad)} · "
+                f"daemon 解不出 {len(live_bad)} · 词典条目 源码 {src_n_dict} / "
+                f"daemon {live_n_dict if live_n_dict is not None else '?'}")
+    if stale:
+        names = "、".join(f"{h}vs{a}" for h, a in sorted(stale)[:4])
+        alarms.append(
+            f"活 API 的队名词典**比源码旧**:{len(stale)} 场源码解得出而 daemon 解不出"
+            f"({names}{'…' if len(stale) > 4 else ''})。"
+            f"⇒ 横幅正在点名**已经修好**的队,照着它补会往词典里加重复条目。"
+            f"处方:**重启 API**(`launchctl kickstart -k gui/$UID/com.nutmeg.api_server`)"
+            f" —— `_ZH_TO_EN` 在 import 时建表,uvicorn 无 --reload")
+    if regressed:
+        names = "、".join(f"{h}vs{a}" for h, a in sorted(regressed)[:4])
+        alarms.append(
+            f"⛔ 反方向:{len(regressed)} 场 **daemon 解得出而源码解不出**({names})。"
+            f"这不是「没重启」,是源码里的映射被删/改坏了 —— 先查 git log,别重启")
+
+    # ── ② 已提交未生效,但今天看不见 ─────────────────────────────
+    if not stale and not regressed and live_n_dict is not None and live_n_dict != src_n_dict:
+        info.append(
+            f"  ⚠️ 词典条目数不等(源码 {src_n_dict} / daemon {live_n_dict},"
+            f"差 {src_n_dict - live_n_dict:+d})但**当前在售场次不受影响** ⇒ 只提醒不报警。"
+            f"下次重启自动生效")
+    return (info, alarms)
+
+
 #: 「行量断崖」监视的表 → 时间列。只放**有稳定日节律**的捕获表。
 #: ⛔ 别放 `jingcai_sp`(上架量本身随赛程波动)、`league_predictions`(赛程驱动)。
 _VOLUME_CLIFF_TABLES: dict[str, str] = {
@@ -1338,7 +1448,8 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date,
 
 #: 非零退出的五个驱动源。顺序 = 报告里的呈现顺序。
 _ALARM_KIND_LABELS = ("捕获表停更", "额度", "模型供应链", "联赛标签", "涓流",
-                       "行量断崖", "探针失明", "缺口曲线停更", "训练源树缺赛季")
+                       "行量断崖", "探针失明", "缺口曲线停更", "训练源树缺赛季",
+                       "词典未生效")
 
 #: 配额探针连续瞎多久算「失明」(小时)。哨兵一天跑 3 轮 ⇒ 24h 覆盖 3 轮:
 #: 单轮网络抖动**不会**误报(保留 2026-07-15 那条设计:抖动 ≠ 配额红线),
@@ -1437,7 +1548,8 @@ def _any_alarm(*groups) -> bool:
 
 def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
                      label_alarms, trickle_alarms, cliff_alarms=(),
-                     blind_alarms=(), gapcurve_alarms=(), season_alarms=()) -> str:
+                     blind_alarms=(), gapcurve_alarms=(), season_alarms=(),
+                     vintage_alarms=()) -> str:
     """→ 追加到报告末尾的「报警类别」行(全绿时返回空串)。
 
     ⭐ 2026-08-24 加。起因:桌面推送写死「捕获表停长,**某 cron 可能死了**」,
@@ -1452,7 +1564,7 @@ def alarm_kinds_line(crit_stale, quota_alarms, supply_alarms,
     """
     kinds = _alarm_kinds(crit_stale, quota_alarms, supply_alarms,
                          label_alarms, trickle_alarms, cliff_alarms, blind_alarms,
-                         gapcurve_alarms, season_alarms)
+                         gapcurve_alarms, season_alarms, vintage_alarms)
     if not kinds:
         return ""
     return ("\n\n报警类别: " + " · ".join(kinds)
@@ -1476,6 +1588,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="跳过模型供应链探针 (artifact/源树/parquet;缺目录本就自动跳过)")
     p.add_argument("--no-league-labels", action="store_true",
                    help="跳过联赛标签双轨探针 (劈开的写法 / 标签表不认识的联赛)")
+    p.add_argument("--no-vintage", action="store_true",
+                   help="跳过「活 API 词典代次」比对(默认查:daemon 是否比源码旧)")
     p.add_argument("--no-season", action="store_true",
                    help="跳过训练源树赛季探针(它可能向 football-data 发少量请求)")
     p.add_argument("--no-gapcurve", action="store_true",
@@ -1558,6 +1672,17 @@ def main(argv: list[str] | None = None) -> int:
                 f" — 当前赛季在不在**没有被检查**"
             ]
 
+    vintage_info: list[str] = []
+    vintage_alarms: list[str] = []
+    if not args.no_vintage:
+        try:
+            vintage_info, vintage_alarms = check_dict_vintage()
+        except Exception as exc:  # noqa: BLE001
+            vintage_alarms = [
+                f"词典代次探针自己炸了: {type(exc).__name__}: {exc}"
+                f" — 活 API 的词典是不是源码那一代**没有被检查**"
+            ]
+
     if args.porcelain:
         for s in statuses:
             status = "OK" if not s.stale else ("STALE" if s.critical else "OLD")
@@ -1591,6 +1716,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"GAPCURVE-STALL\t{q}")
         for q in season_info:
             print(f"TRAIN-SEASON\t{q}")
+        for q in vintage_info:
+            print(f"DICT-VINTAGE\t{q}")
+        for q in vintage_alarms:
+            print(f"DICT-VINTAGE-STALE\t{q}")
         for q in season_alarms:
             print(f"TRAIN-SEASON-GAP\t{q}")
     else:
@@ -1617,6 +1746,12 @@ def main(argv: list[str] | None = None) -> int:
                        "\n  ⚠️ mtime 量「多久没进新文件」,**不是**「最新赛季在不在」")
             report += "".join(f"\n  · {q}" for q in season_info)
             report += "".join(f"\n  ✗ {q}" for q in season_alarms)
+        if vintage_info or vintage_alarms:
+            report += ("\n\n  — 活 API 词典代次(2026-09-15:横幅在点**已经修好**的队名)—"
+                       "\n  ⚠️ `_ZH_TO_EN` 在 import 时建表、uvicorn 无 --reload"
+                       " ⇒ 改了词典不重启 = 源码好了而进程还旧")
+            report += "".join(f"\n  · {q}" for q in vintage_info)
+            report += "".join(f"\n  ✗ {q}" for q in vintage_alarms)
         if gapcurve_info or gapcurve_alarms:
             report += ("\n\n  — 竞彩队名缺口曲线(2026-08-20 起有历史,09-04 才补上读者)—"
                        "\n  ⚠️ 它测「名字解不解得出」,**不测盘面有没有价**;只对停更报警,率不判闸")
@@ -1648,7 +1783,7 @@ def main(argv: list[str] | None = None) -> int:
             #    这份只会被下一次**报警**覆盖。
             if _any_alarm(crit_stale, quota_alarms, supply_alarms, label_alarms,
                           trickle_alarms, cliff_alarms, blind_alarms,
-                          gapcurve_alarms, season_alarms):
+                          gapcurve_alarms, season_alarms, vintage_alarms):
                 ap = alarm_path_for(args.out)
                 if ap:
                     try:
@@ -1672,11 +1807,12 @@ def main(argv: list[str] | None = None) -> int:
     record_run(history,
                kinds=_alarm_kinds(crit_stale, quota_alarms, supply_alarms,
                                   label_alarms, trickle_alarms, cliff_alarms,
-                                  blind_alarms, gapcurve_alarms, season_alarms),
+                                  blind_alarms, gapcurve_alarms, season_alarms,
+                                  vintage_alarms),
                probe_ok=probe_ok, now=now)
     return 1 if _any_alarm(crit_stale, quota_alarms, supply_alarms, label_alarms,
                            trickle_alarms, cliff_alarms, blind_alarms,
-                           gapcurve_alarms, season_alarms) else 0
+                           gapcurve_alarms, season_alarms, vintage_alarms) else 0
 
 
 if __name__ == "__main__":
