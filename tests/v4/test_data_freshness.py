@@ -81,7 +81,16 @@ def _all_today():
     return fresh
 
 
-# ⚠️ 下面每个 main() 调用都必须带 --no-quota,别删。
+# ⚠️ 下面每个 main() 调用都必须带 --no-quota **和 --no-vintage**,别删。
+#
+# 2026-09-16 补 `--no-vintage`:它是哨兵里**第二个默认往进程外发请求**的探针
+# (比对活 daemon 的队名词典代次)。接线当天全绿 —— 因为活 daemon 恰好和源码同代;
+# 两天后改了词典还没重启,它**正确地**报警,于是**本文件 10 条与它无关的测试一起红**,
+# 报错指向「存档没写」「健康轮造不出来」这类错误的地方,查了一圈才归因对。
+# ⇒ 教训与下面 --no-quota 那段**逐字相同**,只是换了一个探针 ——
+#   `tests/v4/test_dict_vintage_probe.py::TestTheSentinelStaysHermeticUnderTestFlags`
+#   现在把它做成了**中心化守卫**:哨兵在测试参数下发任何出站请求即红,
+#   下一个出站探针(或某条测试忘了关它)会在那里一次性被抓住。
 # 2026-07-15:`main()` 的返回码是 `1 if (crit_stale or quota_alarms) else 0`,而配额探针
 # 打的是【线上】AF/Odds API。于是这些本该只测「新鲜度逻辑」的单元测试被真实世界耦合了:
 #   · Odds API 月配额耗尽(credit 0)那天,断言 ==0 的两个直接转红 —— 跟被测逻辑无关;
@@ -101,7 +110,7 @@ def test_all_fresh_exits_zero(tmp_path):
     db = _mk_db(tmp_path, _all_today())
     statuses = check_freshness(db, today=TODAY)
     assert all(not s.stale for s in statuses)
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-supply"]) == 0
+    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 0
 
 
 def test_critical_stale_exits_one(tmp_path):
@@ -113,7 +122,7 @@ def test_critical_stale_exits_one(tmp_path):
     db = _mk_db(tmp_path, rows)
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["odds_snapshots"].stale and by["odds_snapshots"].critical
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
 
 
 def test_closing_substream_stale_behind_fresh_table(tmp_path):
@@ -127,7 +136,7 @@ def test_closing_substream_stale_behind_fresh_table(tmp_path):
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert not by["odds_snapshots"].stale
     assert by["odds_snapshots[closing]"].stale and by["odds_snapshots[closing]"].critical
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
 
 
 def test_jc_open_substream_tracked_separately(tmp_path):
@@ -167,7 +176,7 @@ def test_listing_gap_alone_does_not_fail_the_gate(tmp_path):
     assert not by["jingcai_sp[open-heartbeat]"].stale, "心跳不该红 —— cron 活着"
     assert not by["jingcai_sp[open]"].critical, "上新场那条又变回 CRITICAL 了"
     assert main(["--db", str(db), "--today", "2026-06-17",
-                 "--no-quota", "--no-supply"]) == 0, (
+                 "--no-quota", "--no-vintage", "--no-supply"]) == 0, (
         "🚨 常态空档让体检失败了 —— 这正是 2026-08-18 的假红")
 
 
@@ -184,7 +193,7 @@ def test_a_truly_dead_open_cron_still_fails_the_gate(tmp_path):
     assert by["jingcai_sp[open-heartbeat]"].stale
     assert by["jingcai_sp[open-heartbeat]"].critical, "心跳必须 CRITICAL,否则不 gate"
     assert main(["--db", str(db), "--today", "2026-06-17",
-                 "--no-quota", "--no-supply"]) == 1, "cron 真死了却没让体检失败"
+                 "--no-quota", "--no-vintage", "--no-supply"]) == 1, "cron 真死了却没让体检失败"
 
 
 def test_sister_db_missing_is_critical_stale(tmp_path):
@@ -192,7 +201,7 @@ def test_sister_db_missing_is_critical_stale(tmp_path):
     (tmp_path / "score_ev_forward.db").unlink()
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["score_ev_flags"].stale and by["score_ev_flags"].critical
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
 
 
 def test_heartbeat_written_even_when_stale(tmp_path):
@@ -203,7 +212,7 @@ def test_heartbeat_written_even_when_stale(tmp_path):
     db = _mk_db(tmp_path, rows)
     hb = tmp_path / HEARTBEAT_FILENAME
     assert not hb.exists()
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
     assert hb.exists() and hb.read_text().strip()
 
 
@@ -214,7 +223,7 @@ def test_seasonal_old_does_not_gate(tmp_path):
     db = _mk_db(tmp_path, rows)
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["league_predictions"].stale and not by["league_predictions"].critical
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-supply"]) == 0
+    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 0
 
 
 def test_within_cadence_not_stale(tmp_path):
@@ -241,7 +250,7 @@ def test_missing_critical_table_is_stale(tmp_path):
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["odds_snapshots"].stale  # missing entirely → treated as stale
     assert by["odds_snapshots"].rows == 0
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
 
 
 def test_empty_table_is_stale(tmp_path):
@@ -258,14 +267,14 @@ def test_empty_table_is_stale(tmp_path):
     db = _mk_db(tmp_path, rows)
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["jingcai_sp"].stale and by["jingcai_sp"].days_stale is None
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
 
 
 def test_porcelain_format(tmp_path, capsys):
     db = _mk_db(tmp_path, _all_today())
     # --no-quota:本测试只管输出【格式】。放开探针会去打线上 API(慢+依赖网络),
     # 且配额告警行可能混进正在解析的 porcelain 输出里。
-    main(["--db", str(db), "--today", "2026-06-17", "--porcelain", "--no-quota", "--no-supply"])
+    main(["--db", str(db), "--today", "2026-06-17", "--porcelain", "--no-quota", "--no-vintage", "--no-supply"])
     out = capsys.readouterr().out
     assert "OK\todds_snapshots\t" in out
     assert "OK\todds_snapshots[closing]\t" in out
@@ -279,7 +288,7 @@ def test_porcelain_format(tmp_path, capsys):
 def test_missing_db_exits_one(tmp_path, capsys):
     # --no-quota:今天库不存在会早退返回 1,加不加都过。但【配额告警同样返回 1】——
     # 万一哪天早退逻辑坏了,这条会靠配额"过"= 假绿。关掉探针才是真在测早退。
-    assert main(["--db", str(tmp_path / "nope.db"), "--no-quota", "--no-supply"]) == 1
+    assert main(["--db", str(tmp_path / "nope.db"), "--no-quota", "--no-vintage", "--no-supply"]) == 1
 
 
 def test_epoch_timestamp_handled(tmp_path):
@@ -332,7 +341,7 @@ def test_interior_gap_does_not_gate(tmp_path):
     rows["odds_snapshots[closing]"] = ["2026-06-05", "2026-06-16", "2026-06-17"]
     db = _mk_db(tmp_path, rows)
     assert main(["--db", str(db), "--today", "2026-06-17",
-                 "--no-quota", "--no-supply"]) == 0
+                 "--no-quota", "--no-vintage", "--no-supply"]) == 0
 
 
 def test_short_gaps_below_threshold_stay_quiet(tmp_path):
@@ -373,7 +382,7 @@ def test_gap_emitted_in_porcelain(tmp_path, capsys):
     rows["odds_snapshots[closing]"] = ["2026-06-05", "2026-06-16", "2026-06-17"]
     db = _mk_db(tmp_path, rows)
     main(["--db", str(db), "--today", "2026-06-17", "--porcelain",
-          "--no-quota", "--no-supply"])
+          "--no-quota", "--no-vintage", "--no-supply"])
     gap_lines = [ln for ln in capsys.readouterr().out.splitlines()
                  if ln.startswith("GAP\t")]
     # 子流的行与整表的行都会出现:_mk_db 把 closing 行写进同一张 odds_snapshots,
@@ -411,7 +420,7 @@ class TestSupplyProbeFailureIsNotSilence:
         self._boom(monkeypatch)
         db = _mk_db(tmp_path, _all_today())
 
-        rc = main(["--db", str(db), "--today", "2026-06-17", "--no-quota"])
+        rc = main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage"])
 
         out = capsys.readouterr().out
         assert "RuntimeError" in out and "没有被检查" in out, (
@@ -425,7 +434,7 @@ class TestSupplyProbeFailureIsNotSilence:
         self._boom(monkeypatch)
         db = _mk_db(tmp_path, _all_today())
 
-        rc = main(["--db", str(db), "--today", "2026-06-17", "--no-quota"])
+        rc = main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage"])
 
         assert (tmp_path / HEARTBEAT_FILENAME).exists(), "心跳仍要写:哨兵确实跑过"
         assert rc != 0, "而退出码必须说「没事」不成立"
@@ -436,4 +445,4 @@ class TestSupplyProbeFailureIsNotSilence:
         self._boom(monkeypatch)
         db = _mk_db(tmp_path, _all_today())
         assert main(["--db", str(db), "--today", "2026-06-17",
-                     "--no-quota", "--no-supply"]) == 0
+                     "--no-quota", "--no-vintage", "--no-supply"]) == 0

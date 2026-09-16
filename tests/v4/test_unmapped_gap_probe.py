@@ -250,7 +250,7 @@ class TestWiredIntoTheSentinel:
     所以下面每条都先断言「不动它的时候是 0」,再断言「动了它变 1」。
     """
 
-    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-supply", "--no-trickle")
+    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply", "--no-trickle")
 
     def _green_db(self, tmp_path):
         from .test_data_freshness import _all_today, _mk_db

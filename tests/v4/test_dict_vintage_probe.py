@@ -207,3 +207,67 @@ class TestWiredIntoTheSentinel:
         monkeypatch.setattr(df, "check_dict_vintage", lambda *a, **k: ([], ["合成:不该出现"]))
         rc = df.main(["--db", str(db), *self._ARGS, "--no-vintage"])
         assert rc == 0 and "合成:不该出现" not in capsys.readouterr().out
+
+
+class TestTheSentinelStaysHermeticUnderTestFlags:
+    """🚨 2026-09-16 —— 我接这个探针时漏了第 12 条腿:**既有测试的参数表**。
+
+    ## 病史
+
+    `check_dict_vintage` 是哨兵里**第一个默认就往进程外发请求**的探针
+    (其余探针读合成 DB / 本地文件,天然 hermetic;`--no-quota` 那个也出站,
+     但既有测试早就关掉了它)。
+
+    接线当天全绿 —— 因为当时活 daemon 恰好和源码同代。两天后我改了词典还没重启,
+    探针**正确地**报警,于是 **10 条与它无关的体检测试一起红**,报错指向
+    「存档没写」「健康轮造不出来」这类**错误的地方**。
+
+    ⇒ 不是探针的错,是我漏了那条腿。但「下次别忘」不是修法 ——
+      按 [[discipline-belongs-in-the-tool]],做成一条**中心化的守卫**。
+
+    ## 不变量
+
+    哨兵在**测试参数**下跑一轮,**一个出站请求都不该发**。
+    任何未来的出站探针(或某条测试忘了关它)都会在这里一次性被抓住,
+    而不是散落成十条指向别处的假红。
+    """
+
+    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-vintage")
+
+    def test_a_sentinel_round_issues_no_outbound_request(self, monkeypatch, tmp_path, capsys):
+        from .test_data_freshness import _all_today, _mk_db
+
+        calls: list[str] = []
+
+        def boom(req, *a, **k):
+            url = getattr(req, "full_url", str(req))
+            calls.append(url)
+            raise AssertionError(f"哨兵在测试参数下发了出站请求:{url}")
+
+        monkeypatch.setattr("urllib.request.urlopen", boom)
+        # httpx / requests 走别的栈 —— 一并堵上,别只堵一个就以为覆盖了
+        for mod, attr in (("httpx", "get"), ("httpx", "post")):
+            try:
+                m = __import__(mod)
+                monkeypatch.setattr(m, attr, boom, raising=False)
+            except Exception:  # noqa: BLE001
+                pass
+
+        db = _mk_db(tmp_path, _all_today())
+        rc = df.main(["--db", str(db), *self._ARGS])
+        out = capsys.readouterr().out
+        assert not calls, f"发了 {len(calls)} 个出站请求:{calls[:3]}"
+        # 人口非平凡:确认它**真的跑了一整轮**,不是提前退出让断言空洞为真
+        assert "判定" in out or "报警类别" in out, f"没跑完一轮,这条测不出东西:\n{out[-600:]}"
+        assert rc in (0, 1)
+
+    def test_the_flag_actually_exists_and_is_spelled_as_used(self):
+        """⭐ 上面那条靠传 `--no-vintage` 才 hermetic。拼错了会被 argparse 拒绝 ——
+        但如果将来改名而这里没跟着改,上面那条会**报参数错**而不是漏测,
+        所以这里单独钉住名字。"""
+        import io
+        import contextlib
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            with pytest.raises(SystemExit):
+                df.main(["--help"])
+        assert "--no-vintage" in buf.getvalue()

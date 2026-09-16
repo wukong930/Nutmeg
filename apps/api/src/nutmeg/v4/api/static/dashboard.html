@@ -3738,6 +3738,12 @@ const _NATION_FLAG = {
   //    4 条精确映射零风险,通用规则换来的只是省 4 行 ⇒ 不值。
   "Qatar U23": "🇶🇦", "Korea Republic U23": "🇰🇷",
   "China W": "🇨🇳", "Hong Kong W": "🇭🇰",
+  // 2026-09-16 同批:亚运男足 U23 + 亚运女足成年队。底名都已在上表
+  // (China PR 🇨🇳 / Korea DPR 🇰🇵 / Japan 🇯🇵 / Hong Kong 🇭🇰 / Uzbekistan 🇺🇿),
+  // 这里只是把**带后缀的那个实体**也映上 —— 精确名表查不到 `X U23` / `X W`。
+  "China PR U23": "🇨🇳", "Korea DPR U23": "🇰🇵",
+  "Japan U23": "🇯🇵", "Hong Kong U23": "🇭🇰",
+  "Uzbekistan W": "🇺🇿",
 };
 function teamLogo(name) {
   if (!name) return '';

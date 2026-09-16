@@ -164,16 +164,42 @@ class TestTheAnchorsAreRealNotStories:
 class TestTheHonestLimits:
     """🚨 把「补完能买到什么」写成断言 —— 免得下一个人以为横幅闭嘴=能下注了。"""
 
-    def test_the_womens_asian_games_is_not_in_the_fixture_cache(self) -> None:
-        """所以 `China W` 这条**join 不到东西**,只保证名字对。
+    def test_the_womens_asian_games_is_now_in_the_cache_and_confirms_the_entity(self) -> None:
+        """🚨 2026-09-16 订正:**这条测试的作用域原来写窄了。**
 
-        这条红了 = AF 开始发女足亚运了 ⇒ 回来重新判该用哪个实体。
+        它原名 `..._is_not_in_the_fixture_cache`,断言「`Asian Games` 里全是 U23」,
+        docstring 写着「这条红了 = AF 开始发女足亚运了 ⇒ 回来重新判」。
+        两天后 AF **确实**开始发了 —— 而它**没红**,因为女足在 AF 里是**另一个赛事名**
+        `Asian Games Women`,而我把过滤器写成了精确的 `== "Asian Games"`。
+        ⇒ 我给自己留的叫醒服务,被自己的过滤器挡掉了。
+          同 [[syntactic-proxy-for-semantic-property]]:**判据写在一个我猜的常量上**。
+
+        ## 重判的结论:09-14 那两条是对的,而且锚升级了
+
+        当时写的是「队实体锚住了,**赛事没锚住**」。现在 `Asian Games Women` 有 18 场,
+        其中 **fixture 1639548 = `China W` vs `Hong Kong W` @2026-09-14T10:00**
+        —— **正是我当时注册的那一场** ⇒ 从「实体锚」升级成**第①档赛事锚**。
+
+        ⭐ 还确认了一个当时没法确认的点:亚运**女**足用**成年队**(`China W`,无年龄后缀),
+           而**男**足是 **U23** —— 两边年龄组不同,不是笔误。
         """
         rows = _af_rows()
-        ag = {(r[2], r[3]) for r in rows if r[1] == "Asian Games"}
-        assert ag, "人口非平凡:缓存里连男足亚运都没有,这条测不出东西"
-        assert all(h.endswith(" U23") and a.endswith(" U23") for h, a in ag), (
-            f"Asian Games 里出现了非 U23 的条目 —— 可能是女足进来了:{ag}")
+        men = {(r[2], r[3]) for r in rows if r[1] == "Asian Games"}
+        women = {(r[2], r[3], r[4]) for r in rows if r[1] == "Asian Games Women"}
+        assert men, "人口非平凡:缓存里连男足亚运都没有"
+        assert all(h.endswith(" U23") and a.endswith(" U23") for h, a in men), (
+            f"`Asian Games`(男足)出现了非 U23 条目:{men}")
+        assert women, (
+            "`Asian Games Women` 又没了 —— 缓存被裁了?本条的叙述要重查")
+        # ⭐ 女足是**成年队**:一个 U 后缀都不该有
+        assert not any("U2" in h or "U2" in a or "U1" in h or "U1" in a
+                       for h, a, _ in women), f"女足亚运出现了年龄组队伍:{women}"
+        # 🚨 断言挂在**被测对象**上:我们的映射必须等于那场 fixture 说的两个名字
+        slot = [w for w in women if w[2] == 1639548]
+        assert len(slot) == 1, "09-14T10:00 那场(1639548)不在缓存里了 —— 叙述要重查"
+        h, a, _ = slot[0]
+        assert zh_to_canonical("中国女足") == h, f"主队锚到 {h!r}"
+        assert zh_to_canonical("中国香港女足") == a, f"客队锚到 {a!r}"
 
     def test_afc_is_now_harvested_and_the_asian_games_still_is_not(self) -> None:
         """🚨 两次订正,方向相反,记在一起:
@@ -471,12 +497,34 @@ class TestNationalVariantsGetFlagsNotInitials:
         assert r.returncode == 0, r.stderr[:1500]
         return json.loads(r.stdout)
 
-    def test_the_four_variants_have_flags(self) -> None:
+    def test_every_national_variant_in_the_dict_has_a_flag(self) -> None:
+        """🚨 2026-09-16 改成**自己发现人口** —— 原来写死了 4 个名字。
+
+        后果实测:同批又补了 5 个变体(China PR U23 / Korea DPR U23 / Japan U23 /
+        Hong Kong U23 / Uzbekistan W),而变异「把 U23 国旗删掉」**照样全绿** ——
+        写死名单的护栏只保护它当初列的那几个。
+        ⇒ 同 [[hardcoded-guard-lists-rot]]:修法是让测试**自己发现人口**。
+
+        不变量:词典里任何 `<国家名> <后缀>` 形式的键,只要 `<国家名>` 本身在
+        国旗表里,**那个带后缀的键也必须在** —— 否则卡片退回字母缩写("Qa"/"Ch")。
+        """
+        import re
         f = self._flags()
         assert len(f) > 100, f"人口非平凡:只解析到 {len(f)} 个国家"
-        for name, flag in (("Qatar U23", "🇶🇦"), ("Korea Republic U23", "🇰🇷"),
-                           ("China W", "🇨🇳"), ("Hong Kong W", "🇭🇰")):
-            assert f.get(name) == flag, f"{name} 没有国旗(会退回字母缩写):{f.get(name)!r}"
+        variants = {}
+        for key in TEAM_NAME_ZH:
+            m = re.match(r"^(.*?)\s+(U\d\d|W|U\d\d W)$", key)
+            if m and m.group(1) in f:
+                variants[key] = m.group(1)
+        assert len(variants) >= 9, (
+            f"人口非平凡:只发现 {len(variants)} 个国家队变体,发现器可能坏了:{variants}")
+        missing = {k: base for k, base in variants.items() if k not in f}
+        assert not missing, (
+            f"这些国家队变体没有国旗,卡片会退回字母缩写:{missing}\n"
+            f"   ⇒ 在 `_NATION_FLAG` 里补上(底名的旗照抄)")
+        # 旗必须和底名一致 —— 否则是抄错了国家
+        wrong = {k: (f[k], f[b]) for k, b in variants.items() if f[k] != f[b]}
+        assert not wrong, f"变体的旗和底名不一致(抄错国家?):{wrong}"
 
     def test_club_youth_teams_do_not_get_a_flag(self) -> None:
         """🚨 这条是上面那个设计决定的**承重面**:通用剥后缀会把这些染上国旗。"""
@@ -488,3 +536,91 @@ class TestNationalVariantsGetFlagsNotInitials:
         f = self._flags()
         for n in ("Qatar", "Korea Republic", "China", "Hong Kong"):
             assert f.get(n), f"{n} 的国旗掉了"
+
+
+class TestBanner20260916:
+    """📋 2026-09-16 横幅(5/27)· 亚运男足 + 亚运女足 + 欧罗巴。
+
+    ⭐ **先逐名跑再动手**:横幅点 5 场,而 **3 个名字本来就是好的**
+       (中国女足 / 霍芬海姆 / 利勒斯特罗姆)—— 横幅按**比赛**点名,不是按队。
+       源码与 daemon 结果一致(都 5 场)⇒ 排除「改了没重启」(体检第 10 类)。
+
+    四条锚全部**第①档**,且逐条验过唯一性;⭐ 其中两条靠「同场已解出的另一侧」
+    把多候选缩到 1 —— 那正是这个锚源最不可替代的用法。
+    """
+
+    #: 竞彩中文(全称+简称)→ 英文规范名
+    PAIRS = {
+        "中国亚运男足": "China PR U23", "中国亚": "China PR U23",
+        "朝鲜亚运男足": "Korea DPR U23", "朝鲜亚": "Korea DPR U23",
+        "日本亚足": "Japan U23", "日本亚": "Japan U23",
+        "中国香港亚运男足": "Hong Kong U23", "中国港亚": "Hong Kong U23",
+        "乌兹别克斯坦女足": "Uzbekistan W", "乌兹别女": "Uzbekistan W",
+        "克里特": "OFI",
+        "托林斯": "Torreense",
+    }
+    #: (竞彩主, 竞彩客, 开球, AF 赛事, 哪一侧本来就解得出)
+    ANCHORS = [
+        ("中国亚运男足", "朝鲜亚运男足", "2026-09-16T10:00:00", "Asian Games", None),
+        ("日本亚足", "中国香港亚运男足", "2026-09-16T10:30:00", "Asian Games", None),
+        ("克里特", "霍芬海姆", "2026-09-17T16:45:00", "UEFA Europa League", "away"),
+        ("利勒斯特罗姆", "托林斯", "2026-09-17T19:00:00", "UEFA Europa League", "home"),
+        ("乌兹别克斯坦女足", "中国女足", "2026-09-17T05:00:00", "Asian Games Women", "away"),
+    ]
+
+    @pytest.mark.parametrize("zh", sorted(PAIRS))
+    def test_every_spelling_resolves(self, zh: str) -> None:
+        assert zh_to_canonical(zh) == self.PAIRS[zh]
+
+    @pytest.mark.parametrize("case", ANCHORS, ids=lambda c: c[0])
+    def test_each_anchor_is_unique_and_matches_our_mapping(self, case) -> None:
+        """⭐ 断言挂在**被测对象**上:我们的映射必须等于 fixture 说的那两个名字。
+
+        ⚠️ 唯一性**先于**取值:候选不唯一就不能据此断定对手,那时应当**留空**
+           而不是挑一个(同 `score-anchored-name-mapping` 的「长得像是零证据」)。
+        """
+        hz, az, ko, comp, known = case
+        rows = [r for r in _af_rows() if r[0] == ko and r[1] == comp]
+        assert rows, f"缓存里没有 {comp} @{ko} —— 锚不成立"
+        if known == "away":
+            en = zh_to_canonical(az)
+            assert en, f"声称已解出的那侧({az})其实解不出 —— 对照不成立"
+            rows = [r for r in rows if r[3] == en]
+        elif known == "home":
+            en = zh_to_canonical(hz)
+            assert en, f"声称已解出的那侧({hz})其实解不出 —— 对照不成立"
+            rows = [r for r in rows if r[2] == en]
+        uniq = list({r[4]: r for r in rows}.values())     # 按 fixture id 去重
+        assert len(uniq) == 1, (
+            f"{hz} vs {az}:候选 {len(uniq)} 场,**不唯一** ⇒ 不能据此断定对手")
+        _, _, home, away, *_ = uniq[0]
+        assert zh_to_canonical(hz) == home, f"主队:我们给 {zh_to_canonical(hz)!r},fixture 说 {home!r}"
+        assert zh_to_canonical(az) == away, f"客队:我们给 {zh_to_canonical(az)!r},fixture 说 {away!r}"
+
+    def test_the_two_multi_candidate_slots_really_needed_the_known_side(self) -> None:
+        """🚨 承重:那两条 UEL 锚**不靠开球时刻单独成立** —— 同刻有多场。
+
+        没有这条,「同场已解出的另一侧」这个机制看起来是多余的装饰。
+        """
+        rows = _af_rows()
+        for ko, n_min in (("2026-09-17T16:45:00", 2), ("2026-09-17T19:00:00", 2)):
+            slot = {r[4] for r in rows if r[0] == ko and r[1] == "UEFA Europa League"}
+            assert len(slot) >= n_min, (
+                f"{ko} 只有 {len(slot)} 场 —— 那这条锚不需要「已解出的另一侧」,"
+                f"本类的叙述要重查")
+
+    def test_seniors_and_other_age_grades_are_untouched(self) -> None:
+        """🚨 U23 / W 和成年队在 AF 里是**不同实体**。补前者不许动后者。"""
+        for en, zh in (("China PR", "中国"), ("Japan", "日本"), ("Hong Kong", "香港"),
+                       ("Uzbekistan", "乌兹别克斯坦"), ("Korea Republic", "韩国")):
+            assert TEAM_NAME_ZH.get(en) == zh, f"{en} 的中文被动了:{TEAM_NAME_ZH.get(en)!r}"
+
+    def test_torreense_is_a_spelling_variant_not_a_new_team(self) -> None:
+        """⭐ `托林斯` 是**情况①**:英文键早在词典里,只是竞彩换了写法。
+
+        词典写「托雷恩塞」、竞彩写「托林斯」—— 按音猜不出来,只有 fixture 锚拿得到。
+        ⇒ 它该进 `_ZH_OVERRIDES`,**不该**在 team_name_zh 里再造一个英文键。
+        """
+        assert TEAM_NAME_ZH.get("Torreense") == "托雷恩塞", "显示名被改了"
+        assert _ZH_OVERRIDES.get("托林斯") == "Torreense"
+        assert zh_to_canonical("托雷恩塞") == "Torreense", "原写法不该失效"

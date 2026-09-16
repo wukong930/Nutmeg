@@ -216,7 +216,7 @@ def _run(tmp_path, db, today):
     r = subprocess.run(
         [sys.executable, "-B", "-m", "nutmeg.v4.cli.data_freshness",
          "--db", str(db), "--out", str(out), "--today", today,
-         "--no-quota", "--no-supply", "--no-league-labels", "--no-trickle"],
+         "--no-quota", "--no-vintage", "--no-supply", "--no-league-labels", "--no-trickle"],
         capture_output=True, text=True)
     # 🚨 2026-09-15 —— 夹具的自我守卫要**分得出「报警」和「崩溃」**。
     #    下面每条测试都写着 `assert rc == 1, "夹具没造出报警"`,而 Python

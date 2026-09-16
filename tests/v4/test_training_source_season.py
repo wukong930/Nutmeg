@@ -132,7 +132,7 @@ class TestOffSeasonDoesNotCryWolf:
 
 
 class TestWiredIntoTheSentinel:
-    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-supply", "--no-trickle", "--no-gapcurve")
+    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply", "--no-trickle", "--no-gapcurve")
 
     def _green_db(self, tmp_path):
         from .test_data_freshness import _all_today, _mk_db

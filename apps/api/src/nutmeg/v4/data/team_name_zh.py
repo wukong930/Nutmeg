@@ -1600,6 +1600,47 @@ _ASIAD_MEN_2026_09: dict[str, str] = {
 TEAM_NAME_ZH.update(_ASIAD_MEN_2026_09)
 
 
+# -- 2026-09-16 横幅(5/27)· 亚运男足 + 亚运女足 + 欧罗巴 --------------------
+#
+# ⭐ 先逐名跑 `zh_to_canonical`:横幅点 5 场,而 **3 个名字本来就是好的**
+#    (中国女足 / 霍芬海姆 / 利勒斯特罗姆)—— 横幅按**比赛**点名,不是按队。
+#    源码与 daemon 结果一致(都 5 场)⇒ 排除「改了没重启」那种(见体检第 10 类)。
+#
+# ## 四条锚全部**第①档**(当前在售那场本身),且逐条验过唯一性
+#
+#   竞彩 09-16T10:00Z 中国亚运男足 vs 朝鲜亚运男足
+#     → `Asian Games` 该时刻**唯一** fixture 1639465 `China PR U23` vs `Korea DPR U23`
+#   竞彩 09-16T10:30Z 日本亚足 vs 中国香港亚运男足
+#     → 该时刻**唯一** fixture 1639454 `Japan U23` vs `Hong Kong U23`
+#   竞彩 09-17T16:45Z 克里特 vs 霍芬海姆
+#     → UEL 该时刻有 2 场,但**客队已解出**(`1899 Hoffenheim`)⇒ 缩到 1 场:
+#       fixture 1636304 `OFI` vs `1899 Hoffenheim`
+#   竞彩 09-17T05:00Z 乌兹别克斯坦女足 vs 中国女足
+#     → `Asian Games Women` 该时刻**唯一** fixture 1639551 `Uzbekistan W` vs `China W`
+#
+# ## 🚨 女足亚运赛事**现在在缓存里了** —— 09-14 那两条的锚因此升级
+#
+# 09-14 补 `China W`/`Hong Kong W` 时我写的是「**队实体锚住了,赛事没锚住**」
+# (当时 AF 的 56 个女足赛事里没有亚运)。现在 `Asian Games Women` 有 18 场,
+# 其中 fixture 1639548 = `China W` vs `Hong Kong W` @09-14T10:00 —— **正是我当时
+# 注册的那一场**。⇒ 那两条从「实体锚」升级成**第①档赛事锚**,结论不变但证据更硬。
+# ⚠️ 也证实了一个当时没法确认的点:亚运**女**足用的是**成年队**(`China W` 不带
+#    年龄后缀),而**男**足是 U23 —— 两边年龄组不同,不是笔误。
+#
+# ⚠️ 撞车检查:6 个英文键 + 11 个中文串(含 5 个简称)在 TEAM_NAME_ZH 值集 /
+#    _ZH_OVERRIDES / _ZH_TO_EN 里**全部 0 占用**;成年队 `China`/`Japan`/
+#    `Hong Kong`/`Uzbekistan`/`Korea Republic` 与 U23、W 是**不同实体**,均未动。
+_BANNER_2026_09_16: dict[str, str] = {
+    "China PR U23": "中国亚运男足",
+    "Korea DPR U23": "朝鲜亚运男足",
+    "Japan U23": "日本亚足",
+    "Hong Kong U23": "中国香港亚运男足",
+    "Uzbekistan W": "乌兹别克斯坦女足",
+    "OFI": "克里特",
+}
+TEAM_NAME_ZH.update(_BANNER_2026_09_16)
+
+
 # HARVEST-BEGIN
 _JINGCAI_VOTE_HARVEST: dict[str, str] = {
 }
@@ -1688,5 +1729,7 @@ def coverage_by_league() -> Dict[str, int]:
         "AFC_CL_TWO_ANCHORED":     len(_AFC_CL_TWO_SCORE_ANCHORED),
         # 2026-09-15 — 亚运男足(fixture 身份锚).
         "ASIAD_MEN_2026_09":       len(_ASIAD_MEN_2026_09),
+        # 2026-09-16 — 横幅 5/27:亚运男足 4 + 亚运女足 1 + 欧罗巴 1.
+        "BANNER_2026_09_16":       len(_BANNER_2026_09_16),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }
