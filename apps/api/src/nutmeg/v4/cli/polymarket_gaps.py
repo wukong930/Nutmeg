@@ -133,8 +133,16 @@ def main(argv: list[str] | None = None) -> int:
         log.info("unmatched reasons: %s", dict(rc))
 
     if not args.no_settle and not args.dry_run:
-        n = settle_polymarket_gaps(args.db)
-        log.info("settled %d gaps", n)
+        r = settle_polymarket_gaps(args.db)
+        # 🚨 2026-09-16:以前这里只打 settled,而三条静默 `continue` 让
+        # 「11 场卡了两个月」在日志里完全看不见。现在每一行的去向都打出来。
+        log.info(
+            "settled %d gaps · 未结算去向: 未开赛 %d · 查不到 %d · 无比分 %d · 解不出 %d"
+            " · (其中 %d 场 AF 日期与记录日不同 = 改期)",
+            r.settled, r.not_played, r.not_found, r.no_score, r.unresolvable, r.rescheduled,
+        )
+        if r.not_found:
+            log.warning("%d 行按 fixture id 也查不到 —— 赛事被删?连续出现要查", r.not_found)
     return 0
 
 

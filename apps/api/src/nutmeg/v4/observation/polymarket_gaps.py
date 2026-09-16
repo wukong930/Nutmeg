@@ -51,6 +51,7 @@ cron-friendly). NOTHING here places an order — it only records what was observ
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import dataclass
 import json
 import logging
 from collections.abc import Callable
@@ -65,6 +66,7 @@ __all__ = [
     "record_polymarket_gap",
     "fetch_polymarket_gaps",
     "settle_polymarket_gaps",
+    "SettleResult",
 ]
 
 # Moneyline has no line; a NOT NULL sentinel lets `line` live in the PK (a NULL in
@@ -320,75 +322,129 @@ def fetch_polymarket_gaps(
     return rows
 
 
+@dataclass(frozen=True)
+class SettleResult:
+    """结算一轮的**完整去向** —— 每一行都必须落进其中一格。
+
+    🚨 2026-09-16:旧实现返回裸 `int`,而三条 `continue` 全是静默的
+    (查不到 fixture / 没终场比分 / spec 解不出)。于是「11 场卡了两个月」
+    这件事在日志和返回值里**完全看不见**,是我顺手查别的东西才撞见的。
+    ⇒ 同 `guard-on-a-failsoft-path-must-record`:fail-soft 路径上只「跳过」等于没装。
+    """
+
+    settled: int = 0
+    not_found: int = 0        # AF 按 id 也查不到
+    not_played: int = 0       # NS / PST / CANC —— 还没踢,**行为正确**
+    no_score: int = 0         # 已完赛但比分不可用(AET/PEN 缺 fulltime 拆分)
+    unresolvable: int = 0     # spec+line 解不出 YES/NO
+    rescheduled: int = 0      # ⭐ AF 日期 ≠ 记录时的 match_date(旧实现正是死在这)
+
+    def __int__(self) -> int:      # 兼容 `log.info("settled %d", n)` 那类旧用法
+        return self.settled
+
+
 def settle_polymarket_gaps(
     db_path: str,
     *,
-    fetch_fixtures: Callable[[dt.date], list[dict]] | None = None,
+    fetch_by_ids: "Callable[[list[int]], list[dict]] | None" = None,
     today: dt.date | None = None,
-) -> int:
-    """Fill the outcome columns for unsettled, kicked-off gaps from the 90' score.
+) -> SettleResult:
+    """用 90′ 比分回填未结算的 gap 行。
 
-    Groups unsettled rows by match_date, fetches that day's fixtures once, indexes
-    by fixture_id, and writes (home_goals, away_goals, outcome, outcome_hit).
-    ``outcome_hit`` = 1 iff the bought YES of that (spec, line) resolved true.
-    ``fetch_fixtures(date) -> list[fixture]`` is injectable for tests.
-    Returns the number of rows newly settled.
+    ## 🚨 2026-09-16 重写:按 **fixture id** 查,不再按日期拉当天赛程
+
+    旧实现:`fetch_fixtures(记录时的 match_date)` → 按 id 建索引 → 查。
+    **比赛一改期就不在那天的列表里** ⇒ `by_id.get()` 返回 None ⇒ 静默 `continue`
+    ⇒ **永远结不了**。实测卡住 11 场,其中 **5 场比分早就有了**:
+
+        记录日 2026-07-11  AF 真实 **2026-08-18**  FT 0:3   (改期 5 周,卡两个月)
+        记录日 2026-07-25  AF 真实 2026-09-02      FT 1:0
+        记录日 2026-09-05  AF 真实 2026-09-08      FT 3:3
+        记录日 2026-09-05  AF 真实 2026-09-06      FT 2:2
+        记录日 2026-09-06  AF 真实 2026-09-05      FT 0:1
+
+    ⭐ **fixture id 是稳定的,日期不是** —— 旧实现把可变的那个当成了查找键。
+       另外 4 场改期到**未来**(NS,最晚 10-21)、2 场 **PST** 推迟待定:
+       它们不结算是**对的**,但旧实现让这三种情况**长得一模一样**。
+
+    ⇒ 返回 `SettleResult` 而不是裸 int:每一行都落进一格,「没结算」自带原因。
+
+    `fetch_by_ids(ids) -> list[fixture]` 可注入(测试用);默认走
+    `api_football.fetch_fixtures_by_ids`(分批 20、`refresh=True`)。
     """
-    if fetch_fixtures is None:
-        from nutmeg.v4.data.sources.api_football import fetch_fixtures_for_date
+    if fetch_by_ids is None:
+        from nutmeg.v4.data.sources.api_football import fetch_fixtures_by_ids
 
-        def fetch_fixtures(d: dt.date) -> list[dict]:  # type: ignore[misc]
-            return fetch_fixtures_for_date(d, refresh=True)
+        def fetch_by_ids(ids):  # type: ignore[misc]
+            return fetch_fixtures_by_ids(ids)
 
     today = today or dt.datetime.now(dt.UTC).date()
     ensure_polymarket_gaps_table(db_path)
-    settled = 0
+    settled = not_found = not_played = no_score = unresolvable = 0
+    resched: set[int] = set()
     with open_db(db_path) as conn:
-        cur = conn.execute(
+        rows = conn.execute(
             "SELECT match_date, fixture_id, outcome_spec, line FROM polymarket_gaps "
             "WHERE outcome IS NULL"
-        )
-        unsettled = cur.fetchall()
-        groups: dict[str, list[tuple[int, str, float]]] = {}
-        for md, fid, spec, line in unsettled:
+        ).fetchall()
+        items = []
+        for md, fid, spec, line in rows:
+            if fid is None:
+                continue
             try:
                 d = dt.date.fromisoformat(md)
             except (ValueError, TypeError):
                 continue
+            # ⚠️ 这个闸只是省调用:记录日还在未来的行不值得去问。
+            #    改期到未来的场**记录日在过去**,照样会被取到 → 归入 not_played。
             if d > today:
                 continue
-            groups.setdefault(md, []).append((fid, spec, line))
+            items.append((md, int(fid), spec, line))
+        if not items:
+            return SettleResult()
+
+        try:
+            fixtures = fetch_by_ids(sorted({fid for _, fid, _, _ in items}))
+        except Exception as exc:  # noqa: BLE001 — fail-soft,但**记账**
+            log.warning("polymarket settle: fetch by ids failed: %s", exc)
+            return SettleResult(not_found=len(items))
+        by_id = {}
+        for fx in fixtures:
+            fid = (fx.get("fixture") or {}).get("id")
+            if fid is not None:
+                by_id[int(fid)] = fx
 
         ts = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
-        for md, items in groups.items():
-            try:
-                fixtures = fetch_fixtures(dt.date.fromisoformat(md))
-            except Exception as exc:  # noqa: BLE001
-                log.warning("polymarket settle: fetch failed for %s: %s", md, exc)
+        for md, fid, spec, line in items:
+            fx = by_id.get(fid)
+            if fx is None:
+                not_found += 1
                 continue
-            by_id: dict[int, dict] = {}
-            for fx in fixtures:
-                fid = (fx.get("fixture") or {}).get("id")
-                if fid is not None:
-                    by_id[int(fid)] = fx
-            for fid, spec, line in items:
-                fx = by_id.get(int(fid))
-                if fx is None:
-                    continue
-                res = _ft_outcome(fx)
-                if res is None:
-                    continue
-                hg, ag, outcome = res
-                real_line = None if line == _NO_LINE else line
-                hit = _yes_resolves(spec, real_line, hg, ag)
-                if hit is None:
-                    continue
-                upd = conn.execute(
-                    "UPDATE polymarket_gaps SET home_goals=?, away_goals=?, "
-                    "outcome=?, outcome_hit=?, settled_at=? "
-                    "WHERE match_date=? AND fixture_id=? AND outcome_spec=? AND line=? "
-                    "AND outcome IS NULL",
-                    (hg, ag, outcome, hit, ts, md, fid, spec, line),
-                )
-                settled += max(0, upd.rowcount)
-    return settled
+            af_date = str((fx.get("fixture") or {}).get("date") or "")[:10]
+            if af_date and af_date != md:
+                resched.add(fid)
+            res = _ft_outcome(fx)
+            if res is None:
+                st = ((fx.get("fixture") or {}).get("status") or {}).get("short")
+                if st in ("NS", "TBD", "PST", "CANC", "ABD", "SUSP", "INT"):
+                    not_played += 1
+                else:
+                    no_score += 1
+                continue
+            hg, ag, outcome = res
+            real_line = None if line == _NO_LINE else line
+            hit = _yes_resolves(spec, real_line, hg, ag)
+            if hit is None:
+                unresolvable += 1
+                continue
+            upd = conn.execute(
+                "UPDATE polymarket_gaps SET home_goals=?, away_goals=?, "
+                "outcome=?, outcome_hit=?, settled_at=? "
+                "WHERE match_date=? AND fixture_id=? AND outcome_spec=? AND line=? "
+                "AND outcome IS NULL",
+                (hg, ag, outcome, hit, ts, md, fid, spec, line),
+            )
+            settled += max(0, upd.rowcount)
+    return SettleResult(settled=settled, not_found=not_found, not_played=not_played,
+                        no_score=no_score, unresolvable=unresolvable,
+                        rescheduled=len(resched))

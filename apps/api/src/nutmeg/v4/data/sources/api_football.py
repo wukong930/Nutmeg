@@ -470,6 +470,41 @@ def _confirm_absence_by_date(
     return hit
 
 
+#: AF `/fixtures?ids=` 单次最多 20 个 id(官方文档)。超了它**不报错**,只静默截断
+#: —— 所以分批是必需的,不是优化。
+_FIXTURE_IDS_BATCH = 20
+
+
+def fetch_fixtures_by_ids(
+    ids: "list[int] | set[int] | tuple[int, ...]",
+    *,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    refresh: bool = True,
+) -> list[dict[str, Any]]:
+    """按 **fixture id** 直查赛程 —— 给「日期会变、id 不会」的场景用。
+
+    ## 为什么需要它(2026-09-16)
+
+    `polymarket_gaps` 的结算原本是「拉**记录时那天**的全部赛程,再按 id 查表」。
+    **比赛一改期就不在那天的列表里了** ⇒ 查不到 ⇒ 静默跳过 ⇒ **永远结不了**。
+    实测卡住 11 场,其中 5 场比分早就有了,最久的一场记录日 2026-07-11、
+    AF 里真实日期 **2026-08-18**(改期 5 周),卡了两个月。
+
+    ⇒ **fixture id 是稳定的,日期不是。** 凡是「记录时存了日期、后来要回头找同一场」
+      的地方都该走这条路。
+
+    ⚠️ `refresh=True` 是默认:调用方要的是**现在**的状态(比分/改期),缓存里
+       那份可能正是改期前的。想读缓存请显式传 `refresh=False`。
+    """
+    out: list[dict[str, Any]] = []
+    uniq = sorted({int(i) for i in ids if i is not None})
+    for i in range(0, len(uniq), _FIXTURE_IDS_BATCH):
+        batch = uniq[i:i + _FIXTURE_IDS_BATCH]
+        out.extend(_request("/fixtures", {"ids": "-".join(str(x) for x in batch)},
+                            cache_dir=cache_dir, refresh=refresh))
+    return out
+
+
 def fetch_fixtures_for_league_season(
     league_canonical: str,
     season: int,

@@ -268,9 +268,12 @@ class TestPersistenceAndSettle:
 
         # Sierra Leone (home) win 2-0 → HOME_WIN YES hits, AWAY/DRAW miss
         fixtures = [_fixture("Sierra Leone", "Liberia", status="FT", hg=2, ag=0)]
-        n = settle_polymarket_gaps(db, fetch_fixtures=lambda d: fixtures,
+        # ⚠️ 2026-09-16 注入点契约变了:`(date) -> list` → `(ids) -> list`
+        #    —— 结算改成按 **fixture id** 直查(日期会变、id 不会,见该函数 docstring)。
+        r = settle_polymarket_gaps(db, fetch_by_ids=lambda ids: fixtures,
                                    today=dt.date(2026, 6, 7))
-        assert n == 3
+        assert r.settled == 3, r
+        assert int(r) == 3, "__int__ 兼容旧的 `%d` 用法"
         settled = {r["outcome_spec"]: r for r in fetch_polymarket_gaps(db, settled_only=True)}
         assert settled[HOME_WIN]["outcome_hit"] == 1
         assert settled[AWAY_WIN]["outcome_hit"] == 0
