@@ -192,6 +192,7 @@ SPORT_KEYS: dict[str, str] = {
     # 全表核过)。同 JPN_J2 先例 —— 留空,走 AF 的 Pinnacle 镜像(实测 fixture
     # 1551741 有 Pinnacle),registry-coverage 记 warn 非 gap。
     # 别「补全」它:猜一个不存在的 key 只会让 fetch 每次 404 当空处理。
+    # ⛔ **亚冠乙(AFC_CL_TWO)同样故意没有条目**(2026-09-16)—— 同上,整表无 AFC 赛事。
     "EFL_CUP":              "soccer_england_efl_cup",
     # ⛔ **亚冠精英(AFC_CL_ELITE)故意没有条目**(2026-09-14)—— Odds API 没有这个
     # sport(整表无 AFC/Asian 俱乐部赛事)。同荷乙/欧超杯/韩国杯:留空,走 AF 的

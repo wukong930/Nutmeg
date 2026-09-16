@@ -68,6 +68,9 @@ MARKET_MODE_LEAGUES: tuple[str, ...] = (
     # 补(2026-09-14 owner)。预期 warn:Odds API **无**亚冠 sport key(同荷乙/欧超杯),
     # AF 的 Pinnacle 镜像供线(实测 6 场里 5 场有 Pinnacle)。
     "AFC_CL_ELITE",
+    # 补亚冠乙(2026-09-16 owner)。同精英:Odds API 无 sport key ⇒ 预期 warn。
+    # ⚠️ 队名覆盖预期比精英差:竞彩只上架它一小部分(档案 19 个比赛日 vs 精英 111 个)。
+    "AFC_CL_TWO",
 )
 
 #: 已服务但**故意不进**覆盖率检查的赛事 → 理由。
@@ -185,6 +188,22 @@ NO_JINGCAI_ANCHOR: dict[str, tuple[str, ...]] = {
     # ⭐ 2026-09-14 当天就少了 2 支:`Beijing Guoan`/`Ratchaburi` 从**亚冠乙**档案
     #   锚到了(北京国安 / 叻武里)。⇒ 它们已可达,留在这里就是一条**假豁免**。
     #   剩下 6 支在亚冠乙里也没被竞彩上架过(或闸没过)⇒ 目前确实没有任何锚。
+    # -- 亚冠乙(2026-09-16 owner 授权注册进市场模式)------------------------
+    # 当季队表 35 支,13 支字典打不中。**先跑了锚定器**(本白名单的规矩要求的):
+    # 零新增 —— 25 条三闸全过的全是词典已有(昨天那轮就收完了)。
+    #
+    # ⛔ 逐支核实过「竞彩到底上架过没有」,判据有两层,**第二层才是决定性的**:
+    #   ① 粗筛:每队已完赛的 AF 比赛日 ±1 天内,竞彩亚冠乙档案有无同比分场次。
+    #      12/13 支是 **0 候选**;⚠️ `Al Hussein` 有 22 个,但那只是比分撞车多
+    #      (同 `AFC_CL_ELITE` 里 Tractor Sazi 那条),**不是证据**。
+    #   ② 决定性:**竞彩亚冠乙档案共 25 支中文名,现在解不出的是 0 支**
+    #      ⇒ 竞彩用过的名字已全部映上,这 13 支**从没被上架过**。
+    #      (档案只覆盖 19 个比赛日,而 AF 四个赛季有 509 场 —— 竞彩只卖一小部分。)
+    "AFC_CL_TWO": (
+        "Al Arabi", "Al Faisaly", "Al Hussein", "Al Kuwait", "Al Seeb", "Al-Nahda",
+        "East Bengal II", "Gol Gohar", "Kuching FA", "Manila Digger",
+        "Phnom Penh Crown", "Svay Rieng", "Viettel",
+    ),
     "AFC_CL_ELITE": (
         "Tractor Sazi", "Port FC",
         "Al Shamal", "Neftchi", "Al Hussein", "Công An Nhân Dân",

@@ -257,6 +257,28 @@ CUP_COMPETITIONS: dict[str, Competition] = {
     # ⚠️ 三个 AF id 全部 **live 核过**(`/leagues?search=`),不是凭印象:
     # 「Super Cup」一个词搜出 **59 条**(德/土/埃/意/比/智/捷/沙都有),
     # 认 UEFA 那个必须看 id=531 + country=World。猜名字在这里必错。
+    "AFC_CL_TWO": Competition(
+        code="AFC_CL_TWO",
+        display_zh="亚冠乙 (AFC 冠军联赛二级)",
+        display_en="AFC Champions League Two",
+        competition_type="club_cup",
+        api_football_id=18,          # 缓存实证:league id=18 name="AFC Champions League Two"
+                                     # ⚠️ 精英=17,别串(两者同一天常有比赛)。
+        has_knockouts=True,
+        has_group_stage=True,
+        has_two_legged_ties=True,
+        notes=(
+            "2026-09-16 owner 授权注册。竞彩写作「亚冠乙」——**实证**自 "
+            "`jingcai_odds_history.league_cn`(565 行 / 19 个比赛日)。"
+            "赛季历:竞彩档案 2025-10→2026-05、**1/6/7/8/9 月全空**;AF 侧四个赛季"
+            "均为 8 月→次年 5 月 ⇒ 秋春制,**不**进 CALENDAR_YEAR_LEAGUES(同精英)。"
+            "赔率来源:Odds API **没有**这个 sport key(故意不补,同精英/荷乙),"
+            "只走 AF 的 Pinnacle 镜像。"
+            "⚠️ 队名覆盖比精英差得多:AF 四个赛季共 111 支,字典打不中 62 支 —— "
+            "因为竞彩只上架其中一小部分(19 个比赛日)。锚不到的按 NO_JINGCAI_ANCHOR "
+            "的规矩逐支核实后豁免,**不许照英文猜译名**。"
+        ),
+    ),
     "AFC_CL_ELITE": Competition(
         code="AFC_CL_ELITE",
         display_zh="亚冠精英 (AFC 冠军联赛精英)",

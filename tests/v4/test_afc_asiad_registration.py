@@ -624,3 +624,110 @@ class TestBanner20260916:
         assert TEAM_NAME_ZH.get("Torreense") == "托雷恩塞", "显示名被改了"
         assert _ZH_OVERRIDES.get("托林斯") == "Torreense"
         assert zh_to_canonical("托雷恩塞") == "Torreense", "原写法不该失效"
+
+
+class TestAfcClTwoIsFullyWired:
+    """🥈 2026-09-16 owner 授权:亚冠乙(`AFC_CL_TWO`)进市场模式。
+
+    与精英**同一套 6 条腿**,这里逐条钉住。两个不同之处值得记:
+
+    ① 🚨 **`_NON_DOMESTIC_CN` 那条坑这次是被我亲手复现出来的**,不是抄注释:
+       只加 `_EN_TO_CN["AFC_CL_TWO"]` 之后实测 `classify_league("亚冠乙")`
+       从 `unknown` 变成 **`domestic`** —— 一个跨国洲际杯赛就要混进 δ 校准的
+       国内联赛人口了。补上 `_NON_DOMESTIC_CN` 才回到 `excluded`。
+
+    ② ⚠️ **竞彩对它的上架量比精英小一个量级**(档案 565 行 / 19 个比赛日,
+       vs 精英 3435 行 / 111 个)。所以盘面上大多数时候不会有它的场次 ——
+       那是数据现实,不是接线问题。
+    """
+
+    CODE = "AFC_CL_TWO"
+
+    def test_leg1_af_league_id(self) -> None:
+        from nutmeg.v4.data.sources.api_football import league_id
+        assert league_id(self.CODE) == 18
+        # ⚠️ 精英=17,别串:两者同一天常有比赛,串了会静默拿错赛程
+        assert league_id("AFC_CL_ELITE") == 17
+
+    def test_leg2_in_the_market_mode_registry(self) -> None:
+        src = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
+        assert f'"{self.CODE}"' in src
+        assert '"JPN_J2"' in src, "人口非平凡:确认读的是那张表"
+
+    def test_leg3_both_language_tracks_agree(self) -> None:
+        from nutmeg.v4.data.league_labels import canonical_league
+        assert canonical_league(self.CODE) == "亚冠乙"
+
+    def test_leg4_it_is_a_cup_and_excluded_on_both_tracks(self) -> None:
+        """🚨 唯一会静默污染数据的那条腿 —— 本轮实测复现过。"""
+        from nutmeg.v4.data.competitions import (
+            competition_type_id,
+            is_club_cup_competition,
+            is_cup_competition,
+        )
+        from nutmeg.v4.data.league_labels import classify_league
+        assert is_cup_competition(self.CODE) and is_club_cup_competition(self.CODE)
+        for label in (self.CODE, "亚冠乙"):
+            assert classify_league(label) == "excluded", (
+                f"{label} 判成 {classify_league(label)} —— 会混进 δ 的国内人口")
+        # 模型特征要和同类洲际杯赛一致(对照非平凡)
+        peer = competition_type_id("AFC_CL_ELITE")
+        assert peer != competition_type_id("EPL")
+        assert competition_type_id(self.CODE) == peer
+
+    def test_leg5_registry_coverage_scans_it(self) -> None:
+        from nutmeg.v4.cli.registry_coverage import MARKET_MODE_LEAGUES
+        assert self.CODE in MARKET_MODE_LEAGUES
+
+    def test_leg6_the_panel_has_a_chinese_name(self) -> None:
+        """⚠️ 面板读的是**另一份表**(dashboard 的 `LEAGUE_ZH`),
+        服务端 `league_labels` 加了修不了它 —— 精英那次就是被这条抓住的。"""
+        js = (REPO / "apps/api/src/nutmeg/v4/api/static/dashboard.html").read_text()
+        import re
+        m = re.search(r"const LEAGUE_ZH\s*=\s*\{(.*?)\n\};", js, re.S)
+        assert m, "找不到 LEAGUE_ZH —— 提取器要更新"
+        d = dict(re.findall(r"([A-Z_0-9]+)\s*:\s*'([^']+)'", m.group(1)))
+        assert len(d) >= 40, f"人口非平凡:只扫到 {len(d)} 条"
+        assert d.get(self.CODE) == "亚冠乙"
+
+    def test_the_sport_key_is_deliberately_absent(self) -> None:
+        from nutmeg.v4.data.sources.odds_api import SPORT_KEYS
+        assert self.CODE not in SPORT_KEYS, "Odds API 无 AFC 赛事,猜一个只会每次 404"
+
+    def test_it_is_not_calendar_year(self) -> None:
+        """赛季历**实证**:竞彩档案 2025-10→2026-05、**1/6/7/8/9 月全空**;
+        AF 四个赛季均为 8 月→次年 5 月 ⇒ 秋春制。"""
+        from nutmeg.v4.data.sources.api_football import CALENDAR_YEAR_LEAGUES
+        assert self.CODE not in CALENDAR_YEAR_LEAGUES
+        db = REPO / "data/v4_jingcai_history.db"
+        if not db.exists():
+            pytest.skip("没有竞彩历史库")
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as c:
+            months = {r[0][5:7] for r in c.execute(
+                "select distinct close_date from jingcai_odds_history "
+                "where league_cn='亚冠乙' and close_date is not null")}
+        assert len(months) >= 5, f"人口非平凡:只看到 {months}"
+        assert {"06", "07"} & months == set(), f"6/7 月有比赛 ⇒ 不是秋春制了:{months}"
+
+    def test_the_exemptions_are_verified_not_convenient(self) -> None:
+        """⛔ `NO_JINGCAI_ANCHOR` 的语义是「竞彩**从未上架过**」,不是「锚不到」。
+
+        决定性判据(本轮实测):**竞彩亚冠乙档案的 25 支中文名,解不出的是 0 支**
+        ⇒ 竞彩用过的名字已全部映上,白名单里那 13 支从没被上架过。
+        这条红了 = 档案里又出现解不出的名字 ⇒ 白名单要重新逐支核。
+        """
+        from nutmeg.v4.cli.registry_coverage import NO_JINGCAI_ANCHOR
+        assert len(NO_JINGCAI_ANCHOR.get(self.CODE, ())) == 13
+        db = REPO / "data/v4_jingcai_history.db"
+        if not db.exists():
+            pytest.skip("没有竞彩历史库")
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as c:
+            names = {r[0] for r in c.execute(
+                "select distinct home_zh from jingcai_odds_history where league_cn='亚冠乙' "
+                "union select distinct away_zh from jingcai_odds_history where league_cn='亚冠乙'"
+            ) if r[0]}
+        assert len(names) >= 20, f"人口非平凡:档案只有 {len(names)} 支"
+        unresolved = sorted(n for n in names if zh_to_canonical(n) is None)
+        assert not unresolved, (
+            f"竞彩亚冠乙档案里又有解不出的名字 {unresolved} —— "
+            f"白名单「从未上架过」的前提动摇了,要重新逐支核")

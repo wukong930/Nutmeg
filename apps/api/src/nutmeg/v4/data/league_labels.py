@@ -92,6 +92,10 @@ _EN_TO_CN: dict[str, str] = {
     # ⚠️ 中文轨「亚冠精英」**早就在** `_NON_DOMESTIC_CN` 里 ⇒ 不会踩「只加 _EN_TO_CN
     #   导致杯赛被算成 domestic、悄悄混进 δ 的国内联赛人口」那个坑(见韩国杯/日联赛杯那两条)。
     "AFC_CL_ELITE": "亚冠精英",
+    # 补亚冠乙(2026-09-16 owner 授权)。中文写法**实证**自
+    # `jingcai_odds_history.league_cn`:「亚冠乙」565 行。⛔ 不是照 "Two" 意译的
+    #(意译会得到「亚冠二级/亚冠二」,都对不上)。
+    "AFC_CL_TWO": "亚冠乙",
     "COPA_LIBERTADORES": "解放者杯",
     "UEFA_SUPER_CUP": "欧超杯",
     "SAU_PRO_LEAGUE": "沙职",
@@ -261,6 +265,16 @@ _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     #    若将来 EN 轨也出现,`CUP_COMPETITIONS` 要同步注册。
     "亚运女足",
     "亚运男足",
+    # 同类第十二条(2026-09-16):亚冠乙 = AFC Champions League Two,**洲际**俱乐部杯赛
+    # ⇒ 不进 δ 的拟合人口,与 亚冠精英/解放者杯/欧超杯 同理。
+    # 🚨 这条是本批**唯一会静默污染数据**的:`DOMESTIC_LEAGUES_CN` 由
+    #   `_EN_TO_CN.values()` **减去本集合**推导 ⇒ 只补 `_EN_TO_CN["AFC_CL_TWO"]`
+    #   不补这里,`classify_league("亚冠乙")` 立刻从 `unknown` 变成 **`domestic`**,
+    #   一个跨国洲际杯赛就悄悄混进 δ 校准的国内联赛人口。数字会动,什么都不报错。
+    #   ⭐ **实测确认过**:加完 `_EN_TO_CN`、还没加这里时,它确实返回 `domestic`
+    #      ——「这条注释描述的危险」这次是被我亲手复现出来的,不是抄的。
+    #   (同 韩国杯 2026-08-18、日联赛杯 2026-09-01 两条注释记的完全一样。)
+    "亚冠乙",
 })
 
 #: 已知的国内俱乐部联赛(canonical CN)—— P3 计数的合法人口(中文轨)。
