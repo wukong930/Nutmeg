@@ -626,6 +626,107 @@ class TestBanner20260916:
         assert zh_to_canonical("托雷恩塞") == "Torreense", "原写法不该失效"
 
 
+class TestBanner20260917:
+    """📋 2026-09-17 横幅(1/23)· 亚运男足 沙特。
+
+    ⭐ **先逐名跑再动手**(第三次救场):横幅点 1 场 = 2 个名字,而 `卡塔尔亚足`
+       09-15 就注册过了 ⇒ 真缺口只有主队一侧。横幅按**比赛**点名,不是按队。
+
+    🚨 这批的主要教训不在词典而在**普查判据**:我第一版拿裸 `zh_to_canonical`
+       扫在售,扫出「解放者杯也全灭」。生产判据是 `home_en and away_en`,那两列
+       由 `_canonical_from_any` **全称→简称两个都试**填 —— `德尔瓦耶独立` 全称
+       解不出、简称解得出,根本不是缺口。⇒ 复用函数 ≠ 复用口径。下面
+       `test_the_census_criterion_is_the_production_one` 就是把这条钉住。
+    """
+
+    PAIRS = {"沙特阿拉伯亚足": "Saudi Arabia U23", "沙特亚": "Saudi Arabia U23"}
+
+    @pytest.mark.parametrize("zh", sorted(PAIRS))
+    def test_every_spelling_resolves(self, zh: str) -> None:
+        assert zh_to_canonical(zh) == self.PAIRS[zh]
+
+    def test_the_anchor_is_unique_and_matches_our_mapping(self) -> None:
+        """⭐ 第①档锚,两层收窄:开球时刻+赛事 → 再用**已解出的客队**。"""
+        rows = [r for r in _af_rows()
+                if r[0] == "2026-09-18T10:30:00" and r[1] == "Asian Games"]
+        assert rows, "缓存里没有 Asian Games @09-18T10:30 —— 锚不成立"
+        away_en = zh_to_canonical("卡塔尔亚足")
+        assert away_en == "Qatar U23", "声称已解出的客队其实解不出 —— 对照不成立"
+        rows = [r for r in rows if r[3] == away_en]
+        uniq = list({r[4]: r for r in rows}.values())
+        assert len(uniq) == 1, (
+            f"候选 {len(uniq)} 场,**不唯一** ⇒ 不能据此断定主队")
+        _, _, home, away, fid, *_ = uniq[0]
+        assert fid == 1639466
+        assert zh_to_canonical("沙特阿拉伯亚足") == home
+        assert zh_to_canonical("卡塔尔亚足") == away
+
+    def test_no_single_rule_derives_the_abbreviations(self) -> None:
+        """🚨 **本类的承重面**:简称必须走锚,不许按全称推 —— 这是**实测**不是谨慎。
+
+        7 支已注册亚运队里,简称是全称前缀的只有 **5 支**;`中国香港亚运男足`→
+        `中国港亚` 和 `沙特阿拉伯亚足`→`沙特亚` 都在**中间**丢字
+        (「香」、「阿拉伯」)。⇒ 「取前缀」这条看起来成立的规则会静默造错 2/7。
+        没有这条断言,「别猜简称」只是一句注释。
+
+        ⚠️ 人口从 `_ZH_OVERRIDES` **自己发现**,不写死名单。
+        """
+        pairs = [(TEAM_NAME_ZH[en], abbr) for abbr, en in _ZH_OVERRIDES.items()
+                 if en in TEAM_NAME_ZH
+                 and (TEAM_NAME_ZH[en].endswith("亚足")
+                      or TEAM_NAME_ZH[en].endswith("亚运男足"))]
+        assert len(pairs) >= 7, f"人口非平凡:只发现 {len(pairs)} 对:{pairs}"
+        non_prefix = [(f, a) for f, a in pairs if not f.startswith(a)]
+        assert non_prefix, (
+            "所有简称都是全称前缀 —— 那「取前缀」这条规则成立,本类的叙述要重查")
+        assert ("沙特阿拉伯亚足", "沙特亚") in non_prefix
+        assert zh_to_canonical("沙特亚") == zh_to_canonical("沙特阿拉伯亚足")
+
+    def test_the_abbreviation_went_to_the_override_table(self) -> None:
+        """⚠️ 简称是**解析用**写法,不该在 team_name_zh 里多造一个英文键。"""
+        assert _ZH_OVERRIDES.get("沙特亚") == "Saudi Arabia U23"
+        assert TEAM_NAME_ZH.get("Saudi Arabia U23") == "沙特阿拉伯亚足"
+        assert "沙特亚" not in TEAM_NAME_ZH.values(), "简称不该当显示名"
+
+    def test_the_senior_side_is_untouched(self) -> None:
+        """🚨 `Saudi Arabia` 和 `Saudi Arabia U23` 在 AF 里是**不同实体**。"""
+        assert TEAM_NAME_ZH.get("Saudi Arabia") == "沙特阿拉伯"
+        assert zh_to_canonical("沙特阿拉伯") == "Saudi Arabia"
+        assert lookup_zh("Saudi Arabia U23") == "沙特阿拉伯亚足"
+
+    def test_no_asiad_name_was_invented_from_the_english(self) -> None:
+        """🚨 ⛔绝不照英文猜译名 —— 做成**结构约束**而不是靠我记得。
+
+        不变量:词典里每个「亚运男足」实体(中文值以 `亚足`/`亚运男足` 收尾的
+        国家队变体),它的英文键**必须真的出现在 AF 的 `Asian Games` 赛程里**。
+        猜出来的名字进不了这个集合 ⇒ 当场红。
+
+        ⚠️ 人口**自己发现**,不写死名单([[hardcoded-guard-lists-rot]])。
+        ⭐ 这条也是「只补 1 支、不把 15 支一次补完」那个决定的承重面:
+           剩下 8 支竞彩从未上架过,没有任何锚 —— 补它们只能靠猜,而猜会在这里红。
+        """
+        af_u23 = {r[2] for r in _af_rows() if r[1] == "Asian Games"} | \
+                 {r[3] for r in _af_rows() if r[1] == "Asian Games"}
+        af_u23 = {n for n in af_u23 if n}
+        assert len(af_u23) >= 12, f"人口非平凡:AF 只发现 {len(af_u23)} 支 U23"
+        ours = {en for en, zh in TEAM_NAME_ZH.items()
+                if zh.endswith("亚足") or zh.endswith("亚运男足")}
+        assert len(ours) >= 7, f"人口非平凡:只发现 {len(ours)} 支已注册:{ours}"
+        invented = ours - af_u23
+        assert not invented, (
+            f"这些名字在 AF 的 Asian Games 赛程里**不存在** —— 是照英文猜的?{invented}")
+
+    def test_the_census_criterion_is_the_production_one(self) -> None:
+        """🚨 普查必须用 `_canonical_from_any`(全称→简称都试),不是裸解析。
+
+        钉住的正是我这次踩的那步:`德尔瓦耶独立` 裸解析 None、生产口径解得出。
+        """
+        from nutmeg.v4.data.sources.sporttery import _canonical_from_any
+        assert zh_to_canonical("德尔瓦耶独立") is None, (
+            "全称居然解得出了 —— 那这条对照失效,本类叙述要重查")
+        assert _canonical_from_any("德尔瓦耶独立", "德尔瓦耶") == "Independiente del Valle"
+
+
 class TestAfcClTwoIsFullyWired:
     """🥈 2026-09-16 owner 授权:亚冠乙(`AFC_CL_TWO`)进市场模式。
 
