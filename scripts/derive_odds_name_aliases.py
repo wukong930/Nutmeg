@@ -30,6 +30,8 @@ import collections
 import sqlite3
 import sys
 
+from nutmeg.v4.data.odds_source_aliases import ODDS_SOURCE_ALIASES as _TABLE
+
 DB = "data/v4_observation.db"
 _CLOSING = "closing"          # Odds API 侧;其余 source 一律算 gather(API-Football)
 
@@ -73,12 +75,14 @@ def _slot(ko: str) -> str:
     return ko.replace(" ", "T")[:16]
 
 
-def derive(db: str = DB) -> tuple[dict, dict, list, list]:
-    """→ (别名 {(联赛, closing名): (gather名, 证据数)}, 冲突, 未收敛, 单侧联赛)。
+def derive(db: str = DB) -> tuple[dict, dict, list, list, set]:
+    """→ (别名 {(联赛, closing名): (gather名, 证据数)}, 冲突, 未收敛, 单侧联赛, 种子键集)。
 
     ⚠️ 2026-08-14 修:签名与 docstring 此前都写「3 元组」,实际 `return` 了 **4 个**
     (末位 `one_sided`)。调用方按 3 个解包会 `ValueError` —— 属于「响的」那种漂移,
     不是静默的,所以危害有限;但既然碰到了就一起修。
+    ⚠️ 2026-09-19 加第 5 位 `seeded`(跨联赛种子键集,仅供输出标注)——
+    **同一处签名第二次变长了**,所以这次签名/docstring/调用方一起改。
     """
     g, cl, names = _load(db)
     ev: dict = collections.defaultdict(collections.Counter)
@@ -88,6 +92,36 @@ def derive(db: str = DB) -> tuple[dict, dict, list, list]:
         ev[(lg, cp[1])][gp[1]] += 1
 
     both = set(g) & set(cl)
+
+    # ⓪ 跨联赛种子(2026-09-19)。同一 closing 名在**别的联赛**已建键 → T,
+    #    且 T **确实出现在本联赛 gather 侧** ⇒ 同一俱乐部、同一正典目标,只是缺
+    #    `(本联赛, 名)` 这把精确键。09-10 那批的 `('UCL','Bodø/Glimt')` 走的就是
+    #    这条证据(注释里写作「别联赛已有别名 + 本联赛 gather 侧存在」),这里把它
+    #    从手工变成探测器的一部分。
+    # ⚠️ 这条**引入了表→推导的回授**:别处一条错键会顺着传播。两道闸挡它 ——
+    #    ① 必须「T 在本联赛 gather 侧真的出现过」(独立于那条键的验证);
+    #    ② 输出里单独标 `种子`,证据类型在决策点可见,不和共现证据混成一团。
+    seeded: set = set()
+    gather_names: dict = collections.defaultdict(set)
+    for (lg, _slotkey), ps in g.items():
+        for h, a in ps:
+            gather_names[lg].update((h, a))
+    closing_names: dict = collections.defaultdict(set)
+    for (lg, _slotkey), ps in cl.items():
+        for h, a in ps:
+            closing_names[lg].update((h, a))
+    by_name: dict = collections.defaultdict(set)
+    for (_lg, n), v in _TABLE.items():
+        by_name[n].add(v)
+    for lg, ns in closing_names.items():
+        for n in ns:
+            if (lg, n) in _TABLE:
+                continue
+            tgt = {v for v in by_name.get(n, ()) if v in gather_names[lg]}
+            if len(tgt) == 1:
+                ev[(lg, n)][next(iter(tgt))] += 1
+                seeded.add((lg, n))
+
     for k in both:                                   # ① 无歧义键
         if len(g[k]) == 1 and len(cl[k]) == 1:
             learn(k[0], next(iter(cl[k])), next(iter(g[k])))
@@ -98,10 +132,19 @@ def derive(db: str = DB) -> tuple[dict, dict, list, list]:
                 continue
             for cp in cl[k]:
                 for i in (0, 1):
+                    # ⭐ 2026-09-19:锚有**两种**,此前只认第一种 ⇒ UEL 16 条推不出来。
+                    #    ① 学到的别名;② **两侧逐字相同**(`Celtic` vs `Celtic`)。
+                    #    ②和①一样硬:一支队在同一 (联赛,开球时刻) 只打一场,所以
+                    #    只要 `len(m) == 1`,拿它钉另一侧就是唯一解。
+                    #    ⛔ 这不是放宽成「名字相似」—— 要求的是**逐字相等**。
                     known = ev.get((k[0], cp[i]))
-                    if not known or len(known) != 1:
+                    if known and len(known) == 1:
+                        anchor = next(iter(known))
+                    elif any(gp[i] == cp[i] for gp in g[k]):
+                        anchor = cp[i]
+                    else:
                         continue
-                    m = [gp for gp in g[k] if gp[i] == next(iter(known))]
+                    m = [gp for gp in g[k] if gp[i] == anchor]
                     if len(m) == 1:
                         before = len(ev)
                         learn(k[0], cp, m[0])
@@ -133,13 +176,18 @@ def derive(db: str = DB) -> tuple[dict, dict, list, list]:
             one_sided.append((lg, "gather" if gs else "closing", len(gs or cs)))
             continue
         for n in sorted(cs - gs):
-            if (lg, n) not in alias:
+            # ⚠️ 2026-09-19:也要排掉**已经在表里**的。种子键一旦落表,⓪ 那条就
+            #    `continue` 跳过它,于是本轮推不回来 ⇒ 它会被重新列进「未收敛」,
+            #    也就是**报警指向已经修好的东西**(同 [[unmapped-banner-silences-not-fixes]]
+            #    那条横幅点已修好队名的坑)。判据要问「它现在解不解得出」,
+            #    不是「本轮推没推出来」。
+            if (lg, n) not in alias and (lg, n) not in _TABLE:
                 pending.append((lg, n))
-    return alias, conflict, pending, one_sided
+    return alias, conflict, pending, one_sided, seeded
 
 
 def main() -> int:
-    alias, conflict, pending, one_sided = derive()
+    alias, conflict, pending, one_sided, seeded = derive()
     print(f"别名 {len(alias)} 条 · 冲突 {len(conflict)} 条 · 未收敛 {len(pending)} 条 "
           f"· 单侧联赛 {len(one_sided)} 个\n")
     if "--emit" in sys.argv:

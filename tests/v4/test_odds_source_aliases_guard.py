@@ -40,14 +40,19 @@ def test_no_key_conflicts() -> None:
     dict 字面量天然不会有重复键 —— 但**后写的会静默覆盖先写的**,
     所以这条真正钉的是「条数没有因为重键而缩水」。
     """
-    assert len(A) == 254, (
-        f"表大小 {len(A)},预期 223(210 + 08-18 的 8:`derive_odds_name_aliases.py` "
+    assert len(A) == 270, (
+        f"表大小 {len(A)},预期 **270**。⚠️ 这句文案里的历史数字一度停在「223」"
+        f"而断言早已是 254 —— 2026-09-19 一并修正。沿革:210 + 08-18 的 8:"
+        f"`derive_odds_name_aliases.py` "
         f"推出 9 条,**采纳 8 条**;第 9 条 `Vitória SC→Guimaraes` 方向反了,"
         f"理由写在别名表里 · + 09-01 的 2:EFL_CUP 的 Coventry/Leeds,"
         f"08-25 才首次在杯赛两侧共现)。"
         f"+ 09-02 的 3:沙特联 Al-Qadsiah / Al-Shabab / Diriyah Club —— "
         f"08-16 留空的那批等到了严格 1×1 槽,理由写在别名表里。"
-        f"+ 09-10 的 31:「给没有加队徽的球队加队徽」查下来 47/59 缺徽其实是 odds_api 拼法,理由写在别名表里。若你有意增删,改这个数并在下面 per-league 表同步。")
+        f"+ 09-10 的 31:「给没有加队徽的球队加队徽」查下来 47/59 缺徽其实是 odds_api 拼法,理由写在别名表里。"
+        f"+ 09-19 的 16:UEL 首次两侧共现,而真正的修复是**给探测器补上两种锚**"
+        f"(逐字相同的一侧 · 跨联赛种子),推导 31→60 条;理由写在别名表里。"
+        f"若你有意增删,改这个数并在下面 per-league 表同步。")
 
 
 def test_no_target_collision() -> None:
@@ -96,7 +101,7 @@ def test_per_league_counts() -> None:
     assert got == {
         'BEL_PRO_LEAGUE': 10,
         'BRA_SERIE_A': 5,
-        'COPA_LIBERTADORES': 7,
+        'COPA_LIBERTADORES': 9,
         'DNK_SUPERLIGA': 6,
         'EFL_CUP': 43,
         'ENG_CHAMPIONSHIP': 16,
@@ -107,7 +112,7 @@ def test_per_league_counts() -> None:
         'FRA_LIGUE_1': 5,
         'FRA_LIGUE_2': 8,
         'GER_2_BUNDESLIGA': 3,
-        'GER_BUNDESLIGA': 5,
+        'GER_BUNDESLIGA': 6,
         'ITA_SERIE_A': 2,
         'ITA_SERIE_B': 4,
         'JPN_J1': 9,
@@ -120,7 +125,8 @@ def test_per_league_counts() -> None:
         'SUI_SUPER_LEAGUE': 5,
         'SWE_ALLSVENSKAN': 8,
         'TUR_SUPER_LIG': 11,
-        'UCL': 11,
+        'UCL': 12,
+        'UEL': 12,
         'USA_MLS': 10,
     }, got
 

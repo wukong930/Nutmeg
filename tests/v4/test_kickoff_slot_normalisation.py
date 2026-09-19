@@ -97,7 +97,7 @@ def test_derive_pairs_across_Z_and_offset_literals(tmp_path: Path) -> None:
         ("TEST_LG", "closing", "2026-07-01T16:00:00Z", "Leicester City", "Arsenal"),
         ("TEST_LG", "cup_market", "2026-07-01T16:00:00+00:00", "Leicester", "Arsenal"),
     ])
-    aliases, conflicts, _pending, _one = d.derive(db)
+    aliases, conflicts, _pending, _one, _seeded = d.derive(db)
     assert aliases, (
         "跨 Z↔+00:00 的同场没配上 ⇒ 槽位归一坏了。"
         "⚠️ 这不会报错,只会静默输出「别名 0 条」—— 和「两个源本来同名」同形。")
@@ -115,8 +115,85 @@ def test_derive_negative_control_same_names_yield_nothing(tmp_path: Path) -> Non
         ("TEST_LG", "closing", "2026-07-01T16:00:00Z", "Leicester", "Arsenal"),
         ("TEST_LG", "cup_market", "2026-07-01T16:00:00+00:00", "Leicester", "Arsenal"),
     ])
-    aliases, _c, _p, _o = d.derive(db)
+    aliases, _c, _p, _o, _s = d.derive(db)
     assert not aliases, f"两侧同名却推出了别名 ⇒ 判据在无中生有:{aliases}"
+
+
+def test_derive_anchors_on_a_verbatim_identical_side(tmp_path: Path, monkeypatch) -> None:
+    """⭐ 2026-09-19 新增的锚 ②:**两侧逐字相同的那一侧**也能钉住配对。
+
+    旧规则只认「之前学到的别名」当锚,于是多场槽位里
+    `Celtic vs Ferencváros TC` ↔ `Celtic vs Ferencvarosi TC` 这种
+    **靠 `Celtic` 逐字相同就唯一可解**的配对全部推不出来 —— UEL 实测漏 16 条。
+
+    ⚠️ 夹具**必须是多场槽位**:单场槽位会被规则①(1×1)直接解掉。
+    🚨 而且**必须把真表隔离掉**:第一版我用了真实队名,结果同一批新加的
+       跨联赛种子(锚⓪)在夹具上点火,测试照样绿 —— 变异「拆掉逐字锚」逃逸。
+       ⇒ 夹具的语义和它声称测的东西分了家。用中性名 + `_TABLE = {}` 钉死只测锚②。
+    """
+    d = _load("derive_odds_name_aliases")
+    monkeypatch.setattr(d, "_TABLE", {})
+    db = _fixture_db(tmp_path, [
+        ("TEST_LG", "closing", "2026-07-01T16:00:00Z", "Alpha SK", "Bravo United FC"),
+        ("TEST_LG", "closing", "2026-07-01T16:00:00Z", "Charlie", "Delta"),
+        ("TEST_LG", "cup_market", "2026-07-01T16:00:00+00:00", "Alpha SK", "Bravo United"),
+        ("TEST_LG", "cup_market", "2026-07-01T16:00:00+00:00", "Charlie", "Delta"),
+    ])
+    aliases, conflicts, _p, _o, seeded = d.derive(db)
+    assert not seeded, f"这条只该测锚②,种子却点火了 ⇒ 隔离没做干净:{seeded}"
+    assert aliases.get(("TEST_LG", "Bravo United FC"), (None,))[0] == "Bravo United", (
+        f"逐字相同的一侧没能当锚 ⇒ 多场槽位里只有一侧劈开的配对全部推不出来:{aliases}")
+    assert not conflicts, conflicts
+
+
+def test_verbatim_anchor_still_requires_a_unique_counterpart(tmp_path: Path, monkeypatch) -> None:
+    """🚨 承重负对照:锚**唯一**才算数,不唯一必须留空。
+
+    没有这条,上面那条会退化成「只要有个同名就随便配」。
+    """
+    d = _load("derive_odds_name_aliases")
+    monkeypatch.setattr(d, "_TABLE", {})
+    db = _fixture_db(tmp_path, [
+        ("TEST_LG", "closing", "2026-07-01T16:00:00Z", "Alpha SK", "Mystery FC"),
+        ("TEST_LG", "closing", "2026-07-01T16:00:00Z", "Other", "Second"),
+        # 同一槽位里 `Alpha SK` 出现在两场 gather(现实不会,但判据不能靠现实兜底)
+        ("TEST_LG", "cup_market", "2026-07-01T16:00:00+00:00", "Alpha SK", "Gamma"),
+        ("TEST_LG", "cup_market", "2026-07-01T16:00:00+00:00", "Alpha SK", "Epsilon"),
+    ])
+    aliases, _c, _p, _o, _s = d.derive(db)
+    assert ("TEST_LG", "Mystery FC") not in aliases, (
+        f"锚不唯一却照样配了 ⇒ 这是「猜」不是「推」:{aliases}")
+
+
+def test_cross_league_seed_requires_the_target_to_exist_here(tmp_path: Path, monkeypatch) -> None:
+    """⭐ 2026-09-19 新增的锚 ⓪:跨联赛种子 —— 且它的**第二道闸是承重的**。
+
+    证据:同一 closing 名在别的联赛已建键 → T,**且 T 真的出现在本联赛 gather 侧**。
+    第二个条件不是装饰:它是这条证据里唯一独立于「那条外部键」的部分,
+    没有它就成了纯粹的表→推导回授。
+    """
+    d = _load("derive_odds_name_aliases")
+    monkeypatch.setattr(d, "_TABLE", {("OTHER_LG", "TSG Hoffenheim"): "1899 Hoffenheim"})
+    # 两侧都劈开的多场槽位 ⇒ 共现推不出来,只有种子能解
+    base = [
+        ("TEST_LG", "closing", "2026-07-01T16:00:00Z", "OFI Crete", "TSG Hoffenheim"),
+        ("TEST_LG", "closing", "2026-07-01T16:00:00Z", "PFC Levski", "Salzburg"),
+        ("TEST_LG", "cup_market", "2026-07-01T16:00:00+00:00", "OFI", "1899 Hoffenheim"),
+        ("TEST_LG", "cup_market", "2026-07-01T16:00:00+00:00", "Levski", "Red Bull Salzburg"),
+    ]
+    _a, _c, _p, _o, seeded = d.derive(_fixture_db(tmp_path, base))
+    assert ("TEST_LG", "TSG Hoffenheim") in seeded, "目标就在本联赛 gather 侧,种子却没点火"
+
+    # 负对照:把目标名从本联赛 gather 侧拿掉 ⇒ 不许点火
+    d2 = _load("derive_odds_name_aliases")
+    monkeypatch.setattr(d2, "_TABLE", {("OTHER_LG", "TSG Hoffenheim"): "1899 Hoffenheim"})
+    swapped = [r if r[3] != "OFI" else (r[0], r[1], r[2], "OFI", "Some Other Club")
+               for r in base]
+    alt = tmp_path / "neg"
+    alt.mkdir()
+    _a2, _c2, _p2, _o2, seeded2 = d2.derive(_fixture_db(alt, swapped))
+    assert ("TEST_LG", "TSG Hoffenheim") not in seeded2, (
+        "目标名不在本联赛 gather 侧却照样点火 ⇒ 第二道闸失效,变成纯回授")
 
 
 def test_slot_key_is_stable_across_all_three_literals() -> None:

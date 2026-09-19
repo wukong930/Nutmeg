@@ -36,6 +36,55 @@
 from __future__ import annotations
 
 ODDS_SOURCE_ALIASES: dict[tuple[str, str], str] = {
+    # ── 2026-09-19 · 16 条。触发:`test_alias_gap_when_same_name_plays_in_another_league`
+    #    **连红 4 天**,每天报同样 3 个 UEL 名(TSG Hoffenheim / Union Saint-Gilloise /
+    #    Besiktas JK)。⇒ 这不是新分裂,是 09-10 那批之后欧战小组赛开踢、
+    #    UEL 第一次两侧共现。
+    #
+    # 🚨 真正的问题不在这 3 条,而在**探测器少了两种锚**,所以它自己只报得出 3 条:
+    #    ① **逐字相同的一侧也能当锚**。旧规则②只认「之前学到的别名」,于是
+    #       `Celtic vs Ferencváros TC` ↔ `Celtic vs Ferencvarosi TC` 这种
+    #       **靠 `Celtic` 逐字相同就能唯一钉住**的配对全部推不出来。
+    #       一支队在同一 (联赛,开球时刻) 只打一场 ⇒ 只要候选唯一,这个锚和
+    #       学到的别名一样硬。⛔ 不是放宽成「名字相似」—— 要求逐字相等。
+    #    ② **跨联赛种子**:同一 closing 名在别的联赛已建键 → T,且 T 确实出现在
+    #       本联赛 gather 侧(09-10 那批的 `Bodø/Glimt` 走的就是这条,当时是手工)。
+    #       ⚠️ 它引入表→推导的回授,所以输出里单独标 `种子`,证据类型在决策点可见。
+    #    修完:推导 31 → **60** 条,未收敛 39 → 10。
+    #
+    # ⭐ 交叉验算:我先写了一份**独立实现**再跑仓库这个脚本,两份在**目标值上 0 处
+    #    不一致**。差异只在数量(我 22 / 脚本 16),而**多出来的 6 条是我错**:
+    #    我用了「同格残差 1-1 ⇒ 唯一」这条规则,它在**一侧有而另一侧没有那场**时
+    #    会把两场不同的比赛配到一起(实测 `Sassuolo vs Juventus` 就只在 closing 侧)。
+    #    ⇒ 采纳脚本的 16 条。
+    #
+    # ⛔ **故意没补 6 条**(脚本仍报「未收敛」,共现证据不足):
+    #    UCL 'AEK Athens' / 'LASK' · UEL 'FC Ararat-Armenia' / 'PFC Levski Sofia' /
+    #    'Salzburg' / 'Sparta Prague'。没有锚就不写 —— 它们下次共现时脚本会报出来。
+    # ⚠️ `check_alias_effect.py` 会把本批 6 条报成「零作用」——**不是错**:
+    #    它的判据是「两个键**共享恰好一侧**队名,本别名让另一侧也对上」,一次只量
+    #    一条。而 16:45 那场(`OFI Crete vs TSG Hoffenheim` ↔ `OFI vs 1899 Hoffenheim`)
+    #    **两侧都要改**,得两条别名同时生效才合得上 ⇒ 单条量不出来。
+    #    实测口径(直接数叠上的赛事键)才是验收:全库 1851/1888 → **1872/1888**,
+    #    UEL 从 6/16 → **16/16**。
+    # ⚠️ `('PRT_PRIMEIRA_LIGA','Vitória SC')` 仍是**冲突**(12 场指向自己、1 场指向
+    #    `Guimaraes`)⇒ 一致性闸拒绝,不硬填。08-18 就是这条,理由没变。
+    ('COPA_LIBERTADORES', 'Cerro Porteño'): 'Cerro Porteno',          # 共现 11 场 · 波特诺
+    ('COPA_LIBERTADORES', 'Universidad Católica (CHI)'): 'U. Catolica',  # 共现 12 场 · 天主大学
+    ('GER_BUNDESLIGA', 'Bayern Munich'): 'Bayern München',            # 共现 14 场 · 拜仁慕尼黑
+    ('UCL', 'Bayern Munich'): 'Bayern München',                       # 共现 9 场 · 拜仁慕尼黑
+    ('UEL', 'Besiktas JK'): 'Beşiktaş',                               # 种子 · 贝西克塔斯
+    ('UEL', 'Ferencváros TC'): 'Ferencvarosi TC',                     # 共现 6 场 · 费伦茨瓦罗斯
+    ('UEL', "Hapoel Be'er Sheva"): 'Hapoel Beer Sheva',               # 共现 5 场
+    ('UEL', 'Jagiellonia Białystok'): 'Jagiellonia',                  # 共现 6 场 · 比亚韦斯托克
+    ('UEL', 'Lech Poznań'): 'Lech Poznan',                            # 共现 6 场 · 波兹南莱赫
+    ('UEL', 'NK Celje'): 'Celje',                                     # 共现 6 场 · 采列
+    ('UEL', 'OFI Crete'): 'OFI',                                      # 共现 5 场 · 克里特
+    ('UEL', 'Omonoia FC'): 'Omonia Nicosia',                          # 共现 5 场 · 奥莫尼亚
+    ('UEL', 'SK Sturm Graz'): 'Sturm Graz',                           # 共现 5 场 · 格拉茨风暴
+    ('UEL', 'TSG Hoffenheim'): '1899 Hoffenheim',                     # 种子 · 霍芬海姆
+    ('UEL', 'Union Saint-Gilloise'): 'Union St. Gilloise',            # 种子 · 圣吉罗斯联
+    ('UEL', 'Viktoria Plzeň'): 'Plzen',                               # 共现 5 场 · 比尔森胜利
     # ── 2026-09-10 · 31 条,同一形状的第二批(触发语与 08-18 那批逐字相同:
     #    owner「给没有加队徽的球队加队徽」)────────────────────────────────────
     # ⭐ 先量口径:人口取**盘面实际出场**的队(⛔ 不用 AF `/teams` 队表 —— 那正是
