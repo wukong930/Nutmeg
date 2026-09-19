@@ -3747,6 +3747,11 @@ const _NATION_FLAG = {
   "Uzbekistan W": "🇺🇿",
   // 2026-09-17 横幅:亚运男足沙特。底名 `Saudi Arabia` 🇸🇦 已在上表。
   "Saudi Arabia U23": "🇸🇦",
+  // 2026-09-19 横幅:亚运男足 伊朗 + 吉尔吉斯斯坦。
+  // 🚨 `Kyrgyz Republic` 也补进来(底名),不是多余:AF 用这个拼法而上表只有
+  //    `Kyrgyzstan` —— 上面那条「自发现」护栏的判据是「底名在不在本表」,
+  //    底名缺席就**整条静默跳过**。补了底名它才看得见带后缀的那个。
+  "Iran U23": "🇮🇷", "Kyrgyz Republic": "🇰🇬", "Kyrgyz Republic U23": "🇰🇬",
 };
 function teamLogo(name) {
   if (!name) return '';
