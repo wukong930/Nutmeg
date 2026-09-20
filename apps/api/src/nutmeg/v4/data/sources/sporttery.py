@@ -832,6 +832,11 @@ _ZH_OVERRIDES: dict[str, str] = {
     # ⚠️ 撞车:两个简称在 TEAM_NAME_ZH 值集 / 本表 / _ZH_TO_EN 里 0 占用。
     "伊朗亚": "Iran U23",
     "吉尔吉亚": "Kyrgyz Republic U23",
+    # -- 2026-09-20 横幅 · 简称那一半 ------------------------------------
+    # 全称在 team_name_zh(锚见那边:fixture 1639558,该时刻 4 选 1,靠已解出的主队收窄)。
+    # `菲律宾女足` → `菲律宾女` 是前缀 —— 10 支里 7 支是前缀、3 支中间丢字,
+    # 两种仍然都在,构词法依旧推不出来。
+    "菲律宾女": "Philippines W",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

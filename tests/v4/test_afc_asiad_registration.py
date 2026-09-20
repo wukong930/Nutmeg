@@ -527,27 +527,55 @@ class TestNationalVariantsGetFlagsNotInitials:
         assert not wrong, f"变体的旗和底名不一致(抄错国家?):{wrong}"
 
     def test_asiad_entities_have_a_flag_even_if_the_base_name_does_not(self) -> None:
-        """🚨 2026-09-19 —— 上面那条护栏的**发现判据自己有盲区**。
+        """🚨 09-19 加,09-20 **改了人口判据** —— 头一版一天就被隔壁那一半绕过去了。
 
-        它是 `if 底名 in 旗帜表` 才把变体算进人口。而 `Kyrgyz Republic U23` 的底名
-        是 `Kyrgyz Republic`,旗帜表里只有 `Kyrgyzstan` ⇒ **整条被静默跳过**:
-        既不要求补旗、也永远不会红,卡片退回字母缩写「Ky」。
-        ⇒ 同 [[syntactic-proxy-for-semantic-property]]:**我写的检查器本身不在被检查之列**。
+        上面那条护栏的发现判据是 `if 底名 in 旗帜表` ⇒ 底名缺席就**整条静默跳过**
+        (`Kyrgyz Republic U23` 的底名是 `Kyrgyz Republic`,表里只有 `Kyrgyzstan`;
+        `Philippines W` 的底名 `Philippines` 压根不在表里)。
+        ⇒ 同 [[syntactic-proxy-for-semantic-property]]:**发现判据本身不在被检查之列**。
 
-        这条换一个**不依赖旗帜表**的人口:中文值以 `亚足`/`亚运男足` 收尾的条目 ——
-        按构造它们全是国家队(亚运只有国家队参赛),所以「必须有国旗」无条件成立。
-        ⛔ 仍然不碰俱乐部青年队:它们的中文值不会以这两个后缀收尾。
+        ## 🚨 09-19 的第一版判据是错的,而它只撑了一天
+
+        当时写「中文值以 `亚足`/`亚运男足` 收尾 ⇒ 按构造全是国家队」。
+        对**男**足成立,对**女**足**不成立** —— NWSL 俱乐部女队的中文名也以 `女足`
+        收尾(天使城 / 波特兰荆棘 …实测 8 支)。照着放宽就会要求给**俱乐部**发国旗,
+        正是下面 `test_club_youth_teams_do_not_get_a_flag` 守着的那条线。
+
+        ## ⇒ 人口改成**外部可枚举**的:词典条目 ∩ AF 亚运赛程出场队
+
+        亚运足球只有国家队参赛,所以这个交集**按构造**全是国家队;
+        男女通吃、俱乐部自动排除,而且**完全不依赖旗帜表本身** —— 这是关键:
+        判据一旦引用那张可能不全的表,人口就会被它静默削小。
         """
         f = self._flags()
         assert len(f) > 100, f"人口非平凡:只解析到 {len(f)} 个国家"
-        asiad = {en for en, zh in TEAM_NAME_ZH.items()
-                 if zh.endswith("亚足") or zh.endswith("亚运男足")}
-        assert len(asiad) >= 9, f"人口非平凡:只发现 {len(asiad)} 支亚运队:{asiad}"
-        missing = sorted(asiad - set(f))
+        af = {r[2] for r in _af_rows() if (r[1] or "").startswith("Asian Games")}
+        af |= {r[3] for r in _af_rows() if (r[1] or "").startswith("Asian Games")}
+        af = {n for n in af if n}
+        assert len(af) >= 20, f"人口非平凡:AF 亚运只发现 {len(af)} 支出场队"
+        pop = set(TEAM_NAME_ZH) & af
+        assert len(pop) >= 12, f"人口非平凡:词典∩亚运只有 {len(pop)} 个:{sorted(pop)}"
+        missing = sorted(pop - set(f))
         assert not missing, (
             f"这些亚运国家队没有国旗,卡片会退回字母缩写:{missing}\n"
-            f"   ⇒ 在 `_NATION_FLAG` 里补上。⚠️ 底名不在旗帜表里时"
-            f"(如 `Kyrgyz Republic` vs `Kyrgyzstan`),上面那条护栏**发现不了它**")
+            f"   ⇒ 在 `_NATION_FLAG` 里补上(底名也一起补,否则上面那条护栏看不见它)")
+
+    def test_the_asiad_population_excludes_club_womens_teams(self) -> None:
+        """🚨 上面那条换判据的**承重面**:旧判据(按 `女足` 后缀)会拉进俱乐部。
+
+        没有这条,「为什么不直接放宽后缀」就只是注释里的一句话。
+        """
+        by_suffix = {en for en, zh in TEAM_NAME_ZH.items() if zh.endswith("女足")}
+        af = {r[2] for r in _af_rows() if (r[1] or "").startswith("Asian Games")}
+        af |= {r[3] for r in _af_rows() if (r[1] or "").startswith("Asian Games")}
+        clubs = by_suffix - af
+        assert len(clubs) >= 5, (
+            f"按「女足」后缀取人口只多出 {len(clubs)} 个非亚运条目 —— "
+            f"那「后缀判据会拉进俱乐部」这个理由要重查:{sorted(clubs)}")
+        # 它们**不该**有国旗 —— 这正是不能按后缀放宽的原因
+        f = self._flags()
+        wrongly = sorted(c for c in clubs if c in f)
+        assert not wrongly, f"俱乐部女队拿到了国旗:{wrongly}"
 
     def test_club_youth_teams_do_not_get_a_flag(self) -> None:
         """🚨 这条是上面那个设计决定的**承重面**:通用剥后缀会把这些染上国旗。"""
@@ -687,29 +715,30 @@ class TestBanner20260917:
     def test_no_single_rule_derives_the_abbreviations(self) -> None:
         """🚨 **本类的承重面**:简称必须走锚,不许按全称推 —— 这是**实测**不是谨慎。
 
-9 支已注册亚运队里,简称是全称前缀的只有 **6 支**;三个例外都在**中间**丢字:
-        `中国香港亚运男足`→`中国港亚`(丢「香」)· `沙特阿拉伯亚足`→`沙特亚`
-        (丢「阿拉伯」)· `吉尔吉斯斯坦亚足`→`吉尔吉亚`(丢「斯斯坦」)。
-        ⇒ 「取前缀」这条看起来成立的规则会静默造错 **3/9**。
-        ⚠️ 09-19 那一批里 `伊朗亚运男足`→`伊朗亚` **是**前缀而 `吉尔吉亚` 不是 ——
-        **同一批里两种都有**,这比错误率本身更能说明没有可推导的构词法。
-        没有这条断言,「别猜简称」只是一句注释。
+        13 支已注册亚运队(男+女)里,简称是全称前缀的只有 **8 支**;五个例外都在
+        **中间**丢字:`中国香港亚运男足`→`中国港亚`(丢「香」)· `中国香港女足`→
+        `中国港女` · `乌兹别克斯坦女足`→`乌兹别女`(丢「克斯坦」)· `吉尔吉斯斯坦亚足`
+        →`吉尔吉亚`(丢「斯斯坦」)· `沙特阿拉伯亚足`→`沙特亚`(丢「阿拉伯」)。
+        ⇒ 「取前缀」这条看起来成立的规则会静默造错 **5/13**。
 
-        ⚠️ 人口从 `_ZH_OVERRIDES` **自己发现**,不写死名单。
+        🚨 2026-09-20 **换人口之后这个数才是对的**。原来人口按中文后缀取
+        (`亚足`/`亚运男足`),只覆盖男足 ⇒ 算出 3/9,**低估了** —— 漏掉的两个例外
+        (`中国港女` / `乌兹别女`)恰好都在女足那一半。
+        ⇒ 人口统一成「词典条目 ∩ AF 亚运赛程出场队」,和上面那条国旗护栏同一个来源。
         """
-        pairs = [(TEAM_NAME_ZH[en], abbr) for abbr, en in _ZH_OVERRIDES.items()
-                 if en in TEAM_NAME_ZH
-                 and (TEAM_NAME_ZH[en].endswith("亚足")
-                      or TEAM_NAME_ZH[en].endswith("亚运男足"))]
-        assert len(pairs) >= 9, f"人口非平凡:只发现 {len(pairs)} 对:{pairs}"
+        af = {r[2] for r in _af_rows() if (r[1] or "").startswith("Asian Games")}
+        af |= {r[3] for r in _af_rows() if (r[1] or "").startswith("Asian Games")}
+        pairs = [(TEAM_NAME_ZH[en], ab) for ab, en in _ZH_OVERRIDES.items()
+                 if en in TEAM_NAME_ZH and en in af]
+        assert len(pairs) >= 13, f"人口非平凡:只发现 {len(pairs)} 对:{pairs}"
         non_prefix = [(f, a) for f, a in pairs if not f.startswith(a)]
-        assert non_prefix, (
-            "所有简称都是全称前缀 —— 那「取前缀」这条规则成立,本类的叙述要重查")
-        assert ("沙特阿拉伯亚足", "沙特亚") in non_prefix
-        assert ("吉尔吉斯斯坦亚足", "吉尔吉亚") in non_prefix
-        assert ("伊朗亚运男足", "伊朗亚") not in non_prefix, (
-            "伊朗亚 不再是前缀了 —— 本类「同一批里两种都有」的叙述要重查")
-        assert zh_to_canonical("沙特亚") == zh_to_canonical("沙特阿拉伯亚足")
+        assert len(non_prefix) >= 5, (
+            f"非前缀只剩 {len(non_prefix)} 个 —— 「取前缀会造错」的论据变弱了,重查:{non_prefix}")
+        for pair in (("沙特阿拉伯亚足", "沙特亚"), ("吉尔吉斯斯坦亚足", "吉尔吉亚"),
+                     ("乌兹别克斯坦女足", "乌兹别女")):
+            assert pair in non_prefix, f"{pair} 不再是例外了 —— 本类叙述要重查"
+        assert ("菲律宾女足", "菲律宾女") not in non_prefix, (
+            "菲律宾女 不再是前缀了 —— 「同一批里两种都有」的叙述要重查")
 
     def test_the_abbreviation_went_to_the_override_table(self) -> None:
         """⚠️ 简称是**解析用**写法,不该在 team_name_zh 里多造一个英文键。"""
@@ -809,6 +838,58 @@ class TestBanner20260919:
         assert zh_to_canonical("伊朗") == "Iran"
         # `Kyrgyz Republic` 成年队词典里本来就没有 —— 补 U23 时**也没有顺手造一个**
         assert "Kyrgyz Republic" not in TEAM_NAME_ZH, "凭空给成年队造了个条目"
+
+
+class TestBanner20260920:
+    """📋 2026-09-20 横幅(1/31)· 亚运女足 菲律宾。
+
+    ⭐ 第四次兑现「锚不到就留着」。但这一批的两件事都比队名重要:
+
+    ① 🚨 **该时刻的锚真的不唯一**(前三次都是「本来就唯一」,收窄只是加固)。
+       `Asian Games Women` @09-21T07:00Z 有 **4 条** fixture,靠**已解出的主队**
+       `China W` 才收到 1 条 ⇒ 「同场已解出的另一侧」这一档在这里是**承重的**。
+    ② 🚨 **我 09-19 才补的旗帜护栏,今天就被隔壁那一半绕过去了** ——
+       见 `TestNationalVariantsGetFlagsNotInitials` 的长注释。
+    """
+
+    PAIRS = {"菲律宾女足": "Philippines W", "菲律宾女": "Philippines W"}
+
+    @pytest.mark.parametrize("zh", sorted(PAIRS))
+    def test_every_spelling_resolves(self, zh: str) -> None:
+        assert zh_to_canonical(zh) == self.PAIRS[zh]
+
+    def test_the_kickoff_slot_alone_is_not_enough(self) -> None:
+        """⭐ 承重:证明这条锚**不靠开球时刻单独成立** —— 同刻有多场。
+
+        没有这条,「用已解出的另一侧收窄」看起来是多余的装饰。
+        """
+        slot = {r[4] for r in _af_rows()
+                if r[0] == "2026-09-21T07:00:00" and r[1] == "Asian Games Women"}
+        assert len(slot) >= 3, (
+            f"该时刻只有 {len(slot)} 场 —— 那这条锚不需要收窄,本类叙述要重查")
+
+    def test_the_anchor_is_unique_once_narrowed_and_matches_our_mapping(self) -> None:
+        rows = [r for r in _af_rows()
+                if r[0] == "2026-09-21T07:00:00" and r[1] == "Asian Games Women"]
+        home_en = zh_to_canonical("中国女足")
+        assert home_en == "China W", "声称已解出的主队其实解不出 —— 对照不成立"
+        rows = [r for r in rows if r[2] == home_en]
+        uniq = list({r[4]: r for r in rows}.values())
+        assert len(uniq) == 1, f"收窄后候选 {len(uniq)} 场,不唯一"
+        _, _, home, away, fid, *_ = uniq[0]
+        assert fid == 1639558
+        assert zh_to_canonical("中国女足") == home
+        assert zh_to_canonical("菲律宾女足") == away
+
+    def test_the_abbreviation_went_to_the_override_table(self) -> None:
+        assert _ZH_OVERRIDES.get("菲律宾女") == "Philippines W"
+        assert TEAM_NAME_ZH.get("Philippines W") == "菲律宾女足"
+        assert "菲律宾女" not in TEAM_NAME_ZH.values(), "简称不该当显示名"
+
+    def test_no_senior_or_mens_entity_was_invented(self) -> None:
+        """🚨 亚运女足是**成年队**、男足是 U23 —— 补女足时两边都不许顺手造。"""
+        assert "Philippines" not in TEAM_NAME_ZH, "凭空给成年队造了条目"
+        assert "Philippines U23" not in TEAM_NAME_ZH, "凭空给男足 U23 造了条目"
 
 
 class TestAfcClTwoIsFullyWired:
