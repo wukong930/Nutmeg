@@ -892,6 +892,183 @@ class TestBanner20260920:
         assert "Philippines U23" not in TEAM_NAME_ZH, "凭空给男足 U23 造了条目"
 
 
+def _efl_trophy_rows():
+    """AF 缓存里 EFL Trophy 的 (kickoff, round, 主, 客, id)。`_af_rows` 不带 round。"""
+    import glob
+    import json
+    if not _AF_FIXTURES.is_dir():
+        pytest.skip("没有 AF fixture 缓存(worktree)")
+    out = []
+    for f in _AF_FIXTURES.glob("*.json"):
+        try:
+            d = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        for fx in (d if isinstance(d, list) else d.get("response") or []):
+            if not isinstance(fx, dict):
+                continue
+            lg = fx.get("league") or {}
+            if lg.get("name") != "EFL Trophy":
+                continue
+            fi, tm = fx.get("fixture") or {}, fx.get("teams") or {}
+            out.append((str(fi.get("date") or "")[:19], lg.get("round"),
+                        (tm.get("home") or {}).get("name"),
+                        (tm.get("away") or {}).get("name"), fi.get("id")))
+    assert len(out) >= 30, f"EFL Trophy 只有 {len(out)} 场,测不出东西"
+    return out
+
+
+class TestBanner20260921EflTrophy:
+    """📋 2026-09-21 横幅(3/4)· 英锦标赛 6 支全新队。
+
+    🚨 **前四档锚全部够不着** —— 这是这批唯一重要的事:
+      · 第①档:该时刻 AF 3 场、竞彩 3 场,而**六个名字一个都解不出**
+        ⇒ 没有「已解出的另一侧」,3×3 歧义。
+      · 第②③档:四个名字档案 0 行;另两个的对家也解不出(英甲整片空白)。
+      · 多日期交集法:**对照组当场证伪**(对曼城都不成立,AF 缓存是部分抓取)。
+
+    ⭐ 真正的锚是 **小组身份**(竞彩 `homeRank` ↔ AF `league.round`),**完全不碰队名**。
+       推理顺序:南北先独立钉死 002 ⇒ 由它得到 H↔8 ⇒ 字母=位次**被确认** ⇒
+       套到另两行,F→6 / B→2 与 AF 逐字吻合(3/3)。
+    ⛔ 没有用竞彩自带的英文缩写(MIK/CWT/…):拿缩写匹配全名仍是「长得像」。
+    """
+
+    KICKOFF = "2026-09-22T18:00:00"
+    #: (竞彩小组标签, AF round, 竞彩主, 竞彩客, fixture id)
+    ANCHORS = [
+        ("Southern Group H", "Group South - 8", "米尔顿凯恩斯", "克劳利", 1588908),
+        ("Northern Group F", "Group North - 6", "诺茨郡", "格里姆斯比", 1588849),
+        ("Northern Group B", "Group North - 2", "维冈竞技", "布莱克浦", 1588823),
+    ]
+    PAIRS = {"米尔顿凯恩斯": "Milton Keynes Dons", "米尔顿": "Milton Keynes Dons",
+             "克劳利": "Crawley Town", "诺茨郡": "Notts County",
+             "格里姆斯比": "Grimsby", "格里姆": "Grimsby",
+             "维冈竞技": "Wigan", "维冈": "Wigan", "布莱克浦": "Blackpool"}
+
+    @pytest.mark.parametrize("zh", sorted(PAIRS))
+    def test_every_spelling_resolves(self, zh: str) -> None:
+        assert zh_to_canonical(zh) == self.PAIRS[zh]
+
+    def test_the_kickoff_slot_alone_cannot_disambiguate(self) -> None:
+        """🚨 **本类的承重面**:证明「光靠开球时刻」在这里真的不够。
+
+        同刻同赛事 3 场、竞彩也 3 场,而当时**六个名字全解不出** ⇒ 3! = 6 种指派。
+        没有这条,「为什么要动用小组身份」只是注释里的一句话。
+        """
+        slot = {r[4] for r in _efl_trophy_rows() if r[0] == self.KICKOFF}
+        assert len(slot) >= 3, (
+            f"该时刻只有 {len(slot)} 场 —— 那第①档锚本来就够用,本类叙述要重查")
+
+    def test_the_group_alone_does_not_always_close_it(self) -> None:
+        """🚨 **护栏当场抓出的事**:小组身份**不保证**闭合。
+
+        小组末轮常有两场同时开,所以「小组+开球时刻」可能剩 2 场。
+        我最初只在「含那 6 个关键词」的子集里数,看到 3 场就以为唯一了 ——
+        又一次「我数的是我以为的人口」。
+
+        ⚠️ 实测三组里 **2 组剩 2 场、1 组剩 1 场**。所以下面那条 senior 规则
+        **不是装饰**;这条就是它的存在理由,少了它没人知道为什么要多一步。
+        """
+        need = {}
+        for _g, af_round, _hz, _az, _fid in self.ANCHORS:
+            need[af_round] = len({r[4] for r in _efl_trophy_rows()
+                                  if r[0] == self.KICKOFF and r[1] == af_round})
+        assert all(n >= 1 for n in need.values()), f"有组一场都没有:{need}"
+        assert max(need.values()) >= 2, (
+            f"三组在该时刻都只剩 1 场 {need} —— 那 senior 规则确实是多余的,本类叙述要重查")
+
+    @pytest.mark.parametrize("case", ANCHORS, ids=lambda c: c[2])
+    def test_the_senior_only_rule_closes_the_anchor(self, case) -> None:
+        """⭐ 闭合靠**量出来的**规律:竞彩从不上 U21 学院队(档案 0/88 场)。
+
+        EFL Trophy 每组 = 3 支成年队 + 1 支受邀 U21;该时刻每组 2 场里**恰好一场**
+        含 U21 ⇒ 竞彩那场必是另一场。⛔ 全程不碰队名相似度。
+        """
+        _g, af_round, hz, az, fid = case
+        rows = [r for r in _efl_trophy_rows()
+                if r[0] == self.KICKOFF and r[1] == af_round]
+        senior = [r for r in rows if " U21" not in (r[2] or "") and " U21" not in (r[3] or "")]
+        assert len(senior) == 1, (
+            f"{af_round} 该时刻的成年队对成年队场次有 {len(senior)} 场,不唯一 —— "
+            f"闭合规则失效,**留空不猜**:{rows}")
+        _, _, home, away, got = senior[0]
+        assert got == fid
+        assert zh_to_canonical(hz) == home, f"主队:我们给 {zh_to_canonical(hz)!r},AF 说 {home!r}"
+        assert zh_to_canonical(az) == away, f"客队:我们给 {zh_to_canonical(az)!r},AF 说 {away!r}"
+
+    def test_the_feed_has_never_listed_an_academy_side(self) -> None:
+        """🚨 上面那条闭合规则的**承重面** —— 它是量出来的,不是假设。
+
+        红了 = 竞彩开始上 U21 了 ⇒ 闭合规则失效,这批映射要**重新锚一遍**。
+        """
+        import re
+        db = REPO / "data/v4_jingcai_history.db"
+        if not db.exists():
+            pytest.skip("竞彩档案不在这个 checkout 里")
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        names: set = set()
+        n_rows = 0
+        for _d, h, a in conn.execute(
+                "SELECT DISTINCT close_date, home_zh, away_zh FROM jingcai_odds_history "
+                "WHERE league_cn='英锦标赛'"):
+            n_rows += 1
+            names.update((h, a))
+        assert n_rows >= 50, f"人口非平凡:档案里英锦标赛只有 {n_rows} 场"
+        assert len(names) >= 40, f"人口非平凡:只有 {len(names)} 个中文名"
+        academy = sorted(n for n in names if n and re.search(r"U2[0-9]|青年|二队|预备", n))
+        assert not academy, (
+            f"竞彩开始上 U21 学院队了:{academy} ⇒ 「只上成年队」这条闭合规则失效,"
+            f"本批 6 条映射必须重新锚")
+
+    def test_the_letter_to_number_mapping_has_a_structural_basis(self) -> None:
+        """⭐ 「字母=位次」不是看着像:AF 的 round 恰好是每区 1..8、每组 4 队。
+
+        红了 = 赛制变了(比如改成 6 组)⇒ 上面那套推理要**重新做一遍**,别改常数。
+        """
+        import re
+        rows = _efl_trophy_rows()
+        nums = {reg: set() for reg in ("North", "South")}
+        teams: dict = {}
+        for _ko, rnd, h, a, _i in rows:
+            m = re.fullmatch(r"Group (North|South) - (\d+)", rnd or "")
+            if not m:
+                continue
+            nums[m.group(1)].add(int(m.group(2)))
+            teams.setdefault(rnd, set()).update((h, a))
+        for reg in ("North", "South"):
+            assert nums[reg] == set(range(1, 9)), (
+                f"{reg} 区的组号是 {sorted(nums[reg])},不是 1..8 ⇒ 字母 A..H 的对应关系要重查")
+        sizes = {r: len(t) for r, t in teams.items()}
+        assert max(sizes.values()) <= 4, f"有组超过 4 队:{ {r: n for r, n in sizes.items() if n > 4} }"
+
+    def test_the_values_are_the_live_join_targets(self) -> None:
+        """⭐ 承重:英文键必须是 **odds_snapshots 在用的那个拼法**,否则解析成功而 join 不上。"""
+        db = REPO / "data/v4_observation.db"
+        if not db.exists():
+            pytest.skip("没有观测库")
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        board = {r[0] for r in conn.execute("SELECT DISTINCT home_team FROM odds_snapshots")}
+        board |= {r[0] for r in conn.execute("SELECT DISTINCT away_team FROM odds_snapshots")}
+        assert len(board) >= 500, f"盘面只有 {len(board)} 个队名,断言会空洞"
+        missing = sorted({en for en in self.PAIRS.values()} - board)
+        assert not missing, f"这些英文键盘面上不存在,疑似按音猜的:{missing}"
+
+    def test_no_collision_and_clubs_get_no_flag(self) -> None:
+        """⛔ 一名多队 = 静默 join 污染;⛔ 俱乐部不发国旗。"""
+        import json
+        import subprocess
+        for zh, en in self.PAIRS.items():
+            clash = {e for e, z in TEAM_NAME_ZH.items() if z == zh and e != en}
+            assert not clash, f"「{zh}」在 TEAM_NAME_ZH 里已属于 {clash}"
+        js = (REPO / "apps/api/src/nutmeg/v4/api/static/dashboard.html").read_text()
+        i = js.index("const _NATION_FLAG = {"); j = js.index("function teamLogo(name)")
+        r = subprocess.run(["node", "-e", js[i:j] + "\nconsole.log(JSON.stringify(_NATION_FLAG));"],
+                           capture_output=True, text=True, timeout=60)
+        flags = json.loads(r.stdout)
+        flagged = sorted(en for en in self.PAIRS.values() if en in flags)
+        assert not flagged, f"俱乐部拿到了国旗:{flagged}"
+
+
 class TestAfcClTwoIsFullyWired:
     """🥈 2026-09-16 owner 授权:亚冠乙(`AFC_CL_TWO`)进市场模式。
 
