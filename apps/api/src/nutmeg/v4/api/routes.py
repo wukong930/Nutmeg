@@ -2750,6 +2750,15 @@ _CUP_MARKET_COMPETITIONS = [
     #   端点照常返回 200 + 空名单,和「今天没有比赛」长得一模一样。
     "JPN_LEAGUE_CUP",
     "JPN_EMPEROR_CUP",   # 天皇杯(2026-09-01)。AF id=102,同上,⛔ 同样别进 _SP_CALC_LEAGUES
+    # 补英锦标赛(2026-09-21 owner)。AF id=46。参赛 48 家 League One/Two + 16 支
+    # 受邀 U21 学院队,**绝大多数不在训练集** ⇒ 同 EFL_CUP,走 Pinnacle 去vig 手工定价。
+    # ⛔ 同样别进 `_SP_CALC_LEAGUES`(那是 13 个欧洲训练联赛的模型盘)。
+    # ⚠️ 线源实测(⛔ 别外推,逐场数过):
+    #   · Odds API → 全表只有 `soccer_england_efl_cup`,**没有** trophy ⇒ 这条路永远空,
+    #                sport-key 单元会 warn(同荷乙/欧超杯/亚冠);
+    #   · AF /odds → 赔率缓存命中的 14 场**逐场**都有 Pinnacle(11~14 家书商)——
+    #                不是韩国杯/日乙那种「稀疏且晚」。
+    "EFL_TROPHY",
 ]
 
 

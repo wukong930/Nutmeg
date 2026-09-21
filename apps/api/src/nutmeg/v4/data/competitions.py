@@ -161,6 +161,40 @@ CUP_COMPETITIONS: dict[str, Competition] = {
             "苏格兰(185)/埃及(895)/泰国(898) 都有,认 id=48 + country=England。"
         ),
     ),
+    # ── 英锦标赛 EFL_TROPHY(2026-09-21 注册)──────────────────────────────
+    # ⚠️ api_football_id=46 **从缓存实读**,不是查表猜:`EFL Trophy` 在 AF 的
+    #    fixture 缓存里 country=England · season=2026 · id=46,且全仓 `EFL Trophy`
+    #    这个名字**只有这一个 id**(对比 `FA Cup` 有 8 个国家版、`League Cup` 有 13 个)。
+    # ⚠️ 三个格式布尔:
+    #    · has_group_stage=True —— **实测**:season=2026 的 39 场轮次是
+    #      `Group North 1..8` + `Group South 1..8`,每区 8 组、每组 4 队。
+    #    · has_two_legged_ties=False —— 实测同季同一对阵**从未出现 2 次**(0/39)。
+    #    · 🚨 has_knockouts=True —— **这一个量不出来**:缓存里当前只有小组轮次
+    #      (赛季正处于小组阶段)。选 True 有两层理由:① EFL Trophy 小组出线后确有
+    #      淘汰赛;② (True, True) 让 `is_knockout_fixture` **去读轮次标签**,
+    #      而 `Group …` 标签会被正确判成非淘汰 —— 即使 ① 哪天不成立也不会误判;
+    #      反之写 False 会在淘汰赛开打那天静默把淘汰场当小组场。
+    #      ⇒ 配了一条护栏:缓存里一出现非 `Group` 轮次就红,提醒回来**用真数据**复核。
+    "EFL_TROPHY": Competition(
+        code="EFL_TROPHY",
+        display_zh="英格兰锦标赛 (EFL Trophy)",
+        display_en="EFL Trophy",
+        competition_type="club_cup",
+        api_football_id=46,
+        has_knockouts=True,
+        has_group_stage=True,
+        has_two_legged_ties=False,
+        notes=(
+            "竞彩写作「英锦标赛」(档案 1041 行,league_id=86,**唯一写法**)。"
+            "参赛 = 48 家 EFL League One/Two 俱乐部 + 16 支受邀 U21 学院队 ⇒ 绝大多数"
+            "不在训练集里,只走市场模式(Pinnacle de-vig)。"
+            "⚠️ Odds API **无**这个 sport(全表只有 `soccer_england_efl_cup`)⇒ "
+            "sport-key 单元会 warn,同 JPN_J2/荷乙/欧超杯/亚冠;线走 AF 的 Pinnacle 镜像 "
+            "—— 实测赔率缓存命中的 14 场**逐场**都有 Pinnacle(11~14 家书商)。"
+            "⚠️ 竞彩**从不上架 U21 学院队**(档案 88 场/56 个中文名,0 个含 U21)—— "
+            "这条经验规律是本批 6 支队名锚定的闭合条件,别当成装饰。"
+        ),
+    ),
     # ── 韩国杯 KOR_FA_CUP(2026-08-18 注册)────────────────────────────────
     # ⚠️ api_football_id=294 是 **live 核过 + 该场比赛钉死**的,不是查表猜:
     #    AF `/leagues?search=korea` 里 type=Cup · country=South-Korea **唯一**命中

@@ -892,6 +892,117 @@ class TestBanner20260920:
         assert "Philippines U23" not in TEAM_NAME_ZH, "凭空给男足 U23 造了条目"
 
 
+class TestEflTrophyIsFullyWired:
+    """🏆 2026-09-21 owner 授权:英锦标赛(`EFL_TROPHY`)进市场模式。
+
+    与亚冠乙**同一套 6 条腿**,这里逐条钉住。三个不同之处值得记:
+
+    ① 🚨 **`_NON_DOMESTIC_CN` 那条坑第二次被这条腿当场抓住**:只加
+       `_EN_TO_CN["EFL_TROPHY"]` 之后,`classify_league("英锦标赛")` 从 `unknown`
+       变成 **`domestic`** —— 一个杯赛就要混进 δ 校准的国内联赛人口。
+       ⚠️ 09-16 亚冠乙那次的教训**写在注释里并没有阻止我今天再踩**;
+          阻止我的是这条断言。同「能写进命令行的纪律别写进记忆」。
+    ② ⭐ **线源比亚冠乙好**:Odds API 无 trophy sport(预期 warn,同荷乙/欧超杯),
+       但 AF 镜像**逐场**都有 Pinnacle(赔率缓存命中的 14 场 14/14,11~14 家书商),
+       不是韩国杯/日乙那种「稀疏且晚」。
+    ③ ⚠️ 参赛方含 **16 支受邀 U21 学院队**,而竞彩从不上架它们 ⇒ 全表队检查
+       对它无意义,进 `OUT_OF_SCOPE` 而不是 `MARKET_MODE_LEAGUES`。
+    """
+
+    CODE = "EFL_TROPHY"
+
+    def test_leg1_af_league_id(self) -> None:
+        from nutmeg.v4.data.sources.api_football import league_id
+        assert league_id(self.CODE) == 46
+        # ⚠️ 英联赛杯=48,别串:两者同属英格兰、名字都以 EFL 开头,串了会静默拉错赛程
+        assert league_id("EFL_CUP") == 48
+
+    def test_leg2_in_the_market_mode_registry(self) -> None:
+        src = (REPO / "apps/api/src/nutmeg/v4/api/routes.py").read_text()
+        assert f'"{self.CODE}"' in src
+        assert '"EFL_CUP"' in src, "人口非平凡:确认读的是那张表"
+
+    def test_leg3_both_language_tracks_agree(self) -> None:
+        from nutmeg.v4.data.league_labels import canonical_league
+        assert canonical_league(self.CODE) == "英锦标赛"
+
+    def test_leg4_it_is_a_cup_and_excluded_on_both_tracks(self) -> None:
+        """🚨 **本类最承重的一条** —— 它当场抓到了 `_NON_DOMESTIC_CN` 的漏加。
+
+        中文轨走的是 allowlist,EN 轨走竞赛注册表。只接一半 = 杯赛混进拟合人口,
+        **而且不报错**。
+        """
+        from nutmeg.v4.data.competitions import (
+            competition_type_id, is_club_cup_competition, is_cup_competition,
+        )
+        from nutmeg.v4.data.league_labels import canonical_league, classify_league
+        assert is_cup_competition(self.CODE) and is_club_cup_competition(self.CODE)
+        for label in (self.CODE, canonical_league(self.CODE)):
+            assert classify_league(label) == "excluded", (
+                f"{label!r} 判成了 {classify_league(label)!r} —— 杯赛会进 δ 拟合人口")
+        peer = competition_type_id("EFL_CUP")
+        assert peer != competition_type_id("EPL")
+        assert competition_type_id(self.CODE) == peer
+
+    def test_leg5_coverage_scan_makes_a_conscious_choice(self) -> None:
+        """全表队检查对它无意义 ⇒ 必须在 `OUT_OF_SCOPE` 里**写明理由**,不能默默漏掉。"""
+        from nutmeg.v4.cli.registry_coverage import MARKET_MODE_LEAGUES, OUT_OF_SCOPE
+        assert self.CODE in OUT_OF_SCOPE, "既没进覆盖清单也没写豁免理由"
+        assert self.CODE not in MARKET_MODE_LEAGUES
+        assert "U21" in OUT_OF_SCOPE[self.CODE], "豁免理由要说清楚为什么队表无意义"
+
+    def test_leg6_the_panel_has_a_chinese_name_and_a_colour(self) -> None:
+        js = (REPO / "apps/api/src/nutmeg/v4/api/static/dashboard.html").read_text()
+        assert f"{self.CODE}: '英锦标赛'" in js
+        assert f"{self.CODE}: '#" in js, "缺配色 ⇒ 面板上会落到默认灰"
+
+    def test_the_odds_api_has_no_sport_key_for_it(self) -> None:
+        """⚠️ 预期缺失,不是漏接:Odds API 全表只有 `soccer_england_efl_cup`。
+
+        猜一个 key 只会每次 404 —— 同 JPN_J2/荷乙/欧超杯/亚冠。
+        """
+        from nutmeg.v4.data.sources.odds_api import SPORT_KEYS
+        assert self.CODE not in SPORT_KEYS
+        assert SPORT_KEYS.get("EFL_CUP") == "soccer_england_efl_cup", "人口非平凡"
+
+    def test_the_format_booleans_match_the_cached_fixtures(self) -> None:
+        """⭐ 三个格式布尔里**两个是实测的**,第三个诚实地标出来。
+
+        · has_group_stage=True → 实测 `Group North/South 1..8`
+        · has_two_legged_ties=False → 实测同季同一对阵从未出现 2 次
+        · 🚨 has_knockouts=True → **缓存里量不到**(赛季还在小组阶段)。
+          下面那条 tripwire 就是为它留的。
+        """
+        import re
+        from nutmeg.v4.data.competitions import CUP_COMPETITIONS
+        c = CUP_COMPETITIONS[self.CODE]
+        rows = _efl_trophy_rows()
+        groups = {r[1] for r in rows if re.fullmatch(r"Group (North|South) - \d+", r[1] or "")}
+        assert len(groups) == 16, f"小组轮次 {len(groups)} 种,期望 16(每区 8 组)"
+        assert c.has_group_stage is True
+        seen: dict = {}
+        for _ko, _rnd, h, a, _i in rows:
+            if h and a:
+                seen[frozenset((h, a))] = seen.get(frozenset((h, a)), 0) + 1
+        assert max(seen.values()) == 1, f"出现了两回合对阵 ⇒ has_two_legged_ties 要改"
+        assert c.has_two_legged_ties is False
+
+    def test_tripwire_knockout_rounds_are_not_in_the_cache_yet(self) -> None:
+        """🚨 **给 `has_knockouts=True` 留的 tripwire** —— 它是三个布尔里唯一没量到的。
+
+        缓存里一出现非 `Group …` 的轮次就红,提醒回来**用真数据**复核
+        `has_knockouts` / `has_two_legged_ties`(淘汰赛可能有两回合)。
+        ⭐ 这条**会主动通知**,所以「等它发生」在这里是合法计划
+        (对比 [[health-check-guardrails]] 里那条「等它自然发生是坏的验证计划」)。
+        """
+        import re
+        odd = sorted({r[1] for r in _efl_trophy_rows()
+                      if r[1] and not re.fullmatch(r"Group (North|South) - \d+", r[1])})
+        assert not odd, (
+            f"缓存里出现了非小组轮次 {odd} ⇒ 淘汰赛开打了。"
+            f"回去用真数据复核 `has_knockouts` 与 `has_two_legged_ties`,别改常数了事")
+
+
 def _efl_trophy_rows():
     """AF 缓存里 EFL Trophy 的 (kickoff, round, 主, 客, id)。`_af_rows` 不带 round。"""
     import glob

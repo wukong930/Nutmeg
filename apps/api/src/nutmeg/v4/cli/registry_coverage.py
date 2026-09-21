@@ -99,6 +99,10 @@ OUT_OF_SCOPE: dict[str, str] = {
     "WC_QUAL_UEFA": "国家队预选赛,队表=会员协会",
     "FAC":            "国内杯赛,参赛队跨多级联赛",
     "EFL_CUP":        "国内杯赛,92 家 EFL 俱乐部",
+    # 补(2026-09-21)。同 FAC/EFL_CUP:全表队检查对它无意义 —— 参赛方是 48 家
+    # League One/Two **加 16 支 U21 学院队**,而竞彩从不上架后者(档案 88 场 0 个
+    # U21)⇒ 拿 AF 全表去比必然报一堆永远不会出现的缺口。
+    "EFL_TROPHY":     "国内杯赛,48 家 League One/Two + 16 支受邀 U21 学院队",
     "COPA_DEL_REY":   "国内杯赛,参赛队跨多级联赛",
     "COPPA_ITALIA":   "国内杯赛,参赛队跨多级联赛",
     "DFB_POKAL":      "国内杯赛,参赛队跨多级联赛",
