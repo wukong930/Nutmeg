@@ -892,6 +892,58 @@ class TestBanner20260920:
         assert "Philippines U23" not in TEAM_NAME_ZH, "凭空给男足 U23 造了条目"
 
 
+class TestStockportCounty:
+    """📋 2026-09-21b · 斯托克港 —— 英锦标赛队名普查的**唯一**收获。
+
+    ⚠️ 只有 **1 场**证据,所以它的护栏比别批更要紧:
+    档案 `2026-05-24 [英甲] 博尔顿 vs 斯托克港`,主队已解出 `Bolton`
+    → 该日 `League One` 里 `Bolton` 主场的对手**唯一** = `Stockport County`。
+    🚨 变异检验实测:第一版我补了映射**却没写任何护栏**,「指错队」和「整条删掉」
+       两发全逃逸。补完这批才打得到。
+    """
+
+    def test_it_resolves(self) -> None:
+        assert zh_to_canonical("斯托克港") == "Stockport County"
+        assert TEAM_NAME_ZH.get("Stockport County") == "斯托克港"
+
+    def test_the_value_is_the_live_join_target(self) -> None:
+        """⭐ 承重:英文键必须是**盘面在用的那个拼法**,且盘面上唯一。"""
+        db = REPO / "data/v4_observation.db"
+        if not db.exists():
+            pytest.skip("没有观测库")
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        names = set()
+        for h, a in conn.execute("SELECT DISTINCT home_team, away_team FROM odds_snapshots"):
+            names.update((h, a))
+        assert len(names) >= 500, f"人口非平凡:盘面只有 {len(names)} 个队名"
+        stock = sorted(n for n in names if n and "Stockport" in n)
+        assert stock == ["Stockport County"], f"盘面上的 Stockport 拼法不唯一:{stock}"
+
+    def test_the_archive_anchor_still_holds(self) -> None:
+        """⭐ 锚本身:那一场档案行的对家仍解得出,且 AF 侧对手仍唯一。
+
+        红了 = 锚的前提没了(对家漂了 / 赛程变了)⇒ **重新锚一次,别改常数**。
+        """
+        db = REPO / "data/v4_jingcai_history.db"
+        if not db.exists():
+            pytest.skip("竞彩档案不在这个 checkout 里")
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        rows = list(conn.execute(
+            "SELECT close_date, home_zh, away_zh FROM jingcai_odds_history "
+            "WHERE close_date='2026-05-24' AND away_zh='斯托克港'"))
+        assert rows, "那一场档案行不见了 —— 锚的来源没了"
+        assert zh_to_canonical(rows[0][1]) == "Bolton", (
+            f"对家 {rows[0][1]!r} 不再解出 Bolton —— 对照不成立")
+        opp = {r[3] for r in _af_rows()
+               if r[0].startswith("2026-05-24") and r[1] == "League One" and r[2] == "Bolton"}
+        assert opp == {"Stockport County"}, f"Bolton 那天的对手集 = {opp},期望唯一"
+
+    def test_no_collision(self) -> None:
+        clash = {e for e, z in TEAM_NAME_ZH.items() if z == "斯托克港" and e != "Stockport County"}
+        assert not clash, f"「斯托克港」已属于 {clash}"
+        assert _ZH_OVERRIDES.get("斯托克港") in (None, "Stockport County")
+
+
 class TestEflTrophyIsFullyWired:
     """🏆 2026-09-21 owner 授权:英锦标赛(`EFL_TROPHY`)进市场模式。
 
@@ -1004,12 +1056,22 @@ class TestEflTrophyIsFullyWired:
 
 
 def _efl_trophy_rows():
-    """AF 缓存里 EFL Trophy 的 (kickoff, round, 主, 客, id)。`_af_rows` 不带 round。"""
+    """AF 缓存里 EFL Trophy 的 (kickoff, round, 主, 客, id) —— **按 fixture id 去重**。
+
+    🚨 去重不是洁癖:同一场 fixture 会被存在**多个缓存键**下(不同的 /fixtures
+    查询参数各自成一个文件)。2026-09-21 实测 62 行只对应 **39 个** fixture,
+    23 个重复 —— 而重复会让「同一对阵出现 2 次」的两回合判据**假阳**,
+    也会让「该组该时刻唯一」的锚断言假红。
+    ⚠️ 这批重复是我**自己**造出来的:验重启时调了 `/predictions/cup-market`,
+       那个端点会去抓 fixtures 并写进缓存(返回里 `fixtures_fetched=42`)。
+       ⇒ 验证动作本身会改动测试脚下的数据。
+    """
     import glob
     import json
     if not _AF_FIXTURES.is_dir():
         pytest.skip("没有 AF fixture 缓存(worktree)")
     out = []
+    by_id: dict = {}
     for f in _AF_FIXTURES.glob("*.json"):
         try:
             d = json.loads(f.read_text())
@@ -1022,9 +1084,10 @@ def _efl_trophy_rows():
             if lg.get("name") != "EFL Trophy":
                 continue
             fi, tm = fx.get("fixture") or {}, fx.get("teams") or {}
-            out.append((str(fi.get("date") or "")[:19], lg.get("round"),
-                        (tm.get("home") or {}).get("name"),
-                        (tm.get("away") or {}).get("name"), fi.get("id")))
+            by_id[fi.get("id")] = (str(fi.get("date") or "")[:19], lg.get("round"),
+                                   (tm.get("home") or {}).get("name"),
+                                   (tm.get("away") or {}).get("name"), fi.get("id"))
+    out = list(by_id.values())
     assert len(out) >= 30, f"EFL Trophy 只有 {len(out)} 场,测不出东西"
     return out
 

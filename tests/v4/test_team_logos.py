@@ -285,3 +285,152 @@ class TestFromFixtureCache:
         """新 checkout 没有观测库。返回空人口 = 什么都不下,而不是崩。"""
         from nutmeg.v4.cli import ingest_team_logos as m
         assert m._bettable_team_names(tmp_path / "nope.db") == set()
+
+
+class TestFlagTableIsTheAuthorityForSkipping:
+    """🏳️ 2026-09-21 —— 「哪些队不该下队徽」的判据必须是**决定渲染的那张表**。
+
+    ## 病史
+
+    `ingest_team_logos` 原来用 `lookup_elo_code(name) is not None` 认国家队。
+    那张 Elo 表对**所有年龄组/女足变体**都返回 None ⇒ 实测会给 `China W` /
+    `Qatar U23` / `Philippines W` 等 **13 支国家队**下 PNG。
+    面板 `teamLogo()` 是**国旗优先**,所以不会显示错 —— 但那些是死文件,
+    而且下一个照着这条判据判的人会判错。
+
+    ## 🚨 三种 Python 侧补丁全都不完整(量过,不是猜)
+
+    942 支可投注人口、真值取「面板真的会渲成国旗的 62 支」:
+
+        ① `lookup_elo_code(name)`            漏 13
+        ② + 剥 `U23`/`W` 后缀再查 Elo        漏 7
+        ③ `name in _NATIONAL_TEAMS`          漏 13
+        ④ ②③ 并用                            漏 3
+
+    全都因为引用**手工维护、会滞后**的表(`Korea DPR` / `Kyrgyz Republic` /
+    `Philippines` 这些拼法就不在 Elo 表里)。
+    ⇒ 直接读 `dashboard.html` 的 `_NATION_FLAG`,**按构造不可能漂**。
+    同 [[syntactic-proxy-for-semantic-property]] 的「发现判据引用另一张不全的表」。
+    """
+
+    def _node_flags(self) -> dict:
+        """真值:用 node 的 `JSON.parse` 解同一段 JS。"""
+        import json as J
+        import subprocess
+        js = (REPO_ROOT / "apps/api/src/nutmeg/v4/api/static/dashboard.html").read_text()
+        i = js.index("const _NATION_FLAG = {"); j = js.index("function teamLogo(name)")
+        r = subprocess.run(["node", "-e", js[i:j] + "\nconsole.log(JSON.stringify(_NATION_FLAG));"],
+                           capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stderr[:1500]
+        return J.loads(r.stdout)
+
+    def test_the_python_parser_agrees_with_node(self) -> None:
+        """⭐ 承重:正则解析必须和 JS 引擎**逐条相等**。
+
+        块里有注释行(带引号的中文注释),裸正则会把注释当条目 ——
+        所以实现是「先逐行剥 `//` 再正则」。这条就是那句话的验收。
+        """
+        from nutmeg.v4.data.team_logos import flag_table
+        truth = self._node_flags()
+        got = flag_table()
+        assert len(truth) > 100, f"人口非平凡:node 只解出 {len(truth)} 条"
+        assert got == truth, (
+            f"Python 解析与 node 不一致:多 {sorted(set(got) - set(truth))[:5]} · "
+            f"少 {sorted(set(truth) - set(got))[:5]}")
+
+    def test_comment_stripping_is_exercised_by_a_synthetic_block(self, tmp_path: Path) -> None:
+        """🚨 「剥注释」这条路径**真实内容碰不到** —— 所以用合成夹具打它。
+
+        变异检验实测:把 `line.split("//")[0]` 拿掉,所有测试**照样全绿**。
+        原因是当前块里的中文注释不含 `"键": "值"` 这种形状,剥不剥同一个结果。
+        ⇒ 那条防御没被验证过。这条夹具在注释里塞一个**长得像条目**的串,
+           不剥就会多解出一条。
+        """
+        from nutmeg.v4.data.team_logos import flag_table
+        fake = tmp_path / "d.html"
+        fake.write_text(
+            'const _NATION_FLAG = {\n'
+            '  "Real": "\U0001F1E8\U0001F1F3",\n'
+            '  // 注释里有个长得像条目的东西: "Ghost": "\U0001F3F4"\n'
+            '};\nfunction teamLogo(name) {}\n', encoding="utf-8")
+        got = flag_table(fake)
+        assert got == {"Real": "\U0001F1E8\U0001F1F3"}, (
+            f"注释被当成条目解进来了:{got} —— `//` 剥离失效")
+
+    def test_the_real_block_does_contain_comments(self) -> None:
+        """⚠️ 非平凡性:真实块里确实有注释(否则上面那条防御是纯装饰)。"""
+        js = (REPO_ROOT / "apps/api/src/nutmeg/v4/api/static/dashboard.html").read_text()
+        i = js.index("const _NATION_FLAG = {"); j = js.index("function teamLogo(name)")
+        n = sum(1 for line in js[i:j].splitlines() if "//" in line)
+        assert n >= 5, f"块内只有 {n} 行注释"
+
+    def test_the_old_predicate_really_had_a_gap(self) -> None:
+        """⭐ 本类的**实证**:旧判据(Elo 表)在真实人口上确实漏国家队。
+
+        ⚠️ 我第一版写的是「新判据的跳过集 ⊇ 渲染集」—— 那是**空洞断言**:
+           两边都是 `n in flag_table()`,差集恒空。新判据的正确性是**按构造**的
+           (它读的就是决定渲染的那张表),不该假装成一个发现。
+           可测的是**旧判据坏在哪**,以及坏到什么程度 —— 就是这条。
+        """
+        from nutmeg.v4.data.national_team_name_to_elo import lookup_elo_code
+        from nutmeg.v4.data.team_logos import flag_table
+        db = REPO_ROOT / "data/v4_observation.db"
+        if not db.exists():
+            pytest.skip("没有观测库")
+        import importlib.util
+        import sys
+        spec = importlib.util.spec_from_file_location(
+            "_itl", REPO_ROOT / "apps/api/src/nutmeg/v4/cli/ingest_team_logos.py")
+        mod = importlib.util.module_from_spec(spec); sys.modules["_itl"] = mod
+        spec.loader.exec_module(mod)
+        pop = mod._bettable_team_names(db)
+        assert len(pop) >= 500, f"人口非平凡:只有 {len(pop)} 支"
+        flags = flag_table()
+        rendered = {n for n in pop if n in flags}
+        assert len(rendered) >= 40, f"人口非平凡:只有 {len(rendered)} 支会渲成国旗"
+        old_gap = sorted(rendered - {n for n in pop if lookup_elo_code(n) is not None})
+        assert old_gap, (
+            "旧判据(Elo 表)已经没有缺口了 —— 那本类的理由要重查,"
+            "可能是 Elo 表补全了")
+        # 缺的必须**全是**年龄组/女足变体 —— 这是缺口的形状,不只是数量
+        import re
+        odd = [n for n in old_gap if not re.search(r"\s(U\d\d|W)$", n)]
+        assert not odd, f"缺口里出现了非变体名字,病因诊断要重做:{odd}"
+
+    def test_the_cli_actually_consults_the_flag_table(self, monkeypatch) -> None:
+        """🚨 承重:把判据**行为上**钉死在那张表上。
+
+        前一版判据内联在 `main()` 里,没有任何测试盯得住它 ——
+        改回 `lookup_elo_code` 不会红。抽成 `skip_as_national` 之后这条才打得到。
+        做法:把 `flag_table` 换成一张假表,跳过集必须**跟着变**。
+        """
+        import importlib.util
+        import sys
+        spec = importlib.util.spec_from_file_location(
+            "_itl2", REPO_ROOT / "apps/api/src/nutmeg/v4/cli/ingest_team_logos.py")
+        mod = importlib.util.module_from_spec(spec); sys.modules["_itl2"] = mod
+        spec.loader.exec_module(mod)
+        names = ["Wigan", "China W", "Qatar U23", "Aston Villa U21"]
+        monkeypatch.setattr(mod, "flag_table", lambda: {"Wigan": "🏴"})
+        assert mod.skip_as_national(names) == {"Wigan"}, (
+            "判据没有真的去读 flag_table —— 换了表结果却没变")
+        monkeypatch.setattr(mod, "flag_table", lambda: {})
+        assert mod.skip_as_national(names) == set()
+
+    def test_clubs_are_not_skipped(self) -> None:
+        """🚨 反向守卫:判据不能宽到把俱乐部也跳掉(那就没队徽可下了)。"""
+        from nutmeg.v4.data.team_logos import renders_as_flag
+        from nutmeg.v4.data.team_logos import flag_table
+        t = flag_table()
+        for club in ("Wigan", "Blackpool", "Aston Villa U21", "Liverpool U21", "Notts County"):
+            assert not renders_as_flag(club, table=t), f"{club} 被当成国家队了"
+
+    def test_it_is_fail_closed_when_the_dashboard_is_missing(self, tmp_path: Path) -> None:
+        """⛔ 读不到就抛,**不许 fail-soft**。
+
+        静默返回空表 ⇒ 过滤变 no-op,症状是「多了一堆没人看的 PNG」,没人会报。
+        """
+        from nutmeg.v4.data.team_logos import flag_table
+        with pytest.raises((FileNotFoundError, OSError)):
+            flag_table(tmp_path / "nope.html")
+

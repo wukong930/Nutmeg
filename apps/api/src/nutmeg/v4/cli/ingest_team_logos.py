@@ -38,7 +38,9 @@ Logos already on disk are skipped (idempotent re-runs).
 ⚠️ 缓存里 7,405 支没有本地 PNG —— 全下是错的。所以本模式**强制**按
 「会出现在盘面上的人口」过滤:观测库 ``odds_snapshots`` + ``jingcai_sp`` 里出现过
 的队名。这和本项目「统计量只在会下注的人口上算」是同一条纪律。
-国家队(``lookup_elo_code`` 认得的)跳过 —— 面板给它们渲染国旗 emoji,不是圆标。
+国家队跳过 —— 面板给它们渲染国旗 emoji,不是圆标。
+判据是**面板那张 `_NATION_FLAG` 本身**(`team_logos.flag_table`),不是任何
+Python 侧的代理表:2026-09-21 实测四种代理分别漏 13/7/13/3 支。
 """
 from __future__ import annotations
 
@@ -53,7 +55,7 @@ from typing import Any
 
 import httpx
 
-from nutmeg.v4.data.national_team_name_to_elo import lookup_elo_code
+from nutmeg.v4.data.team_logos import flag_table
 from nutmeg.v4.data.sources import api_football
 from nutmeg.v4.data.team_logos import logo_path
 
@@ -62,6 +64,19 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+
+
+def skip_as_national(names) -> set[str]:
+    """这些名字会被面板渲成国旗 ⇒ **不下队徽 PNG**。
+
+    ⭐ 判据是 `dashboard.html` 的 `_NATION_FLAG` 本身 —— 决定渲染的那张表。
+       任何 Python 侧代理都会滞后:2026-09-21 在 942 支可投注人口上实测,
+       `lookup_elo_code` 漏 13、加剥后缀漏 7、`_NATIONAL_TEAMS` 漏 13、全都用上漏 3。
+    ⚠️ 抽成模块级函数是**故意的**:内联在 `main()` 里时没有任何测试盯得住它,
+       把它改回旧判据不会红。
+    """
+    flags = flag_table()
+    return {n for n in names if n in flags}
 
 
 def _download_logo(url: str, dest: Path, *, timeout: float = 15.0) -> bool:
@@ -248,7 +263,14 @@ def main(argv: list[str] | None = None) -> int:
         log.info("[fixture-cache] %d teams with a logo URL", len(urls))
         log.info("[fixture-cache] %d names in the bettable population", len(pop))
         cand = {n: u for n, u in urls.items() if n in pop}
-        nations = {n for n in cand if lookup_elo_code(n) is not None}
+        # 🚨 2026-09-21 换判据。旧的是 `lookup_elo_code(n) is not None`,而那张 Elo 表
+        #    对**所有年龄组/女足变体**都返回 None ⇒ 实测会给 `China W` / `Qatar U23` /
+        #    `Philippines W` 等 **13 支国家队**下 PNG。面板 `teamLogo()` 是国旗优先,
+        #    所以不会显示错 —— 但那 13 个是死文件,而且下次有人照着它判就会判错。
+        #    ⚠️ 我试过的三种 Python 侧补丁(剥后缀再查 Elo / `_NATIONAL_TEAMS` / 两者并用)
+        #       在 942 支可投注人口上分别漏 7/13/3 —— **全都不完整**,因为它们引用的
+        #       都是会滞后的手工表。⇒ 直接读**决定渲染的那张表**,按构造不可能漂。
+        nations = skip_as_national(cand)
         log.info(
             "[fixture-cache] %d in both; skipping %d national teams (flag emoji) → %d to try",
             len(cand), len(nations), len(cand) - len(nations),
