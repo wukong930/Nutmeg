@@ -88,7 +88,6 @@ from nutmeg.v4.combo.compound_pool import recommend_pool
 from nutmeg.v4.combo.lottery_rules import JINGCAI_DEFAULT
 from nutmeg.v4.combo.selections import Selection
 from nutmeg.v4.combo.single_match import recommend_singles
-from nutmeg.v4.observation.goals_calibration import active_c, goals_view
 from nutmeg.v4.model.dixon_coles import (
     grid_to_1x2,
     grid_to_handicap_1x2,
@@ -1247,9 +1246,12 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
             p_home_1x2=float(ph),
             p_draw_1x2=float(pd_),
             p_away_1x2=float(pa),
-            # 总进球分布 —— 从**模型自己那张 grid** 派生,rho/max_goals 不可能漂
-            **(goals_view(grid, lambda_home=float(lh), lambda_away=float(la),
-                          rho=gbm_rho, c=active_c()) or {}),
+            # 总进球分布 —— 有 Pinnacle 大小球就走市场锚(实测更准),否则退回模型 λ
+            **_goals_distribution(
+                fair=_pinnacle_devig_1x2(f.psc_home, f.psc_draw, f.psc_away),
+                psc_over25=f.psc_over25, psc_under25=f.psc_under25, ou_line=f.ou_line,
+                model_grid=grid, model_lh=float(lh), model_la=float(la),
+                model_rho=gbm_rho),
         )
         if f.handicap_home is not None:
             hph, hpd, hpa = tuple(
@@ -1436,9 +1438,12 @@ def predictions_upcoming(req: UpcomingPredictionsRequest) -> UpcomingPredictions
             p_home_1x2=float(ph),
             p_draw_1x2=float(pd_),
             p_away_1x2=float(pa),
-            # 总进球分布 —— 从**模型自己那张 grid** 派生,rho/max_goals 不可能漂
-            **(goals_view(grid, lambda_home=float(lh), lambda_away=float(la),
-                          rho=gbm_rho, c=active_c()) or {}),
+            # 总进球分布 —— 有 Pinnacle 大小球就走市场锚(实测更准),否则退回模型 λ
+            **_goals_distribution(
+                fair=_pinnacle_devig_1x2(f.psc_home, f.psc_draw, f.psc_away),
+                psc_over25=f.psc_over25, psc_under25=f.psc_under25, ou_line=f.ou_line,
+                model_grid=grid, model_lh=float(lh), model_la=float(la),
+                model_rho=gbm_rho),
         )
         if f.handicap_home is not None:
             hph, hpd, hpa = tuple(
@@ -2392,9 +2397,14 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 kickoff_utc=getattr(f, "kickoff_utc", None),
                 lambda_home=float(lh), lambda_away=float(la),
                 p_home_1x2=float(ph), p_draw_1x2=float(pd_), p_away_1x2=float(pa),
-                # 总进球分布(⚠️ 此处局部名是 `rho`,不是 `gbm_rho`)
-                **(goals_view(grid, lambda_home=float(lh), lambda_away=float(la),
-                              rho=rho, c=active_c()) or {}),
+                # 总进球分布(⚠️ 此处局部名是 `rho`;`mkt` 上面刚去vig 过,别再算一遍)
+                **_goals_distribution(
+                    fair=mkt,
+                    psc_over25=getattr(f, "psc_over25", None),
+                    psc_under25=getattr(f, "psc_under25", None),
+                    ou_line=getattr(f, "ou_line", None),
+                    model_grid=grid, model_lh=float(lh), model_la=float(la),
+                    model_rho=rho),
                 p_home_market=(float(mkt[0]) if mkt else None),
                 p_draw_market=(float(mkt[1]) if mkt else None),
                 p_away_market=(float(mkt[2]) if mkt else None),
@@ -2857,6 +2867,55 @@ def _market_margin_bands(fair, r: dict) -> list[MarginBand]:
         return []
 
 
+def _goals_distribution(*, fair=None, psc_over25=None, psc_under25=None, ou_line=None,
+                        model_grid=None, model_lh: float = 0.0, model_la: float = 0.0,
+                        model_rho: float = -0.10) -> dict:
+    """全场总进球分布 —— λ 的来源按**实测准确度**排,不是按模式。
+
+    🚨 2026-09-22 在**同一批 760 场**上实测(模型 λ / Pinnacle 大小球 / 赛果齐全):
+
+        模型 λ      E[总]=2.737   偏差 -0.219   z=-3.45
+        市场反推 λ  E[总]=2.883   偏差 -0.072   z=-1.14
+        实际        E[总]=2.955
+        分桶 log-loss:模型 1.9025 · 市场 1.8807
+
+    ⇒ **有 Pinnacle 大小球就用市场锚,标准模式和市场模式一视同仁。**
+      (之前只有标准模式出分布,那道闸架在「`lambda_home` 字段里有没有数」上 ——
+       问错了变量:该问的是「这场能不能算出可信的总进球」。市场模式一直有 λ,
+       `fit_lambdas` 反推着,只是没往外送,而且它还是**更准**的那个。)
+
+    ⛔ 这条**只**换进球分布的 λ 源。1X2 / 让球的 P 源一个字不动 ——
+       那两条各自有自己的口径(模型温度 / 市场去vig),混不得。
+    ⚠️ 1X2-only 的反推**不能**用来出总进球:1X2 只约束主客之「差」,不约束「和」。
+       实测固定 1X2、只动大小球腿,总进球从 2.374 跑到 3.268 ⇒ 没有大小球那条腿时
+       拟合出来的「总」主要是网格几何而非信息。所以这里**必须** p_over 非空。
+    """
+    from nutmeg.v4.model.market_handicap import DEFAULT_RHO, devig_over, fit_lambdas
+    from nutmeg.v4.observation.goals_calibration import active_c, goals_view
+    
+    if fair is not None:
+        p_over = devig_over(psc_over25, psc_under25)
+        if p_over is not None:                      # ⚠️ 见上:没有大小球腿就不能走市场锚
+            try:
+                mh, ma = fit_lambdas(float(fair[0]), float(fair[1]), float(fair[2]),
+                                     p_over, ou_line=float(ou_line or 2.5))
+                v = goals_view(score_grid(mh, ma, rho=DEFAULT_RHO),
+                               lambda_home=mh, lambda_away=ma,
+                               rho=DEFAULT_RHO, c=1.0, src="market")
+                # ⛔ c=1.0 是**强制**的:那个系数在模型 λ 上拟合,套市场 λ 是拿错尺子。
+                #    `goals_view` 自己也会拦(ValueError),这里写死只是让意图显形。
+                if v:
+                    return v
+            except Exception:  # noqa: BLE001 — 拟合失败就退回模型 λ,不是致命错
+                logging.getLogger(__name__).warning(
+                    "market goals fit failed; falling back to model λ", exc_info=True)
+
+    if model_grid is not None and model_lh > 0 and model_la > 0:
+        return goals_view(model_grid, lambda_home=model_lh, lambda_away=model_la,
+                          rho=model_rho, c=active_c(), src="model") or {}
+    return {}
+
+
 def _real_ah_board(raw):
     """Parse the ``asian_handicap`` JSON ({line: {home, away}}) → {float: {...}}."""
     if not raw:
@@ -2958,6 +3017,10 @@ def _row_to_market_prediction(r: dict) -> SinglePrediction | None:
         # Sirius overlay line); without it the card labels every O/U "2.5"
         # (体检 2026-07-03). Server-side 让球反推 already used it (line above).
         ou_line=r.get("ou_line"),
+        # 2026-09-22 —— 市场模式现在**也**出进球分布,而且它是更准的那个来源
+        # (同 760 场实测:市场 z=-1.14 vs 模型 z=-3.45)。以前这里 λ=0 ⇒ 整块不显示。
+        **_goals_distribution(fair=fair, psc_over25=r.get("psc_over25"),
+                              psc_under25=r.get("psc_under25"), ou_line=r.get("ou_line")),
         handicap_lines=_market_handicap_lines(fair, r),
         delta_scope=_delta_scope(r.get("league")),
         asian_handicap_lines=_market_asian_handicap_lines(fair, r),

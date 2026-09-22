@@ -195,7 +195,7 @@ class SinglePrediction(BaseModel):
     #    最大档有 **94% 的场次都是「2-3 球」** ⇒ 「推荐」等于在几乎每张卡片上印同一
     #    句话,是噪音装成洞见。真正随场次变的是那三个数本身,以及 `goals_gap`。
     #
-    # ⚠️ **这三个数目前是未校准的**:同日实测模型每场低约 0.2 球(大2.5 预测 0.510
+    # ⚠️ **`goals_src='model'` 那条路的数字是未校准的**:同日实测每场低约 0.2 球(大2.5 预测 0.510
     #    vs 实际 0.576,z=+3.74,790 场)。校准层 `observation/goals_calibration.py`
     #    已建好,但当前 artifact 世代只有 130 场 ⇒ 还拟合不出系数,`goals_c` 恒为 1.0。
     #    前端**必须**据此打「未校准」标,⛔ 别把已知有偏的数字当中立信息展示。
@@ -207,7 +207,15 @@ class SinglePrediction(BaseModel):
     goals_bands: list[float] | None = None    # [P(0-1), P(2-3), P(4+)]
     goals_over: list[float] | None = None     # [P(>1.5), P(>2.5), P(>3.5)]
     goals_gap: float | None = None            # 最大档 − 第二档(差 1pp 和差 20pp 不是一回事)
-    goals_c: float | None = None              # 已应用的校准系数;1.0 = 未校准
+    goals_c: float | None = None              # 已应用的校准系数;1.0 = 未校准(仅 src='model' 有意义)
+    # λ 是打哪来的。'market' = Pinnacle 去vig 1X2 + **大小球**反推;'model' = 模型 λ。
+    # 🚨 2026-09-22 在**同一批 760 场**上实测,市场锚在总进球上明显更准:
+    #      模型 λ  E[总]=2.737 偏差 -0.219 z=-3.45 · log-loss 1.9025
+    #      市场 λ  E[总]=2.883 偏差 -0.072 z=-1.14 · log-loss 1.8807 · 实际 2.955
+    #    ⇒ 有 Pinnacle 大小球就用市场锚,**两种模式一视同仁**;没有才退回模型 λ。
+    # ⚠️ 只有 1X2 而没有大小球时**必须**退回模型:1X2 只约束主客之差、不约束和
+    #    (实测固定 1X2 只动大小球腿,总进球 2.374→3.268)。
+    goals_src: str | None = None              # 'market' | 'model'
     # V12 W3 — Pinnacle closing odds echoed back so the dashboard's 竞彩 SP
     # calculator can pre-fill inputs and show the 竞彩-vs-Pinnacle soft-line
     # gap. Optional: not every prediction path carries them (e.g. WC).

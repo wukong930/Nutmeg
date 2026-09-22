@@ -187,43 +187,106 @@ class TestTheGateRefusesToWiden:
 
 
 class TestEveryConstructionSiteIsWired:
-    """⭐ 不写死「有 3 个构造点」—— 测试自己去源码里数([[hardcoded-guard-lists-rot]])。
+    """⭐ 不写死「有几个构造点」—— 测试自己去源码里数([[hardcoded-guard-lists-rot]])。
 
-    未来有人加第 5 个 `SinglePrediction(...)` 而忘了带进球分布,卡片会**静默**少一块。
-    这条护栏用 AST 判,不用 grep([[skip-guard-that-cannot-skip]]:判别器要 AST)。
+    2026-09-22 收紧:以前 λ=0 的市场模式点是**豁免**的,现在它也走市场锚 ⇒
+    **每一个**构造点都必须传 `_goals_distribution`,没有豁免。
+    判别用 AST 不用 grep([[skip-guard-that-cannot-skip]])。
     """
 
     @staticmethod
     def _sites():
         import ast
         from pathlib import Path
-        src = Path("apps/api/src/nutmeg/v4/api/routes.py")
-        tree = ast.parse(src.read_text(encoding="utf-8"))
+        tree = ast.parse(Path("apps/api/src/nutmeg/v4/api/routes.py").read_text(encoding="utf-8"))
         out = []
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                     and node.func.id == "SinglePrediction"):
-                kw = {k.arg for k in node.keywords}
-                has_view = any(
-                    k.arg is None and isinstance(k.value, ast.BoolOp)
-                    and any(isinstance(v, ast.Call) and getattr(v.func, "id", "") == "goals_view"
-                            for v in ast.walk(k.value))
+                has = any(
+                    k.arg is None and any(
+                        isinstance(v, ast.Call)
+                        and getattr(v.func, "id", "") == "_goals_distribution"
+                        for v in ast.walk(k.value))
                     for k in node.keywords)
-                # λ 是写死的 0.0 ⇒ 市场模式,本来就不该有分布
-                lam = next((k.value for k in node.keywords if k.arg == "lambda_home"), None)
-                zero = isinstance(lam, ast.Constant) and lam.value == 0.0
-                out.append((node.lineno, has_view, zero, kw))
+                out.append((node.lineno, has))
         return out
 
     def test_the_ast_probe_finds_a_nontrivial_population(self):
         sites = self._sites()
-        assert len(sites) >= 3, f"只找到 {len(sites)} 个构造点 ⇒ 探针坏了,下面是空包弹"
-        # 探针自检:它必须能分辨两类。两类都得有,否则它可能只是恒真/恒假。
-        assert any(h for _, h, _, _ in sites), "没有任何一个点带 goals_view ⇒ 探针识别不出"
-        assert any(z for _, _, z, _ in sites), "没有任何一个点是 λ=0 ⇒ 探针识别不出市场模式"
+        assert len(sites) >= 4, f"只找到 {len(sites)} 个构造点 ⇒ 探针坏了,下面是空包弹"
 
-    def test_every_site_either_sends_the_distribution_or_has_no_lambda(self):
-        bad = [(ln, sorted(kw)[:6]) for ln, has, zero, kw in self._sites() if not has and not zero]
+    def test_every_single_site_sends_the_distribution(self):
+        bad = [ln for ln, has in self._sites() if not has]
         assert not bad, (
-            "这些 SinglePrediction(...) 既没传 goals_view 也不是 λ=0 的市场模式 ⇒ "
-            f"卡片会静默少一块进球分布: {bad}")
+            f"这些 SinglePrediction(...) 没传 _goals_distribution ⇒ 卡片会静默少一块: {bad}")
+
+
+class TestMarketAnchorBeatsModelAndIsPreferred:
+    """🚨 λ 源的优先级是**量出来的**,不是按模式分的。
+
+    2026-09-22 在同一批 760 场(模型 λ / Pinnacle 大小球 / 赛果齐全)上:
+        模型 λ      E[总]=2.737  偏差 -0.219  z=-3.45  log-loss 1.9025
+        市场反推 λ  E[总]=2.883  偏差 -0.072  z=-1.14  log-loss 1.8807
+        实际        E[总]=2.955
+    """
+
+    @staticmethod
+    def _model_grid():
+        from nutmeg.v4.model.dixon_coles import score_grid
+        return score_grid(1.6, 1.2, rho=-0.10)
+
+    def test_pinnacle_over_under_wins_over_the_model(self):
+        from nutmeg.v4.api.routes import _goals_distribution
+        v = _goals_distribution(
+            fair=(0.45, 0.27, 0.28), psc_over25=1.85, psc_under25=1.95, ou_line=2.5,
+            model_grid=self._model_grid(), model_lh=1.6, model_la=1.2, model_rho=-0.10)
+        assert v["goals_src"] == "market"
+
+    def test_one_x_two_alone_must_NOT_be_used_for_totals(self):
+        """⚠️ 1X2 只约束主客之**差**,不约束**和** ⇒ 没有大小球腿必须退回模型。"""
+        from nutmeg.v4.api.routes import _goals_distribution
+        v = _goals_distribution(
+            fair=(0.45, 0.27, 0.28), psc_over25=None, psc_under25=None, ou_line=2.5,
+            model_grid=self._model_grid(), model_lh=1.6, model_la=1.2, model_rho=-0.10)
+        assert v["goals_src"] == "model"
+
+    def test_the_reason_that_rule_exists_is_real(self):
+        """把「1X2 不约束和」这个**理由本身**钉住 —— 理由塌了,上一条就该重审。"""
+        from nutmeg.v4.model.market_handicap import fit_lambdas
+        p = (0.45, 0.27, 0.28)
+        totals = [sum(fit_lambdas(*p, pov, ou_line=2.5)) for pov in (0.40, 0.65)]
+        assert totals[1] - totals[0] > 0.5, (
+            f"固定 1X2、只动大小球腿,总进球只差 {totals[1]-totals[0]:.3f} ⇒ "
+            "「1X2 不约束和」这个前提可能不再成立,去重新量")
+
+    def test_no_pinnacle_at_all_falls_back_to_the_model(self):
+        from nutmeg.v4.api.routes import _goals_distribution
+        v = _goals_distribution(fair=None, model_grid=self._model_grid(),
+                                model_lh=1.6, model_la=1.2, model_rho=-0.10)
+        assert v["goals_src"] == "model"
+
+    def test_neither_source_renders_nothing(self):
+        from nutmeg.v4.api.routes import _goals_distribution
+        assert _goals_distribution() == {}
+
+    def test_market_mode_rows_now_carry_a_distribution(self):
+        """以前 `_row_to_market_prediction` 写死 λ=0 ⇒ 整块不显示。现在该有了。"""
+        from nutmeg.v4.api.routes import _row_to_market_prediction
+        import datetime
+        pred = _row_to_market_prediction({
+            "home_team": "A", "away_team": "B", "league": "UCL",
+            "date": datetime.date(2026, 9, 22),
+            "psc_home": 2.10, "psc_draw": 3.50, "psc_away": 3.40,
+            "psc_over25": 1.85, "psc_under25": 1.95, "ou_line": 2.5})
+        assert pred is not None
+        assert pred.goals_src == "market", "市场模式卡还是没有进球分布"
+        assert pred.goals_bands and len(pred.goals_bands) == 3
+        assert abs(sum(pred.goals_bands) - 1.0) < 0.001
+
+    def test_the_calibration_coefficient_cannot_leak_onto_market_lambdas(self):
+        """🚨 c 是在**模型 λ** 上拟合的。套到市场 λ 上 = 拿 A 的尺子量 B。"""
+        from nutmeg.v4.observation.goals_calibration import goals_view
+        with pytest.raises(ValueError, match="模型"):
+            goals_view(self._model_grid(), lambda_home=1.6, lambda_away=1.2,
+                       rho=-0.10, c=1.07, src="market")

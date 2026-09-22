@@ -2166,7 +2166,10 @@ const I18N = {
     mb_lose:          '让负',
     mb_hint:          '读法/选号辅助:从一簇相干比分里选,不是 +EV 信号(让球进拟合实测加 0 信息)。要算 EV 仍需竞彩比分 SP。',
     gb_toggle:        '全场进球分布',
-    gb_uncal:         '未校准',
+    gb_uncal:         '模型 · 未校准',
+    gb_src_market:    'Pinnacle 锚',
+    gb_hint_cal:      '⭐ 已对模型 λ 应用校准系数(见标签)。⚠️ 单标量缩放**修不了形状** —— 实测最优处 χ²≈19.8 vs 临界 15.5(df=8):总进球=2 处仍高估、=4 处仍低估。⛔ 别在这个样本量上加参数去追。⛔ 竞彩没有大小球盘,这不是可下注的腿,也不进 EV / 串关。',
+    gb_hint_market:   '⭐ λ 由 Pinnacle 去vig 1X2 + **大小球**反推。2026-09-22 在同一批 760 场上实测,这个来源比模型准:E[总进球] 偏差 −0.07(z=−1.14)vs 模型 −0.22(z=−3.45),分桶 log-loss 1.8807 vs 1.9025。⚠️ 它仍略低于实际(大2.5:54.3% vs 实际 58.6%)—— 两个来源同向,那段样本本身可能偏高分。⛔ 竞彩没有大小球盘,这不是可下注的腿,也不进 EV / 串关。',
     gb_cal:           '已校准 ×',
     gb_gap:           '最大档领先第二档',
     gb_tie:           '前两档几乎持平 —— 模型在这场分不出来',
@@ -2811,7 +2814,10 @@ const I18N = {
     mb_lose:          'No cover',
     mb_hint:          'Reading / selection aid — pick from a coherent score cluster, NOT a +EV signal (handicap-into-fit measured ~0 info). EV still needs the 竞彩 score SP.',
     gb_toggle:        'Total-goals distribution',
-    gb_uncal:         'uncalibrated',
+    gb_uncal:         'model, uncalibrated',
+    gb_src_market:    'Pinnacle-anchored',
+    gb_hint_cal:      'Calibration coefficient applied to the model lambdas (see tag). WARNING a single scalar cannot fix SHAPE - at the optimum chi-square ~19.8 vs critical 15.5 (df=8): total=2 still over-predicted, total=4 still under-predicted. Do NOT add parameters at this sample size. NOTE 竞彩 has no over/under market: not a bettable leg, never enters EV / parlays.',
+    gb_hint_market:   'Lambdas reverse-fit from de-vig Pinnacle 1X2 + OVER/UNDER. Measured 2026-09-22 on the SAME 760 matches, this source beats the model: E[total] bias -0.07 (z=-1.14) vs model -0.22 (z=-3.45); bucket log-loss 1.8807 vs 1.9025. WARNING it still runs slightly low (over 2.5: 54.3% vs actual 58.6%) - both sources lean the same way, so that sample may simply be high-scoring. NOTE 竞彩 has no over/under market: not a bettable leg, never enters EV / parlays.',
     gb_cal:           'calibrated x',
     gb_gap:           'top band leads the runner-up by',
     gb_tie:           'top two bands are near-tied — the model cannot separate them here',
@@ -7491,8 +7497,11 @@ function _goalsBandsHtml(pr, foldAttrs) {
   const b = pr && pr.goals_bands;
   if (!b || b.length !== 3) return '';           // λ 缺失(市场模式/手填)⇒ 什么都不画
   const labels = ['0-1 球', '2-3 球', '4+ 球'];
+  // 来源决定标签**和**提示语:市场锚那条不该挂「模型低 0.2 球」的警告
+  const isMkt = (pr.goals_src === 'market');
   const c = (pr.goals_c == null) ? 1.0 : pr.goals_c;
-  const tag = (c === 1.0) ? t('gb_uncal') : (t('gb_cal') + c.toFixed(3));
+  const tag = isMkt ? t('gb_src_market')
+            : (c === 1.0 ? t('gb_uncal') : (t('gb_cal') + c.toFixed(3)));
   const top = Math.max.apply(null, b);
   const rows = b.map((v, i) => {
     const pct = (v * 100).toFixed(0);
@@ -7520,7 +7529,7 @@ function _goalsBandsHtml(pr, foldAttrs) {
       <summary class="cursor-pointer select-none text-secondary">${t('gb_toggle')}
         <span class="text-muted">(${tag})</span></summary>
       <div class="mt-1">${rows}${gapLine}${ovLine}
-        <div class="text-muted mt-1" style="font-size:10px">${t('gb_hint')}</div></div></details>`;
+        <div class="text-muted mt-1" style="font-size:10px">${isMkt ? t('gb_hint_market') : (c === 1.0 ? t('gb_hint') : t('gb_hint_cal'))}</div></div></details>`;
 }
 // 体检(2026-06-10)— show the RAW Pinnacle line (1X2 + O/U) so you can eyeball
 // it straight against Pinnacle.com without de-vigging in your head. The 公允
@@ -7722,7 +7731,7 @@ function _cupCardHtml(pr, idx) {
       ${_oddsFreshnessHtml(pr)}${_jcFreshnessHtml(pr)}${_bkHtml(pr, idx, 'cup')}
       <div id="bestleg-cup-${idx}" class="text-xs mb-2" style="display:none"></div>
       ${_pinRawHtml(pr)}
-      ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _foldAttrs('mb', _fk))}${manual}
+      ${rows}${(pr.jc_hc_line != null && pr.jc_home == null) ? `<div class="text-xs px-1 py-1" style="color:var(--text-muted)">ℹ️ ${t('jc_hhad_only')}</div>` : ''}${hc}${_marginBandsHtml(pr.margin_bands, pr.handicap_home, _foldAttrs('mb', _fk))}${_goalsBandsHtml(pr, _foldAttrs('gb', _fk))}${manual}
     </div>`;
 }
 
@@ -8356,6 +8365,7 @@ function _mktPredCardHtml(pr, idx) {
         <button id="mkt-rec-btn-${idx}" type="button" disabled onclick="_mktRecRecord(${idx})" style="${_TODAY_REC_BTN_OFF}">📌 ${recBtnLabel}</button>
         <span id="mkt-rec-verdict-${idx}" class="text-xs"></span>
       </div>
+      ${_goalsBandsHtml(pr, _foldAttrs('gb', _foldKey(pr)))}
     </div>`;
 }
 function _mktBest(pr) {

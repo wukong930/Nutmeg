@@ -267,7 +267,7 @@ GOALS_OVER_LINES: tuple[float, ...] = (1.5, 2.5, 3.5)
 
 
 def goals_view(grid, *, lambda_home: float, lambda_away: float,
-               rho: float, c: float = 1.0) -> dict | None:
+               rho: float, c: float = 1.0, src: str = "model") -> dict | None:
     """把模型**已经算好的**比分网格变成卡片要的几个数。
 
     ⭐ 传 `grid` 而不是自己重算,是为了躲开
@@ -276,12 +276,20 @@ def goals_view(grid, *, lambda_home: float, lambda_away: float,
        ⇒ rho / max_goals / 归一化三样全都不可能和模型分家。
        只有 c ≠ 1 时才必须重算(因为 c 缩放的是 λ 本身)。
 
-    ⚠️ 返回 None = 这场没有模型 λ(市场模式 / 手填)⇒ **前端什么都别画**。
+    ⚠️ 返回 None = 这场既没有市场反推 λ 也没有模型 λ ⇒ **前端什么都别画**。
        编一个出来比不画坏得多。
+
+    `src`:λ 是打哪来的 —— `"market"`(Pinnacle 去vig 1X2+大小球反推)或 `"model"`。
+    🚨 **`c` 只准配 `src="model"`**:那个系数是在**模型 λ** 上拟合的,套到市场 λ 上
+       就是拿 A 的尺子量 B。本函数直接拦(见下),不指望调用方记得。
     """
     import numpy as _np
     if not (lambda_home > 0 and lambda_away > 0):
         return None
+    if src != "model" and c != 1.0:
+        # 🚨 不是 assert —— assert 在 -O 下会被优化掉,而这条错了是**静默**给错数字
+        raise ValueError(
+            f"校准系数 c={c} 是在模型 λ 上拟合的,不能用于 src={src!r} 的 λ")
     g = _np.asarray(grid if c == 1.0 else
                     score_grid(lambda_home * c, lambda_away * c, rho=rho))
     n = g.shape[0]
@@ -300,6 +308,7 @@ def goals_view(grid, *, lambda_home: float, lambda_away: float,
         "goals_over": [round(float(tot[int(x + 0.5):].sum()), 4) for x in GOALS_OVER_LINES],
         "goals_gap": round(order[0] - order[1], 4),
         "goals_c": c,
+        "goals_src": src,
     }
 
 
