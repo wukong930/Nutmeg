@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any, Iterator, Optional
 
 
-SCHEMA_VERSION = 2  # v2 added snapshot_phase + model_type columns
+SCHEMA_VERSION = 3  # v3 made single_predictions λ / p_1x2 nullable (2026-09-22)
 
 
 # Valid snapshot_phase values. "closing" is the legacy default used everywhere
@@ -87,11 +87,17 @@ CREATE TABLE IF NOT EXISTS single_predictions (
     league           TEXT NOT NULL,
     home_team        TEXT NOT NULL,
     away_team        TEXT NOT NULL,
-    lambda_home      REAL NOT NULL,
-    lambda_away      REAL NOT NULL,
-    p_home_1x2       REAL NOT NULL,
-    p_draw_1x2       REAL NOT NULL,
-    p_away_1x2       REAL NOT NULL,
+    -- ⛔ 2026-09-22:这五列从 NOT NULL 改成**可空**。
+    -- 起因:非模型会话(manual_bet / market_handicap)本来就没有 λ 和模型 1X2,
+    -- 而 NOT NULL 逼着写入方编一个 `0.0` —— 那是个**长得完全合法的数**,
+    -- 任何按 λ 聚合的计算都会被它静默拉低(`AVG(lambda_home)` 不会报错)。
+    -- ⭐ 同本文件 `odds_source` 那条的理由:没有可推断的值就留 NULL,
+    --    **诚实地说「不知道」**,而不是填一个看起来像数据的东西。
+    lambda_home      REAL,
+    lambda_away      REAL,
+    p_home_1x2       REAL,
+    p_draw_1x2       REAL,
+    p_away_1x2       REAL,
     handicap_home    INTEGER,
     p_home_handicap  REAL,
     p_draw_handicap  REAL,
@@ -196,10 +202,90 @@ def _init_schema(conn: sqlite3.Connection) -> None:
     # 在造假。老行永远留 NULL = 诚实地说「不知道」。
     if "odds_source" not in cols:
         conn.execute("ALTER TABLE recommendation_sessions ADD COLUMN odds_source TEXT")
+    _migrate_nullable_lambdas(conn)
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('version', ?)",
         (str(SCHEMA_VERSION),),
     )
+
+
+def _migrate_nullable_lambdas(conn: sqlite3.Connection) -> None:
+    """v2 → v3:把 `single_predictions` 的 λ / p_1x2 从 NOT NULL 改成可空,并回填。
+
+    SQLite 不能 `ALTER TABLE ... DROP NOT NULL`,只能重建表。幂等:先查
+    `PRAGMA table_info` 的 notnull 标志,已经可空就直接返回。
+
+    回填两类**编出来的**值(判据都是「模型不可能产出这个」):
+      · `λ <= 0`        —— `score_grid` 对非正 λ 直接抛,模型行不可能是它
+      · 三个 p_1x2 全 0 —— 合法的 1X2 三元组和为 1
+
+    ⛔ **不碰 `user_directional_combo` 那类手填但为正的 λ**:它们是用户真实录入的
+       数,不是缺失值。区分「谁是模型行」的判据永远是 `model_type`,
+       **不是 `λ > 0`** —— 后者已被实际证伪(库里有 λ=1.31/1.89 的手填行,
+       两位小数是它的指纹)。
+    """
+    cur = conn.execute("PRAGMA table_info(single_predictions)")
+    info = {r["name"]: r["notnull"] for r in cur.fetchall()}
+    if not info:                       # 表还没建(全新库),SCHEMA_SQL 已经是可空版
+        return
+    if not info.get("lambda_home", 0):  # 已经可空
+        return
+    # ⚠️ 必须先结掉**外面的隐式事务**:`_init_schema` 上游可能刚跑过 ALTER,
+    #    Python sqlite3 会为它开一个隐式事务,此时再 `BEGIN` 直接
+    #    `cannot start a transaction within a transaction`。
+    #    (副本演练时没触发 —— 那次列已存在、ALTER 分支没走。夹具比真库更严。)
+    prev_isolation = conn.isolation_level
+    conn.commit()
+    conn.isolation_level = None          # 自管事务
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN")
+        conn.execute("""
+            CREATE TABLE single_predictions_v3 (
+                prediction_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id       INTEGER NOT NULL,
+                match_date       TEXT NOT NULL,
+                league           TEXT NOT NULL,
+                home_team        TEXT NOT NULL,
+                away_team        TEXT NOT NULL,
+                lambda_home      REAL,
+                lambda_away      REAL,
+                p_home_1x2       REAL,
+                p_draw_1x2       REAL,
+                p_away_1x2       REAL,
+                handicap_home    INTEGER,
+                p_home_handicap  REAL,
+                p_draw_handicap  REAL,
+                p_away_handicap  REAL,
+                FOREIGN KEY (session_id) REFERENCES recommendation_sessions(session_id)
+            )""")
+        conn.execute("""
+            INSERT INTO single_predictions_v3
+            SELECT prediction_id, session_id, match_date, league, home_team, away_team,
+                   CASE WHEN lambda_home > 0 THEN lambda_home END,
+                   CASE WHEN lambda_away > 0 THEN lambda_away END,
+                   CASE WHEN p_home_1x2 = 0 AND p_draw_1x2 = 0 AND p_away_1x2 = 0
+                        THEN NULL ELSE p_home_1x2 END,
+                   CASE WHEN p_home_1x2 = 0 AND p_draw_1x2 = 0 AND p_away_1x2 = 0
+                        THEN NULL ELSE p_draw_1x2 END,
+                   CASE WHEN p_home_1x2 = 0 AND p_draw_1x2 = 0 AND p_away_1x2 = 0
+                        THEN NULL ELSE p_away_1x2 END,
+                   handicap_home, p_home_handicap, p_draw_handicap, p_away_handicap
+            FROM single_predictions""")
+        n_old = conn.execute("SELECT COUNT(*) FROM single_predictions").fetchone()[0]
+        n_new = conn.execute("SELECT COUNT(*) FROM single_predictions_v3").fetchone()[0]
+        # 🚨 行数守卫:重建丢行是不可逆的,宁可整个回滚
+        if n_old != n_new:
+            conn.execute("ROLLBACK")
+            raise RuntimeError(f"single_predictions 重建行数不符:{n_old} → {n_new},已回滚")
+        conn.execute("DROP TABLE single_predictions")
+        conn.execute("ALTER TABLE single_predictions_v3 RENAME TO single_predictions")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_single_predictions_match "
+                     "ON single_predictions(match_date, league, home_team, away_team)")
+        conn.execute("COMMIT")
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.isolation_level = prev_isolation
 
 
 def init_db(path: str | Path) -> None:
@@ -286,11 +372,11 @@ def insert_single_prediction(
     league: str,
     home_team: str,
     away_team: str,
-    lambda_home: float,
-    lambda_away: float,
-    p_home_1x2: float,
-    p_draw_1x2: float,
-    p_away_1x2: float,
+    lambda_home: float | None,
+    lambda_away: float | None,
+    p_home_1x2: float | None,
+    p_draw_1x2: float | None,
+    p_away_1x2: float | None,
     handicap_home: Optional[int] = None,
     p_home_handicap: Optional[float] = None,
     p_draw_handicap: Optional[float] = None,

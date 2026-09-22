@@ -437,8 +437,11 @@ def record_wc_handicap_session(
                 league="WC",
                 home_team=home,
                 away_team=away,
-                lambda_home=float(match.get("inferred_lambda_home", 0.0)),
-                lambda_away=float(match.get("inferred_lambda_away", 0.0)),
+                # ⛔ 反推不出来时写 NULL,不是 0.0(2026-09-22)
+                lambda_home=(float(match["inferred_lambda_home"])
+                             if match.get("inferred_lambda_home") else None),
+                lambda_away=(float(match["inferred_lambda_away"])
+                             if match.get("inferred_lambda_away") else None),
                 p_home_1x2=p_h,
                 p_draw_1x2=p_d,
                 p_away_1x2=p_a,
@@ -551,8 +554,10 @@ def record_manual_bet(
             conn, session_id,
             match_date=match_date, league=league,
             home_team=home, away_team=away,
-            lambda_home=0.0, lambda_away=0.0,
-            p_home_1x2=0.0, p_draw_1x2=0.0, p_away_1x2=0.0,
+            # ⛔ 手工注单没有模型 λ / 模型 1X2 —— 写 NULL,不编 0.0。
+            #    0.0 是个长得合法的数,会静默污染任何按 λ 聚合的计算(2026-09-22)。
+            lambda_home=None, lambda_away=None,
+            p_home_1x2=None, p_draw_1x2=None, p_away_1x2=None,
             handicap_home=handicap_home,
             p_home_handicap=(p if is_hc and outcome == "H" else None),
             p_draw_handicap=(p if is_hc and outcome == "D" else None),
@@ -639,8 +644,10 @@ def record_market_handicap_session(
             league=league,
             home_team=home_team,
             away_team=away_team,
-            lambda_home=0.0,
-            lambda_away=0.0,
+            # ⛔ 市场模式没有模型 λ ⇒ NULL。
+            #    ⚠️ 但下面的 1X2 是 Pinnacle 去vig 的**真概率**,不是编的,照常写。
+            lambda_home=None,
+            lambda_away=None,
             p_home_1x2=float(ph1),
             p_draw_1x2=float(pd1),
             p_away_1x2=float(pa1),

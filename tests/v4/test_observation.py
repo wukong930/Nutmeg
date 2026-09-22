@@ -267,3 +267,172 @@ class TestROI:
         for b in cal:
             assert 0 <= b["avg_predicted"] <= 1
             assert 0 <= b["actual_hit_rate"] <= 1
+
+
+class TestNullableLambdasV3:
+    """🚨 2026-09-22 — λ 缺失时写 NULL,**不编 0.0**。
+
+    ## 病史
+
+    `single_predictions.lambda_home` 原本是 `REAL NOT NULL`,于是非模型会话
+    (`manual_bet` / `market_handicap`)被逼着写 **`0.0`** —— 一个**长得完全合法
+    的数**。`AVG(lambda_home)` 不会报错,只会悄悄偏低。
+    同族已经咬过一次:Layer A 温度校准的拟合池混进过全零 1X2,
+    「9 of the 40 live pairs were such poison」(体检 Wave2),修法是允许清单。
+    ⇒ 允许清单是对的,但**每个新消费者都得记得加**。这条从源头去掉那个谎。
+
+    ⭐ 同本仓 `odds_source` 那条的理由:没有可推断的值就留 NULL,
+       **诚实地说「不知道」**。
+    """
+
+    def _prod_db(self):
+        db = Path(__file__).resolve().parents[2] / "data/v4_observation.db"
+        if not db.exists():
+            pytest.skip("观测库不在这个 checkout 里")
+        return db
+
+    def test_no_row_carries_a_fabricated_lambda(self) -> None:
+        """⭐ 结论:库里不许再有 `λ <= 0`。"""
+        import sqlite3
+        conn = sqlite3.connect(f"file:{self._prod_db()}?mode=ro", uri=True)
+        n_all = conn.execute("SELECT COUNT(*) FROM single_predictions").fetchone()[0]
+        assert n_all >= 100, f"人口非平凡:只有 {n_all} 行"
+        bad = conn.execute(
+            "SELECT COUNT(*) FROM single_predictions "
+            "WHERE lambda_home <= 0 OR lambda_away <= 0").fetchone()[0]
+        assert bad == 0, f"{bad} 行带着编出来的 λ<=0 —— 迁移没跑,或者有写入方还在编 0.0"
+
+    def test_model_rows_always_have_a_real_lambda(self) -> None:
+        """⭐ 反向:模型行**必须**有 λ。NULL 只属于非模型行。"""
+        import sqlite3
+        conn = sqlite3.connect(f"file:{self._prod_db()}?mode=ro", uri=True)
+        n = conn.execute("""
+            SELECT COUNT(*) FROM single_predictions s
+            JOIN recommendation_sessions r ON r.session_id = s.session_id
+            WHERE r.model_type IN ('catboost','lightgbm')
+              AND (s.lambda_home IS NULL OR s.lambda_away IS NULL)""").fetchone()[0]
+        assert n == 0, f"{n} 行是模型行却没有 λ —— 那是真的丢了数据,不是「没有」"
+
+    def test_lambda_positive_is_NOT_a_valid_model_row_predicate(self) -> None:
+        """🚨 **本类最要紧的一条** —— 钉住一个**活的反例**。
+
+        我 2026-09-22 做总进球校准时,第一版人口写的是 `lambda_home > 0`。
+        那是个**代理**:它假设「有正的 λ ⇒ 是模型算的」。
+
+        库里已经有反例:`user_directional_combo` 会话带着**手填**的 λ
+        (1.31 / 1.89 —— 两位小数是它的指纹,模型 λ 是 1.142398766… 那种全精度)。
+        ⇒ 代理会把它们放进模型人口,而**不会有任何东西报错**。
+
+        正确判据永远是 `model_type`。这条断言在反例消失那天会红 ——
+        那时该重读本注释再决定,**别顺手把断言删掉**。
+        """
+        import sqlite3
+        conn = sqlite3.connect(f"file:{self._prod_db()}?mode=ro", uri=True)
+        n = conn.execute("""
+            SELECT COUNT(*) FROM single_predictions s
+            JOIN recommendation_sessions r ON r.session_id = s.session_id
+            WHERE s.lambda_home > 0
+              AND r.model_type IS NOT NULL
+              AND r.model_type NOT IN ('catboost','lightgbm')""").fetchone()[0]
+        assert n > 0, (
+            "库里已经没有「非模型行带正 λ」的反例了 —— 本条的理由要重查。"
+            "⚠️ 别因此就认为 `λ>0` 变安全了:它依然是个代理。")
+
+    def test_the_manual_bet_writer_writes_NULL_not_zero(self, tmp_path) -> None:
+        """🚨 承重:钉住**写入方**,不只是库的当前状态。
+
+        上面两条查的是库里有没有 λ<=0 —— 但库已经被迁移修好了。
+        如果写入方退回 `0.0`,要等到下一次手工记注单、再等到有人跑那条断言
+        才会发现。这条直接打写入方。
+        """
+        import sqlite3
+        from nutmeg.v4.observation.recorder import record_manual_bet
+        db = tmp_path / "m.db"
+        record_manual_bet(db, bet={
+            "league": "EPL", "match_date": "2026-01-01",
+            "home_team": "A", "away_team": "B",
+            "market_type": "1x2", "outcome": "H",
+            "odds": 2.0, "probability": 0.55, "stake": 100.0, "bankroll": 1000.0,
+        })
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        row = conn.execute(
+            "SELECT lambda_home, lambda_away, p_home_1x2 FROM single_predictions").fetchone()
+        assert row is not None, "手工注单没写出 single_predictions 行"
+        assert row[0] is None and row[1] is None, f"λ 又被编成了 {row[0]!r}/{row[1]!r}"
+        assert row[2] is None, f"模型 1X2 又被编成了 {row[2]!r}"
+
+    def test_the_second_run_writes_nothing_at_all(self, tmp_path) -> None:
+        """🚨 幂等**不等于**无害重复 —— 这条钉「第二次一行都不写」。
+
+        变异检验实测:把那句 `if not info.get("lambda_home", 0): return` 拿掉,
+        上面那条「幂等且不丢行」**照样全绿** —— 因为重复重建也会得到同样的结果,
+        只是每次 `open_db` 都白重建一次 798 行的表。而 27 个 launchd cron
+        一直在开这个库。
+        ⇒ 用 `total_changes` 当行为探针:已经迁移过的库上再调一次,写入行数必须是 0。
+        """
+        import sqlite3
+        from nutmeg.v4.observation.store import _migrate_nullable_lambdas, open_db
+        db = tmp_path / "idem.db"
+        c = sqlite3.connect(db)
+        c.executescript("""
+            CREATE TABLE recommendation_sessions (session_id INTEGER PRIMARY KEY, model_type TEXT);
+            CREATE TABLE single_predictions (
+                prediction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL, match_date TEXT NOT NULL, league TEXT NOT NULL,
+                home_team TEXT NOT NULL, away_team TEXT NOT NULL,
+                lambda_home REAL NOT NULL, lambda_away REAL NOT NULL,
+                p_home_1x2 REAL NOT NULL, p_draw_1x2 REAL NOT NULL, p_away_1x2 REAL NOT NULL,
+                handicap_home INTEGER, p_home_handicap REAL, p_draw_handicap REAL, p_away_handicap REAL);
+            INSERT INTO recommendation_sessions VALUES (1,'catboost');
+            INSERT INTO single_predictions
+              (session_id,match_date,league,home_team,away_team,lambda_home,lambda_away,
+               p_home_1x2,p_draw_1x2,p_away_1x2)
+            VALUES (1,'2026-01-01','EPL','A','B',1.5,1.2,0.5,0.3,0.2);
+        """)
+        c.commit(); c.close()
+        with open_db(db):                      # 第一次:真迁移
+            pass
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        before = conn.total_changes
+        _migrate_nullable_lambdas(conn)        # 第二次:必须是 no-op
+        assert conn.total_changes == before, (
+            f"已迁移的库上又写了 {conn.total_changes - before} 行 —— 幂等守卫没生效,"
+            f"每次 open_db 都会白重建一次整张表")
+        conn.close()
+
+    def test_the_migration_is_idempotent_and_loses_nothing(self, tmp_path) -> None:
+        """⭐ 重建表最怕丢行。用**旧 schema** 的合成库跑两遍。"""
+        import sqlite3
+        from nutmeg.v4.observation.store import open_db
+        db = tmp_path / "old.db"
+        c = sqlite3.connect(db)
+        c.executescript("""
+            CREATE TABLE recommendation_sessions (session_id INTEGER PRIMARY KEY, model_type TEXT);
+            CREATE TABLE single_predictions (
+                prediction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL, match_date TEXT NOT NULL, league TEXT NOT NULL,
+                home_team TEXT NOT NULL, away_team TEXT NOT NULL,
+                lambda_home REAL NOT NULL, lambda_away REAL NOT NULL,
+                p_home_1x2 REAL NOT NULL, p_draw_1x2 REAL NOT NULL, p_away_1x2 REAL NOT NULL,
+                handicap_home INTEGER, p_home_handicap REAL, p_draw_handicap REAL, p_away_handicap REAL);
+            INSERT INTO recommendation_sessions VALUES (1,'catboost'),(2,'manual');
+            INSERT INTO single_predictions
+              (session_id,match_date,league,home_team,away_team,lambda_home,lambda_away,
+               p_home_1x2,p_draw_1x2,p_away_1x2)
+            VALUES (1,'2026-01-01','EPL','A','B',1.5,1.2,0.5,0.3,0.2),
+                   (2,'2026-01-01','EPL','C','D',0.0,0.0,0.0,0.0,0.0);
+        """)
+        c.commit(); c.close()
+        for _ in range(2):
+            with open_db(db):
+                pass
+        c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        assert c.execute("SELECT COUNT(*) FROM single_predictions").fetchone()[0] == 2, "重建丢行了"
+        lam = c.execute("SELECT lambda_home FROM single_predictions ORDER BY prediction_id").fetchall()
+        assert lam[0][0] == 1.5, "真 λ 被改了"
+        assert lam[1][0] is None, "编出来的 0.0 没有变成 NULL"
+        p = c.execute("SELECT p_home_1x2 FROM single_predictions ORDER BY prediction_id").fetchall()
+        assert p[0][0] == 0.5 and p[1][0] is None
+        assert c.execute("SELECT value FROM schema_meta WHERE key='version'").fetchone()[0] == "3"
+
