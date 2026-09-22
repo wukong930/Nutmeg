@@ -577,6 +577,33 @@ class TestNationalVariantsGetFlagsNotInitials:
         wrongly = sorted(c for c in clubs if c in f)
         assert not wrongly, f"俱乐部女队拿到了国旗:{wrongly}"
 
+    def test_every_national_team_on_the_board_has_a_flag(self) -> None:
+        """🚨 2026-09-22 补:**成年国家队**这一侧此前没有任何护栏。
+
+        上面两条守的都是**变体**(`X U23` / `X W`)。而底名本身缺旗时,
+        成年队卡片会退回字母缩写 —— 没人会当 bug 报。
+
+        ⭐ 人口取「`_NATIONAL_TEAMS` ∩ 盘面真出现过的名字」,不是整张
+        `_NATIONAL_TEAMS`:后者里有 12 个备用拼法(`Holland` / `Macedonia` /
+        `Rep. Of Ireland` …)**盘面上一次都没出现过**,拿它们判会红得没有意义。
+        ⇒ 同「统计量必须在会下注的人口上算」。
+        """
+        from nutmeg.v4.data.team_name_zh import _NATIONAL_TEAMS
+        db = REPO / "data/v4_observation.db"
+        if not db.exists():
+            pytest.skip("没有观测库")
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        board = set()
+        for h, a in conn.execute("SELECT DISTINCT home_team, away_team FROM odds_snapshots"):
+            board.update((h, a))
+        assert len(board) >= 500, f"人口非平凡:盘面只有 {len(board)} 个队名"
+        pop = sorted(n for n in _NATIONAL_TEAMS if n in board)
+        assert len(pop) >= 30, f"人口非平凡:盘面上只有 {len(pop)} 支国家队"
+        f = self._flags()
+        missing = [n for n in pop if n not in f]
+        assert not missing, (
+            f"这些**成年国家队**在盘面上出现过却没有国旗,卡片会退回字母缩写:{missing}")
+
     def test_club_youth_teams_do_not_get_a_flag(self) -> None:
         """🚨 这条是上面那个设计决定的**承重面**:通用剥后缀会把这些染上国旗。"""
         f = self._flags()
@@ -730,7 +757,7 @@ class TestBanner20260917:
         af |= {r[3] for r in _af_rows() if (r[1] or "").startswith("Asian Games")}
         pairs = [(TEAM_NAME_ZH[en], ab) for ab, en in _ZH_OVERRIDES.items()
                  if en in TEAM_NAME_ZH and en in af]
-        assert len(pairs) >= 13, f"人口非平凡:只发现 {len(pairs)} 对:{pairs}"
+        assert len(pairs) >= 15, f"人口非平凡:只发现 {len(pairs)} 对:{pairs}"
         non_prefix = [(f, a) for f, a in pairs if not f.startswith(a)]
         assert len(non_prefix) >= 5, (
             f"非前缀只剩 {len(non_prefix)} 个 —— 「取前缀会造错」的论据变弱了,重查:{non_prefix}")
@@ -890,6 +917,106 @@ class TestBanner20260920:
         """🚨 亚运女足是**成年队**、男足是 U23 —— 补女足时两边都不许顺手造。"""
         assert "Philippines" not in TEAM_NAME_ZH, "凭空给成年队造了条目"
         assert "Philippines U23" not in TEAM_NAME_ZH, "凭空给男足 U23 造了条目"
+
+
+class TestBanner20260922:
+    """📋 2026-09-22 横幅(2/6)· 亚运男足 阿联酋 + 泰国。
+
+    ⭐ **第五次**兑现「锚不到就留着」。两场的主队都已注册 ⇒ 真缺口只有客队两侧。
+
+    🚨 本批唯一值得记的是一个**差点犯的类比错误**:竞彩给了 `[Group B2]`/`[Group A1]`,
+       而前一天英锦标赛正是靠「竞彩小组 ↔ AF `league.round`」锚死的。
+       但 AF 对亚运写的是 **`Group Stage - 3`(第 3 轮)**,不是组别 ——
+       **同一个字段名,不同赛事语义完全不同**。⇒ 它在这里是零信息。
+    """
+
+    PAIRS = {"阿联酋亚运男足": "UAE U23", "阿联酋亚": "UAE U23",
+             "泰国亚运男足": "Thailand U23", "泰国亚": "Thailand U23"}
+    #: (竞彩主, 竞彩客, 开球, fixture id)
+    ANCHORS = [
+        ("中国亚运男足", "阿联酋亚运男足", "2026-09-23T05:30:00", 1639462),
+        ("日本亚足", "泰国亚运男足", "2026-09-23T10:30:00", 1639463),
+    ]
+
+    @pytest.mark.parametrize("zh", sorted(PAIRS))
+    def test_every_spelling_resolves(self, zh: str) -> None:
+        assert zh_to_canonical(zh) == self.PAIRS[zh]
+
+    @pytest.mark.parametrize("case", ANCHORS, ids=lambda c: c[1])
+    def test_the_slot_needs_the_resolved_home_side(self, case) -> None:
+        """⭐ 承重:该刻**不唯一**,收窄不是装饰。"""
+        hz, az, ko, fid = case
+        slot = {r[4] for r in _af_rows() if r[0] == ko and r[1] == "Asian Games"}
+        assert len(slot) >= 2, (
+            f"{ko} 只有 {len(slot)} 场 —— 那这条锚不需要收窄,本类叙述要重查")
+
+    @pytest.mark.parametrize("case", ANCHORS, ids=lambda c: c[1])
+    def test_the_anchor_is_unique_once_narrowed(self, case) -> None:
+        hz, az, ko, fid = case
+        home_en = zh_to_canonical(hz)
+        assert home_en, f"声称已解出的主队({hz})其实解不出 —— 对照不成立"
+        rows = [r for r in _af_rows()
+                if r[0] == ko and r[1] == "Asian Games" and r[2] == home_en]
+        uniq = list({r[4]: r for r in rows}.values())
+        assert len(uniq) == 1, f"收窄后候选 {len(uniq)} 场,不唯一"
+        _, _, home, away, got, *_ = uniq[0]
+        assert got == fid
+        assert zh_to_canonical(hz) == home
+        assert zh_to_canonical(az) == away
+
+    def test_the_af_round_is_a_matchday_not_a_group(self) -> None:
+        """🚨 钉住那个**差点误用的类比** —— 别再把 `round` 当组别。
+
+        英锦标赛的 `round` 是 `Group North - 2`(**组别**),亚运的是
+        `Group Stage - 3`(**第 3 轮**)。同名字段、不同语义。
+        红了 = AF 改了写法 ⇒ 回来重判它到底是组还是轮,别照抄。
+        """
+        import re
+        rounds = {r[1] for r in _af_asian_games_rounds()}
+        assert rounds, "缓存里没有亚运轮次 —— 断言空洞"
+        assert all(re.fullmatch(r"Group Stage - \d+", x or "") for x in rounds), (
+            f"亚运的 round 不再全是 `Group Stage - N`:{sorted(rounds)} ⇒ 重新判语义")
+        # 反向对照:英锦标赛那边确实是**组别**,两者不可混用
+        efl = {r[1] for r in _efl_trophy_rows()}
+        assert any(re.fullmatch(r"Group (North|South) - \d+", x or "") for x in efl), (
+            "英锦标赛的 round 不再是组别 ⇒ 本类的对照不成立")
+
+    def test_the_abbreviations_went_to_the_override_table(self) -> None:
+        assert _ZH_OVERRIDES.get("阿联酋亚") == "UAE U23"
+        assert _ZH_OVERRIDES.get("泰国亚") == "Thailand U23"
+        for abbr in ("阿联酋亚", "泰国亚"):
+            assert abbr not in TEAM_NAME_ZH.values(), f"{abbr} 不该当显示名"
+
+    def test_the_senior_sides_are_untouched(self) -> None:
+        """🚨 U23 和成年队是 AF 里不同的实体。"""
+        assert TEAM_NAME_ZH.get("UAE") == "阿联酋"
+        assert TEAM_NAME_ZH.get("Thailand") == "泰国"
+        assert zh_to_canonical("阿联酋") == "UAE"
+        assert zh_to_canonical("泰国") == "Thailand"
+
+
+def _af_asian_games_rounds():
+    """AF 缓存里亚运 fixture 的 (id, round) —— 按 fixture id 去重。"""
+    import glob
+    import json
+    if not _AF_FIXTURES.is_dir():
+        pytest.skip("没有 AF fixture 缓存(worktree)")
+    by_id: dict = {}
+    for f in _AF_FIXTURES.glob("*.json"):
+        try:
+            d = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        for fx in (d if isinstance(d, list) else d.get("response") or []):
+            if not isinstance(fx, dict):
+                continue
+            lg = fx.get("league") or {}
+            if lg.get("name") != "Asian Games":
+                continue
+            by_id[(fx.get("fixture") or {}).get("id")] = (
+                (fx.get("fixture") or {}).get("id"), lg.get("round"))
+    assert len(by_id) >= 10, f"亚运只有 {len(by_id)} 场,测不出东西"
+    return list(by_id.values())
 
 
 class TestStockportCounty:

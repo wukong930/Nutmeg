@@ -844,6 +844,10 @@ _ZH_OVERRIDES: dict[str, str] = {
     "米尔顿": "Milton Keynes Dons",
     "格里姆": "Grimsby",
     "维冈": "Wigan",
+    # -- 2026-09-22 横幅 · 简称那一半 ------------------------------------
+    # 全称在 team_name_zh(锚见那边:fixture 1639462 / 1639463)。两个都是前缀。
+    "阿联酋亚": "UAE U23",
+    "泰国亚": "Thailand U23",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

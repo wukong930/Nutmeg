@@ -3756,6 +3756,11 @@ const _NATION_FLAG = {
   // 2026-09-20 横幅:亚运女足菲律宾。底名 `Philippines` **上表里原本也没有**,
   // 一起补 —— 否则上面那条「自发现」护栏(判据=底名在不在本表)看不见带后缀的那个。
   "Philippines": "🇵🇭", "Philippines W": "🇵🇭",
+  // 2026-09-22 横幅:亚运男足 阿联酋 + 泰国。
+  // ⚠️ `UAE` 这个**拼法**上表里原本没有(只有 `United Arab Emirates`)——
+  //    而 AF/盘面用的就是 `UAE`。底名一起补,否则上面那条「自发现」护栏
+  //    (判据=底名在不在本表)看不见 `UAE U23`。同 `Kyrgyz Republic` 那次。
+  "UAE": "🇦🇪", "UAE U23": "🇦🇪", "Thailand U23": "🇹🇭",
 };
 function teamLogo(name) {
   if (!name) return '';
