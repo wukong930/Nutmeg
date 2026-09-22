@@ -2165,6 +2165,13 @@ const I18N = {
     mb_push:          '让平',
     mb_lose:          '让负',
     mb_hint:          '读法/选号辅助:从一簇相干比分里选,不是 +EV 信号(让球进拟合实测加 0 信息)。要算 EV 仍需竞彩比分 SP。',
+    gb_toggle:        '全场进球分布',
+    gb_uncal:         '未校准',
+    gb_cal:           '已校准 ×',
+    gb_gap:           '最大档领先第二档',
+    gb_tie:           '前两档几乎持平 —— 模型在这场分不出来',
+    gb_over:          '大球线',
+    gb_hint:          '⚠️ 未校准:2026-09-22 在 790 场上实测,模型每场约低 0.2 球(大2.5 预测 51.0% vs 实际 57.6%,z=+3.74)⇒ 上面这些数**偏向少球一侧**。校准层已建好,但当前模型世代只有 130 场,还拟合不出系数。⛔ 竞彩没有大小球盘,这不是可下注的腿,也不进 EV / 串关。',
     rec_record_failed: '⚠️ 记录失败 — 本注未入库,请重试',
     pin_raw_lbl:      'Pinnacle 原盘',
     pin_wide:         '水位',
@@ -2803,6 +2810,13 @@ const I18N = {
     mb_push:          'Push',
     mb_lose:          'No cover',
     mb_hint:          'Reading / selection aid — pick from a coherent score cluster, NOT a +EV signal (handicap-into-fit measured ~0 info). EV still needs the 竞彩 score SP.',
+    gb_toggle:        'Total-goals distribution',
+    gb_uncal:         'uncalibrated',
+    gb_cal:           'calibrated x',
+    gb_gap:           'top band leads the runner-up by',
+    gb_tie:           'top two bands are near-tied — the model cannot separate them here',
+    gb_over:          'Over lines',
+    gb_hint:          'WARNING uncalibrated: measured 2026-09-22 over 790 matches, the model runs ~0.2 goals low per match (over 2.5 predicted 51.0% vs actual 57.6%, z=+3.74) => these numbers lean toward FEWER goals. The calibration layer is built but the current model era has only 130 matches, too few to fit. NOTE 竞彩 has no over/under market: this is not a bettable leg and never enters EV / parlays.',
     rec_record_failed: '⚠️ record FAILED — bet NOT saved, retry',
     pin_raw_lbl:      'Pinnacle raw',
     pin_wide:         'overround',
@@ -6340,6 +6354,7 @@ function renderTodaySpCalc(preds, bankroll, kelly, minEv, pending) {
               两个模式的场次集合不相交(受训联赛走标准/其余走市场),不会撞键。
               没改名 —— 改它会波及市场模式,是另一件事。 */''}
         ${_marginBandsHtml(pr.margin_bands, pr.jc_hc_line, _foldAttrs('mb', _foldKey(pr)))}
+        ${_goalsBandsHtml(pr, _foldAttrs('gb', _foldKey(pr)))}
         ${_spcalcManualHtml(pr, idx)}
       </div>`;
   };
@@ -7463,6 +7478,49 @@ function _marginBandsHtml(bands, hcap, foldAttrs) {
       <summary class="cursor-pointer select-none text-secondary">${t('mb_toggle')}</summary>
       <div class="mt-1">${rows}${cluster}
         <div class="text-muted mt-1" style="font-size:10px">${t('mb_hint')}</div></div></details>`;
+}
+
+// 2026-09-22 owner — 全场总进球**分布**。刻意和 `_marginBandsHtml` 同骨架
+// (<details> + _foldAttrs + 虚线分隔),因为它们是同一类东西:读法辅助,不是信号。
+//
+// ⭐ 为什么不给「推荐 X 档」:同日在 793 场真 λ 上实测,最大档 **94% 的场次都是
+//    「2-3 球」** ⇒ 推荐等于在几乎每张卡上印同一句话。变的是那三个数和 `goals_gap`。
+// ⭐ `gb_gap` 是 owner 点名要的:差 1pp 和差 20pp 是完全不同的东西,只报名次会
+//    把这两种情况画成一样。27% 的场次前两档差不到 5pp。
+function _goalsBandsHtml(pr, foldAttrs) {
+  const b = pr && pr.goals_bands;
+  if (!b || b.length !== 3) return '';           // λ 缺失(市场模式/手填)⇒ 什么都不画
+  const labels = ['0-1 球', '2-3 球', '4+ 球'];
+  const c = (pr.goals_c == null) ? 1.0 : pr.goals_c;
+  const tag = (c === 1.0) ? t('gb_uncal') : (t('gb_cal') + c.toFixed(3));
+  const top = Math.max.apply(null, b);
+  const rows = b.map((v, i) => {
+    const pct = (v * 100).toFixed(0);
+    const isTop = (v === top);
+    return `<div class="flex items-center gap-2 py-0.5">
+        <span class="shrink-0" style="min-width:4.5em">${labels[i]}</span>
+        <span class="shrink-0" style="width:4.5em;height:6px;background:var(--border-subtle);border-radius:3px;overflow:hidden">
+          <span style="display:block;height:100%;width:${pct}%;background:${isTop ? 'var(--accent, #2563eb)' : 'var(--text-muted, #9ca3af)'}"></span></span>
+        <span class="num-display shrink-0" style="min-width:2.5em">${pct}%</span>
+        ${isTop ? '<span class="text-muted shrink-0">←</span>' : ''}</div>`;
+  }).join('');
+  const gap = (pr.goals_gap == null) ? null : pr.goals_gap;
+  const gapLine = (gap == null) ? '' :
+    `<div class="mt-1 pt-1" style="border-top:1px dashed var(--border-subtle)">${
+      gap < 0.05
+        ? `<span style="color:var(--text-muted)">${t('gb_tie')} (${(gap * 100).toFixed(1)}pp)</span>`
+        : `${t('gb_gap')} <strong class="num-display">${(gap * 100).toFixed(0)}pp</strong>`
+    }</div>`;
+  const ov = pr.goals_over;
+  const ovLine = (!ov || ov.length !== 3) ? '' :
+    `<div class="mt-1 text-muted">${t('gb_over')}: 1.5 <span class="num-display">${(ov[0] * 100).toFixed(0)}%</span> ·
+       2.5 <span class="num-display">${(ov[1] * 100).toFixed(0)}%</span> ·
+       3.5 <span class="num-display">${(ov[2] * 100).toFixed(0)}%</span></div>`;
+  return `<details class="mt-2 pt-2 text-xs" ${foldAttrs || ''} style="border-top:1px dashed var(--border-subtle)">
+      <summary class="cursor-pointer select-none text-secondary">${t('gb_toggle')}
+        <span class="text-muted">(${tag})</span></summary>
+      <div class="mt-1">${rows}${gapLine}${ovLine}
+        <div class="text-muted mt-1" style="font-size:10px">${t('gb_hint')}</div></div></details>`;
 }
 // 体检(2026-06-10)— show the RAW Pinnacle line (1X2 + O/U) so you can eyeball
 // it straight against Pinnacle.com without de-vigging in your head. The 公允

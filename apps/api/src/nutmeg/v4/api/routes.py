@@ -88,6 +88,7 @@ from nutmeg.v4.combo.compound_pool import recommend_pool
 from nutmeg.v4.combo.lottery_rules import JINGCAI_DEFAULT
 from nutmeg.v4.combo.selections import Selection
 from nutmeg.v4.combo.single_match import recommend_singles
+from nutmeg.v4.observation.goals_calibration import active_c, goals_view
 from nutmeg.v4.model.dixon_coles import (
     grid_to_1x2,
     grid_to_handicap_1x2,
@@ -1246,6 +1247,9 @@ def recommend(req: RecommendRequest) -> RecommendResponse:
             p_home_1x2=float(ph),
             p_draw_1x2=float(pd_),
             p_away_1x2=float(pa),
+            # 总进球分布 —— 从**模型自己那张 grid** 派生,rho/max_goals 不可能漂
+            **(goals_view(grid, lambda_home=float(lh), lambda_away=float(la),
+                          rho=gbm_rho, c=active_c()) or {}),
         )
         if f.handicap_home is not None:
             hph, hpd, hpa = tuple(
@@ -1432,6 +1436,9 @@ def predictions_upcoming(req: UpcomingPredictionsRequest) -> UpcomingPredictions
             p_home_1x2=float(ph),
             p_draw_1x2=float(pd_),
             p_away_1x2=float(pa),
+            # 总进球分布 —— 从**模型自己那张 grid** 派生,rho/max_goals 不可能漂
+            **(goals_view(grid, lambda_home=float(lh), lambda_away=float(la),
+                          rho=gbm_rho, c=active_c()) or {}),
         )
         if f.handicap_home is not None:
             hph, hpd, hpa = tuple(
@@ -2385,6 +2392,9 @@ def _calc_predictions(art, fixtures) -> list[SinglePrediction]:
                 kickoff_utc=getattr(f, "kickoff_utc", None),
                 lambda_home=float(lh), lambda_away=float(la),
                 p_home_1x2=float(ph), p_draw_1x2=float(pd_), p_away_1x2=float(pa),
+                # 总进球分布(⚠️ 此处局部名是 `rho`,不是 `gbm_rho`)
+                **(goals_view(grid, lambda_home=float(lh), lambda_away=float(la),
+                              rho=rho, c=active_c()) or {}),
                 p_home_market=(float(mkt[0]) if mkt else None),
                 p_draw_market=(float(mkt[1]) if mkt else None),
                 p_away_market=(float(mkt[2]) if mkt else None),

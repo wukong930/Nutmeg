@@ -189,6 +189,25 @@ class SinglePrediction(BaseModel):
     onex_lo_home: float | None = None
     onex_lo_draw: float | None = None
     onex_lo_away: float | None = None
+    # 2026-09-22 owner — 全场总进球的**分布**(不是推荐)。
+    #
+    # ⭐ 为什么是分布不是「推荐 X 档」:同日在 793 场真 λ 上实测,按 0-1/2-3/4+ 切,
+    #    最大档有 **94% 的场次都是「2-3 球」** ⇒ 「推荐」等于在几乎每张卡片上印同一
+    #    句话,是噪音装成洞见。真正随场次变的是那三个数本身,以及 `goals_gap`。
+    #
+    # ⚠️ **这三个数目前是未校准的**:同日实测模型每场低约 0.2 球(大2.5 预测 0.510
+    #    vs 实际 0.576,z=+3.74,790 场)。校准层 `observation/goals_calibration.py`
+    #    已建好,但当前 artifact 世代只有 130 场 ⇒ 还拟合不出系数,`goals_c` 恒为 1.0。
+    #    前端**必须**据此打「未校准」标,⛔ 别把已知有偏的数字当中立信息展示。
+    #
+    # ⛔ 竞彩**没有大小球盘**([[jingcai-market-microstructure]]),所以这几个数
+    #    **不构成可下注的腿**,也不参与 EV / 串关。纯信息展示。
+    #
+    # None = 这场没有模型 λ(市场模式 / 手填)⇒ 前端什么都别画。
+    goals_bands: list[float] | None = None    # [P(0-1), P(2-3), P(4+)]
+    goals_over: list[float] | None = None     # [P(>1.5), P(>2.5), P(>3.5)]
+    goals_gap: float | None = None            # 最大档 − 第二档(差 1pp 和差 20pp 不是一回事)
+    goals_c: float | None = None              # 已应用的校准系数;1.0 = 未校准
     # V12 W3 — Pinnacle closing odds echoed back so the dashboard's 竞彩 SP
     # calculator can pre-fill inputs and show the 竞彩-vs-Pinnacle soft-line
     # gap. Optional: not every prediction path carries them (e.g. WC).
