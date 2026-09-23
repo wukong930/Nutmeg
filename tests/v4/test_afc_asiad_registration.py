@@ -600,7 +600,7 @@ class TestNationalVariantsGetFlagsNotInitials:
         pop = sorted(n for n in _NATIONAL_TEAMS if n in board)
         assert len(pop) >= 30, f"人口非平凡:盘面上只有 {len(pop)} 支国家队"
         f = self._flags()
-        missing = [n for n in pop if n not in f]
+        missing = [n for n in pop if n not in f and n not in _NO_FLAG_BY_DESIGN]
         assert not missing, (
             f"这些**成年国家队**在盘面上出现过却没有国旗,卡片会退回字母缩写:{missing}")
 
@@ -1686,3 +1686,44 @@ class TestFriendliesIsNoLongerADomesticLeague:
     def test_the_settle_path_still_resolves_its_af_id(self) -> None:
         from nutmeg.v4.data.sources.api_football import league_id
         assert league_id("FRIENDLIES") == 10
+
+
+
+#: 故意不给 emoji 国旗的国家队 —— 卡片退回字母缩写。每一条都要写理由。
+#: `Chinese Taipei`:体育赛事里它用中华台北奥委会旗,🇹🇼 是错的(2026-09-24 记下现状;
+#:  此前国旗表里就没有它,但没有任何说明 —— 下一个人会以为是漏了)。
+_NO_FLAG_BY_DESIGN = frozenset({"Chinese Taipei"})
+
+
+class TestEveryDictionaryNationHasAFlag:
+    """⭐ 整类护栏:词典国家队分组 ⊆ 国旗表(减去有理由的豁免)。
+
+    盘面那条(`test_every_national_team_on_the_board_has_a_flag`)要等某支队**第一次上盘**
+    才红 —— 2026-09-24 欧国联注册后 `FYR Macedonia` 就是这么冒出来的,而同类还有 10 支
+    躺在词典里等着。这条在**改词典的时候**就红。
+    """
+
+    def test_dictionary_nations_all_have_flags(self) -> None:
+        from nutmeg.v4.data.team_logos import flag_table
+        from nutmeg.v4.data.team_name_zh import _NATIONAL_TEAMS
+        assert len(_NATIONAL_TEAMS) >= 100, "人口非平凡"
+        f = flag_table()
+        missing = sorted(n for n in _NATIONAL_TEAMS if n not in f and n not in _NO_FLAG_BY_DESIGN)
+        assert not missing, f"词典里这些国家队没有国旗(卡片会退回缩写):{missing}"
+
+    def test_variants_reuse_the_canonical_flag_verbatim(self) -> None:
+        """拼写变体必须和标准拼法**同一面旗**,不是各写各的。"""
+        from nutmeg.v4.data.team_logos import flag_table
+        f = flag_table()
+        pairs = {"FYR Macedonia": "North Macedonia", "Macedonia": "North Macedonia",
+                 "Holland": "Netherlands", "Bosnia": "Bosnia & Herzegovina",
+                 "Trinidad": "Trinidad and Tobago", "Cape Verde": "Cape Verde Islands",
+                 "Côte d'Ivoire": "Ivory Coast", "Curacao": "Curaçao"}
+        bad = {v: (f.get(v), f.get(c)) for v, c in pairs.items() if f.get(v) != f.get(c) or not f.get(c)}
+        assert not bad, f"变体和标准拼法的旗不一致:{bad}"
+
+    def test_the_exemptions_really_are_absent(self) -> None:
+        """豁免清单里的名字必须真的没旗 —— 哪天有人给它加了,这里红,逼着删掉豁免或删掉旗。"""
+        from nutmeg.v4.data.team_logos import flag_table
+        f = flag_table()
+        assert not (_NO_FLAG_BY_DESIGN & set(f)), f"豁免的名字却有旗:{_NO_FLAG_BY_DESIGN & set(f)}"

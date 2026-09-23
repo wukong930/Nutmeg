@@ -3786,6 +3786,13 @@ const _NATION_FLAG = {
   // 2026-09-23 欧国联/国际赛注册:键用 **AF 写法**(市场模式行带的是 AF 队名)。
   // `Republic of Ireland`/`Ireland` 早有 🇮🇪,缺的是 AF 的 `Rep. Of Ireland` 这个拼法。
   "Maldives": "🇲🇻", "Rep. Of Ireland": "🇮🇪",
+  // 2026-09-24 按「词典国家队分组 ⊆ 国旗表」整类补齐 —— 起因:欧国联上盘后 AF 的
+  // `FYR Macedonia` 以字母缩写出现(09-23 我只补了竞彩在售那 8 场的队,没按联赛普查)。
+  // 8 个拼写变体**逐字复用**标准拼法那面旗(不新造映射);Cuba / Dominican Republic 按 ISO 生成。
+  // ⛔ `Chinese Taipei` 故意不给:体育赛事里它用中华台北奥委会旗,🇹🇼 是错的 —— 退回缩写。
+  "FYR Macedonia": "🇲🇰", "Macedonia": "🇲🇰", "Holland": "🇳🇱", "Bosnia": "🇧🇦",
+  "Trinidad": "🇹🇹", "Cape Verde": "🇨🇻", "Côte d'Ivoire": "🇨🇮", "Curacao": "🇨🇼",
+  "Cuba": "🇨🇺", "Dominican Republic": "🇩🇴",
 };
 function teamLogo(name) {
   if (!name) return '';
