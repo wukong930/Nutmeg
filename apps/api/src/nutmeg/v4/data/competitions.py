@@ -457,6 +457,40 @@ CUP_COMPETITIONS: dict[str, Competition] = {
         has_group_stage=True,
         has_two_legged_ties=False,
     ),
+    # 补欧国联(2026-09-23 owner)。AF id=5 —— 本地 leagues 缓存核过(name="UEFA Nations
+    # League", type=Cup, country=World);season=2026 ⇒ 欧洲惯例正确,**不**进
+    # CALENDAR_YEAR_LEAGUES(明年 6 月的决赛圈仍属 2026 赛季)。
+    # ⚠️ round 字段**不统一**:缓存 2026 赛季 52 场里 36 场是「League A–D - n」,另有 16 场
+    #    (9-27/28,联赛阶段第 2 轮,如 Belgium vs France)只写了 `'2'`,AF 没标级别。
+    #    别拿「round 以 League 开头」当判据。
+    # ⚠️ 赛制标志:has_group_stage **实测**(A–D 四级小组);另两个**量不到**(本届还没打到
+    #    淘汰阶段),按 2024-25 届起的欧足联赛制填。三个标志在本文件外**没有读者**(grep 过)。
+    "UEFA_NATIONS_LEAGUE": Competition(
+        code="UEFA_NATIONS_LEAGUE",
+        display_zh="欧洲国家联赛",
+        display_en="UEFA Nations League",
+        competition_type="national_team_cup",
+        api_football_id=5,
+        has_knockouts=True,        # 未实测:四分之一决赛 + 决赛圈(欧足联赛制)
+        has_group_stage=True,      # 实测:League A–D 小组
+        has_two_legged_ties=True,  # 未实测:四分之一决赛 / 升降级附加赛两回合(欧足联赛制)
+    ),
+    # 国际友谊赛 —— 代码名 **早就存在**(2026-06-10 为结算手工友谊赛注单加进
+    # `api_football._DOMESTIC_LEAGUE_IDS`),这次**复用、不另起**,并挪到这里:
+    # 在「国内联赛」表里时它被 `classify_league` 判成 'domestic'(2026-09-23 实测)。
+    # 赛制标志全部**实测**:缓存里 round 一律「Friendly International」。
+    # ⚠️ AF id 10 是全球国家队友谊赛的总桶,**混着 U17–U21 青年友谊赛**(9 月窗口 57 场里
+    #    42%);竞彩「国际赛」历史 209 场里青年/女足/奥运队 **0 场** ⇒ 那部分永远不会上盘。
+    "FRIENDLIES": Competition(
+        code="FRIENDLIES",
+        display_zh="国际友谊赛",
+        display_en="International Friendlies",
+        competition_type="national_team_cup",
+        api_football_id=10,
+        has_knockouts=False,       # 实测
+        has_group_stage=False,     # 实测
+        has_two_legged_ties=False,  # 实测
+    ),
 }
 
 

@@ -519,6 +519,11 @@ _NORM_ALIAS: dict[str, str] = {
     "capeverdeislands": "capeverde",    # AF Cape Verde Islands ↔ OA Cape Verde
     "congodr": "drcongo",               # AF Congo DR ↔ OA DR Congo
     "czechia": "czechrepublic",         # AF Czechia ↔ OA Czech Republic (捷克vs南非 overlay miss)
+    # 2026-09-23 欧国联/国际赛注册前**离线**实测:竞彩解出的 16 个国家队英文名 vs AF fixture
+    # 写法,`_norm_team` 只有这 2 对不相等(`national_match_key` 同样不认)。不补 ⇒ 注册后
+    # 这两场挂不上竞彩 SP,且**没有报警**(未映射横幅只看名字解没解出,看不见 join)。
+    "chinapr": "china",                 # 竞彩 China PR ↔ AF China(国际赛 中国 vs 马尔代夫)
+    "repofireland": "republicofireland",  # AF Rep. Of Ireland ↔ 竞彩 Republic of Ireland(欧国联)
     # Veikkausliiga (FIN) — AF drops the FC/IFK/IF prefix or the city suffix the
     # Odds API keeps. AF key → OA key (体检 2026-06-12, the live overlay misses).
     "interturku": "fcinterturku",       # Inter Turku ↔ FC Inter Turku

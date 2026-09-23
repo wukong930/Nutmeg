@@ -295,11 +295,10 @@ _DOMESTIC_LEAGUE_IDS: dict[str, int] = {
     # 「国内联赛」人口里悄悄踢出去。同一段注释里明写着荷乙**不该**被排除,
     # 理由一模一样。(2026-08-09 我第一版就放错了,写在这里免得下次再犯。)
     "SAU_PRO_LEAGUE": 307,      # Saudi Pro League (Aug–May, European convention)
-    # 体检(2026-06-10)— 国际友谊赛. The user records friendly bets via the
-    # manual reverse calculator (e.g. Croatia vs Slovenia 6/7); without this
-    # code the settle cron could NEVER fetch their results → permanent 未结算
-    # orphans. id verified against the cached envelope (league id=10).
-    "FRIENDLIES": 10,           # International friendlies (calendar-year)
+    # ⛔ FRIENDLIES(id 10)**原来在这里**,2026-09-23 挪到 competitions.CUP_COMPETITIONS。
+    #    待在「国内联赛」表里时 `classify_league('FRIENDLIES')` = **'domestic'**(实测)——
+    #    国家队友谊赛被当成国内联赛。`league_id('FRIENDLIES')` 仍经 `_merged_league_ids`
+    #    合并得到 10,结算路径不变;`CALENDAR_YEAR_LEAGUES` 里的成员资格也没动。
 }
 
 # Cup + national-team competition IDs (V6 W11). Merged into the public

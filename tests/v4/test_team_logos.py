@@ -392,10 +392,21 @@ class TestFlagTableIsTheAuthorityForSkipping:
         assert old_gap, (
             "旧判据(Elo 表)已经没有缺口了 —— 那本类的理由要重查,"
             "可能是 Elo 表补全了")
-        # 缺的必须**全是**年龄组/女足变体 —— 这是缺口的形状,不只是数量
+        # 缺口的**形状**(2026-09-23 重做诊断):
+        # 原诊断是「缺的全是年龄组/女足变体」—— 被欧国联上盘证伪:Greece / Kosovo /
+        # Republic of Ireland 进了人口,也在缺口里。病因是 Elo 表**按构造**只收世界杯圈
+        # (模块 docstring:WC 2026 的 48 队 + WC 2022,61 个键)。
+        # ⇒ 新诊断:缺口 = 变体 ∪ **Elo 表里根本没有**的成年国家队。
+        #    可证伪的那一半:非变体名字必须是**真缺**,不能是拼法对不上
+        #    (那是另一种病,修法是补别名,不是换判据)。
         import re
+        from nutmeg.v4.data.national_team_name_to_elo import TEAM_NAME_TO_ELO_CODE
+        from nutmeg.v4.data.sources.odds_api import _norm_team
         odd = [n for n in old_gap if not re.search(r"\s(U\d\d|W)$", n)]
-        assert not odd, f"缺口里出现了非变体名字,病因诊断要重做:{odd}"
+        elo_keys = {_norm_team(k) for k in TEAM_NAME_TO_ELO_CODE}
+        assert len(elo_keys) >= 40, "人口非平凡"
+        spelling = [n for n in odd if _norm_team(n) in elo_keys]
+        assert not spelling, f"这些是拼法对不上而不是真缺,病因诊断要重做:{spelling}"
 
     def test_the_cli_actually_consults_the_flag_table(self, monkeypatch) -> None:
         """🚨 承重:把判据**行为上**钉死在那张表上。

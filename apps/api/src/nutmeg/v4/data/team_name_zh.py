@@ -1867,6 +1867,21 @@ _BANNER_2026_09_22: dict[str, str] = {
 TEAM_NAME_ZH.update(_BANNER_2026_09_22)
 
 
+# 2026-09-23 横幅 1/11 · 国际赛 中国 vs 马尔代夫。只有客队解不出(中国 → `China PR` ✓)。
+#
+# ⭐ 锚 = 第④档(AF fixture)+ 开球时刻,**不是**译名:
+#    AF fixture 1640057 · league 10 'Friendlies' · 2026-09-24T11:35Z · China vs Maldives
+#    竞彩 `中国 vs 马尔代夫` 开球 2026-09-24T11:35:00+00:00 —— **分秒不差**,
+#    且主队已独立解出为中国 ⇒ 同一时刻 AF 里中国的对手只有这一个。
+# ⚠️ AF 缓存里另有 `Maldives U20`(U20 友谊赛)—— 不同实体,未动。
+# ⚠️ 撞车检查:「马尔代夫」在 TEAM_NAME_ZH 值集 / `_ZH_OVERRIDES` / `_ZH_TO_EN` 均 0 占用;
+#    `Maldives` 英文键原本不在词典。
+_BANNER_2026_09_23: dict[str, str] = {
+    "Maldives": "马尔代夫",
+}
+TEAM_NAME_ZH.update(_BANNER_2026_09_23)
+
+
 # HARVEST-BEGIN
 _JINGCAI_VOTE_HARVEST: dict[str, str] = {
 }
@@ -1969,5 +1984,7 @@ def coverage_by_league() -> Dict[str, int]:
         "BANNER_2026_09_21B":      len(_BANNER_2026_09_21B),
         # 2026-09-22 — 横幅 2/6:亚运男足 阿联酋 + 泰国(第①档锚,靠已解出的主队收窄).
         "BANNER_2026_09_22":       len(_BANNER_2026_09_22),
+        # 2026-09-23 — 横幅 1/11:国际赛 马尔代夫(第④档锚 AF fixture 1640057 + 开球时刻).
+        "BANNER_2026_09_23":       len(_BANNER_2026_09_23),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }

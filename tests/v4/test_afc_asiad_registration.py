@@ -974,8 +974,16 @@ class TestBanner20260922:
         import re
         rounds = {r[1] for r in _af_asian_games_rounds()}
         assert rounds, "缓存里没有亚运轮次 —— 断言空洞"
-        assert all(re.fullmatch(r"Group Stage - \d+", x or "") for x in rounds), (
-            f"亚运的 round 不再全是 `Group Stage - N`:{sorted(rounds)} ⇒ 重新判语义")
+        # 2026-09-23 这条按设计响过一次:缓存里出现了 `Quarter-finals`(亚运进淘汰赛)。
+        # 重判结论:小组阶段的写法**没变**,仍是「第 N 轮」;新出现的是淘汰赛轮次,
+        # 另一类东西。⇒ 两类分开钉,任何一类出现陌生形状都要回来重判。
+        group = {x for x in rounds if (x or "").startswith("Group")}
+        assert group, "人口非平凡:小组阶段轮次必须还在"
+        assert all(re.fullmatch(r"Group Stage - \d+", x) for x in group), (
+            f"亚运小组阶段的 round 不再是 `Group Stage - N`:{sorted(group)} ⇒ 重新判语义")
+        knockout = rounds - group
+        known = {"Round of 16", "Quarter-finals", "Semi-finals", "3rd Place Final", "Final"}
+        assert knockout <= known, f"出现了陌生的非小组轮次:{sorted(knockout - known)} ⇒ 重新判语义"
         # 反向对照:英锦标赛那边确实是**组别**,两者不可混用
         efl = {r[1] for r in _efl_trophy_rows()}
         assert any(re.fullmatch(r"Group (North|South) - \d+", x or "") for x in efl), (
@@ -1475,3 +1483,206 @@ class TestAfcClTwoIsFullyWired:
         assert not unresolved, (
             f"竞彩亚冠乙档案里又有解不出的名字 {unresolved} —— "
             f"白名单「从未上架过」的前提动摇了,要重新逐支核")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 2026-09-23 · 横幅 1/11(国际赛 马尔代夫)+ owner 授权:欧国联 / 国际赛进市场模式
+# ════════════════════════════════════════════════════════════════════════════
+
+def _af_fixtures_in(league_ids: set[int]) -> list[dict]:
+    """本地 AF fixture 缓存里属于这些联赛的场次,按 fixture id 去重。
+
+    ⚠️ 去重是必须的:同一场会出现在多个缓存信封里(2026-09-21 `_efl_trophy_rows`
+       没去重,daemon 重抓一次就把 4 条测试打红)。
+    """
+    if not _AF_FIXTURES.exists():
+        pytest.skip("没有 AF fixture 缓存(worktree)")
+    by_id: dict[int, dict] = {}
+    for f in _AF_FIXTURES.glob("*.json"):
+        try:
+            d = json.loads(f.read_text())
+        except Exception:
+            continue
+        for fx in (d.get("response") if isinstance(d, dict) else d) or []:
+            try:
+                if fx["league"]["id"] in league_ids:
+                    by_id[fx["fixture"]["id"]] = fx
+            except (KeyError, TypeError):
+                continue
+    return list(by_id.values())
+
+
+class TestBanner20260923Maldives:
+    """国际赛 中国 vs 马尔代夫 —— 只有客队解不出。
+
+    ⭐ 锚是第④档(AF fixture)+ 开球时刻,**不是**译名:AF fixture 1640057 与竞彩那一行
+       开球时刻分秒不差,且主队已独立解出为中国 ⇒ 同一时刻中国的对手只有这一个。
+    """
+
+    def test_maldives_now_resolves(self) -> None:
+        assert zh_to_canonical("马尔代夫") == "Maldives"
+        assert zh_to_canonical("中国") == "China PR", "另一侧本来就解得出 —— 锚靠它收窄"
+
+    def test_the_anchor_is_one_af_fixture_at_the_same_kickoff(self) -> None:
+        rows = _af_fixtures_in({10})
+        assert len(rows) >= 20, f"缓存里友谊赛只有 {len(rows)} 场 ⇒ 下面那条是空包弹"
+        hit = [fx for fx in rows
+               if fx["teams"]["home"]["name"] == "China"
+               and fx["teams"]["away"]["name"] == "Maldives"
+               and fx["fixture"]["date"].startswith("2026-09-24T11:35")]
+        assert len(hit) == 1 and hit[0]["fixture"]["id"] == 1640057
+
+    def test_the_u20_side_is_a_different_entity_and_was_left_alone(self) -> None:
+        rows = _af_fixtures_in({10})
+        names = {fx["teams"][s]["name"] for fx in rows for s in ("home", "away")}
+        assert "Maldives U20" in names, "人口非平凡:U20 确实存在于缓存里"
+        assert "Maldives U20" not in TEAM_NAME_ZH
+
+    def test_the_flags_use_the_af_spelling(self) -> None:
+        """市场模式行带的是 **AF 队名** ⇒ 国旗表要按 AF 写法有键。"""
+        from nutmeg.v4.data.team_logos import flag_table
+        flags = flag_table()
+        assert flags.get("Maldives") == "🇲🇻"
+        assert flags.get("Rep. Of Ireland") == "🇮🇪"
+        assert flags.get("Republic of Ireland") == "🇮🇪", "人口非平凡:确认读的是那张表"
+
+
+class TestNationalTeamJoinAliases:
+    """🚨 名字解得出 ≠ 盘面挂得上。注册前**离线**实测 16 个国家队名:竞彩解出的英文 vs
+    AF fixture 写法,`_norm_team` 只有 2 对不相等。不补 ⇒ 这两场 `jc_home is null`,
+    而未映射横幅**看不见**(它只看名字解没解出,不看 join)。
+    """
+
+    # 2026-09-23 竞彩在售国际赛 3 场 + 欧国联 5 场,(竞彩解出的英文, AF fixture 写法)
+    BOARD = [("Japan", "Japan"), ("Uruguay", "Uruguay"), ("South Korea", "South Korea"),
+             ("Ecuador", "Ecuador"), ("China PR", "China"), ("Maldives", "Maldives"),
+             ("Kosovo", "Kosovo"), ("Republic of Ireland", "Rep. Of Ireland"),
+             ("Portugal", "Portugal"), ("Wales", "Wales"), ("Netherlands", "Netherlands"),
+             ("Germany", "Germany"), ("Serbia", "Serbia"), ("Greece", "Greece"),
+             ("Norway", "Norway"), ("Denmark", "Denmark")]
+
+    def test_every_name_on_that_board_joins(self) -> None:
+        from nutmeg.v4.data.sources.odds_api import _norm_team
+        bad = [(jc, af) for jc, af in self.BOARD if _norm_team(jc) != _norm_team(af)]
+        assert not bad, f"这些名字挂不上竞彩 SP: {bad}"
+
+    def test_the_two_aliases_merge_nothing_else(self) -> None:
+        """改 `_NORM_ALIAS` 前必须跑的误并测量,做成断言。人口自己发现(词典全部键)。"""
+        from nutmeg.v4.data.sources import odds_api as oa
+        names = set(TEAM_NAME_ZH)
+        assert len(names) > 1000, "人口非平凡"
+        expected = {"china": {"China", "China PR"},
+                    "republicofireland": {"Republic of Ireland", "Rep. Of Ireland"}}
+        for alias_key in ("chinapr", "repofireland"):
+            target = oa._NORM_ALIAS[alias_key]
+            members = {n for n in names if oa._norm_team(n) == target}
+            assert members == expected[target], f"{target!r} 并进了别的队: {sorted(members)}"
+
+
+class TestNationsLeagueAndFriendliesAreFullyWired:
+    """🌍 2026-09-23 owner 授权:欧国联 + 国际赛进市场模式。同英锦标赛的 6 条腿,逐条钉住。
+
+    ⭐ 和英锦标赛不同的三点:
+    ① 国际赛的代码名 `FRIENDLIES` **早就存在**(2026-06-10 为结算手工友谊赛注单加的),
+       本次复用、不另起 —— 但它原来待在「国内联赛」表里,被判成 **'domestic'**。
+    ② 线源:AF 本地缓存里欧国联 24/24、国际赛 125/145 带 Pinnacle;Odds API **故意不加**
+       sport key(本地查不到全表,猜一个 key 字符串是「照着猜」红线的变体)。
+    ③ 两个都是**国家队**赛事 ⇒ 类型 id 与 WC 同为 2,队表检查豁免理由是「队表=会员协会」。
+    """
+
+    CASES = [("UEFA_NATIONS_LEAGUE", "欧国联", 5), ("FRIENDLIES", "国际赛", 10)]
+
+    @pytest.mark.parametrize("code,zh,af_id", CASES)
+    def test_leg1_af_league_id(self, code, zh, af_id) -> None:
+        from nutmeg.v4.data.sources.api_football import league_id
+        assert league_id(code) == af_id
+
+    @pytest.mark.parametrize("code,zh,af_id", CASES)
+    def test_leg2_in_the_market_mode_registry(self, code, zh, af_id) -> None:
+        from nutmeg.v4.api.routes import _CUP_MARKET_COMPETITIONS
+        assert code in _CUP_MARKET_COMPETITIONS
+        assert "WC" in _CUP_MARKET_COMPETITIONS, "人口非平凡:确认读的是那张表"
+
+    @pytest.mark.parametrize("code,zh,af_id", CASES)
+    def test_leg3_both_language_tracks_agree(self, code, zh, af_id) -> None:
+        from nutmeg.v4.data.league_labels import canonical_league
+        assert canonical_league(code) == zh
+
+    @pytest.mark.parametrize("code,zh,af_id", CASES)
+    def test_leg4_national_team_cup_excluded_on_both_tracks(self, code, zh, af_id) -> None:
+        from nutmeg.v4.data.competitions import competition_type_id, is_national_team_competition
+        from nutmeg.v4.data.league_labels import classify_league
+        assert is_national_team_competition(code)
+        for label in (code, zh):
+            assert classify_league(label) == "excluded", f"{label!r} → {classify_league(label)!r}"
+        assert competition_type_id(code) == competition_type_id("WC") != competition_type_id("EPL")
+
+    @pytest.mark.parametrize("code,zh,af_id", CASES)
+    def test_leg5_coverage_scan_makes_a_conscious_choice(self, code, zh, af_id) -> None:
+        from nutmeg.v4.cli.registry_coverage import MARKET_MODE_LEAGUES, OUT_OF_SCOPE
+        assert code in OUT_OF_SCOPE and code not in MARKET_MODE_LEAGUES
+        assert "国家队" in OUT_OF_SCOPE[code], "豁免理由要说清楚为什么队表无意义"
+
+    @pytest.mark.parametrize("code,zh,af_id", CASES)
+    def test_leg6_the_panel_has_a_chinese_name_and_a_colour(self, code, zh, af_id) -> None:
+        js = (REPO / "apps/api/src/nutmeg/v4/api/static/dashboard.html").read_text()
+        assert f"{code}: '{zh}'" in js
+        assert f"{code}: '#" in js, "缺配色 ⇒ 面板上会落到默认灰"
+
+    @pytest.mark.parametrize("code,zh,af_id", CASES)
+    def test_the_odds_api_key_is_deliberately_absent(self, code, zh, af_id) -> None:
+        """⚠️ 故意缺,不是漏接:本地没有 /sports 全表可核,不写猜的 key。
+        哪天核过全表、真加了 key,这条会红 —— 那时改这条,别删。"""
+        from nutmeg.v4.data.sources.odds_api import SPORT_KEYS
+        assert code not in SPORT_KEYS
+        assert SPORT_KEYS.get("WC") == "soccer_fifa_world_cup", "人口非平凡"
+
+    @pytest.mark.parametrize("code,zh,af_id", CASES)
+    def test_the_delta_stratum_did_not_move(self, code, zh, af_id) -> None:
+        """δ 拟合按 `is_domestic_club_league` 分「俱乐部/大赛」两层。注册前「国际赛」是
+        unknown、「欧国联」是 excluded —— 两者都**不**计入俱乐部层;注册后必须仍然不计入,
+        否则已部署的 δ 常数就和新人口对不上了。"""
+        from nutmeg.v4.data.league_labels import is_domestic_club_league
+        assert not is_domestic_club_league(zh)
+        assert is_domestic_club_league("英超"), "人口非平凡:谓词对真联赛仍返回 True"
+
+    def test_season_conventions(self) -> None:
+        """欧国联 9 月开赛、次年 6 月决赛圈 ⇒ 欧洲惯例;友谊赛 ⇒ 日历年。"""
+        import datetime as dt
+        from nutmeg.v4.data.sources.api_football import CALENDAR_YEAR_LEAGUES, season_for_date
+        assert "UEFA_NATIONS_LEAGUE" not in CALENDAR_YEAR_LEAGUES
+        assert season_for_date(dt.date(2026, 9, 24), "UEFA_NATIONS_LEAGUE") == 2026
+        assert season_for_date(dt.date(2027, 6, 10), "UEFA_NATIONS_LEAGUE") == 2026
+        assert "FRIENDLIES" in CALENDAR_YEAR_LEAGUES
+        assert season_for_date(dt.date(2027, 6, 10), "FRIENDLIES") == 2027
+
+    def test_the_format_booleans_that_were_measured(self) -> None:
+        """欧国联:has_group_stage 实测(round 全是 League A–D);另两个量不到,已在注释标明。
+        国际赛:三个都实测(round 一律 Friendly International)。"""
+        from nutmeg.v4.data.competitions import CUP_COMPETITIONS
+        unl = [fx for fx in _af_fixtures_in({5}) if fx["league"]["season"] == 2026]
+        assert len(unl) >= 10, "人口非平凡"
+        rounds = {fx["league"]["round"] for fx in unl}
+        # ⚠️ round 不统一:多数是「League A–D - n」,但联赛阶段第 2 轮有 16 场只写 '2'
+        #    (AF 没标级别)。我第一版写成「全部以 League 开头」—— 被这条测试当场打红。
+        assert any(r.startswith("League ") for r in rounds), "有级别小组 ⇒ has_group_stage 实测"
+        assert all(r.startswith("League ") or r.isdigit() for r in rounds), f"出现了别的形状: {rounds}"
+        assert CUP_COMPETITIONS["UEFA_NATIONS_LEAGUE"].has_group_stage is True
+        fr = _af_fixtures_in({10})
+        assert {fx["league"]["round"] for fx in fr} == {"Friendly International"}
+        c = CUP_COMPETITIONS["FRIENDLIES"]
+        assert (c.has_knockouts, c.has_group_stage, c.has_two_legged_ties) == (False, False, False)
+
+
+class TestFriendliesIsNoLongerADomesticLeague:
+    """🚨 `FRIENDLIES` 原来待在 `api_football._DOMESTIC_LEAGUE_IDS`,于是
+    `classify_league('FRIENDLIES')` = **'domestic'**(2026-09-23 实测)。挪表后结算不能断。"""
+
+    def test_it_left_the_domestic_table(self) -> None:
+        from nutmeg.v4.data.sources import api_football
+        assert "FRIENDLIES" not in api_football._DOMESTIC_LEAGUE_IDS
+        assert "SAU_PRO_LEAGUE" in api_football._DOMESTIC_LEAGUE_IDS, "人口非平凡"
+
+    def test_the_settle_path_still_resolves_its_af_id(self) -> None:
+        from nutmeg.v4.data.sources.api_football import league_id
+        assert league_id("FRIENDLIES") == 10

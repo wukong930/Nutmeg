@@ -150,6 +150,11 @@ _EN_TO_CN: dict[str, str] = {
     "COPA_DEL_REY": "西国王杯",
     "WC_QUAL_UEFA": "欧预赛",
     "EURO": "欧洲杯",
+    # 补(2026-09-23 owner)。两个中文写法都**实证**自档案,不是意译:
+    # `jingcai_odds_history` 里「欧国联」2209 行(league_id=127)、「国际赛」2068 行
+    # (league_id=39);`crown_close_history` 另有 121 / 109 行,同一写法。
+    "UEFA_NATIONS_LEAGUE": "欧国联",
+    "FRIENDLIES": "国际赛",
     "AUS_A_LEAGUE": "澳超",
 }
 
@@ -191,6 +196,10 @@ TRAINED_LEAGUES_CN: frozenset[str] = frozenset({
 # 少数**(N 涨得比预期慢),不是静默污染。
 _NON_DOMESTIC_CN: frozenset[str] = frozenset({
     "世界杯", "欧洲杯", "美洲杯", "亚洲杯", "非洲杯", "世预赛", "欧国联",  # 国家队
+    # 2026-09-23 补。不补的话「国际赛」停在 `unknown`(已测);补了 `_EN_TO_CN` 之后
+    # 英文轨 'FRIENDLIES' 走竞赛表判 excluded,中文轨也必须同判。δ 的分层不变:
+    # `is_domestic_club_league` 对 unknown/excluded 都返回 False ⇒ 前后都在「大赛」层。
+    "国际赛",
     "欧冠", "欧罗巴", "欧协联",                                           # 洲际俱乐部杯
     # ⭐ 第三类:**国内**俱乐部杯赛。本集合原来的注释只写了上面两类,而 P3 要的是
     # 「国内俱乐部**联赛**」—— 国内杯赛既不是国家队也不是洲际杯,却同样不在

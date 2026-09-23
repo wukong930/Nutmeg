@@ -2694,6 +2694,14 @@ _CUP_MARKET_COMPETITIONS = [
     "UCL", "UEL", "UECL",
     "FAC", "COPA_DEL_REY", "COPPA_ITALIA", "DFB_POKAL", "COUPE_DE_FRANCE",
     "WC", "EURO", "WC_QUAL_UEFA",
+    # 补欧国联 + 国际赛(2026-09-23 owner)。国家队,不在训练集 ⇒ 同 WC 系走 Pinnacle 去vig。
+    # ⚠️ 线源实测(本地缓存,⛔ 没打 API):
+    #   · AF /odds → 欧国联 24/24 条带 Pinnacle · 国际赛 125/145(86%);
+    #   · Odds API → **没加 sport key**:本地查不到 /sports 全表,写一个猜的 key 字符串
+    #     正是「照着猜」那条红线的变体。缺 key 时 sport-key 单元会 warn(同英锦标赛)。
+    #   · 💸 AF 赔率**按场次**抓,而 id 10 混着 U17–U21 友谊赛(竞彩 0/209 上过)——
+    #     那部分是纯开销,量级见本次 commit message。
+    "UEFA_NATIONS_LEAGUE", "FRIENDLIES",
     # V12 W7 — JPN_J1: not a cup, but out-of-distribution for the model
     # (European-trained; diverges ~13pp from the sharp J1 line). Priced off
     # Pinnacle de-vig here instead of model-scored — same treatment as cups.
