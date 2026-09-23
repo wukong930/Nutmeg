@@ -92,6 +92,9 @@ data/v4_model*/
 
 # data_freshness sentinel heartbeat (体检 P0-2 — written every run, watched by vote cron)
 data/.data_freshness_heartbeat
+# closing_odds cron heartbeat (every `--sports auto` round; data_freshness reads it in quiet windows)
+data/.closing_odds_heartbeat
+data/.closing_odds_heartbeat.tmp
 
 # ── Personal / Archive ────────────────────────────────────────
 Nutmeg_诊断报告与科学化路线图.docx

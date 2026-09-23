@@ -49,6 +49,13 @@ from pathlib import Path
 CAPTURE_TABLES: list[tuple[str, str, int, bool, str, str | None, str | None]] = [
     ("odds_snapshots", "captured_at", 2, True,
      "Pinnacle 线史 (CLV 地基)", None, None),
+    # 🚨 2026-09-23 —— 这条超龄之后还要过一道「空窗」判定(`_judge_closing`)。
+    # 国际比赛日 SPORT_KEYS 联赛全停,cron 每 30 分钟照跑、**一行都不该写** ⇒ 纯年龄
+    # 判据分不开「cron 死了」和「没东西可抓」(当天实测:launchd runs=48、日志 1 分钟前,
+    # 而这条已经红了 3 天,诊断文案还写着「cron 可能静默死了」)。
+    # 放行要**两条都证明**:① AF 赛程缓存(cron 自己用来决定拉什么的那份)里,最后一次
+    # 捕获 + 前瞻窗之后 0 场 SPORT_KEYS 开球;② cron 心跳 ≤ max_days。证明不了(缓存
+    # 缺/空/坏、没心跳)一律按停更。⛔ 不是放宽天数:有开球的周里,判红时点与以前相同。
     ("odds_snapshots", "captured_at", 2, True,
      "Pinnacle 收盘锚 (closing 子流; --sports auto 随赛程自选联赛)",
      "source='closing'", "odds_snapshots[closing]"),
@@ -132,6 +139,9 @@ HEARTBEAT_FILENAME = ".data_freshness_heartbeat"
 #   ≥1 天 → 命中 6 处,其中 5 处是良性 1-2 天空档(那天真没球/cron 错峰)= 噪声
 #   ≥3 天 → 命中 1 处,正是那次真实断供,零误报
 # 连续 3 天全世界一场可采的球都没有,不合理 —— 所以 3 天以上必是故障。
+# ⚠️ 2026-09-23 对 closing 子流**证伪**:国际比赛日 SPORT_KEYS 联赛 09-21~09-23 连续 3 天
+#    0 场(AF 缓存实数)。所以 closing 的断档要再过 `_judge_closing`:期间一场该抓的都没有
+#    ⇒ 挪进 quiet_gaps(报告留痕,不算洞)。其它流仍按本段判据。
 GAP_LOOKBACK_DAYS = 30   # 只看近 30 天:愈合的旧疤该滚出视野,留着就成了长明红灯
 MIN_GAP_DAYS = 3
 
@@ -157,10 +167,22 @@ class TableStatus:
     # **不进 stale**:洞里的数据已经永久丢了,补不回来,天天红灯只会训练出忽视。
     # 它的职责是「别让洞藏在绿灯背后」,不是拦门。
     gaps: list[tuple[str, str, int]] = field(default_factory=list)
+    # 2026-09-23 —— 超龄之后专属判定(目前只有 closing 子流,见 `_judge_closing`)的结论。
+    #   quiet=True ⇒ 已**证明**「期间没东西可抓 + cron 活着」⇒ 不算 stale;
+    #   why        ⇒ 那条结论的人话(QUIET 的理由 / STALE 的归因),报告里挂在该行下面。
+    quiet: bool = False
+    why: str | None = None
+    # 被证明「期间 0 场可抓」的断档:从 gaps 摘出来(没丢任何东西),但报告里**留痕**。
+    quiet_gaps: list[tuple[str, str, int]] = field(default_factory=list)
+
+    @property
+    def aged(self) -> bool:
+        """纯年龄判据(旧的 stale)。"""
+        return self.days_stale is None or self.days_stale > self.max_days
 
     @property
     def stale(self) -> bool:
-        return self.days_stale is None or self.days_stale > self.max_days
+        return self.aged and not self.quiet
 
 
 def _row_count(conn: sqlite3.Connection, table: str, where: str | None = None) -> int | None:
@@ -257,17 +279,144 @@ def _probe(
     return TableStatus(name, n, last, _days_stale(last, today), maxd, crit, note, gaps)
 
 
+#: `_judge_closing` 管的那一条(显示名)。
+CLOSING_STREAM = "odds_snapshots[closing]"
+
+
+def _fixture_cache_dir(db_path: str | Path) -> Path:
+    """AF 赛程缓存 = 观测库同目录下的 `external/api_football`(生产 = `data/…`,正是
+    `api_football.DEFAULT_CACHE_DIR` 在仓库根解析出的位置)。按库路径推、不按 cwd:
+    测试用 tmp 库时天然读不到真缓存 ⇒ 证明不了空窗 ⇒ 按停更,与旧行为一致。"""
+    return Path(db_path).resolve().parent / "external" / "api_football"
+
+
+def _edge_ts(conn: sqlite3.Connection, table: str, col: str, where: str | None, *,
+             before: str | None = None, after: str | None = None) -> datetime | None:
+    """最后一次捕获的时刻(或 < ``before`` 日的最后一次 / > ``after`` 日的第一次),aware。
+
+    先按天定位,再把那一天的行逐条解析取极值 —— 不对整列 max():混格式('T' 与空格)的
+    字典序在同一天里会错开几小时。解析不了(epoch 整数等)→ None = 界定不了窗口。"""
+    from nutmeg.v4.observation.closing_odds import _parse_iso
+
+    day = f"substr(CAST({col} AS TEXT),1,10)"
+    cond = f"{col} IS NOT NULL" + (f" AND ({where})" if where else "")
+    if after is not None:
+        agg, extra, args = "min", f" AND {day} > ?", (after,)
+    else:
+        agg, extra, args = "max", (f" AND {day} < ?" if before else ""), (
+            (before,) if before else ())
+    (d,) = conn.execute(f"SELECT {agg}({day}) FROM {table} WHERE {cond}{extra}",
+                        args).fetchone()
+    if d is None:
+        return None
+    ts = [t for (v,) in conn.execute(f"SELECT {col} FROM {table} WHERE {cond} AND {day} = ?",
+                                     (d,))
+          if (t := _parse_iso(str(v))) is not None]
+    if not ts:
+        return None
+    return min(ts) if after is not None else max(ts)
+
+
+def _closing_verdict(
+    conn: sqlite3.Connection, table: str, col: str, where: str | None, *,
+    db_path: str | Path, today: date, end: datetime, cache_dir: Path, max_days: int,
+) -> tuple[bool, str]:
+    """→ (quiet, why)。先问**赛程**(期间有没有该抓的开球 = 丢没丢数据),再问**心跳**
+    (cron 活没活)。放行要两条都证明;任何一条证明不了都是停更,但 why 说清是哪一条。"""
+    from nutmeg.v4.observation import closing_odds as co
+
+    last = _edge_ts(conn, table, col, where)
+    if last is None:
+        return False, "读不出最后一次捕获的时刻 ⇒ 界定不了该覆盖的窗口"
+    # 最后一次捕获那轮已经把 (last, last+前瞻] 里开球的场次抓进来了 —— 那之后开球的
+    # 才是「必须再跑一轮才抓得到」的。⚠️ 不减这段会把最后一场当成漏抓(09-20 实测:
+    # 22:55 抓的正是 23:00 开球那场)。
+    start = last + timedelta(minutes=co.AUTO_LOOKAHEAD_MINUTES)
+    scan = co.scan_uncaptured_kickoffs(start, end, cache_dir=cache_dir)
+    hb = co.read_heartbeat(db_path)
+    hb_days = _days_stale(hb.astimezone(UTC).date().isoformat(), today) if hb else None
+    alive = hb_days is not None and hb_days <= max_days
+    beat = (f"cron 心跳 {hb.astimezone(UTC):%m-%d %H:%MZ}({hb_days}d)" if hb
+            else f"cron 心跳读不到({co.HEARTBEAT_FILENAME})")
+    since = f"{start.astimezone(UTC):%m-%d %H:%MZ}"
+    if scan.kickoffs:
+        ko, lg = scan.kickoffs[0]
+        return False, (f"不是空窗:{since} 之后有 SPORT_KEYS 开球没捕获(首场 "
+                       f"{ko.astimezone(UTC):%m-%d %H:%MZ} {lg})· {beat}"
+                       + (" ⇒ cron 活着,查 Odds API 额度/抓取" if alive
+                          else " ⇒ cron 多半死了"))
+    if not scan.proves_nothing_to_capture:
+        miss = ",".join(f"{d:%m-%d}" for d in scan.unknown_days) or "—"
+        return False, f"证明不了是空窗:赛程缓存 {miss} 缺/坏/空(没缓存 ≠ 没比赛)· {beat}"
+    if hb is None:
+        return False, f"期间 SPORT_KEYS 0 场开球,但 {beat} ⇒ 证明不了 cron 活着"
+    if not alive:
+        return False, (f"期间 SPORT_KEYS 0 场开球,但 {beat} 超过 {max_days}d ⇒ cron 本身停了"
+                       f"(空窗期本就不写库,心跳是它活着的唯一证据)")
+    d0, d1 = scan.days_read[0], scan.days_read[-1]
+    return True, (f"空窗无可捕获:{since} 起 SPORT_KEYS 联赛 0 场开球(赛程缓存 "
+                  f"{d0:%m-%d}~{d1:%m-%d} 共 {scan.fixtures_seen} 场已核)· {beat}")
+
+
+def _judge_closing(
+    st: TableStatus, conn: sqlite3.Connection, table: str, col: str, where: str | None, *,
+    db_path: str | Path, today: date, end: datetime, cache_dir: str | Path | None,
+) -> None:
+    """closing 子流专属:超龄时判「空窗 vs 停更」;把「期间 0 场可抓」的断档摘出 gaps。
+
+    ⛔ 判定自己炸了 ⇒ 维持纯年龄判据(超龄即停更)并在 why 里说清 —— 查不了 ≠ 没问题。"""
+    from nutmeg.v4.observation import closing_odds as co
+
+    cache = Path(cache_dir) if cache_dir else _fixture_cache_dir(db_path)
+    lead = timedelta(minutes=co.AUTO_LOOKAHEAD_MINUTES)
+    try:
+        # ① 身后的洞:期间一场该抓的都没有 ⇒ 什么都没丢,不是洞(报告里留痕)。
+        #    不看心跳 —— 洞问的是「丢没丢数据」,cron 活没活是 ② 的事。
+        if st.gaps:
+            keep: list[tuple[str, str, int]] = []
+            quiet: list[tuple[str, str, int]] = []
+            for g in st.gaps:
+                prev = _edge_ts(conn, table, col, where, before=g[0])
+                nxt = _edge_ts(conn, table, col, where, after=g[1])
+                empty = prev is not None and co.scan_uncaptured_kickoffs(
+                    prev + lead, nxt or end, cache_dir=cache).proves_nothing_to_capture
+                (quiet if empty else keep).append(g)
+            st.gaps, st.quiet_gaps = keep, quiet
+        # ② 超龄:放行要同时证明「没东西可抓」和「cron 活着」
+        if st.aged and st.rows:
+            st.quiet, st.why = _closing_verdict(
+                conn, table, col, where, db_path=db_path, today=today, end=end,
+                cache_dir=cache, max_days=st.max_days)
+    except Exception as exc:  # noqa: BLE001
+        st.quiet = False
+        st.why = (f"空窗判定自己炸了: {type(exc).__name__}: {exc} —— 已按纯年龄判据处理"
+                  f"(查不了 ≠ 没问题)")
+
+
 def check_freshness(
-    db_path: str | Path, *, today: date | None = None
+    db_path: str | Path, *, today: date | None = None, now: datetime | None = None,
+    fixture_cache_dir: str | Path | None = None,
 ) -> list[TableStatus]:
-    """One TableStatus per CAPTURE stream (declared order), main DB then sisters."""
+    """One TableStatus per CAPTURE stream (declared order), main DB then sisters.
+
+    ``now`` / ``fixture_cache_dir`` 只喂 closing 子流的空窗判定(`_judge_closing`)。"""
     today = today or date.today()
+    now = now or datetime.now(UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    # 判定窗口的终点不越过 `today` 那一天:`--today` 覆盖(测试)时合成库配真时钟,
+    # 窗口会横跨几个月;生产里 today 就是今天,这个 min 恒等于 now。
+    end = min(now, datetime.combine(today + timedelta(days=1),
+                                    datetime.min.time()).astimezone())
     conn = sqlite3.connect(str(db_path))
     try:
         out: list[TableStatus] = []
         for table, col, maxd, crit, note, where, name in CAPTURE_TABLES:
-            out.append(_probe(conn, name or table, table, col, maxd, crit, note,
-                              where, today))
+            st = _probe(conn, name or table, table, col, maxd, crit, note, where, today)
+            if st.table == CLOSING_STREAM:
+                _judge_closing(st, conn, table, col, where, db_path=db_path, today=today,
+                               end=end, cache_dir=fixture_cache_dir)
+            out.append(st)
     finally:
         conn.close()
     for db_file, table, col, maxd, crit, note in SISTER_CAPTURE_TABLES:
@@ -1411,8 +1560,10 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date,
     bad = [s for s in statuses if s.stale and s.critical]
     warn = [s for s in statuses if s.stale and not s.critical]
     holed = [s for s in statuses if s.gaps]
+    quiet = [s for s in statuses if s.quiet]
     for s in statuses:
-        mark = "✓" if not s.stale else ("✗" if s.critical else "⚠")
+        # ○ = 超龄但已证明是空窗。⚠️ 故意不和 ✓ 共用记号:兜底分支必须看得出来。
+        mark = "○" if s.quiet else ("✓" if not s.stale else ("✗" if s.critical else "⚠"))
         age = "空/缺表" if s.days_stale is None else f"{s.days_stale}d"
         within = f"(≤{s.max_days}d)"
         tag = "CRIT" if s.critical else "warn"
@@ -1420,10 +1571,15 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date,
             f"  {mark} {s.table:<24} {s.rows:>6} 行 · 最后 {s.last_day or '—':<10} "
             f"· {age:>7} {within} [{tag}] {s.note}"
         )
+        if s.why:
+            lines.append(f"      {'○' if s.quiet else '↳'} {s.why}")
         # 洞挂在它自己那行下面 —— 「最后 0d」的绿灯与「身后有个 9 天洞」必须同屏,
         # 分开放两处 = 又给了只看一处的机会。
         for g0, g1, n in s.gaps:
             lines.append(f"      ⚠ 内部空洞 {g0} → {g1}({n} 天,采集是 point-in-time,补不回来)")
+        for g0, g1, n in s.quiet_gaps:
+            lines.append(f"      ○ 静默 {g0} → {g1}({n} 天,期间 SPORT_KEYS 0 场开球 ⇒ "
+                         f"无可捕获,不算洞)")
     lines += ["", "  — 用户行为表(空仓即僵,不门控)—"]
     for table, n, last, ds in _user_rows(db_path, today):
         age = "—" if ds is None else f"{ds}d 前"
@@ -1438,6 +1594,10 @@ def render(statuses: list[TableStatus], db_path: str | Path, today: date,
         lines.append(f"判定: ⚠ 季节性捕获表偏旧(不致命): {', '.join(s.table for s in warn)}")
     else:
         lines.append("判定: ✓ 所有捕获流都在按节奏入库,无漏。")
+    if quiet:
+        lines.append(
+            f"  ○ 空窗(已证明期间无可捕获且 cron 活着,不算停更): "
+            f"{', '.join(s.table for s in quiet)}")
     if holed:
         lines.append(
             f"  ⚠ 但近 {GAP_LOOKBACK_DAYS} 天有内部空洞: "
@@ -1603,15 +1763,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"✗ 观测库不存在: {db_path}", file=sys.stderr)
         return 1
     today = date.fromisoformat(args.today) if args.today else date.today()
+    # ⚠️ 本地时区且带偏移:`%H:%M:%S` 给 owner 看的是本地时刻,而 isoformat 落盘后
+    #    `fromisoformat` 拿回来仍是 aware ⇒ 历史里的时间差可以直接减。
+    now = datetime.now().astimezone()
 
-    statuses = check_freshness(db_path, today=today)
+    statuses = check_freshness(db_path, today=today, now=now)
     # Heartbeat even when stale — it means "the sentinel RAN", not "all green";
     # the vote-cron watchdog alarms on ITS absence (P0-2 mutual watching).
     write_heartbeat(db_path)
     crit_stale = [s for s in statuses if s.stale and s.critical]
-    # ⚠️ 本地时区且带偏移:`%H:%M:%S` 给 owner 看的是本地时刻,而 isoformat 落盘后
-    #    `fromisoformat` 拿回来仍是 aware ⇒ 历史里的时间差可以直接减。
-    now = datetime.now().astimezone()
     history = history_path_for(args.out)
     quota_alarms, probe_fails, probe_ok = (
         ([], [], None) if args.no_quota else check_api_quota())
@@ -1685,11 +1845,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.porcelain:
         for s in statuses:
-            status = "OK" if not s.stale else ("STALE" if s.critical else "OLD")
+            # QUIET = 超龄但已证明是空窗(health_check.sh 有专门的 case,不和 OK 共用文案)
+            status = ("QUIET" if s.quiet else
+                      "OK" if not s.stale else ("STALE" if s.critical else "OLD"))
+            note = f"{s.note} · {s.why}" if s.why else s.note
             print(
                 f"{status}\t{s.table}\t{s.rows}\t{s.last_day or '-'}\t"
                 f"{'-' if s.days_stale is None else s.days_stale}\t"
-                f"{int(s.critical)}\t{s.note}"
+                f"{int(s.critical)}\t{note}"
             )
             # 独立 GAP 行 —— health_check.sh 只认前缀,不必改它的 OK/STALE 解析。
             for g0, g1, n in s.gaps:

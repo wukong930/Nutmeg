@@ -16,6 +16,13 @@ import logging
 
 
 def main(argv: list[str] | None = None) -> int:
+    from nutmeg.v4.observation.closing_odds import (
+        AUTO_LOOKAHEAD_MINUTES,
+        capture_closing_pinnacle,
+        resolve_auto_sports,
+        write_heartbeat,
+    )
+
     ap = argparse.ArgumentParser(
         description="capture Pinnacle 收盘线 → odds_snapshots(source=closing)")
     ap.add_argument("--db", default="data/v4_observation.db", help="observation DB")
@@ -23,22 +30,24 @@ def main(argv: list[str] | None = None) -> int:
                     help="逗号分隔的运动短键 (WC,UCL,EPL,…),或 auto = 从 AF 赛程算"
                          "「未来 75 分钟内开球」的联赛集(体检 Wave2 — 只在临开球时"
                          "拉该 sport,静默时段 0 credit;硬编单一联赛=季末链停摆雷)")
-    ap.add_argument("--lookahead-minutes", type=int, default=75,
-                    help="auto 模式的开球前瞻窗 (默认 75 = 30min cron 的 2 tick+余量)")
+    ap.add_argument("--lookahead-minutes", type=int, default=AUTO_LOOKAHEAD_MINUTES,
+                    help="auto 模式的开球前瞻窗 (默认 75 = 30min cron 的 2 tick+余量;"
+                         "哨兵按同一个常数推「该覆盖的窗口」,别只在这里改)")
     ap.add_argument("--no-refresh", action="store_true",
                     help="用缓存(默认强制拉鲜,收盘捕获要鲜)")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    from nutmeg.v4.observation.closing_odds import (
-        capture_closing_pinnacle,
-        resolve_auto_sports,
-    )
-
-    if args.sports.strip().lower() == "auto":
+    # 心跳只在 auto(= cron 的模式)写:手动 `--sports WC` 跑一次不该替一个死掉的
+    # cron 作证(同「缺口曲线年龄只数 cron 行」—— 手按会掩盖 cron 死)。
+    auto = args.sports.strip().lower() == "auto"
+    if auto:
         sports = resolve_auto_sports(lookahead_minutes=args.lookahead_minutes)
         if not sports:
             print("收盘锚: 前瞻窗内无 SPORT_KEYS 联赛开球 — 本轮 0 次 Odds-API 调用")
+            # ⭐ 这一支**必须**留心跳:国际比赛日这种窗口里 cron 一行都不该写,
+            #    哨兵只能靠它区分「没东西可抓」和「cron 死了」。
+            write_heartbeat(args.db)
             return 0
         print(f"收盘锚 auto: 前瞻 {args.lookahead_minutes}min 内开球联赛 = {','.join(sports)}")
     else:
@@ -48,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     print("收盘锚写入 odds_snapshots(source=closing): "
           + " · ".join(f"{k} {v}" for k, v in r.items())
           + f"  (共 {total} 行新状态)")
+    if auto:
+        write_heartbeat(args.db)
     return 0
 
 

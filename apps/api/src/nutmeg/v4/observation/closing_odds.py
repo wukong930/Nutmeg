@@ -17,10 +17,28 @@ construction and a closing capture must stay light + reliable.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+import os
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+#: `--sports auto` 的开球前瞻窗(分钟)。**cron 与哨兵共用这一个定义**:哨兵据它推
+#: 「最后一次捕获之后,哪些开球是 cron 本该再跑一轮去抓的」—— 两边各写一个 75,
+#: 改了一边,哨兵就会在错的窗口上判「漏了」或「空窗」。
+AUTO_LOOKAHEAD_MINUTES = 75
+
+#: cron 每跑完一轮 `--sports auto` 写一次,与观测库同目录(同 `.data_freshness_heartbeat`)。
+#: 空窗期(国际比赛日:SPORT_KEYS 联赛全停)cron **本来就不该写库**,这是它活着的唯一证据。
+#: ⛔ 别「简化」成读 launchd 日志:`rotate_logs.sh` 原地重写 `logs/launchd/*.log`(mtime 跟着
+#:    变新),plist 命令尾巴是 `|| true`(launchd 的 last exit code 恒为 0)—— 两个都会替死 cron 作证。
+HEARTBEAT_FILENAME = ".closing_odds_heartbeat"
+
+#: AF 状态码:这两种 = 那场**没踢**(推迟 / 取消),没有收盘线可抓。
+#: ⚠️ AF 写的是 `PST` 不是 `POSTP`(2026-09-23 扫本地 fixture 缓存 62,206 条:
+#:    PST 327 / CANC 438 / POSTP **0**)。
+_NOT_PLAYED = frozenset({"PST", "CANC"})
 
 
 def _parse_iso(s: str | None) -> datetime | None:
@@ -53,9 +71,47 @@ def _canon(name: str | None) -> str | None:
     return _ODDS_API_ALIAS.get(name.strip(), name.strip())
 
 
+def _kickoff_and_league(fx) -> tuple[datetime, object] | None:
+    """AF fixture → ``(开球时刻, league id)``;缺任一项或形状不对 → None。"""
+    try:
+        ko = _parse_iso((fx.get("fixture") or {}).get("date"))
+        lg_id = (fx.get("league") or {}).get("id")
+    except AttributeError:
+        return None
+    return None if ko is None or lg_id is None else (ko, lg_id)
+
+
+def _status_short(fx) -> str | None:
+    try:
+        return ((fx.get("fixture") or {}).get("status") or {}).get("short")
+    except AttributeError:
+        return None
+
+
+def _sport_key_kickoffs(fixtures, id_to_canonical: dict):
+    """AF fixture 列表 → ``(开球时刻, canonical, fixture)``,只留 SPORT_KEYS 联赛。
+
+    ⭐ 「哪些开球归收盘锚管」的**唯一定义**:cron(`resolve_auto_sports`)据它决定拉
+    哪些 sport,哨兵(`scan_uncaptured_kickoffs`)据它判「那几天是不是真没东西可抓」。
+    两边各写一份筛选,迟早一边多认一个联赛而另一边不认 —— 哨兵就会在 cron 根本
+    不管的联赛上报「漏了」,或者反过来把真漏掉的判成空窗。"""
+    from nutmeg.v4.data.sources import odds_api
+
+    for fx in fixtures:
+        kl = _kickoff_and_league(fx)
+        if kl is None:
+            continue
+        try:
+            canonical = id_to_canonical.get(kl[1])
+        except TypeError:          # 不可哈希的脏 id
+            continue
+        if canonical and canonical in odds_api.SPORT_KEYS:
+            yield kl[0], canonical, fx
+
+
 def resolve_auto_sports(
     *,
-    lookahead_minutes: int = 75,
+    lookahead_minutes: int = AUTO_LOOKAHEAD_MINUTES,
     now: datetime | None = None,
     fetch_fixtures=None,
 ) -> list[str]:
@@ -74,7 +130,6 @@ def resolve_auto_sports(
     Fail-soft: an AF outage returns [] (0 credits burned blind); a sustained
     stall is caught by the data_freshness ``odds_snapshots[closing]`` sentinel
     (Wave 1), not silence. ``fetch_fixtures`` is injectable for tests."""
-    from nutmeg.v4.data.sources import odds_api
     from nutmeg.v4.data.sources.api_football import (
         API_FOOTBALL_LEAGUE_IDS,
         fetch_fixtures_for_date,
@@ -92,18 +147,100 @@ def resolve_auto_sports(
         except Exception:  # noqa: BLE001 — fail-soft; sentinel catches sustained stalls
             log.warning("auto-sports: fixture fetch failed for %s", d, exc_info=True)
             continue
-        for fx in fixtures:
-            try:
-                ko = _parse_iso((fx.get("fixture") or {}).get("date"))
-                lg_id = ((fx.get("league") or {}).get("id"))
-            except AttributeError:
-                continue
-            if ko is None or not (now < ko <= horizon):
-                continue
-            canonical = id_to_canonical.get(lg_id)
-            if canonical and canonical in odds_api.SPORT_KEYS:
+        for ko, canonical, _fx in _sport_key_kickoffs(fixtures, id_to_canonical):
+            if now < ko <= horizon:
                 keys.add(canonical)
     return sorted(keys)
+
+
+@dataclass
+class KickoffScan:
+    """`scan_uncaptured_kickoffs` 的结果。三态要分开:有开球 / 证明没有 / 证明不了。"""
+    #: 窗口内的 SPORT_KEYS 开球 (时刻, 联赛),升序。扫到**第一个有开球的日子**就停 ——
+    #: 结论已定(不是空窗),不为了凑个总数去翻几十天的缓存。
+    kickoffs: list[tuple[datetime, str]] = field(default_factory=list)
+    #: 读到了、且认得出比赛的赛程缓存日。
+    days_read: list[date] = field(default_factory=list)
+    #: 缺 / 读坏 / 空列表 / 一场都认不出 —— 这些日子**证明不了**「那天没球」。
+    unknown_days: list[date] = field(default_factory=list)
+    #: 读到的 fixture 总数(全部联赛)。让「0 场 SPORT_KEYS」可核:是翻了几百场
+    #: 一场都不归我们管,还是压根没翻到东西。
+    fixtures_seen: int = 0
+
+    @property
+    def proves_nothing_to_capture(self) -> bool:
+        return not self.kickoffs and not self.unknown_days and bool(self.days_read)
+
+
+def scan_uncaptured_kickoffs(
+    start: datetime, end: datetime, *, cache_dir: str | Path,
+) -> KickoffScan:
+    """``(start, end]`` 内 SPORT_KEYS 联赛的开球 —— **只读 AF 缓存,永不联网**。
+
+    哨兵用它回答「收盘锚这几天没长,是没东西可抓,还是漏了」—— 问的是 cron 自己
+    用来决定拉什么的**同一份赛程**(同一个筛选 `_sport_key_kickoffs`),而不是去信
+    cron 自报的「前瞻窗内无开球」:AF 抓失败时 `resolve_auto_sports` 也返回 []、
+    也打印那一句,自报分不清「没有」和「没去看」。
+
+    ⚠️ 不是证据的缓存一律记进 ``unknown_days``:文件缺失(没缓存 ≠ 没比赛)、
+       读坏、``[]``(全世界一天零场不合理 = 一次「空的成功」)、一场都认不出(格式漂了)。
+    ⚠️ 推迟 / 取消(`_NOT_PLAYED`)的不算:它们没有收盘线可抓。
+    """
+    from nutmeg.v4.data.sources.api_football import (
+        API_FOOTBALL_LEAGUE_IDS,
+        cached_fixtures_for_date,
+    )
+
+    id_to_canonical = {v: k for k, v in API_FOOTBALL_LEAGUE_IDS.items()}
+    scan = KickoffScan()
+    d = start.astimezone(UTC).date()
+    last = end.astimezone(UTC).date()
+    while start < end and d <= last:
+        rows = cached_fixtures_for_date(d, cache_dir=Path(cache_dir))
+        if not rows or not any(_kickoff_and_league(fx) for fx in rows):
+            scan.unknown_days.append(d)
+        else:
+            scan.days_read.append(d)
+            scan.fixtures_seen += len(rows)
+            hits = sorted(
+                (ko, canonical)
+                for ko, canonical, fx in _sport_key_kickoffs(rows, id_to_canonical)
+                if start < ko <= end and _status_short(fx) not in _NOT_PLAYED
+            )
+            if hits:
+                scan.kickoffs = hits
+                break
+        d += timedelta(days=1)
+    return scan
+
+
+def heartbeat_path(db_path: str | Path) -> Path:
+    return Path(db_path).resolve().parent / HEARTBEAT_FILENAME
+
+
+def write_heartbeat(db_path: str | Path, *, now: datetime | None = None) -> None:
+    """cron 跑完一轮 `--sports auto` 就写(无论这轮抓没抓到东西)。
+
+    Fail-soft:心跳写不进去**绝不许**拖垮收盘捕获 —— 那是 CLV 地基,心跳只是旁证。
+    tmp + rename:哨兵永远读不到写了一半的文件。"""
+    try:
+        p = heartbeat_path(db_path)
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text((now or datetime.now(UTC)).isoformat(timespec="seconds") + "\n",
+                       encoding="utf-8")
+        os.replace(tmp, p)
+    except OSError:
+        log.warning("closing heartbeat write failed", exc_info=True)
+
+
+def read_heartbeat(db_path: str | Path) -> datetime | None:
+    """→ 心跳时刻(aware);没有 / 读不出 → None(**不**回落到文件 mtime —— 兜底要看得出来)。"""
+    try:
+        text = heartbeat_path(db_path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+    lines = text.splitlines()
+    return _parse_iso(lines[0].strip()) if lines else None
 
 
 def capture_closing_pinnacle(

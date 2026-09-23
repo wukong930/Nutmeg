@@ -423,6 +423,26 @@ def fetch_fixtures_for_date(
     return rows
 
 
+def cached_fixtures_for_date(
+    on_date: date, *, cache_dir: Path = DEFAULT_CACHE_DIR,
+) -> list[dict[str, Any]] | None:
+    """`fetch_fixtures_for_date(on_date)`(不带 league)的**只读缓存**版 —— 永不联网。
+
+    给哨兵用:它要问「那天有没有比赛」,但**不许**替我们花 AF 额度。上面那个函数对
+    今天及以后的日期、缓存超过 TTL 时会强制重拉(那是它的本职),所以哨兵不能调它。
+
+    → 缓存里的 fixture 列表;``None`` = 没缓存 / 读坏了 / 形状不对。
+    ⚠️ ``[]`` 原样返回:「缓存了一个空列表」和「没缓存」是两回事,空列表算不算证据
+       由调用方决定(全世界一天零场不合理 —— 那更像一次「空的成功」)。
+    """
+    cf = _cache_path("/fixtures", {"date": on_date.isoformat()}, Path(cache_dir))
+    try:
+        rows = json.loads(cf.read_text())
+    except (OSError, ValueError):
+        return None
+    return rows if isinstance(rows, list) else None
+
+
 #: 2026-08-05 —— **「合法地返回 [] 」和「真的没有比赛」长得一模一样**,这一条修的就是它。
 #:
 #: 实测事故:J1 从 2026-08-07 起改秋春制,API-Football 把这批 fixture 标成

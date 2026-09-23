@@ -247,8 +247,13 @@ if [[ -f "$DB" ]]; then
       [[ -z "$tab" ]] && continue
       case "$st" in
         OK)    ok   "$tab — 最后 $last (${days}d), 共 $rows 行 · $note" ;;
+        # 超龄但已**证明**期间无可捕获且 cron 活着(目前只有 closing 子流:国际比赛日
+        # SPORT_KEYS 联赛全停)。理由在 $note 末尾;故意不和 OK 共用文案 —— 兜底分支要看得出来。
+        QUIET) ok   "$tab 空窗(非停更) — 最后 $last (${days}d) · $note" ;;
         OLD)   warn "$tab 偏旧 — 最后 $last (${days}d) · $note(季节性, 非致命)" ;;
-        STALE) fail "$tab 停长! 最后 $last (${days}d) · $note — 捕获 cron 可能静默死了" ;;
+        # 尾巴故意中立:closing 子流的 $note 末尾带归因(「cron 活着,查 Odds API 额度」
+        # 或「cron 本身停了」),写死「cron 可能死了」会和它打架(同 08-18 jc_open 那次错诊)。
+        STALE) fail "$tab 停长! 最后 $last (${days}d) · $note — 捕获 cron 死了,或在跑但没写进来(⛔ 别默认是前者)" ;;
         # GAP 行的字段含义不同: rows=起始日 last=结束日 days=天数 (见 data_freshness
         # 的 porcelain 分支)。没有这个 case 会掉进 *) 把日期错位印出来。
         GAP)   warn "$tab 内部空洞 $rows → $last (${days} 天) — 「最后 0d」是绿的但这几天永久缺,采集补不回来" ;;
