@@ -29,6 +29,8 @@ import pytest
 
 from nutmeg.v4.cli import data_freshness as df
 
+from .test_data_freshness import offline
+
 NOW = dt.datetime(2026, 9, 11, 12, 0, tzinfo=dt.UTC)
 
 
@@ -132,7 +134,7 @@ class TestOffSeasonDoesNotCryWolf:
 
 
 class TestWiredIntoTheSentinel:
-    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply", "--no-trickle", "--no-gapcurve")
+    _ARGS = ("--today", "2026-06-17", *offline("--no-season"))
 
     def _green_db(self, tmp_path):
         from .test_data_freshness import _all_today, _mk_db

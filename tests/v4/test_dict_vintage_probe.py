@@ -37,6 +37,8 @@ import pytest
 
 from nutmeg.v4.cli import data_freshness as df
 
+from .test_data_freshness import OUTBOUND, offline
+
 
 def _m(h, a, lg="日职", ok=True):
     """一条竞彩场次;`ok=False` = 本进程解不出(home_en/away_en 为空)。"""
@@ -172,8 +174,7 @@ class TestItOnlyReadsTheCache:
 
 
 class TestWiredIntoTheSentinel:
-    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-supply", "--no-trickle",
-             "--no-gapcurve", "--no-season")
+    _ARGS = ("--today", "2026-06-17", *offline("--no-vintage"))
 
     def _green_db(self, tmp_path):
         from .test_data_freshness import _all_today, _mk_db
@@ -230,9 +231,19 @@ class TestTheSentinelStaysHermeticUnderTestFlags:
     哨兵在**测试参数**下跑一轮,**一个出站请求都不该发**。
     任何未来的出站探针(或某条测试忘了关它)都会在这里一次性被抓住,
     而不是散落成十条指向别处的假红。
+
+    ## 2026-09-23 —— 它抓到了第三个出站探针,而主树里一直看不见
+
+    赛季探针(09-11)本地缺当季源树就去问 football-data。主树里 `2627/` 在
+    ⇒ 零请求 ⇒ 这条一直绿 —— **又是运气**(同上:活 daemon 恰好同代)。
+    从 worktree 跑(源树只到 `2526/`)它就红了:13 次出站。
+    ⇒ 修的是**参数表**:`--no-season` 进 `OUTBOUND`,全仓的调用方一起拿到;
+      断言一字未动,其余探针仍全开着跑,谁出站照样红在这里。
+    ⚠️ 这条的检出力**取决于跑在什么树上**:条件出站(缺数据才问上游)的探针,
+       只在数据缺的环境里现形 —— 「主树里绿」不是「没出站路径」的证据。
     """
 
-    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-vintage")
+    _ARGS = ("--today", "2026-06-17", *OUTBOUND)
 
     def test_a_sentinel_round_issues_no_outbound_request(self, monkeypatch, tmp_path, capsys):
         from .test_data_freshness import _all_today, _mk_db
@@ -262,7 +273,7 @@ class TestTheSentinelStaysHermeticUnderTestFlags:
         assert rc in (0, 1)
 
     def test_the_flag_actually_exists_and_is_spelled_as_used(self):
-        """⭐ 上面那条靠传 `--no-vintage` 才 hermetic。拼错了会被 argparse 拒绝 ——
+        """⭐ 上面那条靠传 `OUTBOUND` 才 hermetic。拼错了会被 argparse 拒绝 ——
         但如果将来改名而这里没跟着改,上面那条会**报参数错**而不是漏测,
         所以这里单独钉住名字。"""
         import io
@@ -270,4 +281,5 @@ class TestTheSentinelStaysHermeticUnderTestFlags:
         with contextlib.redirect_stdout(io.StringIO()) as buf:
             with pytest.raises(SystemExit):
                 df.main(["--help"])
-        assert "--no-vintage" in buf.getvalue()
+        for flag in OUTBOUND:
+            assert flag in buf.getvalue(), flag

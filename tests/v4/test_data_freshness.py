@@ -5,6 +5,8 @@ import re
 import sqlite3
 from datetime import date
 
+import pytest
+
 from nutmeg.v4.cli.data_freshness import (
     CAPTURE_TABLES,
     HEARTBEAT_FILENAME,
@@ -81,7 +83,20 @@ def _all_today():
     return fresh
 
 
-# ⚠️ 下面每个 main() 调用都必须带 --no-quota **和 --no-vintage**,别删。
+# ⚠️ 下面每个 main() 调用都必须带 `*OFFLINE`,别删;测某个探针的用例用
+#    `offline("--no-xxx")` 只打开**它自己**。⛔ 别再在别的文件里手抄一份参数表。
+#
+# 🚨 2026-09-23 —— 同一课第四次,这次是**读 cwd 相对路径**的探针:
+# 涓流(08-08)、缺口曲线(09-04)、赛季(09-11)接进哨兵后,散在 6 个文件里的
+# 7 份手抄参数表**有 5 份没跟上**。主树里一直绿 —— 只因为那里有生产 `logs/` 和当季源树。
+# 从 worktree 跑:缺口曲线读不到 `logs/sporttery_unmapped_history.jsonl` ⇒ 报警 ⇒
+# 11 条红;赛季探针本地缺 `europe/2627/` ⇒ 每轮真去问 football-data 13 次
+# (实测 25 条测试共 390 次出站,**其中 15 条是绿的**),走本机代理时一个文件卡 10 分钟+。
+# 断言 ==1 的那些照样「通过」—— 靠的是缺口曲线的报警,不是它们造的陈旧数据
+# (即下面 --no-quota 那段说的「静默变成空测试」)。在主树里则反过来:生产那边
+# 哪条 cron 停一天,断言 ==0 的就跟着红,红的原因和被测的东西毫无关系。
+# ⇒ 参数表收成这**一份**;`test_offline_switches_off_every_probe` 从 `--help` 自己
+#   发现开关人口 —— 下一个探针接进来,红在那一处,不再散成十几条指向别处的假红。
 #
 # 2026-09-16 补 `--no-vintage`:它是哨兵里**第二个默认往进程外发请求**的探针
 # (比对活 daemon 的队名词典代次)。接线当天全绿 —— 因为活 daemon 恰好和源码同代;
@@ -106,11 +121,63 @@ def _all_today():
 # 别的测试用裸 `os.environ[...]` 把 `NUTMEG_V4_ARTIFACT_PATH` 泄漏成 `data/v4_model`
 # (遗留 LGB,cutoff 2025-06-01),对着生产源树落后 4871 场 ⇒ 报警 ⇒ 退出码 1。
 # 症状是**只在跑全套时红、单跑绿**,而红的是另一个文件。
+
+#: 按设计就要出进程的探针:额度(线上付费 API)· 词典代次(活 daemon)·
+#: 赛季(本地缺当季 ⇒ 问 football-data.co.uk)。中心化守卫
+#: `test_dict_vintage_probe::TestTheSentinelStaysHermeticUnderTestFlags` **只**关这三个,
+#: 其余探针全开着跑一轮、断言零出站 —— 谁偷偷出站,红在那一处。
+OUTBOUND = ("--no-quota", "--no-vintage", "--no-season")
+#: 每个 main() 调用的默认参数:**全部**探针开关。除上面三个,其余读的是 cwd 相对路径
+#: (`logs/…`、`data/…`)—— 在 worktree 里输入不在,在主树里读的是生产状态。
+OFFLINE = (*OUTBOUND, "--no-supply", "--no-gapcurve", "--no-trickle", "--no-league-labels")
+
+
+def offline(*keep_on: str) -> tuple[str, ...]:
+    """OFFLINE 减掉 ``keep_on`` —— 测某个探针的用例只打开**它自己**,其余照关。
+
+    ⚠️ 拼错的开关当场报错:否则「以为开着、其实关着」,打桩的那条就成了空测试。
+    """
+    unknown = set(keep_on) - set(OFFLINE)
+    assert not unknown, f"OFFLINE 里没有这些开关:{sorted(unknown)}"
+    return tuple(a for a in OFFLINE if a not in keep_on)
+
+
+def test_offline_switches_off_every_probe(capsys):
+    """⭐ OFFLINE 必须**恰好**是 `main()` 的全部 `--no-*` 开关 —— 人口从 `--help` 自己发现。
+
+    2026-09-23 的病就是参数表掉队。新开关出现 ⇒ 这里红,逼接线的人当场归类:
+    进 OFFLINE;它的探针若会出进程(网络 / 活 daemon),再进 OUTBOUND ——
+    漏了这一步,中心化守卫会接着红。反方向(OFFLINE 里有已经删掉/改名的开关)
+    同样在这里红,而不是让每个 main() 调用都报 argparse 参数错。
+    """
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    # 选项行固定缩进两格;usage 里的 `[--no-x]` 和帮助文字的续行都不会被匹配到
+    switches = set(re.findall(r"^  (--no-[\w-]+)", capsys.readouterr().out, re.M))
+    assert switches == set(OFFLINE), (
+        f"开关人口变了 —— 未归类:{sorted(switches - set(OFFLINE))};"
+        f"已不存在:{sorted(set(OFFLINE) - switches)}")
+    assert set(OUTBOUND) <= set(OFFLINE)
+
+
+def test_offline_round_does_not_depend_on_cwd(tmp_path, monkeypatch):
+    """⭐ OFFLINE 的承诺:结果与 cwd 无关。从一个**空目录**跑全绿库,必须还是 0。
+
+    还开着、又读 cwd 相对路径的探针在这里读不到输入;缺输入就报警的那类
+    (缺口曲线、赛季都是)会让这条在**任何** checkout 里当场红 ——
+    而不是只在 worktree 里,散成十几条指向别处的假红。
+    """
+    db = _mk_db(tmp_path, _all_today())
+    (tmp_path / "empty_cwd").mkdir()
+    monkeypatch.chdir(tmp_path / "empty_cwd")
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 0
+
+
 def test_all_fresh_exits_zero(tmp_path):
     db = _mk_db(tmp_path, _all_today())
     statuses = check_freshness(db, today=TODAY)
     assert all(not s.stale for s in statuses)
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 0
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 0
 
 
 def test_critical_stale_exits_one(tmp_path):
@@ -122,7 +189,7 @@ def test_critical_stale_exits_one(tmp_path):
     db = _mk_db(tmp_path, rows)
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["odds_snapshots"].stale and by["odds_snapshots"].critical
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 1
 
 
 def test_closing_substream_stale_behind_fresh_table(tmp_path):
@@ -136,7 +203,7 @@ def test_closing_substream_stale_behind_fresh_table(tmp_path):
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert not by["odds_snapshots"].stale
     assert by["odds_snapshots[closing]"].stale and by["odds_snapshots[closing]"].critical
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 1
 
 
 def test_jc_open_substream_tracked_separately(tmp_path):
@@ -175,8 +242,7 @@ def test_listing_gap_alone_does_not_fail_the_gate(tmp_path):
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert not by["jingcai_sp[open-heartbeat]"].stale, "心跳不该红 —— cron 活着"
     assert not by["jingcai_sp[open]"].critical, "上新场那条又变回 CRITICAL 了"
-    assert main(["--db", str(db), "--today", "2026-06-17",
-                 "--no-quota", "--no-vintage", "--no-supply"]) == 0, (
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 0, (
         "🚨 常态空档让体检失败了 —— 这正是 2026-08-18 的假红")
 
 
@@ -192,8 +258,8 @@ def test_a_truly_dead_open_cron_still_fails_the_gate(tmp_path):
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["jingcai_sp[open-heartbeat]"].stale
     assert by["jingcai_sp[open-heartbeat]"].critical, "心跳必须 CRITICAL,否则不 gate"
-    assert main(["--db", str(db), "--today", "2026-06-17",
-                 "--no-quota", "--no-vintage", "--no-supply"]) == 1, "cron 真死了却没让体检失败"
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 1, (
+        "cron 真死了却没让体检失败")
 
 
 def test_sister_db_missing_is_critical_stale(tmp_path):
@@ -201,7 +267,7 @@ def test_sister_db_missing_is_critical_stale(tmp_path):
     (tmp_path / "score_ev_forward.db").unlink()
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["score_ev_flags"].stale and by["score_ev_flags"].critical
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 1
 
 
 def test_heartbeat_written_even_when_stale(tmp_path):
@@ -212,7 +278,7 @@ def test_heartbeat_written_even_when_stale(tmp_path):
     db = _mk_db(tmp_path, rows)
     hb = tmp_path / HEARTBEAT_FILENAME
     assert not hb.exists()
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 1
     assert hb.exists() and hb.read_text().strip()
 
 
@@ -223,7 +289,7 @@ def test_seasonal_old_does_not_gate(tmp_path):
     db = _mk_db(tmp_path, rows)
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["league_predictions"].stale and not by["league_predictions"].critical
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 0
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 0
 
 
 def test_within_cadence_not_stale(tmp_path):
@@ -250,7 +316,7 @@ def test_missing_critical_table_is_stale(tmp_path):
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["odds_snapshots"].stale  # missing entirely → treated as stale
     assert by["odds_snapshots"].rows == 0
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 1
 
 
 def test_empty_table_is_stale(tmp_path):
@@ -267,14 +333,14 @@ def test_empty_table_is_stale(tmp_path):
     db = _mk_db(tmp_path, rows)
     by = {s.table: s for s in check_freshness(db, today=TODAY)}
     assert by["jingcai_sp"].stale and by["jingcai_sp"].days_stale is None
-    assert main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply"]) == 1
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 1
 
 
 def test_porcelain_format(tmp_path, capsys):
     db = _mk_db(tmp_path, _all_today())
     # --no-quota:本测试只管输出【格式】。放开探针会去打线上 API(慢+依赖网络),
     # 且配额告警行可能混进正在解析的 porcelain 输出里。
-    main(["--db", str(db), "--today", "2026-06-17", "--porcelain", "--no-quota", "--no-vintage", "--no-supply"])
+    main(["--db", str(db), "--today", "2026-06-17", "--porcelain", *OFFLINE])
     out = capsys.readouterr().out
     assert "OK\todds_snapshots\t" in out
     assert "OK\todds_snapshots[closing]\t" in out
@@ -288,7 +354,7 @@ def test_porcelain_format(tmp_path, capsys):
 def test_missing_db_exits_one(tmp_path, capsys):
     # --no-quota:今天库不存在会早退返回 1,加不加都过。但【配额告警同样返回 1】——
     # 万一哪天早退逻辑坏了,这条会靠配额"过"= 假绿。关掉探针才是真在测早退。
-    assert main(["--db", str(tmp_path / "nope.db"), "--no-quota", "--no-vintage", "--no-supply"]) == 1
+    assert main(["--db", str(tmp_path / "nope.db"), *OFFLINE]) == 1
 
 
 def test_epoch_timestamp_handled(tmp_path):
@@ -340,8 +406,7 @@ def test_interior_gap_does_not_gate(tmp_path):
     rows = _all_today()
     rows["odds_snapshots[closing]"] = ["2026-06-05", "2026-06-16", "2026-06-17"]
     db = _mk_db(tmp_path, rows)
-    assert main(["--db", str(db), "--today", "2026-06-17",
-                 "--no-quota", "--no-vintage", "--no-supply"]) == 0
+    assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 0
 
 
 def test_short_gaps_below_threshold_stay_quiet(tmp_path):
@@ -381,8 +446,7 @@ def test_gap_emitted_in_porcelain(tmp_path, capsys):
     rows = _all_today()
     rows["odds_snapshots[closing]"] = ["2026-06-05", "2026-06-16", "2026-06-17"]
     db = _mk_db(tmp_path, rows)
-    main(["--db", str(db), "--today", "2026-06-17", "--porcelain",
-          "--no-quota", "--no-vintage", "--no-supply"])
+    main(["--db", str(db), "--today", "2026-06-17", "--porcelain", *OFFLINE])
     gap_lines = [ln for ln in capsys.readouterr().out.splitlines()
                  if ln.startswith("GAP\t")]
     # 子流的行与整表的行都会出现:_mk_db 把 closing 行写进同一张 odds_snapshots,
@@ -420,7 +484,7 @@ class TestSupplyProbeFailureIsNotSilence:
         self._boom(monkeypatch)
         db = _mk_db(tmp_path, _all_today())
 
-        rc = main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage"])
+        rc = main(["--db", str(db), "--today", "2026-06-17", *offline("--no-supply")])
 
         out = capsys.readouterr().out
         assert "RuntimeError" in out and "没有被检查" in out, (
@@ -434,7 +498,7 @@ class TestSupplyProbeFailureIsNotSilence:
         self._boom(monkeypatch)
         db = _mk_db(tmp_path, _all_today())
 
-        rc = main(["--db", str(db), "--today", "2026-06-17", "--no-quota", "--no-vintage"])
+        rc = main(["--db", str(db), "--today", "2026-06-17", *offline("--no-supply")])
 
         assert (tmp_path / HEARTBEAT_FILENAME).exists(), "心跳仍要写:哨兵确实跑过"
         assert rc != 0, "而退出码必须说「没事」不成立"
@@ -444,5 +508,4 @@ class TestSupplyProbeFailureIsNotSilence:
         """`--no-supply` 是跳过,不是「跑了再兜」—— 炸弹不该被引爆。"""
         self._boom(monkeypatch)
         db = _mk_db(tmp_path, _all_today())
-        assert main(["--db", str(db), "--today", "2026-06-17",
-                     "--no-quota", "--no-vintage", "--no-supply"]) == 0
+        assert main(["--db", str(db), "--today", "2026-06-17", *OFFLINE]) == 0

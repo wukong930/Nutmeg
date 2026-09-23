@@ -20,10 +20,15 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 from nutmeg.v4.cli import data_freshness as df
+
+from .test_data_freshness import OFFLINE
+
+SRC_ROOT = Path(__file__).resolve().parents[2] / "apps" / "api" / "src"
 
 
 def _now():
@@ -167,6 +172,8 @@ def test_both_paths_down_is_a_probe_failure(monkeypatch) -> None:
 #    (第一版就栽在这:只建了 odds_snapshots 一张表,缺表也算停更 ⇒ 两轮都报警)。
 #    ⛔ 不跨文件 import `test_data_freshness` 的 `_mk_db` —— 本仓没有测试互相
 #    import 的先例,不开这个头;照 CAPTURE_TABLES 现场造一份精简的。
+#    (⚠️ 例外:探针开关表 `OFFLINE` 从那里 import —— 它全仓只能有一份,
+#     手抄的那份正是 2026-09-23 漏了两个开关的那份。)
 
 def _fresh_db(tmp_path, day: str):
     """按 CAPTURE_TABLES 造一份「每张表今天都有行」的观测库。"""
@@ -207,17 +214,25 @@ def _fresh_db(tmp_path, day: str):
 
 
 def _run(tmp_path, db, today):
-    """⚠️ 四个 --no-* 全带上:本节测的是**存档/历史**,不是那几个探针。
+    """⚠️ 探针开关全带上(`OFFLINE`):本节测的是**存档/历史**,不是那几个探针。
     不关掉的话,生产 artifact 年龄之类的东西会让「健康轮」根本造不出来
-    (`test_data_freshness.py` 头部那段注释记的就是这个耦合)。"""
+    (`test_data_freshness.py` 头部那段注释记的就是这个耦合)。
+    2026-09-23 前这里手抄 5 个、漏了缺口曲线和赛季 ⇒ 从 worktree 跑,「健康轮」
+    被缺口曲线报警顶成 1,赛季探针每轮真去问 football-data 13 次。
+
+    🚨 子进程**钉住本树的源码**:`-m` 不带 PYTHONPATH 时走 venv 的 editable .pth
+    ⇒ 在 worktree 里跑,这几条测的其实是**主树**的哨兵(实测),改动根本没进来。
+    前插而不是覆盖:调用方自己的 PYTHONPATH(覆盖率钩子之类)照样生效。"""
+    import os
     import subprocess
     import sys
     out = tmp_path / "data_freshness_latest.md"
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(
+        p for p in (str(SRC_ROOT), os.environ.get("PYTHONPATH")) if p)}
     r = subprocess.run(
         [sys.executable, "-B", "-m", "nutmeg.v4.cli.data_freshness",
-         "--db", str(db), "--out", str(out), "--today", today,
-         "--no-quota", "--no-vintage", "--no-supply", "--no-league-labels", "--no-trickle"],
-        capture_output=True, text=True)
+         "--db", str(db), "--out", str(out), "--today", today, *OFFLINE],
+        capture_output=True, text=True, env=env)
     # 🚨 2026-09-15 —— 夹具的自我守卫要**分得出「报警」和「崩溃」**。
     #    下面每条测试都写着 `assert rc == 1, "夹具没造出报警"`,而 Python
     #    traceback **也是退出 1** ⇒ 那句断言会被一次崩溃满足,后面的判断全建在

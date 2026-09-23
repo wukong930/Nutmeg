@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from .test_data_freshness import offline
+
 NOW = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
 
 
@@ -250,7 +252,7 @@ class TestWiredIntoTheSentinel:
     所以下面每条都先断言「不动它的时候是 0」,再断言「动了它变 1」。
     """
 
-    _ARGS = ("--today", "2026-06-17", "--no-quota", "--no-vintage", "--no-supply", "--no-trickle")
+    _ARGS = ("--today", "2026-06-17", *offline("--no-gapcurve"))
 
     def _green_db(self, tmp_path):
         from .test_data_freshness import _all_today, _mk_db

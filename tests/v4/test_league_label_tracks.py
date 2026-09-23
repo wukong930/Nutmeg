@@ -44,6 +44,8 @@ from nutmeg.v4.data.league_labels import (
     league_filter_variants,
 )
 
+from .test_data_freshness import offline
+
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -214,7 +216,7 @@ class TestProbe:
                                         ("FIN_VEIKKAUSLIIGA", "2026-08-02", "C", "D")])
         clean = _mk_db(tmp_path / "c", [("芬超", "2026-08-01", "A", "B"),
                                         ("德乙", "2026-08-02", "C", "D")])
-        argv = ["--no-quota", "--no-vintage", "--no-supply", "--porcelain"]
+        argv = [*offline("--no-league-labels"), "--porcelain"]
         assert df.main(["--db", str(split), *argv]) == 1, "劈开了却退出 0"
         assert df.main(["--db", str(clean), *argv]) == 0, (
             "单轨也退出非零 ⇒ 这条断言测的不是我的报警")
@@ -226,7 +228,7 @@ class TestProbe:
         monkeypatch.setattr(df, "check_freshness", lambda *a, **k: [])
         split = _mk_db(tmp_path / "s", [("芬超", "2026-08-01", "A", "B"),
                                         ("FIN_VEIKKAUSLIIGA", "2026-08-02", "C", "D")])
-        argv = ["--db", str(split), "--no-quota", "--no-vintage", "--no-supply", "--porcelain"]
+        argv = ["--db", str(split), *offline("--no-league-labels"), "--porcelain"]
         assert df.main(argv) == 1
         assert df.main([*argv, "--no-league-labels"]) == 0
 
