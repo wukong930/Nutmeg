@@ -1727,3 +1727,68 @@ class TestEveryDictionaryNationHasAFlag:
         from nutmeg.v4.data.team_logos import flag_table
         f = flag_table()
         assert not (_NO_FLAG_BY_DESIGN & set(f)), f"豁免的名字却有旗:{_NO_FLAG_BY_DESIGN & set(f)}"
+
+
+class TestBanner20260924AsianGamesKnockouts:
+    """亚运进四分之一决赛,两个亚运联赛的在售场次**全部**解不出(4/21)。
+
+    每场恰好一侧解不出 ⇒ 开球时刻锚 + 已解出的对手收窄,每支唯一一场 AF fixture。
+    """
+
+    # (竞彩全称, 竞彩简称, AF 写法, fixture id, 开球 UTC, 对手 AF 写法)
+    CASES = [
+        ("乌兹别克亚运男足", "乌兹别亚", "Uzbekistan U23", 1641614, "2026-09-25T05:00", "Saudi Arabia U23"),
+        ("越南女足", "越南女", "Vietnam W", 1641131, "2026-09-25T06:00", "China W"),
+        ("越南亚运男足", "越南亚", "Vietnam U23", 1641615, "2026-09-25T10:30", "Korea Republic U23"),
+        ("韩国女足", "韩国女", "South Korea W", 1641134, "2026-09-25T10:30", "Uzbekistan W"),
+    ]
+
+    @pytest.mark.parametrize("full,abbr,en,fid,ko,opp", CASES)
+    def test_both_name_forms_resolve_to_the_af_spelling(self, full, abbr, en, fid, ko, opp) -> None:
+        from nutmeg.v4.data.sources.sporttery import _canonical_from_any
+        assert _canonical_from_any(full) == en
+        assert _canonical_from_any(abbr) == en, "只有简称的路径(投票端点等)也要解得出"
+        assert TEAM_NAME_ZH.get(en) == full, "卡片显示走的是这张表"
+
+    def test_each_anchor_is_the_only_fixture_at_that_kickoff_with_that_opponent(self) -> None:
+        rows = [fx for fx in _af_fixtures_in({803, 1245})]
+        assert len(rows) >= 20, f"缓存里亚运只有 {len(rows)} 场 ⇒ 空包弹"
+        for full, abbr, en, fid, ko, opp in self.CASES:
+            hits = [fx for fx in rows if fx["fixture"]["date"].startswith(ko)
+                    and opp in (fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])]
+            assert len(hits) == 1 and hits[0]["fixture"]["id"] == fid, f"{en}: 锚不唯一或不对 {len(hits)}"
+            names = {hits[0]["teams"]["home"]["name"], hits[0]["teams"]["away"]["name"]}
+            assert names == {en, opp}, f"{en}: fixture 里的队名是 {names}"
+
+    def test_af_is_itself_inconsistent_between_mens_and_womens_korea(self) -> None:
+        """🚨 钉住:男足 U23 叫 `Korea Republic U23`,女足叫 `South Korea W`。
+
+        谁要是为了「统一」把其中一个改成另一个的样子,join 当场断 —— 这里先红。"""
+        rows = _af_fixtures_in({803, 1245})
+        names = {fx["teams"][s]["name"] for fx in rows for s in ("home", "away")}
+        assert "Korea Republic U23" in names and "South Korea W" in names
+        assert "South Korea U23" not in names and "Korea Republic W" not in names
+        from nutmeg.v4.data.sources.sporttery import _canonical_from_any
+        assert _canonical_from_any("韩国亚运男足") == "Korea Republic U23"
+        assert _canonical_from_any("韩国女足") == "South Korea W"
+
+    @pytest.mark.parametrize("full,abbr,en,fid,ko,opp", CASES)
+    def test_the_board_join_key_matches_on_both_sides(self, full, abbr, en, fid, ko, opp) -> None:
+        """验收只认盘面:竞彩解出的英文与 AF 写法在 `_norm_team` 下必须相等(两侧都查)。"""
+        from nutmeg.v4.data.sources.odds_api import _norm_team
+        from nutmeg.v4.data.sources.sporttery import _canonical_from_any
+        assert _norm_team(_canonical_from_any(full)) == _norm_team(en)
+        # 对手侧:竞彩那一行的**另一侧中文**(全称, 简称)也必须解到 AF 写法。
+        # ⚠️ 我第一版写的是 `_norm_team(opp) == _norm_team(opp)` —— 自己比自己,恒真。
+        opp_zh = {"Saudi Arabia U23": ("沙特阿拉伯亚足", "沙特亚"), "China W": ("中国女足", "中国女"),
+                  "Korea Republic U23": ("韩国亚运男足", "韩国亚"),
+                  "Uzbekistan W": ("乌兹别克斯坦女足", "乌兹别女")}[opp]
+        assert _norm_team(_canonical_from_any(*opp_zh)) == _norm_team(opp)
+
+    @pytest.mark.parametrize("full,abbr,en,fid,ko,opp", CASES)
+    def test_the_flag_is_the_home_nations_flag_verbatim(self, full, abbr, en, fid, ko, opp) -> None:
+        from nutmeg.v4.data.team_logos import flag_table
+        f = flag_table()
+        base = en.rsplit(" ", 1)[0]
+        assert f.get(base), f"人口非平凡:底旗 {base!r} 必须存在"
+        assert f.get(en) == f[base]

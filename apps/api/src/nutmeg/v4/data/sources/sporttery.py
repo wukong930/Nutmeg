@@ -848,6 +848,12 @@ _ZH_OVERRIDES: dict[str, str] = {
     # 全称在 team_name_zh(锚见那边:fixture 1639462 / 1639463)。两个都是前缀。
     "阿联酋亚": "UAE U23",
     "泰国亚": "Thailand U23",
+    # -- 2026-09-24 横幅 · 简称那一半 ------------------------------------
+    # 全称在 team_name_zh(锚见那边:fixture 1641614 / 1641131 / 1641615 / 1641134)。
+    "乌兹别亚": "Uzbekistan U23",
+    "越南女": "Vietnam W",
+    "越南亚": "Vietnam U23",
+    "韩国女": "South Korea W",
 }
 _ZH_TO_EN.update(_ZH_OVERRIDES)
 

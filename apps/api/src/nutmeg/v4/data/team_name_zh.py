@@ -1882,6 +1882,25 @@ _BANNER_2026_09_23: dict[str, str] = {
 TEAM_NAME_ZH.update(_BANNER_2026_09_23)
 
 
+# 2026-09-24 横幅 4/21 · 亚运进四分之一决赛,**两个亚运联赛在售场次全部解不出**。
+# 每场恰好一侧解不出,另一侧已解出 ⇒ 开球时刻锚(主工具)+ 对手收窄,每支唯一一场:
+#   Uzbekistan U23  ← fixture 1641614 · 09-25 05:00Z · 对手 Saudi Arabia U23(league 803)
+#   Vietnam W       ← fixture 1641131 · 09-25 06:00Z · 对手 China W(league 1245;同时刻另有 1 场女足)
+#   Vietnam U23     ← fixture 1641615 · 09-25 10:30Z · 对手 Korea Republic U23(league 803)
+#   South Korea W   ← fixture 1641134 · 09-25 10:30Z · 对手 Uzbekistan W(league 1245;同时刻共 3 场)
+# 🚨 AF 自己的叫法就不统一:韩国**男足** U23 = `Korea Republic U23`,**女足** = `South Korea W`
+#    —— 按译名或按「男足怎么叫」去推女足,必错。
+# ⚠️ 撞车检查:4 个中文全称在 TEAM_NAME_ZH 值集 / `_ZH_OVERRIDES` / `_ZH_TO_EN` 均 0 占用;
+#    4 个英文键原本都不在词典。简称那一半在 sporttery `_ZH_OVERRIDES`。
+_BANNER_2026_09_24: dict[str, str] = {
+    "Uzbekistan U23": "乌兹别克亚运男足",
+    "Vietnam W": "越南女足",
+    "Vietnam U23": "越南亚运男足",
+    "South Korea W": "韩国女足",
+}
+TEAM_NAME_ZH.update(_BANNER_2026_09_24)
+
+
 # HARVEST-BEGIN
 _JINGCAI_VOTE_HARVEST: dict[str, str] = {
 }
@@ -1986,5 +2005,7 @@ def coverage_by_league() -> Dict[str, int]:
         "BANNER_2026_09_22":       len(_BANNER_2026_09_22),
         # 2026-09-23 — 横幅 1/11:国际赛 马尔代夫(第④档锚 AF fixture 1640057 + 开球时刻).
         "BANNER_2026_09_23":       len(_BANNER_2026_09_23),
+        # 2026-09-24 — 横幅 4/21:亚运四分之一决赛 4 支(开球时刻锚 + 对手收窄).
+        "BANNER_2026_09_24":       len(_BANNER_2026_09_24),
         "TOTAL":                   len(TEAM_NAME_ZH),
     }
