@@ -2166,15 +2166,16 @@ const I18N = {
     mb_lose:          '让负',
     mb_hint:          '读法/选号辅助:从一簇相干比分里选,不是 +EV 信号(让球进拟合实测加 0 信息)。要算 EV 仍需竞彩比分 SP。',
     gb_toggle:        '全场进球分布',
+    gb_info_t:        '全场进球分布 · 来源与局限',
     gb_uncal:         '模型 · 未校准',
     gb_src_market:    'Pinnacle 锚',
-    gb_hint_cal:      '⭐ 已对模型 λ 应用校准系数(见标签)。⚠️ 单标量缩放**修不了形状** —— 实测最优处 χ²≈19.8 vs 临界 15.5(df=8):总进球=2 处仍高估、=4 处仍低估。⛔ 别在这个样本量上加参数去追。⛔ 竞彩没有大小球盘,这不是可下注的腿,也不进 EV / 串关。',
-    gb_hint_market:   '⭐ λ 由 Pinnacle 去vig 1X2 + **大小球**反推。2026-09-22 在同一批 760 场上实测,这个来源比模型准:E[总进球] 偏差 −0.07(z=−1.14)vs 模型 −0.22(z=−3.45),分桶 log-loss 1.8807 vs 1.9025。⚠️ 它仍略低于实际(大2.5:54.3% vs 实际 58.6%)—— 两个来源同向,那段样本本身可能偏高分。⛔ 竞彩没有大小球盘,这不是可下注的腿,也不进 EV / 串关。',
+    gb_hint_cal:      '<p>⭐ 已对模型 λ 应用校准系数(见标签)。</p><p>⚠️ 单标量缩放<b>修不了形状</b> —— 实测最优处 χ²≈19.8 vs 临界 15.5(df=8):总进球=2 处仍高估、=4 处仍低估。别在这个样本量上加参数去追。</p><p>⛔ 不是可下注的腿,也不进 EV / 串关:竞彩没有大小球盘;总进球数盘(0…7+)有,但实测我们的 P 打不过它自己的去vig 价(842 场 log-loss 1.8788 vs 1.8768),而抽水 20.45%。</p>',
+    gb_hint_market:   '<p>⭐ λ 由 Pinnacle 去vig 1X2 + <b>大小球</b>反推。</p><p>2026-09-22 在同一批 760 场上实测,这个来源比模型准:E[总进球] 偏差 −0.07(z=−1.14)vs 模型 −0.22(z=−3.45);分桶 log-loss 1.8807 vs 1.9025。</p><p>⚠️ 它仍略低于实际(大2.5:54.3% vs 实际 58.6%)—— 两个来源同向,那段样本本身可能偏高分。</p><p>⛔ 不是可下注的腿,也不进 EV / 串关:竞彩没有大小球盘;总进球数盘(0…7+)有,但实测我们的 P 打不过它自己的去vig 价(842 场 log-loss 1.8788 vs 1.8768),而抽水 20.45%。</p>',
     gb_cal:           '已校准 ×',
     gb_gap:           '最大档领先第二档',
     gb_tie:           '前两档几乎持平 —— 模型在这场分不出来',
     gb_over:          '大球线',
-    gb_hint:          '⚠️ 未校准:2026-09-22 在 790 场上实测,模型每场约低 0.2 球(大2.5 预测 51.0% vs 实际 57.6%,z=+3.74)⇒ 上面这些数**偏向少球一侧**。校准层已建好,但当前模型世代只有 130 场,还拟合不出系数。⛔ 竞彩没有大小球盘,这不是可下注的腿,也不进 EV / 串关。',
+    gb_hint:          '<p>⚠️ 未校准:2026-09-22 在 790 场上实测,模型每场约低 0.2 球(大2.5 预测 51.0% vs 实际 57.6%,z=+3.74)⇒ 这些数<b>偏向少球一侧</b>。</p><p>校准层已建好,但当前模型世代样本还不够,拟合不出系数(最早 2026-10-04 才能首次过样本闸)。</p><p>⛔ 不是可下注的腿,也不进 EV / 串关:竞彩没有大小球盘;总进球数盘(0…7+)有,但实测我们的 P 打不过它自己的去vig 价(842 场 log-loss 1.8788 vs 1.8768),而抽水 20.45%。</p>',
     rec_record_failed: '⚠️ 记录失败 — 本注未入库,请重试',
     pin_raw_lbl:      'Pinnacle 原盘',
     pin_wide:         '水位',
@@ -2814,15 +2815,16 @@ const I18N = {
     mb_lose:          'No cover',
     mb_hint:          'Reading / selection aid — pick from a coherent score cluster, NOT a +EV signal (handicap-into-fit measured ~0 info). EV still needs the 竞彩 score SP.',
     gb_toggle:        'Total-goals distribution',
+    gb_info_t:        'Total-goals distribution · source & limits',
     gb_uncal:         'model, uncalibrated',
     gb_src_market:    'Pinnacle-anchored',
-    gb_hint_cal:      'Calibration coefficient applied to the model lambdas (see tag). WARNING a single scalar cannot fix SHAPE - at the optimum chi-square ~19.8 vs critical 15.5 (df=8): total=2 still over-predicted, total=4 still under-predicted. Do NOT add parameters at this sample size. NOTE 竞彩 has no over/under market: not a bettable leg, never enters EV / parlays.',
-    gb_hint_market:   'Lambdas reverse-fit from de-vig Pinnacle 1X2 + OVER/UNDER. Measured 2026-09-22 on the SAME 760 matches, this source beats the model: E[total] bias -0.07 (z=-1.14) vs model -0.22 (z=-3.45); bucket log-loss 1.8807 vs 1.9025. WARNING it still runs slightly low (over 2.5: 54.3% vs actual 58.6%) - both sources lean the same way, so that sample may simply be high-scoring. NOTE 竞彩 has no over/under market: not a bettable leg, never enters EV / parlays.',
+    gb_hint_cal:      '<p>Calibration coefficient applied to the model lambdas (see tag).</p><p>A single scalar <b>cannot fix shape</b> — at the optimum chi-square ≈19.8 vs critical 15.5 (df=8): total=2 still over-predicted, total=4 still under-predicted. Do not add parameters at this sample size.</p><p>Not a bettable leg, and never enters EV / parlays: 竞彩 has no over/under market; its total-goals pool (0…7+) exists, but our P measured no better than its own de-vig price (842 matches, log-loss 1.8788 vs 1.8768) against a 20.45% margin.</p>',
+    gb_hint_market:   '<p>Lambdas reverse-fit from de-vig Pinnacle 1X2 + <b>over/under</b>.</p><p>Measured 2026-09-22 on the same 760 matches, this source beats the model: E[total] bias −0.07 (z=−1.14) vs model −0.22 (z=−3.45); bucket log-loss 1.8807 vs 1.9025.</p><p>It still runs slightly low (over 2.5: 54.3% vs actual 58.6%) — both sources lean the same way, so that sample may simply be high-scoring.</p><p>Not a bettable leg, and never enters EV / parlays: 竞彩 has no over/under market; its total-goals pool (0…7+) exists, but our P measured no better than its own de-vig price (842 matches, log-loss 1.8788 vs 1.8768) against a 20.45% margin.</p>',
     gb_cal:           'calibrated x',
     gb_gap:           'top band leads the runner-up by',
     gb_tie:           'top two bands are near-tied — the model cannot separate them here',
     gb_over:          'Over lines',
-    gb_hint:          'WARNING uncalibrated: measured 2026-09-22 over 790 matches, the model runs ~0.2 goals low per match (over 2.5 predicted 51.0% vs actual 57.6%, z=+3.74) => these numbers lean toward FEWER goals. The calibration layer is built but the current model era has only 130 matches, too few to fit. NOTE 竞彩 has no over/under market: this is not a bettable leg and never enters EV / parlays.',
+    gb_hint:          '<p>Uncalibrated: measured 2026-09-22 over 790 matches, the model runs ~0.2 goals low per match (over 2.5 predicted 51.0% vs actual 57.6%, z=+3.74) — these numbers <b>lean toward fewer goals</b>.</p><p>The calibration layer is built, but the current model era has too few matches to fit it yet (earliest possible: 2026-10-04).</p><p>Not a bettable leg, and never enters EV / parlays: 竞彩 has no over/under market; its total-goals pool (0…7+) exists, but our P measured no better than its own de-vig price (842 matches, log-loss 1.8788 vs 1.8768) against a 20.45% margin.</p>',
     rec_record_failed: '⚠️ record FAILED — bet NOT saved, retry',
     pin_raw_lbl:      'Pinnacle raw',
     pin_wide:         'overround',
@@ -7534,16 +7536,26 @@ function _goalsBandsHtml(pr, foldAttrs) {
         ? `<span style="color:var(--text-muted)">${t('gb_tie')} (${(gap * 100).toFixed(1)}pp)</span>`
         : `${t('gb_gap')} <strong class="num-display">${(gap * 100).toFixed(0)}pp</strong>`
     }</div>`;
+  // 说明文案收进 ⓘ(2026-09-24 owner:节省卡片空间),点开走共享的 showInfo 弹窗。
+  // ⚠️ 故意**不**放进 <summary>:summary 本身就是折叠开关,里面再放可点的按钮 = 嵌套交互
+  //    (axe `nested-interactive`),点图标还会误触折叠。放在「大球线」行尾 —— 原来那段
+  //    文案开头的位置,不多占一行。用 <button> 而不是 span[role=button]:键盘原生可达。
+  const kind = isMkt ? 'market' : (c === 1.0 ? 'model' : 'cal');
+  const info = `<button type="button" onclick="_goalsInfo('${kind}')" aria-label="${t('gb_info_t')}" `
+    + `title="${t('gb_info_t')}" style="cursor:pointer;color:var(--text-muted);background:none;`
+    + `border:none;padding:2px 6px;font-size:inherit;line-height:1">\u24d8</button>`;
   const ov = pr.goals_over;
-  const ovLine = (!ov || ov.length !== 3) ? '' :
+  const ovLine = (!ov || ov.length !== 3) ? `<div class="mt-1 text-muted">${info}</div>` :
     `<div class="mt-1 text-muted">${t('gb_over')}: 1.5 <span class="num-display">${(ov[0] * 100).toFixed(0)}%</span> ·
        2.5 <span class="num-display">${(ov[1] * 100).toFixed(0)}%</span> ·
-       3.5 <span class="num-display">${(ov[2] * 100).toFixed(0)}%</span></div>`;
+       3.5 <span class="num-display">${(ov[2] * 100).toFixed(0)}%</span>${info}</div>`;
   return `<details class="mt-2 pt-2 text-xs" ${foldAttrs || ''} style="border-top:1px dashed var(--border-subtle)">
       <summary class="cursor-pointer select-none text-secondary">${t('gb_toggle')}
         <span class="text-muted">(${tag})</span></summary>
-      <div class="mt-1">${rows}${gapLine}${ovLine}
-        <div class="text-muted mt-1" style="font-size:10px">${isMkt ? t('gb_hint_market') : (c === 1.0 ? t('gb_hint') : t('gb_hint_cal'))}</div></div></details>`;
+      <div class="mt-1">${rows}${gapLine}${ovLine}</div></details>`;
+}
+function _goalsInfo(kind) {
+  showInfo(t('gb_info_t'), t({ market: 'gb_hint_market', cal: 'gb_hint_cal' }[kind] || 'gb_hint'));
 }
 // 体检(2026-06-10)— show the RAW Pinnacle line (1X2 + O/U) so you can eyeball
 // it straight against Pinnacle.com without de-vigging in your head. The 公允
