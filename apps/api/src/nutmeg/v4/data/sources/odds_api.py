@@ -86,6 +86,7 @@ from typing import Any
 import httpx
 
 from nutmeg.config import get_settings
+from nutmeg.v4.data.sources import paid_api_switch
 
 
 log = logging.getLogger(__name__)
@@ -302,6 +303,12 @@ _CLIENT_FOR: tuple[str, float] | None = None  # (base_url, timeout)
 
 def _client() -> httpx.Client:
     global _CLIENT, _CLIENT_FOR
+    # 🔒 进程级硬开关 —— 与 api_football._client 同形,见 paid_api_switch。
+    if paid_api_switch.paid_apis_blocked():
+        raise OddsApiError(
+            f"{paid_api_switch.ENV_VAR} is set: live Odds API requests are "
+            "blocked in this process."
+        )
     settings = get_settings()
     if not settings.odds_api_key:
         raise OddsApiError(
@@ -422,7 +429,6 @@ def _request(
     settings = get_settings()
     cache_dir = Path(cache_dir)
     cf = _cache_path(endpoint, params, cache_dir)
-    cf.parent.mkdir(parents=True, exist_ok=True)
     fresh_enough = True
     if ttl_seconds is not None and cf.exists():
         fresh_enough = (time.time() - cf.stat().st_mtime) <= ttl_seconds
@@ -463,6 +469,9 @@ def _request(
             raise OddsApiError(f"{endpoint} HTTP {r.status_code}: {r.text[:200]}")
 
     body = r.json()
+    # mkdir only once there is something to write — same reason as
+    # api_football._request: a miss that never got a response must leave no trace.
+    cf.parent.mkdir(parents=True, exist_ok=True)
     # 体检 Wave3 (P2) — atomic write (tmp + rename): a crash/power-cut mid-write
     # used to leave a truncated JSON that poisoned every later cache read.
     _tmp = cf.with_name(f"{cf.name}.{os.getpid()}.tmp")

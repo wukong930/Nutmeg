@@ -16,6 +16,8 @@ import time
 
 import httpx
 
+from nutmeg.v4.data.sources import paid_api_switch
+
 log = logging.getLogger(__name__)
 
 _BASE = "https://api.the-odds-api.com/v4"
@@ -33,6 +35,11 @@ def fetch_historical(sport_key: str, date_iso: str, *, markets: str = "h2h,total
     (``{timestamp, previous_timestamp, next_timestamp, data:[matches]}``) or None
     (logged, never raised). Cost = 10 × #markets credits; read
     ``x-requests-last``/``-remaining`` from the response headers to track spend."""
+    # 🔒 第三条付费腿:不经 `odds_api._client`,所以要自己问开关(见 paid_api_switch)。
+    if paid_api_switch.paid_apis_blocked():
+        log.warning("%s set — historical fetch skipped (%s @ %s)",
+                    paid_api_switch.ENV_VAR, sport_key, date_iso)
+        return None
     key = _key()
     if not key:
         log.warning("NUTMEG_ODDS_API_KEY not set — historical fetch skipped")

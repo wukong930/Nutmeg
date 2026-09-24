@@ -113,6 +113,9 @@ monkeypatch 掉 `fetch_pinnacle_lookup` ⇒ 同参数的缓存文件**从没被�
    `load_dotenv(override=False)` 都是这个顺序),⇒ 即使 owner 的 `.env` 就在
    CWD 也拿不到钥匙。**这一层是唯一能覆盖子进程的**(E2E 会 spawn uvicorn,
    那个进程继承 environ,面板上的「🔄 刷新盘口」同样会走到这条路)。
+   ⚠️ 2026-09-24 起 E2E 的 uvicorn 不再只靠这里的空串被继承:
+   `test_e2e_playwright._server_env` 显式设硬开关 `NUTMEG_BLOCK_PAID_APIS`,
+   三条付费出口都认它(`nutmeg/v4/data/sources/paid_api_switch.py`)。
 2. **`_no_live_odds_api`(autouse,每个用例)** —— 把出口函数换成记录器:
    ⚠️ **只抛异常是不够的** —— `capture_books_for_sport` 整体 fail-soft,
    抛出去当场就被吞掉,用例照样全绿,闸等于不存在。所以记录器**另外记一笔**,

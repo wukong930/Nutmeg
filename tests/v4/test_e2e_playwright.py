@@ -9,23 +9,32 @@ Requires:
   uv pip install --python .venv/bin/python playwright pytest-playwright
   .venv/bin/playwright install chromium
 
-Each test launches a uvicorn server on an ephemeral port, runs the
-browser scenario, then tears down. Skipped if Playwright isn't
-installed (CI without browser bins should still pass).
+The module launches one uvicorn server on an ephemeral port; each test
+gets its own Chromium process (see the `page` fixture for why). Skipped
+if Playwright isn't installed (CI without browser bins should still pass).
+
+The uvicorn child runs with the paid-API switch on (`_server_env`);
+TestServerProcessCannotSpend proves no paid exit leaves that process.
 
 WCAG audit (TestAxeCoreWCAG) loads axe-core CDN script into the page,
 runs axe.run(), asserts no AA-level violations.
 """
 from __future__ import annotations
 
+import json
+import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 from contextlib import closing
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+
+from nutmeg.v4.data.sources import paid_api_switch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -49,16 +58,34 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _server_env() -> dict[str, str]:
+    """The environment the uvicorn child runs with. Built here and nowhere else.
+
+    🔒 The paid-API gates in tests/conftest.py are in-process monkeypatches; a
+    `subprocess.Popen` child doesn't inherit them, so inside uvicorn `_client()`
+    is the real one — and without conftest's blanked keys it would find the
+    owner's real key via `.env` (measured 2026-09-24: one cold-cache dashboard
+    load = 277 paid requests). The child is kept off the paid APIs by the switch
+    set here, which all three paid exits honour
+    (nutmeg/v4/data/sources/paid_api_switch.py). TestServerProcessCannotSpend
+    proves it with a key present.
+    """
+    return {
+        **os.environ,
+        "PYTHONPATH": str(REPO_ROOT / "apps" / "api" / "src"),
+        paid_api_switch.ENV_VAR: "1",
+    }
+
+
 @pytest.fixture(scope="module")
 def server():
     """Launch uvicorn on an ephemeral port; tear down at module end."""
     port = _free_port()
-    env = {**__import__("os").environ, "PYTHONPATH": str(REPO_ROOT / "apps" / "api" / "src")}
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "nutmeg.main:app",
          "--host", "127.0.0.1", "--port", str(port),
          "--log-level", "error"],
-        env=env,
+        env=_server_env(),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -84,19 +111,171 @@ def server():
 
 
 @pytest.fixture(scope="module")
-def page(server):
-    """Module-scoped browser page so tests reuse a single Chromium."""
+def _pw():
+    """One Playwright driver for the module (the driver isn't what gets killed)."""
     from playwright.sync_api import sync_playwright
     with sync_playwright() as pw:
-        try:
-            browser = pw.chromium.launch(headless=True)
-        except Exception as e:
-            pytest.skip(f"Chromium browser missing: {e}; run `playwright install chromium`")
-        ctx = browser.new_context(locale="en-US")   # default en for testing toggle
-        page = ctx.new_page()
-        yield page
-        ctx.close()
-        browser.close()
+        yield pw
+
+
+@pytest.fixture
+def page(_pw, server):
+    """A fresh Chromium **process** per test. ⚠️ Don't widen this to module scope.
+
+    2026-09-24: with one browser for the whole module, the axe tests (last in
+    the file) died with TargetClosedError in a full-module run and passed
+    alone. Not networkidle, not server state: the browser process itself was
+    gone. Under the Claude desktop app, LaunchServices registers the bare
+    `chrome-headless-shell` binary as another "Claude" instance
+    (com.anthropic.claudefordesktop) and loginwindow force-quits it ~31s after
+    launch — a clean exit 0, so Playwright only sees the target close.
+    Reproduced with about:blank and no server at all. 680f3e1 made dashboard
+    loads slower and pushed the module from ≈26s to ≈33s, past that window;
+    the axe class alone takes ~5s.
+
+    A browser per test means no test's outcome depends on how long the tests
+    before it took, and every test starts with clean storage / service worker.
+    """
+    try:
+        browser = _pw.chromium.launch(headless=True)
+    except Exception as e:
+        pytest.skip(f"Chromium browser missing: {e}; run `playwright install chromium`")
+    launched = time.monotonic()
+    exited: list[float] = []
+    browser.on("disconnected", lambda _: exited.append(time.monotonic() - launched))
+    ctx = browser.new_context(locale="en-US")   # default en for testing toggle
+    yield ctx.new_page()
+    if exited:
+        pytest.fail(
+            f"Chromium exited on its own {exited[0]:.0f}s after launch, mid-test — "
+            "an external kill, not a page error (see the `page` fixture docstring).",
+            pytrace=False,
+        )
+    browser.close()
+
+
+# ============ The uvicorn child cannot spend =======================
+
+#: Runs in a child started with `_server_env()`. Its instrument is an httpx
+#: transport-level tripwire: a request for any non-loopback host is recorded
+#: and refused before a socket opens — so the probe can't spend money even if
+#: the switch were broken.
+_PAID_EXITS_PROBE = r"""
+import json, os, tempfile
+import httpx
+
+tripped = []
+_real_handle = httpx.HTTPTransport.handle_request
+def _tripwire(self, request):
+    if request.url.host not in ("127.0.0.1", "localhost"):
+        tripped.append(request.url.host + request.url.path)
+        raise httpx.ConnectError("tripwire: non-loopback request refused", request=request)
+    return _real_handle(self, request)
+httpx.HTTPTransport.handle_request = _tripwire
+
+import nutmeg.main  # noqa: F401 — import the whole app first, as uvicorn does
+from nutmeg.v4.data.sources import api_football, odds_api, odds_api_history
+
+# Cold cache that doesn't exist yet: every exit has to go to the network, and
+# whatever the calls leave behind is visible (one cache file = one paid request).
+cache = os.path.join(tempfile.mkdtemp(), "cold")
+out = {"tripwire": tripped}
+for name, call in (
+    ("api_football", lambda: api_football._request("status", {}, cache_dir=cache)),
+    ("odds_api", lambda: odds_api._request("sports", {}, cache_dir=cache)),
+    ("odds_api_history", lambda: odds_api_history.fetch_historical(
+        "soccer_epl", "2024-01-01T00:00:00Z", retries=1)),
+):
+    try:
+        out[name] = ["returned", repr(call())]
+    except Exception as e:
+        out[name] = [type(e).__name__, str(e)]
+out["cache_dir_created"] = os.path.exists(cache)
+out["cache_files"] = sum(len(files) for _, _, files in os.walk(cache))
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture
+def paid_api_stub():
+    """Local stand-in for both paid APIs' base URLs: records paths, answers an empty 200."""
+    hits: list[str] = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 — http.server's naming
+            hits.append(self.path.split("?", 1)[0])
+            body = b'{"response": [], "errors": []}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", hits
+    srv.shutdown()
+    srv.server_close()
+
+
+class TestServerProcessCannotSpend:
+    """The uvicorn child must not reach the paid APIs — even holding a key.
+
+    Both tests run the same probe under `_server_env()` (what `server` hands to
+    uvicorn) plus a fake key, so the switch is the only thing that can stop a
+    request, and base URLs pointing at a local stub, so nothing is billed even
+    if it doesn't.
+    """
+
+    def _run_probe(self, stub_url, tmp_path, *, switch_on: bool) -> dict:
+        env = _server_env()
+        env.update({
+            "NUTMEG_API_FOOTBALL_KEY": "fake-e2e-probe-key",
+            "NUTMEG_ODDS_API_KEY": "fake-e2e-probe-key",
+            "NUTMEG_API_FOOTBALL_BASE_URL": f"{stub_url}/af",
+            "NUTMEG_ODDS_API_BASE_URL": f"{stub_url}/oa",
+        })
+        for var in ("NO_PROXY", "no_proxy"):   # the stub is loopback: never via a proxy
+            env[var] = ",".join(filter(None, [env.get(var), "127.0.0.1", "localhost"]))
+        if not switch_on:
+            del env[paid_api_switch.ENV_VAR]
+        r = subprocess.run(
+            [sys.executable, "-c", _PAID_EXITS_PROBE],
+            env=env, cwd=tmp_path, capture_output=True, text=True, timeout=180,
+        )
+        assert r.returncode == 0, r.stderr[-3000:]
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    def test_no_paid_exit_leaves_the_server_process(self, paid_api_stub, tmp_path):
+        stub_url, hits = paid_api_stub
+        out = self._run_probe(stub_url, tmp_path, switch_on=True)
+        assert hits == [], f"paid-API requests reached the stub: {hits}"
+        assert out["tripwire"] == [], f"requests tried to leave the machine: {out['tripwire']}"
+        assert out["api_football"][0] == "ApiFootballError", out
+        assert out["odds_api"][0] == "OddsApiError", out
+        for name in ("api_football", "odds_api"):
+            assert paid_api_switch.ENV_VAR in out[name][1], out[name]
+        assert out["odds_api_history"] == ["returned", "None"], out
+        # A blocked miss leaves no trace — not even an empty cache dir, which in
+        # a worktree flips other tests' `skipif(not <cache dir>.is_dir())` guards.
+        assert out["cache_dir_created"] is False, out
+
+    def test_the_probe_sees_every_exit_when_the_switch_is_off(self, paid_api_stub, tmp_path):
+        """Blank round: same probe minus the switch ⇒ all three exits go out.
+
+        Without it the test above would also pass if the probe never reached an
+        exit at all (a renamed function, a warm cache, an import that no longer
+        wires the gate) — green, and proving nothing.
+        """
+        stub_url, hits = paid_api_stub
+        out = self._run_probe(stub_url, tmp_path, switch_on=False)
+        assert sorted(hits) == ["/af/status", "/oa/sports"], (hits, out)
+        assert out["tripwire"] == [
+            "api.the-odds-api.com/v4/historical/sports/soccer_epl/odds"], out
+        assert out["cache_files"] == 2, out   # one per request that got through
 
 
 # ============ Critical-path E2E ====================================
@@ -142,16 +321,17 @@ class TestTabSwitching:
 class TestThemeToggle:
     """V11 P1-FE#1 — verify the theme toggle works + persists.
 
-    Note: pytest-playwright reuses browser context across tests in a module
-    by default. Each test below clears localStorage at start to ensure
-    a clean dark-default starting state.
+    Each test gets a fresh browser (see the `page` fixture), so localStorage
+    starts empty — `_reset_theme` asserts that rather than clearing + reloading.
+    The old reload loaded the dashboard twice per test and aborted the first
+    load's API calls mid-flight; the server kept computing them, so the
+    reloaded page's cup-market call took 3.9s instead of 1.3s (measured).
     """
 
     def _reset_theme(self, page, server):
         page.goto(f"{server}/api/v4/dashboard")
-        page.evaluate("localStorage.removeItem('nutmeg-theme')")
-        page.reload()
         page.wait_for_load_state("networkidle")
+        assert page.evaluate("localStorage.getItem('nutmeg-theme')") is None
 
     def test_default_theme_is_dark(self, page, server):
         self._reset_theme(page, server)

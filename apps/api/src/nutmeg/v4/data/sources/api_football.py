@@ -35,6 +35,7 @@ from typing import Any
 import httpx
 
 from nutmeg.config import get_settings
+from nutmeg.v4.data.sources import paid_api_switch
 
 # Transient-failure retry. A single read timeout / reset connection shouldn't
 # abort a whole cron run — the daily settle died on one httpx.ReadTimeout
@@ -86,6 +87,13 @@ _CLIENT_FOR: tuple[str, str, float] | None = None  # (base_url, key, timeout)
 
 def _client() -> httpx.Client:
     global _CLIENT, _CLIENT_FOR
+    # 🔒 进程级硬开关(E2E 起的 uvicorn 子进程靠它;见 paid_api_switch)。放在最前:
+    #    有没有 key 都挡;抛的是没 key 时的同一个异常类 ⇒ 调用方的 fail-soft 分支原样接住。
+    if paid_api_switch.paid_apis_blocked():
+        raise ApiFootballError(
+            f"{paid_api_switch.ENV_VAR} is set: live API-Football requests are "
+            "blocked in this process."
+        )
     settings = get_settings()
     if not settings.api_football_key:
         raise ApiFootballError(
@@ -161,9 +169,7 @@ def _request(
     is non-empty.
     """
     cache_dir = Path(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
     cf = _cache_path(endpoint, params, cache_dir)
-    cf.parent.mkdir(parents=True, exist_ok=True)
     if cf.exists() and not refresh:
         try:
             return json.loads(cf.read_text())
@@ -225,6 +231,12 @@ def _request(
             raise ApiFootballError(f"{endpoint} errors: {errs}")
 
     response = body.get("response", [])
+    # 2026-09-24 — mkdir only here, once there is something to write. It used to
+    # run before the cache check, so a miss that never got a response (blocked,
+    # no key, network error) still left an empty `_fixtures/` behind; in a
+    # worktree that flips every `skipif(not <cache dir>.is_dir())` guard on the
+    # next run (test_afc_asiad_registration: skip → 37 false reds, measured).
+    cf.parent.mkdir(parents=True, exist_ok=True)
     # 体检 Wave3 (P2) — atomic write (tmp + rename): a crash/power-cut mid-write
     # used to leave a truncated JSON that poisoned every later cache read.
     _tmp = cf.with_name(f"{cf.name}.{os.getpid()}.tmp")
