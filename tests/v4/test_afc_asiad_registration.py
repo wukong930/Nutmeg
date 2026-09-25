@@ -1792,3 +1792,34 @@ class TestBanner20260924AsianGamesKnockouts:
         base = en.rsplit(" ", 1)[0]
         assert f.get(base), f"人口非平凡:底旗 {base!r} 必须存在"
         assert f.get(en) == f[base]
+
+
+class TestBanner20260925Iwaki:
+    """日乙 磐城FC vs 仙台七夕(1/29)—— 第 ① 类:队在词典,竞彩换了写法(磐城 → 磐城FC)。"""
+
+    def test_it_resolves_to_the_existing_dictionary_key(self) -> None:
+        from nutmeg.v4.data.sources.sporttery import _canonical_from_any
+        assert _canonical_from_any("磐城FC", "磐城FC") == "Iwaki"
+        assert TEAM_NAME_ZH.get("Iwaki") == "磐城", "卡片显示走词典键,不是竞彩写法"
+        assert _canonical_from_any("仙台七夕") == "Vegalta Sendai", "对手侧本来就解得出 —— 锚靠它收窄"
+
+    def test_the_anchor_is_unique_at_that_kickoff_with_that_opponent(self) -> None:
+        rows = _af_fixtures_in({99})
+        assert len(rows) >= 20, f"缓存里 J2 只有 {len(rows)} 场 ⇒ 空包弹"
+        at = [fx for fx in rows if fx["fixture"]["date"].startswith("2026-09-26T08:00")]
+        assert len(at) >= 5, "人口非平凡:同一时刻 J2 有多场,收窄才有意义"
+        hits = [fx for fx in at if "Vegalta Sendai" in (fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])]
+        assert len(hits) == 1 and hits[0]["fixture"]["id"] == 1606667
+        assert (hits[0]["teams"]["home"]["name"], hits[0]["teams"]["away"]["name"]) == ("Iwaki", "Vegalta Sendai")
+
+    def test_the_board_join_key_matches(self) -> None:
+        from nutmeg.v4.data.sources.odds_api import _norm_team
+        from nutmeg.v4.data.sources.sporttery import _canonical_from_any
+        assert _norm_team(_canonical_from_any("磐城FC")) == _norm_team("Iwaki")
+
+    def test_the_lookalikes_from_the_same_batch_stay_unmapped(self) -> None:
+        """⛔ 同批遗留里看着同形的几个**没有锚**,不许顺手补 —— 长得像是零证据。
+        哪天它们上架、锚当场补上了,这条会红:那时把对应名字从这里删掉,别删整条。"""
+        from nutmeg.v4.data.sources.sporttery import _canonical_from_any
+        still = [n for n in ("爱媛FC", "琉球FC", "今治FC", "枥木SC", "相模原SC") if _canonical_from_any(n) is None]
+        assert still == ["爱媛FC", "琉球FC", "今治FC", "枥木SC", "相模原SC"], f"这些已被补上(确认有锚?):{sorted(set(['爱媛FC','琉球FC','今治FC','枥木SC','相模原SC'])-set(still))}"
