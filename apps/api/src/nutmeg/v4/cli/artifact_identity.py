@@ -131,7 +131,10 @@ def daemon_rows(url: str | None = None, timeout: float = 5.0) -> list[Row]:
 
     target = url or _health_url()
     try:
-        with urllib.request.urlopen(target, timeout=timeout) as r:
+        # 🔒 回环地址直连、不走代理(2026-09-25:系统代理把本机探针绕进了还没醒的代理
+        #    软件 ⇒ ConnectionResetError 假红)。见 nutmeg.v4.cli.local_http。
+        from nutmeg.v4.cli.local_http import urlopen_local
+        with urlopen_local(target, timeout=timeout) as r:
             body = r.read()
     except urllib.error.HTTPError as e:
         # 连上了、答了,但答的是错误码 ⇒ daemon 活着且坏着。必须红。

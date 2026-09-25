@@ -1338,7 +1338,9 @@ def check_dict_vintage(
 
     def _get(path: str):
         req = urllib.request.Request(f"{api_base}{path}", headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 — 固定本地地址
+        # 🔒 回环地址直连、不走代理 —— 与 artifact_identity 同一个坑同一处修,见 local_http。
+        from nutmeg.v4.cli.local_http import urlopen_local
+        with urlopen_local(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
 
     # ── 源码侧(本进程) ─────────────────────────────────────────────

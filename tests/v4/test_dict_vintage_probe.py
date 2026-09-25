@@ -75,6 +75,13 @@ def wire(monkeypatch):
         return _Resp(state["live"] if "jingcai-unmapped" in url else state["dict"])
 
     monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    # 🔒 2026-09-25 起本机探针走 `local_http.urlopen_local`(回环地址直连、不经代理),
+    #    只拦 `urllib.request.urlopen` 已经拦不住了 —— 两个出口都要接上。
+    # ⚠️ 顺带:上面把 `df._API_BASE` 改成 "http://stub" 其实**从没生效**过 ——
+    #    `check_dict_vintage(api_base=_API_BASE)` 的默认值在定义时就绑死了,测试一直在
+    #    请求 127.0.0.1:8080,是整体替换 urlopen 才让它看起来是在打桩。
+    from nutmeg.v4.cli import local_http
+    monkeypatch.setattr(local_http, "urlopen_local", fake_open)
     return state
 
 
@@ -256,6 +263,9 @@ class TestTheSentinelStaysHermeticUnderTestFlags:
             raise AssertionError(f"哨兵在测试参数下发了出站请求:{url}")
 
         monkeypatch.setattr("urllib.request.urlopen", boom)
+        # 🔒 第三条腿(2026-09-25):本机探针的直连出口,不经 urllib.request.urlopen
+        from nutmeg.v4.cli import local_http
+        monkeypatch.setattr(local_http, "urlopen_local", boom)
         # httpx / requests 走别的栈 —— 一并堵上,别只堵一个就以为覆盖了
         for mod, attr in (("httpx", "get"), ("httpx", "post")):
             try:
